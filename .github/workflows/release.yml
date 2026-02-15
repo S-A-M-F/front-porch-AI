@@ -18,7 +18,7 @@ jobs:
           - os: windows-latest
             platform: windows
             asset_name: Front_Porch_AI_Windows.zip
-            build_path: build/windows/runner/Release
+            build_path: build/windows/x64/runner/Release
           - os: macos-latest
             platform: macos
             asset_name: Front_Porch_AI_MacOS.zip
@@ -55,7 +55,7 @@ jobs:
         if: matrix.platform == 'windows'
         run: |
           cd ${{ matrix.build_path }}
-          Compress-Archive -Path * -DestinationPath ../../../../${{ matrix.asset_name }}
+          Compress-Archive -Path * -DestinationPath ../../../../../${{ matrix.asset_name }}
         shell: pwsh
 
       - name: Package MacOS
