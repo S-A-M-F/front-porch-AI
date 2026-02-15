@@ -1,0 +1,350 @@
+import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+
+class HardwareInfo {
+  final String gpuName;
+  final int vramMb;
+  final int ramMb;
+  final String vendor; // 'Nvidia', 'AMD', 'Intel', 'Unknown'
+  final bool hasCuda;
+  final bool hasRocm;
+  final bool hasMetal;
+
+  HardwareInfo({
+    required this.gpuName,
+    required this.vramMb,
+    required this.ramMb,
+    required this.vendor,
+    this.hasCuda = false,
+    this.hasRocm = false,
+    this.hasMetal = false,
+  });
+
+  @override
+  String toString() => '$gpuName (VRAM: ${vramMb}MB, RAM: ${ramMb}MB) [CUDA: $hasCuda, ROCm: $hasRocm, Metal: $hasMetal]';
+}
+
+class HardwareService extends ChangeNotifier {
+  HardwareInfo? _hardwareInfo;
+  bool _isDetecting = false;
+
+  HardwareInfo? get hardwareInfo => _hardwareInfo;
+  bool get isDetecting => _isDetecting;
+
+  Future<void> detectHardware() async {
+    _isDetecting = true;
+    notifyListeners();
+
+    await _checkDrivers();
+
+    try {
+      if (Platform.isWindows) {
+        await _detectWindows();
+      } else if (Platform.isLinux) {
+        await _detectLinux();
+      } else if (Platform.isMacOS) {
+        await _detectMac();
+      }
+    } catch (e) {
+      print('Hardware detection failed: $e');
+    } finally {
+      _isDetecting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _detectLinux() async {
+    String gpuName = 'Unknown GPU';
+    int vramMb = 0;
+    int ramMb = 0;
+    String vendor = 'Unknown';
+
+    // Detect RAM
+    try {
+      final result = await Process.run('cat', ['/proc/meminfo']);
+      if (result.exitCode == 0) {
+        final lines = result.stdout.toString().split('\n');
+        for (final line in lines) {
+          if (line.startsWith('MemTotal:')) {
+            final parts = line.split(RegExp(r'\s+'));
+            if (parts.length >= 2) {
+               final kb = int.tryParse(parts[1]) ?? 0;
+               ramMb = (kb / 1024).round();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Linux RAM detection error: $e');
+    }
+
+    // Detect GPU & VRAM
+    // Try lspci first for name
+    try {
+      final lspci = await Process.run('lspci', []);
+      if (lspci.exitCode == 0) {
+        final lines = lspci.stdout.toString().split('\n');
+        for (final line in lines) {
+          if (line.contains('VGA') || line.contains('3D controller') || line.contains('Display controller')) {
+            gpuName = line.substring(line.indexOf(':') + 1).trim();
+            // Clean up name
+            gpuName = gpuName.replaceAll(RegExp(r'\[.*?\]'), '').trim();
+            break; // Take first one
+          }
+        }
+      }
+    } catch (e) {
+      print('Linux GPU match error: $e');
+    }
+
+    // Determine vendor
+    final lowerName = gpuName.toLowerCase();
+    if (lowerName.contains('nvidia')) vendor = 'Nvidia';
+    else if (lowerName.contains('amd') || lowerName.contains('ati')) vendor = 'AMD';
+    else if (lowerName.contains('intel')) vendor = 'Intel';
+
+    // VRAM is hard on Linux without specific tools.
+    // Try nvidia-smi if vendor is Nvidia
+    if (vendor == 'Nvidia') {
+      try {
+        final res = await Process.run('nvidia-smi', ['--query-gpu=memory.total', '--format=csv,noheader,nounits']);
+        if (res.exitCode == 0) {
+          vramMb = int.tryParse(res.stdout.toString().trim()) ?? 0;
+        }
+      } catch (_) {}
+    } 
+    // For AMD, try looking at /sys/class/drm/card0/device/mem_info_vram_total (if available, amdgpu driver)
+    // Or just fallback to safe default if unknown
+    
+    _hardwareInfo = HardwareInfo(
+      gpuName: gpuName,
+      vramMb: vramMb,
+      ramMb: ramMb,
+      vendor: vendor,
+      hasCuda: _hasCuda,
+      hasRocm: _hasRocm,
+      hasMetal: false,
+    );
+  }
+
+  Future<void> _detectMac() async {
+    String gpuName = 'Unknown GPU';
+    int vramMb = 0;
+    int ramMb = 0;
+    String vendor = 'Apple';
+
+    try {
+      final result = await Process.run('system_profiler', ['SPDisplaysDataType', 'SPHardwareDataType', '-json']);
+      if (result.exitCode == 0) {
+        final json = jsonDecode(result.stdout.toString());
+        
+        // RAM
+        final hardwareData = json['SPHardwareDataType'];
+        if (hardwareData != null && hardwareData is List && hardwareData.isNotEmpty) {
+           final memory = hardwareData[0]['physical_memory']; // e.g., "16 GB"
+           if (memory != null && memory is String) {
+             final parts = memory.split(' ');
+             if (parts.length >= 2) {
+               int val = int.tryParse(parts[0]) ?? 0;
+               if (parts[1].toUpperCase() == 'GB') {
+                 ramMb = val * 1024;
+               } else if (parts[1].toUpperCase() == 'MB') {
+                 ramMb = val;
+               }
+             }
+           }
+        }
+
+        // GPU
+        final videoData = json['SPDisplaysDataType'];
+        if (videoData != null && videoData is List && videoData.isNotEmpty) {
+          final gpu = videoData[0];
+          gpuName = gpu['sppci_model'] ?? 'Unknown Mac GPU';
+          vendor = gpu['sppci_vendor'] ?? 'Apple';
+          
+          if (gpuName.contains('Apple M')) {
+            // Unified memory - VRAM is effectively RAM (minus OS overhead)
+            // But for Kobold purpose, we usually treat a chunk of RAM as VRAM.
+            // Let's set VRAM = RAM * 0.75 as a heuristic for unified memory
+            vramMb = (ramMb * 0.75).round();
+          } else {
+             // Discrete GPU (older Macs)
+             // Parsing "vram_total" usually string like "4 GB"
+             final vramStr = gpu['spdisplays_vram'];
+             if (vramStr != null) {
+                final parts = vramStr.split(' ');
+                 if (parts.length >= 2) {
+                   int val = int.tryParse(parts[0]) ?? 0;
+                   if (parts[1].toUpperCase() == 'GB') {
+                     vramMb = val * 1024;
+                   } else if (parts[1].toUpperCase() == 'MB') {
+                     vramMb = val;
+                   }
+                }
+             }
+          }
+        }
+      }
+    } catch (e) {
+      print('Mac detection error: $e');
+    }
+
+    _hardwareInfo = HardwareInfo(
+      gpuName: gpuName,
+      vramMb: vramMb,
+      ramMb: ramMb,
+      vendor: vendor,
+      hasCuda: _hasCuda,
+      hasRocm: _hasRocm,
+      hasMetal: true, // Optimistically assume Metal on Mac
+    );
+  }
+
+  Future<void> _detectWindows() async {
+    String gpuName = 'Unknown GPU';
+    int vramMb = 0;
+    String vendor = 'Unknown';
+
+    try {
+      // Method 1: Registry (Preferred for >4GB VRAM)
+      // Checks HKLM\SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\*
+      // for HardwareInformation.qwMemorySize (64-bit VRAM size)
+      final regResult = await Process.run('powershell', [
+        '-command',
+        r"Get-ItemProperty 'HKLM:\SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\*' -ErrorAction SilentlyContinue | Select-Object DriverDesc, 'HardwareInformation.qwMemorySize' | ConvertTo-Json"
+      ]);
+
+      // Ignore exit code 1 if we get valid JSON output (PowerShell might error on some registry keys but succeed on others)
+      if (regResult.stdout.toString().trim().isNotEmpty) {
+        try {
+          var json = jsonDecode(regResult.stdout.toString());
+          if (json is! List) json = [json];
+
+          // Find the best GPU (highest VRAM)
+          var bestGpu = json[0];
+          int maxVram = 0;
+
+          for (var item in json) {
+             // qwMemorySize is returned as a long number, sometimes string in JSON
+             var memSize = item['HardwareInformation.qwMemorySize'];
+             int size = 0;
+             if (memSize is int) size = memSize;
+             else if (memSize is String) size = int.tryParse(memSize) ?? 0;
+             
+             if (size > maxVram) {
+               maxVram = size;
+               bestGpu = item;
+             }
+          }
+          
+          if (maxVram > 0) {
+             vramMb = (maxVram / (1024 * 1024)).round();
+             gpuName = bestGpu['DriverDesc'] ?? 'Unknown GPU';
+          }
+        } catch (e) {
+          print('Registry VRAM parse error: $e');
+        }
+      }
+
+      // Method 2: WMI (Fallback if Registry failed or returned 0)
+      if (vramMb == 0) {
+        final gpuResult = await Process.run('powershell', [
+          '-command',
+          'Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, AdapterCompatibility | ConvertTo-Json'
+        ]);
+
+        if (gpuResult.exitCode == 0) {
+          final output = gpuResult.stdout.toString().trim();
+          if (output.isNotEmpty) {
+            var json = jsonDecode(output);
+            if (json is List) {
+              var topGpu = json[0];
+              int maxRam = 0;
+              for (var item in json) {
+                int ram = item['AdapterRAM'] ?? 0;
+                if (ram > maxRam) {
+                  maxRam = ram;
+                  topGpu = item;
+                }
+              }
+              json = topGpu;
+            }
+            if (gpuName == 'Unknown GPU') gpuName = json['Name'] ?? 'Unknown';
+            vramMb = ((json['AdapterRAM'] ?? 0) / (1024 * 1024)).round();
+          }
+        }
+      }
+
+      // Determine Vendor from Name
+      final nameLower = gpuName.toLowerCase();
+      if (nameLower.contains('nvidia') || nameLower.contains('geforce')) vendor = 'Nvidia';
+      else if (nameLower.contains('amd') || nameLower.contains('radeon')) vendor = 'AMD';
+      else if (nameLower.contains('intel') || nameLower.contains('iris') || nameLower.contains('uhd')) vendor = 'Intel';
+
+    } catch (e) {
+      print('Windows GPU detection failed: $e');
+    }
+
+    // Detect RAM (Existing logic)
+    final ramResult = await Process.run('powershell', [
+      '-command',
+      'Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory | ConvertTo-Json'
+    ]);
+    
+    int ramMb = 0;
+    if (ramResult.exitCode == 0) {
+       try {
+         final json = jsonDecode(ramResult.stdout.toString());
+         ramMb = ((json['TotalPhysicalMemory'] ?? 0) / (1024 * 1024)).round();
+       } catch (e) {
+         print('Error parsing RAM info: $e');
+       }
+    }
+
+    _hardwareInfo = HardwareInfo(
+      gpuName: gpuName,
+      vramMb: vramMb,
+      ramMb: ramMb,
+      vendor: vendor,
+      hasCuda: _hasCuda,
+      hasRocm: _hasRocm,
+      hasMetal: false,
+    );
+  }
+
+  bool _hasCuda = false;
+  bool _hasRocm = false;
+  
+  Future<void> _checkDrivers() async {
+    _hasCuda = false;
+    _hasRocm = false;
+
+    // CUDA Check (nvidia-smi)
+    try {
+      final res = await Process.run(Platform.isWindows ? 'nvidia-smi' : 'nvidia-smi', []);
+      if (res.exitCode == 0) _hasCuda = true;
+    } catch (_) {}
+
+    // ROCm/HIP Check
+    // Windows: Check if amdsysinfo or similar exists, or just defer to Vulkan availability which is standard.
+    // But user asked for "ROCm files". On Windows, real ROCm is rare for consumers, they use HIP SDK.
+    // We'll filter by "ROCm" if we find 'rocminfo' on Linux or 'hipinfo' on Windows.
+    // Simplified: On Windows, if AMD vendor, assume "ROCm/HIP" capability is provided by driver for Kobold (Vulkan is actual backend though).
+    // Let's check for 'rocminfo' on Linux.
+    if (Platform.isLinux) {
+      try {
+        final res = await Process.run('rocminfo', []);
+         if (res.exitCode == 0) _hasRocm = true;
+      } catch (_) {}
+    } else if (Platform.isWindows) {
+      // Harder to check "ROCm" specifically on Windows without HIP SDK.
+      // But we can check if the driver itself is functioning.
+      // For now, if Vendor is AMD, we'll assume the files are "available" in the sense that the driver is there.
+      // Or we can check for `C:\Windows\System32\amdhip64.dll` if we want to be pedantic about HIP.
+      if (File(r'C:\Windows\System32\amdhip64.dll').existsSync()) {
+        _hasRocm = true;
+      }
+    }
+  }
+}
