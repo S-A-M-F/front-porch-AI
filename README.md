@@ -13,6 +13,8 @@ A powerful, cross-platform desktop application designed to streamline the manage
 - **Import & Export**: Easily import cards from other frontends or export your creations to share.
 - **Metadata Editor**: Edit names, descriptions, personalities, scenarios, and first messages with a clean UI.
 - **Lorebooks**: Create and attach extensive lorebooks to characters for deep world-building.
+- **Web-to-Chat Import**: Direct integration with `aicharactercards.com` and `chub.ai` via an internal browser that intercepts downloads for instant auto-import.
+- **V2 Smart Parsing**: Advanced V2 tEXt metadata extraction from PNG character cards.
 
 ### 💬 Immersive Chat Experience
 - **Real-Time Streaming**: Tokens appear instantly as they are generated, eliminating perceived latency.
@@ -23,12 +25,15 @@ A powerful, cross-platform desktop application designed to streamline the manage
   - **Regenerate**: Don't like a response? Roll again.
   - **Continue**: Let the AI keep talking from where it left off.
   - **Impersonate**: Have the AI write a message *as you* (the user).
+  - **Stop Generation**: Immediately halt AI generation mid-stream with one click.
+  - **Message Editing**: Edit any message (User or AI) in-place to polish the narrative or fix typos.
 - **Persistent Sessions**: Your chat history is automatically saved and restored when you switch characters.
 - **User Personas**: Define your own persona name and description to influence how characters interact with you.
 
 ### ⚙️ KoboldCPP Integration
 - **Automated Management**: The app can automatically download and update the KoboldCPP backend for you.
-- **Hardware Detection**: Automatically detects your GPU and VRAM to configure optimal settings (layers, context size) for your hardware.
+- **Hardware Detection**: Automatically detects GPU and VRAM. Prefers **Vulkan** on PC and **Metal** on Apple Silicon for peak performance.
+- **macOS Stability**: Native quarantine management and sandbox-free execution for seamless backend launches.
 - **Model Hub**: Built-in integration with HuggingFace to search for and download GGUF models directly.
 - **Process Management**: Robustly handles the lifecycle of the AI backend, ensuring clean shutdowns.
 
