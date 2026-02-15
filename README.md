@@ -47,8 +47,8 @@ A powerful, cross-platform desktop application designed to streamline the manage
 
 1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/yourusername/kobold_character_card_manager.git
-    cd kobold_character_card_manager
+    git clone https://github.com/linux4life1/front-porch-ai.git
+    cd front-porch-ai
     ```
 
 2.  **Install Dependencies**:
