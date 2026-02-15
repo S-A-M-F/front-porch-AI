@@ -19,7 +19,7 @@ jobs:
           - os: macos-latest
             platform: macos
             asset_name: Front_Porch_AI_MacOS.zip
-            build_path: build/macos/Build/Products/Release/front_porch_ai.app
+            build_path: build/macos/Build/Products/Release
           - os: ubuntu-latest
             platform: linux
             asset_name: Front_Porch_AI_Linux.tar.gz
@@ -40,7 +40,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev libwebkit2gtk-4.1-dev ninja-build pkg-config cmake
 
       - name: Install dependencies
         run: flutter pub get
@@ -59,7 +59,9 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           cd build/macos/Build/Products/Release
-          zip -r ../../../../${{ matrix.asset_name }} front_porch_ai.app
+          APP_NAME=$(ls -d *.app | head -1)
+          echo "Found app bundle: $APP_NAME"
+          zip -r ../../../../../${{ matrix.asset_name }} "$APP_NAME"
 
       - name: Package Linux
         if: matrix.platform == 'linux'
