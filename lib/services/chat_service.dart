@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as path;
@@ -51,6 +52,12 @@ class ChatService extends ChangeNotifier {
   double _generationProgress = 0.0;
   int _tokensGenerated = 0;
   int _maxTokens = 0;
+  DateTime? _generationStartTime;
+  bool _isBuffering = false;
+  static const double _targetDisplayRate = 30.0; // tokens per second
+  final List<String> _tokenBuffer = [];
+  Timer? _drainTimer;
+  int _displayedTokenCount = 0;
 
   CharacterCard? get activeCharacter => _activeCharacter;
   List<ChatMessage> get messages => List.unmodifiable(_messages);
@@ -60,6 +67,13 @@ class ChatService extends ChangeNotifier {
   double get generationProgress => _generationProgress;
   int get tokensGenerated => _tokensGenerated;
   int get maxTokens => _maxTokens;
+  bool get isBuffering => _isBuffering;
+  double get tokensPerSecond {
+    if (_generationStartTime == null || _tokensGenerated == 0) return 0.0;
+    final elapsed = DateTime.now().difference(_generationStartTime!).inMilliseconds / 1000.0;
+    if (elapsed <= 0) return 0.0;
+    return _tokensGenerated / elapsed;
+  }
   int _greetingIndex = 0;
   int get greetingIndex => _greetingIndex;
 
@@ -338,6 +352,8 @@ class ChatService extends ChangeNotifier {
     _generationProgress = 0.0;
     _tokensGenerated = 0;
     _maxTokens = _storageService.maxLength;
+    _generationStartTime = DateTime.now();
+    _isBuffering = true;
     notifyListeners();
 
     try {
@@ -414,86 +430,126 @@ class ChatService extends ChangeNotifier {
       
       String accumulatedResponse = "";
       bool stopFound = false;
+      _tokenBuffer.clear();
+      _displayedTokenCount = 0;
+      bool streamDone = false;
+
+      // Determine message identity
+      String originalText = '';
+      String targetSender;
+      bool isUserTarget;
 
       if (mode == GenerationMode.continue_) {
-        // Appending to the existing last message
-        final originalText = _messages.last.text;
-        final targetSender = _messages.last.sender;
-        final isUserTarget = _messages.last.isUser;
-
-        await for (final token in stream) {
-          if (_cancelRequested) break;
-          accumulatedResponse += token;
-          _tokensGenerated++;
-          _generationProgress = _maxTokens > 0 ? (_tokensGenerated / _maxTokens).clamp(0.0, 1.0) : 0.0;
-          
-          // Client-side safety trim check (mid-stream)
-          for (final stop in stopSequences) {
-             if (accumulatedResponse.contains(stop)) {
-               int index = accumulatedResponse.indexOf(stop);
-               accumulatedResponse = accumulatedResponse.substring(0, index);
-               stopFound = true;
-               break;
-             }
-          }
-
-          _messages.removeLast();
-          _messages.add(ChatMessage(
-            text: originalText + accumulatedResponse,
-            sender: targetSender,
-            isUser: isUserTarget
-          ));
-          notifyListeners();
-
-          if (stopFound) break;
-        }
+        originalText = _messages.last.text;
+        targetSender = _messages.last.sender;
+        isUserTarget = _messages.last.isUser;
       } else {
-        // Normal or Impersonate adds a NEW message
-        final sender = mode == GenerationMode.normal ? _activeCharacter!.name : _userPersonaService.persona.name;
-        final isUser = mode == GenerationMode.impersonate;
+        targetSender = mode == GenerationMode.normal ? _activeCharacter!.name : _userPersonaService.persona.name;
+        isUserTarget = mode == GenerationMode.impersonate;
+        _messages.add(ChatMessage(text: "", sender: targetSender, isUser: isUserTarget));
+      }
 
-        _messages.add(ChatMessage(
-          text: "", 
-          sender: sender, 
-          isUser: isUser
-        ));
-        
-        await for (final token in stream) {
-          if (_cancelRequested) break;
-          accumulatedResponse += token;
-          _tokensGenerated++;
-          _generationProgress = _maxTokens > 0 ? (_tokensGenerated / _maxTokens).clamp(0.0, 1.0) : 0.0;
-
-          // Client-side safety trim check (mid-stream)
-          for (final stop in stopSequences) {
-             if (accumulatedResponse.contains(stop)) {
-               int index = accumulatedResponse.indexOf(stop);
-               accumulatedResponse = accumulatedResponse.substring(0, index);
-               stopFound = true;
-               break;
-             }
-          }
-
-          String displayResponse = accumulatedResponse;
-          if (mode != GenerationMode.continue_) {
-            displayResponse = displayResponse.trimLeft();
-          }
-
-          _messages.removeLast();
-          _messages.add(ChatMessage(
-            text: displayResponse,
-            sender: sender,
-            isUser: isUser
-          ));
-          notifyListeners();
-
-          if (stopFound) break;
+      // Helper to update the visible message from buffer
+      void _flushBufferToDisplay() {
+        if (_tokenBuffer.isEmpty && _displayedTokenCount == 0) return;
+        // Build displayed text from all tokens up to _displayedTokenCount
+        final displayTokens = _tokenBuffer.take(_displayedTokenCount).join();
+        String displayText;
+        if (mode == GenerationMode.continue_) {
+          displayText = originalText + displayTokens;
+        } else {
+          displayText = displayTokens.trimLeft();
         }
+        _messages.removeLast();
+        _messages.add(ChatMessage(text: displayText, sender: targetSender, isUser: isUserTarget));
+        notifyListeners();
+      }
+
+      // Drain timer: displays tokens at a constant 30 t/s rate
+      void _startDrainTimer() {
+        if (_drainTimer != null) return;
+        // Always drain at target rate — pauses when buffer empty, resumes when tokens arrive
+        final interval = Duration(milliseconds: (1000.0 / _targetDisplayRate).round());
+        _drainTimer = Timer.periodic(interval, (_) {
+          if (_displayedTokenCount < _tokenBuffer.length) {
+            _displayedTokenCount++;
+            _flushBufferToDisplay();
+          } else if (streamDone) {
+            // Stream finished and buffer fully drained
+            _drainTimer?.cancel();
+            _drainTimer = null;
+          }
+          // If buffer is caught up but stream still running, timer ticks idly until more tokens arrive
+        });
+      }
+
+      // Consume the stream — tokens go into buffer
+      await for (final token in stream) {
+        if (_cancelRequested) break;
+        accumulatedResponse += token;
+        _tokensGenerated++;
+        _generationProgress = _maxTokens > 0 ? (_tokensGenerated / _maxTokens).clamp(0.0, 1.0) : 0.0;
+
+        // Client-side safety trim check (mid-stream)
+        for (final stop in stopSequences) {
+          if (accumulatedResponse.contains(stop)) {
+            int index = accumulatedResponse.indexOf(stop);
+            // Trim token to only include content before stop
+            final trimmedTotal = accumulatedResponse.substring(0, index);
+            // Reconstruct what this last token contributed
+            final previousTotal = _tokenBuffer.join();
+            final lastTokenContribution = trimmedTotal.substring(previousTotal.length.clamp(0, trimmedTotal.length));
+            if (lastTokenContribution.isNotEmpty) {
+              _tokenBuffer.add(lastTokenContribution);
+            }
+            accumulatedResponse = trimmedTotal;
+            stopFound = true;
+            break;
+          }
+        }
+
+        if (!stopFound) {
+          _tokenBuffer.add(token);
+        }
+
+        // Build initial buffer before starting display (2 seconds of 30 t/s = 60 tokens)
+        // Ensures smooth constant-rate output even if generation speed varies
+        if (_drainTimer == null) {
+          final elapsed = DateTime.now().difference(_generationStartTime!).inMilliseconds / 1000.0;
+          if (_tokenBuffer.length >= 60 || elapsed >= 3.0) {
+            _isBuffering = false;
+            _startDrainTimer();
+          }
+        }
+
+        // Update TPS/progress in the bar even during buffering
+        notifyListeners();
+
+        if (stopFound) break;
+      }
+
+      // Mark stream as done so drain timer knows to stop after flushing
+      streamDone = true;
+      _isBuffering = false;
+
+      // If drain timer never started (very short generation), flush everything now
+      if (_drainTimer == null) {
+        _displayedTokenCount = _tokenBuffer.length;
+        _flushBufferToDisplay();
+      } else {
+        // Wait for drain timer to finish displaying remaining buffer
+        while (_displayedTokenCount < _tokenBuffer.length) {
+          await Future.delayed(const Duration(milliseconds: 16));
+        }
+        _drainTimer?.cancel();
+        _drainTimer = null;
       }
 
       _isGenerating = false;
       _cancelRequested = false;
       _generationProgress = 0.0;
+      _isBuffering = false;
+      _generationStartTime = null;
       notifyListeners();
 
       final finalResponse = accumulatedResponse.trim();
@@ -508,9 +564,14 @@ class ChatService extends ChangeNotifier {
       await _saveChat();
 
     } catch (e) {
+      _drainTimer?.cancel();
+      _drainTimer = null;
+      _tokenBuffer.clear();
       _isGenerating = false;
       _cancelRequested = false;
       _generationProgress = 0.0;
+      _isBuffering = false;
+      _generationStartTime = null;
       _messages.add(ChatMessage(
         text: "Error: $e", 
         sender: "System", 

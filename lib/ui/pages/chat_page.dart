@@ -144,7 +144,7 @@ class _ChatPageState extends State<ChatPage> {
                                     ),
                                     const SizedBox(width: 10),
                                     Text(
-                                      'Generating response...',
+                                      chatService.isBuffering ? 'Buffering...' : 'Generating response...',
                                       style: TextStyle(
                                         color: Colors.white.withValues(alpha: 0.7),
                                         fontSize: 12,
@@ -152,6 +152,16 @@ class _ChatPageState extends State<ChatPage> {
                                       ),
                                     ),
                                     const Spacer(),
+                                    Text(
+                                      '${chatService.tokensPerSecond.toStringAsFixed(1)} t/s',
+                                      style: const TextStyle(
+                                        color: Colors.amberAccent,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
                                     Text(
                                       '${chatService.tokensGenerated} / ${chatService.maxTokens} tokens',
                                       style: TextStyle(
