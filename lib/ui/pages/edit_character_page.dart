@@ -290,11 +290,11 @@ class _EditCharacterPageState extends State<EditCharacterPage>
           Row(
             children: [
               const Text('Alternate Greetings', 
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white70)),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white70)),
               const Spacer(),
               TextButton.icon(
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add'),
+                icon: const Icon(Icons.add, size: 16, color: Colors.white70),
+                label: const Text('Add', style: TextStyle(color: Colors.white70)),
                 onPressed: () {
                   setState(() {
                     _altGreetingControllers.add(TextEditingController());
@@ -494,13 +494,39 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     required String label,
     int maxLines = 1,
   }) {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-      ),
-      maxLines: maxLines,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
+            color: Colors.white70,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          maxLines: maxLines,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white.withOpacity(0.05),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            contentPadding: const EdgeInsets.all(16),
+          ),
+        ),
+      ],
     );
   }
 }

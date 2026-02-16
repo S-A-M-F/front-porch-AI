@@ -22,6 +22,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   final _personalityController = TextEditingController();
   final _scenarioController = TextEditingController();
   final _firstMessageController = TextEditingController();
+  final List<TextEditingController> _altGreetingControllers = [];
   String? _imagePath;
 
   Future<void> _pickImage() async {
@@ -62,6 +63,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           personality: _personalityController.text,
           scenario: _scenarioController.text,
           firstMessage: _firstMessageController.text,
+          alternateGreetings: _altGreetingControllers
+              .map((c) => c.text)
+              .where((t) => t.isNotEmpty)
+              .toList(),
         );
 
         final service = V2CardService();
@@ -93,6 +98,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     _personalityController.dispose();
     _scenarioController.dispose();
     _firstMessageController.dispose();
+    for (var c in _altGreetingControllers) c.dispose();
     super.dispose();
   }
 
@@ -212,6 +218,56 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                       hint: 'The character\'s opening line...',
                       maxLines: 5,
                     ),
+                    const SizedBox(height: 24),
+                    // Alternate greetings section
+                    Row(
+                      children: [
+                        const Text('Alternate Greetings', 
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white70)),
+                        const Spacer(),
+                        TextButton.icon(
+                          icon: const Icon(Icons.add, size: 16, color: Colors.white70),
+                          label: const Text('Add', style: TextStyle(color: Colors.white70)),
+                          onPressed: () {
+                            setState(() {
+                              _altGreetingControllers.add(TextEditingController());
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    ..._altGreetingControllers.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final controller = entry.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                controller: controller,
+                                label: 'Greeting ${idx + 2}',
+                                hint: 'Another opening line...',
+                                maxLines: 4,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 24),
+                              tooltip: 'Remove this greeting',
+                              padding: const EdgeInsets.only(top: 32),
+                              onPressed: () {
+                                setState(() {
+                                  _altGreetingControllers[idx].dispose();
+                                  _altGreetingControllers.removeAt(idx);
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                   ],
                 ),
               ),
