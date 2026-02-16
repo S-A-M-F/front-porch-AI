@@ -4,6 +4,29 @@
 ![Flutter](https://img.shields.io/badge/Made%20with-Flutter-02569B?logo=flutter)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 
+## 📸 Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/home.png" width="800" alt="Home Page - Character Grid with Folders">
+</p>
+<p align="center">
+  <em>Organize your collection with virtual folders and comprehensive search</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/chat.png" width="800" alt="Immersive Chat Interface">
+</p>
+<p align="center">
+  <em>Immersive chat with rich text styling, streaming, and editing</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/editor.png" width="800" alt="Character Editor">
+</p>
+<p align="center">
+  <em>Powerful metadata editor with tag management and V2 support</em>
+</p>
+
 A powerful, cross-platform desktop application designed to streamline the management of AI character cards and provide a seamless chat experience with **KoboldCPP**. Organize your collection, edit metadata, build worlds, and chat with your favorite characters in a modern, intuitive interface.
 
 ## ✨ Features
