@@ -41,6 +41,15 @@ A powerful, cross-platform desktop application designed to streamline the manage
 - **Web-to-Chat Import**: Direct integration with `aicharactercards.com` and `chub.ai` via an internal browser that intercepts downloads for instant auto-import.
 - **V2 Smart Parsing**: Advanced V2 tEXt metadata extraction from PNG character cards.
 
+### 🎨 Character Creation
+<img src="docs/screenshots/create.png" width="800" alt="Character Creation">
+
+Create detailed character cards (V2 spec compatible) with a user-friendly form UI. Support for:
+- Name, Description, Personality, Scenario, First Message
+- Alternate Greetings
+- Tags
+- Avatar image upload
+
 ### 💬 Immersive Chat Experience
 - **Real-Time Streaming**: Tokens appear instantly as they are generated, eliminating perceived latency.
 - **Rich Text Styling**: 
