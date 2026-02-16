@@ -513,20 +513,29 @@ class ChatService extends ChangeNotifier {
         }
 
         if (bufferEnabled) {
-          // Adaptive buffer: measure TPS, start drain when we have enough buffer
+          // Adaptive buffer: calculate minimum buffer needed for uninterrupted display
+          // Formula: bufferNeeded = maxLength × (1 - genTps / targetTps)
+          // This is the earliest we can start displaying without ever running dry
           if (_drainTimer == null && _tokensGenerated >= 10) {
             final elapsed = DateTime.now().difference(_generationStartTime!).inMilliseconds / 1000.0;
             final currentTps = elapsed > 0 ? _tokensGenerated / elapsed : 0.0;
 
+            int bufferTarget;
             if (currentTps >= targetTps) {
-              // Generation keeps up — start draining after small buffer (2s worth)
-              final bufferTarget = (targetTps * 2).round().clamp(30, 120);
-              if (_tokenBuffer.length >= bufferTarget) {
-                _isBuffering = false;
-                _startDrainTimer();
-              }
+              // Generation keeps up — small safety buffer (2 seconds worth)
+              bufferTarget = (targetTps * 2).round().clamp(30, 120);
+            } else {
+              // Generation slower than display — calculate optimal start point
+              final ratio = currentTps / targetTps; // e.g., 1.7/30 = 0.057
+              bufferTarget = (_maxTokens * (1.0 - ratio)).ceil();
+              // Add small safety margin (5%) to account for TPS fluctuations
+              bufferTarget = (bufferTarget * 1.05).ceil().clamp(10, _maxTokens);
             }
-            // If genTps < targetTps, keep buffering — will drain after stream completes
+
+            if (_tokenBuffer.length >= bufferTarget) {
+              _isBuffering = false;
+              _startDrainTimer();
+            }
           }
         } else {
           // No buffer: display tokens immediately
