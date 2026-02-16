@@ -33,13 +33,8 @@ class SetupService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Wait for StorageService to init (rootPath must be available)
-      if (_storageService.rootPath == null) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (_storageService.rootPath == null) {
-          throw Exception('Storage not initialized');
-        }
-      }
+      // 1. Wait for StorageService to fully initialize (SharedPreferences loaded)
+      await _storageService.initialized;
 
       // 2. Check and Download Backend if missing
       await _backendManager.checkBackendAvailability();
