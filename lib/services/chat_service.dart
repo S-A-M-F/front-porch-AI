@@ -54,7 +54,6 @@ class ChatService extends ChangeNotifier {
   int _maxTokens = 0;
   DateTime? _generationStartTime;
   bool _isBuffering = false;
-  static const double _targetDisplayRate = 30.0; // tokens per second
   final List<String> _tokenBuffer = [];
   Timer? _drainTimer;
   int _displayedTokenCount = 0;
@@ -465,11 +464,14 @@ class ChatService extends ChangeNotifier {
         notifyListeners();
       }
 
-      // Drain timer: displays tokens at a constant 30 t/s rate
+      // Read display buffer settings
+      final bufferEnabled = _storageService.displayBufferEnabled;
+      final targetTps = _storageService.targetDisplayTps;
+
+      // Drain timer: displays tokens at the user-configured constant rate
       void _startDrainTimer() {
         if (_drainTimer != null) return;
-        // Always drain at target rate — pauses when buffer empty, resumes when tokens arrive
-        final interval = Duration(milliseconds: (1000.0 / _targetDisplayRate).round());
+        final interval = Duration(milliseconds: (1000.0 / targetTps).round());
         _drainTimer = Timer.periodic(interval, (_) {
           if (_displayedTokenCount < _tokenBuffer.length) {
             _displayedTokenCount++;
@@ -483,7 +485,7 @@ class ChatService extends ChangeNotifier {
         });
       }
 
-      // Consume the stream — tokens go into buffer
+      // Consume the stream — tokens go into buffer (or display immediately)
       await for (final token in stream) {
         if (_cancelRequested) break;
         accumulatedResponse += token;
@@ -494,9 +496,7 @@ class ChatService extends ChangeNotifier {
         for (final stop in stopSequences) {
           if (accumulatedResponse.contains(stop)) {
             int index = accumulatedResponse.indexOf(stop);
-            // Trim token to only include content before stop
             final trimmedTotal = accumulatedResponse.substring(0, index);
-            // Reconstruct what this last token contributed
             final previousTotal = _tokenBuffer.join();
             final lastTokenContribution = trimmedTotal.substring(previousTotal.length.clamp(0, trimmedTotal.length));
             if (lastTokenContribution.isNotEmpty) {
@@ -512,14 +512,27 @@ class ChatService extends ChangeNotifier {
           _tokenBuffer.add(token);
         }
 
-        // Build initial buffer before starting display (2 seconds of 30 t/s = 60 tokens)
-        // Ensures smooth constant-rate output even if generation speed varies
-        if (_drainTimer == null) {
-          final elapsed = DateTime.now().difference(_generationStartTime!).inMilliseconds / 1000.0;
-          if (_tokenBuffer.length >= 60 || elapsed >= 3.0) {
-            _isBuffering = false;
-            _startDrainTimer();
+        if (bufferEnabled) {
+          // Adaptive buffer: measure TPS, start drain when we have enough buffer
+          if (_drainTimer == null && _tokensGenerated >= 10) {
+            final elapsed = DateTime.now().difference(_generationStartTime!).inMilliseconds / 1000.0;
+            final currentTps = elapsed > 0 ? _tokensGenerated / elapsed : 0.0;
+
+            if (currentTps >= targetTps) {
+              // Generation keeps up — start draining after small buffer (2s worth)
+              final bufferTarget = (targetTps * 2).round().clamp(30, 120);
+              if (_tokenBuffer.length >= bufferTarget) {
+                _isBuffering = false;
+                _startDrainTimer();
+              }
+            }
+            // If genTps < targetTps, keep buffering — will drain after stream completes
           }
+        } else {
+          // No buffer: display tokens immediately
+          _isBuffering = false;
+          _displayedTokenCount = _tokenBuffer.length;
+          _flushBufferToDisplay();
         }
 
         // Update TPS/progress in the bar even during buffering
@@ -528,16 +541,25 @@ class ChatService extends ChangeNotifier {
         if (stopFound) break;
       }
 
-      // Mark stream as done so drain timer knows to stop after flushing
+      // Mark stream as done
       streamDone = true;
       _isBuffering = false;
 
-      // If drain timer never started (very short generation), flush everything now
-      if (_drainTimer == null) {
+      if (!bufferEnabled) {
+        // No buffer: everything already displayed
         _displayedTokenCount = _tokenBuffer.length;
         _flushBufferToDisplay();
+      } else if (_drainTimer == null) {
+        // Buffer never started draining (genTps < targetTps) — start now with all tokens ready
+        _startDrainTimer();
+        // Wait for drain to complete
+        while (_displayedTokenCount < _tokenBuffer.length) {
+          await Future.delayed(const Duration(milliseconds: 16));
+        }
+        _drainTimer?.cancel();
+        _drainTimer = null;
       } else {
-        // Wait for drain timer to finish displaying remaining buffer
+        // Drain already running — wait for it to finish
         while (_displayedTokenCount < _tokenBuffer.length) {
           await Future.delayed(const Duration(milliseconds: 16));
         }

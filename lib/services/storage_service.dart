@@ -41,6 +41,8 @@ class StorageService extends ChangeNotifier {
   List<String> _stopSequences = ["\nUser:", "\n###", "\nScenario:", "<END>", "\nSystem:", "\n(Note:", "\n[Note:", "\n{Note:"];
   double _textScale = 1.0;
   List<Map<String, String>> _savedPrompts = [];
+  bool _displayBufferEnabled = true;
+  double _targetDisplayTps = 30.0;
 
 
   // Getters
@@ -63,6 +65,8 @@ class StorageService extends ChangeNotifier {
   List<String> get stopSequences => List.unmodifiable(_stopSequences);
   double get textScale => _textScale;
   List<Map<String, String>> get savedPrompts => List.unmodifiable(_savedPrompts);
+  bool get displayBufferEnabled => _displayBufferEnabled;
+  double get targetDisplayTps => _targetDisplayTps;
 
   StorageService() {
     _init();
@@ -99,6 +103,8 @@ class StorageService extends ChangeNotifier {
     _contextSize = _prefs?.getInt('context_size') ?? _contextSize;
     _stopSequences = _prefs?.getStringList('stop_sequences') ?? _stopSequences;
     _textScale = _prefs?.getDouble('text_scale') ?? 1.0;
+    _displayBufferEnabled = _prefs?.getBool('display_buffer_enabled') ?? true;
+    _targetDisplayTps = _prefs?.getDouble('target_display_tps') ?? 30.0;
 
     // Load saved prompts
     final promptsJson = _prefs?.getString('saved_prompts');
@@ -272,6 +278,18 @@ class StorageService extends ChangeNotifier {
   Future<void> setTextScale(double value) async {
     _textScale = value;
     await _prefs?.setDouble('text_scale', value);
+    notifyListeners();
+  }
+
+  Future<void> setDisplayBufferEnabled(bool value) async {
+    _displayBufferEnabled = value;
+    await _prefs?.setBool('display_buffer_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setTargetDisplayTps(double value) async {
+    _targetDisplayTps = value;
+    await _prefs?.setDouble('target_display_tps', value);
     notifyListeners();
   }
 }

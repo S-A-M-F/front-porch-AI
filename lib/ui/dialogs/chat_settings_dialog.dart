@@ -68,6 +68,37 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                        if (storageService.dynamicTempEnabled)
                          _buildSlider('Dynatemp Range', storageService.dynamicTempRange, 0.0, 2.0, (val) => storageService.setDynamicTempRange(val), divisions: 20),
 
+                       const SizedBox(height: 24),
+                       const Text('Display Output', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                       const SizedBox(height: 8),
+                       Row(
+                         children: [
+                           const Text('Smooth Output Buffer', style: TextStyle(color: Colors.white)),
+                           const Spacer(),
+                           Switch(
+                             value: storageService.displayBufferEnabled,
+                             onChanged: (val) => storageService.setDisplayBufferEnabled(val),
+                             activeTrackColor: Colors.blueAccent,
+                           ),
+                         ],
+                       ),
+                       if (!storageService.displayBufferEnabled)
+                         Padding(
+                           padding: const EdgeInsets.only(bottom: 8),
+                           child: Text(
+                             'Tokens display as they arrive (no buffering)',
+                             style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
+                           ),
+                         ),
+                       if (storageService.displayBufferEnabled)
+                         _buildSlider(
+                           'Target Display Speed (t/s)',
+                           storageService.targetDisplayTps,
+                           5.0,
+                           60.0,
+                           (val) => storageService.setTargetDisplayTps(val),
+                           divisions: 55,
+                         ),
                         const SizedBox(height: 24),
                         const Text('Stop Sequences', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                         const SizedBox(height: 8),
