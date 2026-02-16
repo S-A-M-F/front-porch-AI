@@ -48,13 +48,15 @@ class CharacterCard {
     };
   }
 
-  String get formattedDescription {
-    if (description.isEmpty) return '';
-    // Replace {{char}} and {{user}} placeholders with actual name
-    return description
-        .replaceAll('{{char}}', name)
-        .replaceAll('{{user}}', 'You');
+  String replacePlaceholders(String text, {String userName = 'You'}) {
+    return text
+        .replaceAll(RegExp(r'\{\{char\}\}', caseSensitive: false), name)
+        .replaceAll(RegExp(r'<char>', caseSensitive: false), name)
+        .replaceAll(RegExp(r'\{\{user\}\}', caseSensitive: false), userName)
+        .replaceAll(RegExp(r'<user>', caseSensitive: false), userName);
   }
+
+  String get formattedDescription => replacePlaceholders(description);
 
   // V2 spec fields can be added here later (e.g., character_book, etc.)
 }

@@ -280,9 +280,11 @@ class ChatService extends ChangeNotifier {
 
   String _buildFirstMessage(CharacterCard character, {String? greetingText}) {
     String msg = greetingText ?? character.firstMessage;
-    msg = msg.replaceAll('{{char}}', character.name);
-    msg = msg.replaceAll('{{user}}', _userPersonaService.persona.name); 
-    return msg;
+    // Use the robust replacement logic from the model
+    return character.replacePlaceholders(
+      msg, 
+      userName: _userPersonaService.persona.name
+    );
   }
 
   Future<void> sendMessage(String text) async {
@@ -363,13 +365,20 @@ class ChatService extends ChangeNotifier {
         loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
       }
 
+      final userName = _userPersonaService.persona.name;
+      
+      // Apply replacements to lore content
+      if (loreContent.isNotEmpty) {
+        loreContent = _activeCharacter!.replacePlaceholders(loreContent, userName: userName);
+      }
+
       String history = _buildChatHistory();
       String suffix = "";
       
       if (mode == GenerationMode.normal) {
         suffix = "\n${_activeCharacter!.name}:";
       } else if (mode == GenerationMode.impersonate) {
-        suffix = "\n${_userPersonaService.persona.name}:";
+        suffix = "\n${userName}:";
       } else if (mode == GenerationMode.continue_) {
         // Continue appends to the last message, so we don't add a new header.
         suffix = ""; 
@@ -377,8 +386,8 @@ class ChatService extends ChangeNotifier {
 
       final prompt = "$systemPrompt\n"
           "$loreContent"
-          "${_activeCharacter!.name}'s Persona: ${_activeCharacter!.personality}\n"
-          "Scenario: ${_activeCharacter!.scenario}\n"
+          "${_activeCharacter!.name}'s Persona: ${_activeCharacter!.replacePlaceholders(_activeCharacter!.personality, userName: userName)}\n"
+          "Scenario: ${_activeCharacter!.replacePlaceholders(_activeCharacter!.scenario, userName: userName)}\n"
           "<START>\n"
           "$history"
           "$suffix";
