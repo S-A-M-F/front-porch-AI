@@ -66,10 +66,21 @@ jobs:
           echo "Found app bundle: $APP_NAME"
           zip -r ../../../../../${{ matrix.asset_name }} "$APP_NAME"
 
+      - name: Get Version
+        id: get_version
+        if: matrix.platform == 'linux'
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
       - name: Package Linux
         if: matrix.platform == 'linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          echo "Building packages for version $VERSION"
+          
           # 1. Prepare AppImage
+          # AppImage standard: AppRun at root, resources in distinct folders
           mkdir -p AppDir/usr/bin
           cp -r ${{ matrix.build_path }}/* AppDir/usr/bin/
           
@@ -83,28 +94,42 @@ jobs:
           Categories=Utility;
           EOF
           
-          # Use local icon if exists, otherwise placeholder
+          # Icon management
           if [ -f "assets/images/front_porch_ai_icon.png" ]; then
             cp assets/images/front_porch_ai_icon.png AppDir/front_porch_ai.png
+            cp assets/images/front_porch_ai_icon.png AppDir/.DirIcon
           else
-            # Minimal placeholder icon creation if no icon found
             touch AppDir/front_porch_ai.png
+            touch AppDir/.DirIcon
           fi
           
+          # AppRun - symlink to the binary in usr/bin
           ln -s usr/bin/front_porch_ai AppDir/AppRun
           
-          # Download and use appimagetool
+          # Create AppImage
           curl -L https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o appimagetool
           chmod +x appimagetool
           ./appimagetool AppDir Front_Porch_AI-Linux.AppImage
           
           # 2. Prepare .deb
+          # Install to /opt to keep bundle together
+          mkdir -p deb/opt/front-porch-ai
           mkdir -p deb/usr/bin
+          mkdir -p deb/usr/share/applications
           mkdir -p deb/DEBIAN
-          cp -r ${{ matrix.build_path }}/* deb/usr/bin/
+          
+          cp -r ${{ matrix.build_path }}/* deb/opt/front-porch-ai/
+          # Symlink to /usr/bin
+          ln -s /opt/front-porch-ai/front_porch_ai deb/usr/bin/front-porch-ai
+          
+          # Copy desktop file and icon
+          cp AppDir/front_porch_ai.desktop deb/usr/share/applications/
+          mkdir -p deb/usr/share/pixmaps
+          cp AppDir/front_porch_ai.png deb/usr/share/pixmaps/
+          
           cat <<EOF > deb/DEBIAN/control
           Package: front-porch-ai
-          Version: 0.0.3.4
+          Version: $VERSION
           Section: utils
           Priority: optional
           Architecture: amd64
@@ -116,9 +141,10 @@ jobs:
           # 3. Prepare .rpm
           sudo apt-get install -y rpm
           mkdir -p rpmroot/{BUILD,RPMS,SOURCES,SPECS,SRPMS,INSTALL}
+          
           cat <<EOF > rpmroot/SPECS/front-porch-ai.spec
           Name:           front-porch-ai
-          Version:        0.0.3.4
+          Version:        $VERSION
           Release:        1%{?dist}
           Summary:        Front Porch AI Frontend
           License:        MIT
@@ -128,15 +154,19 @@ jobs:
           A chilled out frontend for KoboldCPP.
           
           %install
+          mkdir -p %{buildroot}/opt/front-porch-ai
           mkdir -p %{buildroot}/usr/bin
-          cp -r ${{ matrix.build_path }}/* %{buildroot}/usr/bin/
+          cp -r ${{ matrix.build_path }}/* %{buildroot}/opt/front-porch-ai/
+          ln -s /opt/front-porch-ai/front_porch_ai %{buildroot}/usr/bin/front-porch-ai
           
           %files
-          /usr/bin/*
+          /opt/front-porch-ai
+          /usr/bin/front-porch-ai
           
           %changelog
           EOF
-          rpmbuild --define "_topdir $(pwd)/rpmroot" --define "_buildrootdir $(pwd)/rpmroot/INSTALL" -ba rpmroot/SPECS/front-porch-ai.spec
+          
+          rpmbuild --define "_topdir $(pwd)/rpmroot" --define "_buildrootdir $(pwd)/rpmroot/INSTALL" -bb rpmroot/SPECS/front-porch-ai.spec
           cp rpmroot/RPMS/x86_64/*.rpm Front_Porch_AI-Linux.rpm
           
           # 4. Standard tar.gz
