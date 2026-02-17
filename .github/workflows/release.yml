@@ -142,6 +142,11 @@ jobs:
           sudo apt-get install -y rpm
           mkdir -p rpmroot/{BUILD,RPMS,SOURCES,SPECS,SRPMS,INSTALL}
           
+          # Stage build output to an absolute path so rpmbuild can find it
+          RPM_STAGING="/tmp/front-porch-ai-staging"
+          mkdir -p "$RPM_STAGING"
+          cp -r ${{ matrix.build_path }}/* "$RPM_STAGING/"
+          
           cat <<EOF > rpmroot/SPECS/front-porch-ai.spec
           Name:           front-porch-ai
           Version:        $VERSION
@@ -156,7 +161,7 @@ jobs:
           %install
           mkdir -p %{buildroot}/opt/front-porch-ai
           mkdir -p %{buildroot}/usr/bin
-          cp -r ${{ matrix.build_path }}/* %{buildroot}/opt/front-porch-ai/
+          cp -r ${RPM_STAGING}/* %{buildroot}/opt/front-porch-ai/
           ln -s /opt/front-porch-ai/front_porch_ai %{buildroot}/usr/bin/front-porch-ai
           
           %files
