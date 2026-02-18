@@ -58,16 +58,28 @@ jobs:
             FLUTTER_VERSION="${VERSION}+0"
           fi
           echo "Setting version to: $FLUTTER_VERSION"
+          # Extract the display version (without build number) for the Dart constant
+          DISPLAY_VERSION=$(echo "$FLUTTER_VERSION" | sed 's/+.*//')
           # Use Python for cross-platform reliability (sed can fail silently with Windows \r\n line endings)
           python3 -c "
           import re
+          # Update pubspec.yaml
           with open('pubspec.yaml', 'r') as f: content = f.read()
           content = re.sub(r'^version: .*$', 'version: $FLUTTER_VERSION', content, flags=re.MULTILINE)
           with open('pubspec.yaml', 'w') as f: f.write(content)
+          # Update Dart version constant
+          with open('lib/app_version.dart', 'w') as f:
+              f.write(\"/// Single source of truth for the app version.\n\")
+              f.write(\"/// Update this constant whenever a new release is made.\n\")
+              f.write(\"/// This avoids reliance on platform-specific version resource extraction\n\")
+              f.write(\"/// (e.g., PackageInfo.fromPlatform) which can be unreliable on Windows.\n\")
+              f.write(\"const String appVersion = '$DISPLAY_VERSION';\n\")
           "
-          # Verify the version was actually updated (visible in CI logs)
+          # Verify both were updated (visible in CI logs)
           echo "Verifying pubspec version:"
           grep '^version:' pubspec.yaml
+          echo "Verifying Dart version constant:"
+          cat lib/app_version.dart
 
       - name: Install dependencies
         run: flutter pub get

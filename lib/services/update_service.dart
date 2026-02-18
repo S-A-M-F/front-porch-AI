@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:front_porch_ai/app_version.dart';
 
 /// Windows-only self-update service.
 /// Checks GitHub Releases for new versions and downloads/runs the installer.
@@ -48,8 +48,9 @@ class UpdateService extends ChangeNotifier {
   Future<void> initialize() async {
     if (!isSupported) return;
     
-    final info = await PackageInfo.fromPlatform();
-    _currentVersion = info.version;
+    // Use hardcoded version constant instead of PackageInfo.fromPlatform()
+    // which is unreliable on Windows (returns stale version from exe resources).
+    _currentVersion = appVersion;
     
     final prefs = await SharedPreferences.getInstance();
     _autoCheckEnabled = prefs.getBool(_prefsKeyAutoCheck) ?? true;
