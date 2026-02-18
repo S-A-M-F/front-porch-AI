@@ -1,0 +1,290 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:kobold_character_card_manager/services/llm_service.dart';
+
+/// Metadata for a remote model, including pricing.
+class RemoteModelInfo {
+  final String id;
+  final String name;
+  final double? promptCostPerMillion;  // USD per 1M input tokens
+  final double? completionCostPerMillion;  // USD per 1M output tokens
+
+  const RemoteModelInfo({
+    required this.id,
+    this.name = '',
+    this.promptCostPerMillion,
+    this.completionCostPerMillion,
+  });
+
+  /// Human-readable pricing string, e.g. "$0.50 / $1.50"
+  String get pricingLabel {
+    if (promptCostPerMillion == null && completionCostPerMillion == null) {
+      return 'Pricing unavailable';
+    }
+    final input = promptCostPerMillion != null
+        ? '\$${promptCostPerMillion!.toStringAsFixed(2)}'
+        : '?';
+    final output = completionCostPerMillion != null
+        ? '\$${completionCostPerMillion!.toStringAsFixed(2)}'
+        : '?';
+    return '$input in / $output out per 1M tokens';
+  }
+
+  bool get isFree =>
+      (promptCostPerMillion == null || promptCostPerMillion == 0) &&
+      (completionCostPerMillion == null || completionCostPerMillion == 0);
+}
+
+/// LLM backend that connects to OpenAI-compatible APIs
+/// (OpenRouter, Nano-GPT, vLLM, LM Studio, etc).
+class OpenRouterService extends LLMService {
+  String _apiUrl;
+  String _apiKey;
+  String _modelName;
+  bool _isReady = false;
+
+  String get apiUrl => _apiUrl;
+  String get apiKey => _apiKey;
+  String get modelName => _modelName;
+
+  @override
+  bool get isReady => _isReady && _apiKey.isNotEmpty && _modelName.isNotEmpty;
+
+  @override
+  String get backendName => 'Remote API';
+
+  OpenRouterService({
+    String apiUrl = 'https://openrouter.ai/api/v1',
+    String apiKey = '',
+    String modelName = '',
+  })  : _apiUrl = apiUrl,
+        _apiKey = apiKey,
+        _modelName = modelName {
+    _isReady = _apiKey.isNotEmpty && _modelName.isNotEmpty;
+  }
+
+  /// Update configuration at runtime (e.g. when user changes settings).
+  void configure({String? apiUrl, String? apiKey, String? modelName}) {
+    if (apiUrl != null) _apiUrl = apiUrl;
+    if (apiKey != null) _apiKey = apiKey;
+    if (modelName != null) _modelName = modelName;
+    _isReady = _apiKey.isNotEmpty && _modelName.isNotEmpty;
+    notifyListeners();
+  }
+
+  /// Test whether the API connection is working.
+  /// Returns a human-readable status message.
+  Future<String> testConnection() async {
+    if (_apiUrl.isEmpty) return 'API URL is empty.';
+    if (_apiKey.isEmpty) return 'API key is empty.';
+
+    final client = http.Client();
+    try {
+      final uri = Uri.parse('$_apiUrl/models');
+      final response = await client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $_apiKey',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return 'Connection successful!';
+      } else {
+        String msg = 'HTTP ${response.statusCode}';
+        try {
+          final body = jsonDecode(response.body);
+          msg = body['error']?['message'] ?? msg;
+        } catch (_) {}
+        return 'Connection failed: $msg';
+      }
+    } catch (e) {
+      return 'Connection failed: $e';
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Fetch the list of available models with pricing info from the API.
+  Future<List<RemoteModelInfo>> fetchAvailableModels() async {
+    if (_apiUrl.isEmpty || _apiKey.isEmpty) return [];
+
+    final client = http.Client();
+    try {
+      final uri = Uri.parse('$_apiUrl/models');
+      final response = await client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $_apiKey',
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) return [];
+
+      final body = jsonDecode(response.body);
+      final data = body['data'] as List<dynamic>? ?? [];
+      final models = <RemoteModelInfo>[];
+
+      for (final m in data) {
+        final id = m['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+
+        final name = m['name']?.toString() ?? id;
+        final pricing = m['pricing'] as Map<String, dynamic>?;
+
+        // API returns USD per token; convert to per 1M tokens for readability
+        double? promptCost;
+        double? completionCost;
+        if (pricing != null) {
+          final promptRaw = double.tryParse(pricing['prompt']?.toString() ?? '');
+          final completionRaw = double.tryParse(pricing['completion']?.toString() ?? '');
+          if (promptRaw != null) promptCost = promptRaw * 1000000;
+          if (completionRaw != null) completionCost = completionRaw * 1000000;
+        }
+
+        models.add(RemoteModelInfo(
+          id: id,
+          name: name,
+          promptCostPerMillion: promptCost,
+          completionCostPerMillion: completionCost,
+        ));
+      }
+
+      models.sort((a, b) => a.id.compareTo(b.id));
+      return models;
+    } catch (_) {
+      return [];
+    } finally {
+      client.close();
+    }
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {
+    if (!isReady) {
+      throw Exception('Remote API not configured. Please set API key and model.');
+    }
+
+    final uri = Uri.parse('$_apiUrl/chat/completions');
+
+    // Wrap the raw prompt as a single user message.
+    // This preserves the existing prompt engineering from ChatService
+    // while being compatible with OpenAI chat format.
+    final payload = <String, dynamic>{
+      'model': _modelName,
+      'stream': true,
+      'max_tokens': params.maxLength,
+      'temperature': params.temperature,
+      'top_p': params.topP,
+      'frequency_penalty': params.repeatPenalty > 1.0
+          ? (params.repeatPenalty - 1.0).clamp(0.0, 2.0)
+          : 0.0,
+      'messages': [
+        {
+          'role': 'user',
+          'content': params.prompt,
+        }
+      ],
+    };
+
+    // Add reasoning params when enabled
+    if (params.reasoningEnabled) {
+      payload['reasoning'] = {
+        'effort': params.reasoningEffort,
+      };
+    }
+
+    // Add stop sequences if present
+    if (params.stopSequences != null && params.stopSequences!.isNotEmpty) {
+      // OpenAI API supports max 4 stop sequences
+      payload['stop'] = params.stopSequences!.take(4).toList();
+    }
+
+    final request = http.Request('POST', uri);
+    request.headers['Content-Type'] = 'application/json';
+    request.headers['Authorization'] = 'Bearer $_apiKey';
+    // Identify the app for providers that support it
+    request.headers['HTTP-Referer'] = 'https://github.com/linux4life1/front-porch-AI';
+    request.headers['X-Title'] = 'Front Porch AI';
+    request.body = jsonEncode(payload);
+
+    final client = http.Client();
+    bool hasYieldedReasoningStart = false;
+    bool hasYieldedReasoningEnd = false;
+
+    try {
+      final response = await client.send(request).timeout(const Duration(seconds: 120));
+
+      if (response.statusCode != 200) {
+        final body = await response.stream.bytesToString();
+        String errorMsg = 'HTTP ${response.statusCode}';
+        try {
+          final errJson = jsonDecode(body);
+          errorMsg = errJson['error']?['message'] ?? errorMsg;
+        } catch (_) {}
+        throw Exception('API error: $errorMsg');
+      }
+
+      // Parse SSE stream
+      String buffer = '';
+      await for (final chunk in response.stream.transform(utf8.decoder)) {
+        buffer += chunk;
+
+        // Process complete lines
+        while (buffer.contains('\n')) {
+          final idx = buffer.indexOf('\n');
+          final line = buffer.substring(0, idx).trim();
+          buffer = buffer.substring(idx + 1);
+
+          if (line.isEmpty) continue;
+          if (line == 'data: [DONE]') {
+            // Close reasoning block if still open
+            if (hasYieldedReasoningStart && !hasYieldedReasoningEnd) {
+              yield '</think>\n';
+            }
+            return;
+          }
+          if (!line.startsWith('data: ')) continue;
+
+          final data = line.substring(6);
+          try {
+            final json = jsonDecode(data);
+            final choice = json['choices']?[0];
+            final delta = choice?['delta'];
+            if (delta == null) continue;
+
+            // Handle reasoning content (thinking tokens)
+            final reasoning = delta['reasoning'];
+            if (reasoning != null && reasoning is String && reasoning.isNotEmpty) {
+              if (!hasYieldedReasoningStart) {
+                yield '<think>';
+                hasYieldedReasoningStart = true;
+              }
+              yield reasoning;
+              continue;
+            }
+
+            // Handle regular content — close reasoning block first if needed
+            final content = delta['content'];
+            if (content != null && content is String && content.isNotEmpty) {
+              if (hasYieldedReasoningStart && !hasYieldedReasoningEnd) {
+                yield '</think>\n';
+                hasYieldedReasoningEnd = true;
+              }
+              yield content;
+            }
+          } catch (_) {
+            // Skip malformed chunks
+          }
+        }
+      }
+
+      // Close reasoning block if stream ended without [DONE]
+      if (hasYieldedReasoningStart && !hasYieldedReasoningEnd) {
+        yield '</think>\n';
+      }
+    } finally {
+      client.close();
+    }
+  }
+}

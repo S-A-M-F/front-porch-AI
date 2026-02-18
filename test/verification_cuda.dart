@@ -7,6 +7,9 @@ import 'package:kobold_character_card_manager/services/hardware_service.dart';
 import 'package:kobold_character_card_manager/ui/pages/settings_page.dart';
 import 'package:kobold_character_card_manager/services/storage_service.dart';
 import 'package:kobold_character_card_manager/services/kobold_service.dart';
+import 'package:kobold_character_card_manager/services/llm_service.dart';
+import 'package:kobold_character_card_manager/services/llm_provider.dart';
+import 'package:kobold_character_card_manager/services/open_router_service.dart';
 import 'package:kobold_character_card_manager/services/backend_manager.dart';
 import 'package:kobold_character_card_manager/services/model_manager.dart';
 import 'package:kobold_character_card_manager/providers/app_state.dart';
@@ -101,6 +104,51 @@ class MockStorageService extends ChangeNotifier implements StorageService {
   Future<void> setDynamicTempEnabled(bool value) async {}
   @override
   Future<void> setDynamicTempRange(double value) async {}
+
+  // New fields for external API
+  @override int get maxLength => 200;
+  @override int get minLength => 0;
+  @override List<String> get stopSequences => [];
+  @override double get textScale => 1.0;
+  @override List<Map<String, String>> get savedPrompts => [];
+  @override bool get displayBufferEnabled => true;
+  @override double get targetDisplayTps => 30.0;
+  @override bool get autostartBackend => false;
+  @override String? get lastUsedModelPath => null;
+  @override int get gpuLayers => 0;
+  @override int get contextSize => 8192;
+  @override String get backendType => 'kobold';
+  @override String get remoteApiKey => '';
+  @override String get remoteApiUrl => 'https://openrouter.ai/api/v1';
+  @override String get remoteModelName => '';
+  @override bool? get useMetal => null;
+  @override Future<void> get initialized => Future.value();
+  @override Directory get chatsDir => Directory('');
+  @override Directory get worldsDir => Directory('');
+  @override Future<void> setMaxLength(int value) async {}
+  @override Future<void> setMinLength(int value) async {}
+  @override Future<void> setUseMetal(bool value) async {}
+  @override Future<void> setAutostartBackend(bool value) async {}
+  @override Future<void> setLastUsedModelPath(String? value) async {}
+  @override Future<void> setGpuLayers(int value) async {}
+  @override Future<void> setContextSize(int value) async {}
+  @override Future<void> setStopSequences(List<String> value) async {}
+  @override Future<void> addStopSequence(String value) async {}
+  @override Future<void> removeStopSequence(String value) async {}
+  @override Future<void> setTextScale(double value) async {}
+  @override Future<void> savePrompt(String name, String content) async {}
+  @override Future<void> deleteSavedPrompt(String name) async {}
+  @override void loadSavedPrompt(String name) {}
+  @override Future<void> setDisplayBufferEnabled(bool value) async {}
+  @override Future<void> setTargetDisplayTps(double value) async {}
+  @override Future<void> setBackendType(String value) async {}
+  @override Future<void> setRemoteApiKey(String value) async {}
+  @override Future<void> setRemoteApiUrl(String value) async {}
+  @override Future<void> setRemoteModelName(String value) async {}
+  @override bool get reasoningEnabled => false;
+  @override String get reasoningEffort => 'medium';
+  @override Future<void> setReasoningEnabled(bool value) async {}
+  @override Future<void> setReasoningEffort(String value) async {}
 }
 
 // Minimal mocks for other services just to satisfy Provider
@@ -112,15 +160,21 @@ class MockKoboldService extends ChangeNotifier implements KoboldService {
   @override
   List<String> get logs => [];
   @override
-  Future<void> startKobold(String executablePath, String modelPath, {int port = 5001, int gpuLayers = 0, int contextSize = 4096, bool useVulkan = false, bool useCLBlast = false, bool useCublas = false}) async {}
+  Future<void> startKobold(String executablePath, String modelPath, {int port = 5001, int gpuLayers = 0, int contextSize = 4096, bool useVulkan = false, bool useCLBlast = false, bool useCublas = false, bool useMetal = false}) async {}
   @override
   Future<void> stopKobold() async {}
   @override
-  Future<String> generate(String prompt, {int maxLength = 80, double temp = 0.7, double repPenalty = 1.1, double topP = 0.9, double minP = 0.0, int repPenTokens = 64, double? dynatempRange}) async => '';
+  Future<String> generate(String prompt, {int maxLength = 80, int minLength = 0, double temp = 0.7, double repPenalty = 1.1, double topP = 0.9, double minP = 0.0, int repPenTokens = 64, double? dynatempRange, List<String>? stopSequences}) async => '';
   @override
   bool get isProcessAlive => false;
   @override
   void setBaseUrl(String url) {}
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+  @override
+  bool get isReady => false;
+  @override
+  String get backendName => 'MockKobold';
 }
 
 class MockBackendManager extends ChangeNotifier implements BackendManager {
@@ -165,6 +219,10 @@ class MockModelManager extends ChangeNotifier implements ModelManager {
    List<String> getRecommendedSearchQueries(int vramMb) => [];
    @override
    Future<List<Map<String, dynamic>>> searchHFModels(String query) async => [];
+   @override
+   Future<void> importLocalModel(String sourcePath) async {}
+   @override
+   String get modelsPath => '';
 }
 
 
@@ -186,6 +244,12 @@ void main() {
           ChangeNotifierProvider<KoboldService>(create: (_) => MockKoboldService()),
           ChangeNotifierProvider<BackendManager>(create: (_) => MockBackendManager()),
           ChangeNotifierProvider<ModelManager>(create: (_) => MockModelManager()),
+          ChangeNotifierProvider<LLMProvider>(create: (_) {
+            final ks = MockKoboldService();
+            final or = OpenRouterService();
+            final ss = MockStorageService();
+            return LLMProvider(ks, or, ss);
+          }),
            ChangeNotifierProvider<AppState>(create: (_) => AppState()),
         ],
         child: MaterialApp(home: const SettingsPage()),
@@ -221,6 +285,12 @@ void main() {
           ChangeNotifierProvider<KoboldService>(create: (_) => MockKoboldService()),
           ChangeNotifierProvider<BackendManager>(create: (_) => MockBackendManager()),
           ChangeNotifierProvider<ModelManager>(create: (_) => MockModelManager()),
+          ChangeNotifierProvider<LLMProvider>(create: (_) {
+            final ks = MockKoboldService();
+            final or = OpenRouterService();
+            final ss = MockStorageService();
+            return LLMProvider(ks, or, ss);
+          }),
            ChangeNotifierProvider<AppState>(create: (_) => AppState()),
         ],
         child: MaterialApp(home: const SettingsPage()),
@@ -258,6 +328,12 @@ void main() {
           ChangeNotifierProvider<KoboldService>(create: (_) => MockKoboldService()),
           ChangeNotifierProvider<BackendManager>(create: (_) => MockBackendManager()),
           ChangeNotifierProvider<ModelManager>(create: (_) => MockModelManager()),
+          ChangeNotifierProvider<LLMProvider>(create: (_) {
+            final ks = MockKoboldService();
+            final or = OpenRouterService();
+            final ss = MockStorageService();
+            return LLMProvider(ks, or, ss);
+          }),
            ChangeNotifierProvider<AppState>(create: (_) => AppState()),
         ],
         child: MaterialApp(home: const SettingsPage()),
@@ -299,6 +375,12 @@ void main() {
           ChangeNotifierProvider<KoboldService>(create: (_) => MockKoboldService()),
           ChangeNotifierProvider<BackendManager>(create: (_) => MockBackendManager()),
           ChangeNotifierProvider<ModelManager>(create: (_) => MockModelManager()),
+          ChangeNotifierProvider<LLMProvider>(create: (_) {
+            final ks = MockKoboldService();
+            final or = OpenRouterService();
+            final ss = MockStorageService();
+            return LLMProvider(ks, or, ss);
+          }),
            ChangeNotifierProvider<AppState>(create: (_) => AppState()),
         ],
         child: MaterialApp(home: const SettingsPage()),

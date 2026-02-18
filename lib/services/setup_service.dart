@@ -60,8 +60,9 @@ class SetupService extends ChangeNotifier {
         }
       }
 
-      // 3. Autostart Backend if enabled
-      if (_storageService.autostartBackend && _storageService.lastUsedModelPath != null) {
+      // 3. Autostart Backend only if local mode was last used
+      final isLocalBackend = _storageService.backendType != 'openRouter';
+      if (isLocalBackend && _storageService.autostartBackend && _storageService.lastUsedModelPath != null) {
         _currentStep = SetupStep.startingBackend;
         notifyListeners();
 

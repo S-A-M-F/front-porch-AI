@@ -110,18 +110,20 @@ If you are on Linux, you'll need a few extra packages to compile the desktop emb
 **Ubuntu/Debian**:
 ```bash
 sudo apt-get update
-sudo apt-get install clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+sudo apt-get install clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libwpewebkit-1.0-dev
 ```
 
 **Arch Linux**:
 ```bash
-sudo pacman -S clang cmake ninja pkgconf gtk3 xz
+sudo pacman -S clang cmake ninja pkgconf gtk3 xz wpewebkit
 ```
 
 **Fedora**:
 ```bash
-sudo dnf install clang cmake ninja-build pkgconf-pkg-config gtk3-devel xz-devel libstdc++-devel
+sudo dnf install clang cmake ninja-build pkgconf-pkg-config gtk3-devel xz-devel libstdc++-devel wpewebkit-devel
 ```
+
+> **Note:** `wpewebkit` is required for the built-in browser that allows you to download character cards directly from Chub.ai and AI Character Cards. If you're building from source, you must install this dependency. Pre-built AppImages bundle this library automatically.
 
 #### Installation
 1.  **Clone the Repository**:

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:flutter/foundation.dart';
 import 'package:kobold_character_card_manager/services/kobold_service.dart';
+import 'package:kobold_character_card_manager/services/llm_service.dart';
+import 'package:kobold_character_card_manager/services/llm_provider.dart';
 import 'package:kobold_character_card_manager/services/user_persona_service.dart';
 import 'package:kobold_character_card_manager/services/storage_service.dart';
 import 'package:kobold_character_card_manager/models/character_card.dart';
@@ -14,25 +16,81 @@ import 'package:kobold_character_card_manager/models/world.dart';
 enum GenerationMode { normal, continue_, impersonate }
 
 class ChatMessage {
-  String text;
+  final List<String> swipes;
+  int swipeIndex;
   final String sender;
   final bool isUser;
+  final List<int> swipeDurations; // thinking duration in ms per swipe
 
-  ChatMessage({required this.text, required this.sender, required this.isUser});
+  String get text => swipes.isNotEmpty ? swipes[swipeIndex] : '';
+  set text(String value) {
+    if (swipes.isNotEmpty) {
+      swipes[swipeIndex] = value;
+    }
+  }
+
+  /// Returns text with <think>...</think> blocks removed for display.
+  /// Also handles in-progress thinking (no closing tag yet during streaming).
+  String get displayText {
+    final raw = text;
+    // Strip completed think blocks
+    var result = raw.replaceAll(RegExp(r'<think>[\s\S]*?</think>\s*', caseSensitive: false), '');
+    // Strip in-progress think block (opened but not yet closed during streaming)
+    result = result.replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '');
+    return result.trim();
+  }
+
+  /// Returns the thinking content (between <think> tags), or null if none.
+  /// Handles both completed and in-progress (streaming) think blocks.
+  String? get thinkingContent {
+    // Try completed think block first
+    final closed = RegExp(r'<think>([\s\S]*?)</think>', caseSensitive: false).firstMatch(text);
+    if (closed != null) return closed.group(1)?.trim();
+    // Try in-progress think block (no closing tag yet)
+    final open = RegExp(r'<think>([\s\S]*?)$', caseSensitive: false).firstMatch(text);
+    return open?.group(1)?.trim();
+  }
+
+  /// Whether this message has thinking content (either from tags or tracked duration)
+  bool get hasThinking => thinkingContent != null || thinkingDurationMs > 0;
+
+  int get thinkingDurationMs => swipeIndex < swipeDurations.length ? swipeDurations[swipeIndex] : 0;
+  set thinkingDurationMs(int value) {
+    while (swipeDurations.length <= swipeIndex) {
+      swipeDurations.add(0);
+    }
+    swipeDurations[swipeIndex] = value;
+  }
+
+  int? thinkingStartTime; // Runtime only, for live timer
+
+  ChatMessage({required String text, required this.sender, required this.isUser, List<String>? swipes, int? swipeIndex, List<int>? swipeDurations})
+    : swipes = swipes ?? [text],
+      swipeIndex = swipeIndex ?? 0,
+      swipeDurations = swipeDurations ?? [0];
 
   Map<String, dynamic> toJson() {
     return {
       'text': text,
       'sender': sender,
       'is_user': isUser,
+      'swipes': swipes,
+      'swipe_index': swipeIndex,
+      'swipe_durations': swipeDurations,
     };
   }
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final List<String>? savedSwipes = (json['swipes'] as List<dynamic>?)?.map((e) => e.toString()).toList();
+    final List<int>? savedDurations = (json['swipe_durations'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList();
+    final String fallbackText = json['text'] ?? '';
     return ChatMessage(
-      text: json['text'] ?? '',
+      text: fallbackText,
       sender: json['sender'] ?? '',
       isUser: json['is_user'] ?? false,
+      swipes: savedSwipes ?? [fallbackText],
+      swipeIndex: json['swipe_index'] ?? 0,
+      swipeDurations: savedDurations ?? [0],
     );
   }
 }
@@ -42,6 +100,7 @@ class ChatService extends ChangeNotifier {
   final UserPersonaService _userPersonaService;
   final StorageService _storageService;
   final WorldRepository _worldRepository;
+  LLMProvider? _llmProvider;
 
   CharacterCard? _activeCharacter;
   final List<ChatMessage> _messages = [];
@@ -88,6 +147,11 @@ class ChatService extends ChangeNotifier {
   int get greetingIndex => _greetingIndex;
 
   ChatService(this._koboldService, this._userPersonaService, this._storageService, this._worldRepository);
+
+  /// Set the LLMProvider after construction (to break circular dependency in provider tree).
+  void setLLMProvider(LLMProvider provider) {
+    _llmProvider = provider;
+  }
 
   Future<void> setActiveCharacter(CharacterCard? character) async {
     // If same character is already active, don't reset unless empty
@@ -262,6 +326,61 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  // Import chat from SillyTavern JSON format
+  Future<void> importFromSillyTavern(String jsonData) async {
+    if (_activeCharacter == null) throw Exception('No active character');
+
+    try {
+      final Map<String, dynamic> data = jsonDecode(jsonData);
+      final List<dynamic> messages = data['messages'] ?? [];
+
+      _messages.clear();
+      
+      for (final msg in messages) {
+        final String name = msg['name'] ?? '';
+        final bool isUser = msg['is_user'] ?? false;
+        final String text = msg['mes'] ?? '';
+        
+        _messages.add(ChatMessage(
+          text: text,
+          sender: name,
+          isUser: isUser,
+        ));
+      }
+
+      // Create new session for imported chat
+      _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
+      await _saveChat();
+      notifyListeners();
+    } catch (e) {
+      throw Exception('Failed to parse SillyTavern JSON: $e');
+    }
+  }
+
+  // Export current chat to SillyTavern JSON format
+  String? exportToSillyTavern() {
+    if (_messages.isEmpty) return null;
+
+    final List<Map<String, dynamic>> messages = _messages.map((msg) {
+      return {
+        'name': msg.sender,
+        'is_user': msg.isUser,
+        'mes': msg.text,
+        'send_date': DateTime.now().millisecondsSinceEpoch,
+      };
+    }).toList();
+
+    final Map<String, dynamic> export = {
+      'chat_metadata': {
+        'note_prompt': '',
+        'note_interval': 0,
+      },
+      'messages': messages,
+    };
+
+    return jsonEncode(export);
+  }
+
   Future<void> startNewChat() async {
     if (_activeCharacter == null) return;
 
@@ -333,11 +452,55 @@ class ChatService extends ChangeNotifier {
 
     // Check if the last message is from the character
     if (!_messages.last.isUser && _messages.last.sender != 'System') {
-      _messages.removeLast();
-      await _saveChat();
+      // Instead of removing the message, we generate a new swipe
+      // Temporarily remove the last message so the prompt doesn't include it
+      final lastMsg = _messages.removeLast();
       notifyListeners();
 
+      // Generate into a new message — it will be appended by _generateResponse
       await _generateResponse(GenerationMode.normal);
+
+      // After generation, merge the new response as a swipe on the original message
+      if (_messages.isNotEmpty && !_messages.last.isUser && _messages.last.sender != 'System') {
+        final newText = _messages.last.text;
+        _messages.removeLast();
+        lastMsg.swipes.add(newText);
+        lastMsg.swipeIndex = lastMsg.swipes.length - 1;
+        _messages.add(lastMsg);
+        await _saveChat();
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Navigate swipes on a specific message. direction: -1 = left, +1 = right.
+  /// If swiping right past the last swipe on the last bot message, regenerates.
+  Future<void> swipeMessage(int messageIndex, int direction) async {
+    if (messageIndex < 0 || messageIndex >= _messages.length) return;
+    final msg = _messages[messageIndex];
+    if (msg.isUser || msg.sender == 'System') return;
+
+    final newIndex = msg.swipeIndex + direction;
+
+    // Swiping left
+    if (direction < 0) {
+      if (newIndex >= 0) {
+        msg.swipeIndex = newIndex;
+        await _saveChat();
+        notifyListeners();
+      }
+      return;
+    }
+
+    // Swiping right
+    if (newIndex < msg.swipes.length) {
+      // Navigate to existing swipe
+      msg.swipeIndex = newIndex;
+      await _saveChat();
+      notifyListeners();
+    } else if (messageIndex == _messages.length - 1 && !_isGenerating) {
+      // Past last swipe on last message — regenerate
+      await regenerateLastMessage();
     }
   }
 
@@ -425,18 +588,25 @@ class ChatService extends ChangeNotifier {
         '\n${_userPersonaService.persona.name}:',
       }.toList();
 
-      // Get streaming response
-      final stream = _koboldService.generateStream(
-        prompt,
+      // Get the active LLM service (local or remote)
+      final llmService = _llmProvider?.activeService ?? _koboldService;
+
+      final genParams = GenerationParams(
+        prompt: prompt,
         maxLength: _storageService.maxLength,
         minLength: _storageService.minLength,
         minP: _storageService.minP,
-        temp: _storageService.temperature,
-        repPenalty: _storageService.repeatPenalty,
+        temperature: _storageService.temperature,
+        repeatPenalty: _storageService.repeatPenalty,
         repPenTokens: _storageService.repeatPenaltyTokens,
         dynatempRange: _storageService.dynamicTempEnabled ? _storageService.dynamicTempRange : null,
         stopSequences: stopSequences,
+        reasoningEnabled: _storageService.reasoningEnabled,
+        reasoningEffort: _storageService.reasoningEffort,
       );
+
+      // Get streaming response from whichever backend is active
+      final stream = llmService.generateStream(genParams);
       
       String accumulatedResponse = "";
       bool stopFound = false;
@@ -444,6 +614,9 @@ class ChatService extends ChangeNotifier {
       _displayedTokenCount = 0;
       _tokenTimestamps.clear();
       bool streamDone = false;
+      DateTime? _thinkStartTime;
+      bool _thinkStarted = false;
+      bool _thinkEnded = false;
 
       // Determine message identity
       String originalText = '';
@@ -471,13 +644,14 @@ class ChatService extends ChangeNotifier {
         } else {
           displayText = displayTokens.trimLeft();
         }
-        _messages.removeLast();
-        _messages.add(ChatMessage(text: displayText, sender: targetSender, isUser: isUserTarget));
+        // CRITICAL: Modify existing message in place to preserve thinkingStartTime and other metadata
+        _messages.last.text = displayText;
         notifyListeners();
       }
 
-      // Read display buffer settings
-      final bufferEnabled = _storageService.displayBufferEnabled;
+      // Read display buffer settings — disable for remote APIs (they're fast enough)
+      final isRemoteBackend = _llmProvider != null && !_llmProvider!.isLocal;
+      final bufferEnabled = isRemoteBackend ? false : _storageService.displayBufferEnabled;
       final targetTps = _storageService.targetDisplayTps;
 
       // Drain timer: displays tokens at the user-configured constant rate
@@ -523,6 +697,22 @@ class ChatService extends ChangeNotifier {
 
         if (!stopFound) {
           _tokenBuffer.add(token);
+        }
+
+        // Track think timing
+        if (!_thinkStarted && accumulatedResponse.contains('<think>')) {
+          _thinkStarted = true;
+          _thinkStartTime = DateTime.now();
+          if (_messages.isNotEmpty) {
+            _messages.last.thinkingStartTime = _thinkStartTime!.millisecondsSinceEpoch;
+          }
+        }
+        if (_thinkStarted && !_thinkEnded && accumulatedResponse.contains('</think>')) {
+          _thinkEnded = true;
+          if (_thinkStartTime != null && _messages.isNotEmpty) {
+            _messages.last.thinkingDurationMs = DateTime.now().difference(_thinkStartTime!).inMilliseconds;
+            // Keep thinkingStartTime for fallback display logic in UI
+          }
         }
 
         if (bufferEnabled) {

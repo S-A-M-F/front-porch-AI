@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:kobold_character_card_manager/services/user_persona_service.dart';
+import 'package:kobold_character_card_manager/utils/persona_colors.dart';
 
 class UserPersonaDialog extends StatefulWidget {
   const UserPersonaDialog({super.key});
@@ -141,9 +142,10 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                       border: isActive ? Border.all(color: Colors.blueAccent) : null,
                     ),
                     child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundImage: persona.avatarPath != null ? FileImage(File(persona.avatarPath!)) : null,
-                        child: persona.avatarPath == null ? const Icon(Icons.person) : null,
+                      leading: PersonaColors.buildPersonaAvatar(
+                        avatarPath: persona.avatarPath,
+                        personaId: persona.id,
+                        radius: 20,
                       ),
                       title: Text(persona.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       subtitle: Text(persona.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),

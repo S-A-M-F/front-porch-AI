@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'package:kobold_character_card_manager/services/kobold_service.dart';
 import 'package:kobold_character_card_manager/services/user_persona_service.dart';
 import 'package:kobold_character_card_manager/services/storage_service.dart';
+import 'package:kobold_character_card_manager/services/world_repository.dart';
+import 'package:kobold_character_card_manager/models/world.dart';
 
 class MockKoboldService extends Fake implements KoboldService {
   @override
@@ -18,6 +20,7 @@ class MockKoboldService extends Fake implements KoboldService {
     double minP = 0.0,
     int repPenTokens = 64,
     double? dynatempRange,
+    List<String>? stopSequences,
   }) async {
     return "Mock Response";
   }
@@ -48,7 +51,14 @@ class MockStorageService extends Fake implements StorageService {
 
 class MockUserPersonaService extends Fake implements UserPersonaService {
   @override
-  UserPersona persona = UserPersona(name: 'User', description: 'User Description');
+  UserPersona persona = UserPersona(id: 'default', name: 'User', description: 'User Description');
+}
+
+class MockWorldRepository extends Fake implements WorldRepository {
+  @override
+  List<World> get worlds => [];
+  @override
+  Future<void> loadWorlds() async {}
 }
 
 void main() {
@@ -64,7 +74,7 @@ void main() {
     }
     await testDir.create();
 
-    final chatService = ChatService(mockKobold, mockPersona, mockStorage);
+    final chatService = ChatService(mockKobold, mockPersona, mockStorage, MockWorldRepository());
     final char = CharacterCard(name: 'TestChar', firstMessage: 'Hello {{user}}', imagePath: 'test_char.png');
     
     // 1. Set active character (should create initial session)
@@ -102,7 +112,7 @@ void main() {
     expect(sessionFilesAfterNew, 2);
 
     // 4. Reload
-    final chatService2 = ChatService(mockKobold, mockPersona, mockStorage);
+    final chatService2 = ChatService(mockKobold, mockPersona, mockStorage, MockWorldRepository());
     chatService2.setActiveCharacter(char);
     await Future.delayed(const Duration(milliseconds: 100));
     expect(chatService2.messages.length, 1, reason: "Should load latest session (which is the new empty one)");

@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:provider/provider.dart';
-import 'package:desktop_webview_window/desktop_webview_window.dart'; // New import
+
 import 'package:window_manager/window_manager.dart';
 import 'package:kobold_character_card_manager/providers/app_state.dart';
 import 'package:kobold_character_card_manager/ui/layout/main_layout.dart'; // Keep original import for MainLayout
 import 'package:kobold_character_card_manager/services/kobold_service.dart';
+import 'package:kobold_character_card_manager/services/open_router_service.dart';
+import 'package:kobold_character_card_manager/services/llm_provider.dart';
 import 'package:kobold_character_card_manager/services/character_repository.dart';
 import 'package:kobold_character_card_manager/services/backend_manager.dart';
 import 'package:kobold_character_card_manager/services/model_manager.dart';
@@ -21,9 +23,6 @@ import 'package:kobold_character_card_manager/services/folder_service.dart';
 import 'package:kobold_character_card_manager/ui/widgets/setup_overlay.dart';
 
 void main(List<String> args) async {
-  if (runWebViewTitleBarWidget(args)) {
-    return;
-  }
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
   
@@ -65,15 +64,38 @@ void main(List<String> args) async {
           create: (context) => ModelManager(Provider.of<StorageService>(context, listen: false)),
           update: (context, storage, previous) => previous ?? ModelManager(storage),
         ),
-        ChangeNotifierProxyProvider4<KoboldService, UserPersonaService, StorageService, WorldRepository, ChatService>(
-          create: (context) => ChatService(
+        ChangeNotifierProvider(create: (_) => OpenRouterService()),
+        ChangeNotifierProxyProvider3<KoboldService, OpenRouterService, StorageService, LLMProvider>(
+          create: (context) => LLMProvider(
             Provider.of<KoboldService>(context, listen: false),
-            Provider.of<UserPersonaService>(context, listen: false),
+            Provider.of<OpenRouterService>(context, listen: false),
             Provider.of<StorageService>(context, listen: false),
-            Provider.of<WorldRepository>(context, listen: false),
           ),
-          update: (context, kobold, persona, storage, worldRepo, previous) => 
-              previous ?? ChatService(kobold, persona, storage, worldRepo),
+          update: (context, kobold, openRouter, storage, previous) =>
+              previous ?? LLMProvider(kobold, openRouter, storage),
+        ),
+        ChangeNotifierProxyProvider4<KoboldService, UserPersonaService, StorageService, WorldRepository, ChatService>(
+          create: (context) {
+            final chatService = ChatService(
+              Provider.of<KoboldService>(context, listen: false),
+              Provider.of<UserPersonaService>(context, listen: false),
+              Provider.of<StorageService>(context, listen: false),
+              Provider.of<WorldRepository>(context, listen: false),
+            );
+            // Wire LLMProvider immediately at creation time
+            chatService.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
+            return chatService;
+          },
+          update: (context, kobold, persona, storage, worldRepo, previous) {
+            if (previous != null) {
+              // Re-wire LLMProvider on every update to stay in sync
+              previous.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
+              return previous;
+            }
+            final chatService = ChatService(kobold, persona, storage, worldRepo);
+            chatService.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
+            return chatService;
+          },
         ),
         ChangeNotifierProxyProvider3<StorageService, BackendManager, KoboldService, SetupService>(
           create: (context) => SetupService(

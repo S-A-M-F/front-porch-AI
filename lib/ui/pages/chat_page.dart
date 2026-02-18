@@ -8,6 +8,7 @@ import 'package:kobold_character_card_manager/ui/dialogs/chat_settings_dialog.da
 import 'package:kobold_character_card_manager/ui/dialogs/model_settings_dialog.dart';
 import 'package:kobold_character_card_manager/services/user_persona_service.dart';
 import 'package:kobold_character_card_manager/ui/dialogs/user_persona_dialog.dart';
+import 'package:file_picker/file_picker.dart';
 
 class _StyledTextController extends TextEditingController {
   static final _pattern = RegExp(r'("[^"]*")|(\*[^*]*\*)');
@@ -108,11 +109,8 @@ class _ChatPageState extends State<ChatPage> {
                           child: ListView.builder(
                             controller: _scrollController,
                             padding: const EdgeInsets.all(20),
-                            itemCount: messages.length + (chatService.isGenerating ? 1 : 0),
+                            itemCount: messages.length,
                             itemBuilder: (context, index) {
-                              if (index == messages.length) {
-                                return _TypingBubble(characterImage: character.imagePath != null ? File(character.imagePath!) : null);
-                              }
                               final msg = messages[index];
                               return _MessageBubble(
                                 message: msg, 
@@ -249,42 +247,102 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ],
       ),
-      actions: [
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert),
-          onSelected: (value) {
-            if (value == 'new_chat') {
-              _showClearChatConfirmation(context);
-            } else if (value == 'history') {
-              _showHistoryDialog(context);
-            }
-          },
-          itemBuilder: (BuildContext context) => [
-            const PopupMenuItem<String>(
-              value: 'new_chat',
-              child: Row(
-                children: [
-                   Icon(Icons.chat_bubble_outline, size: 20),
-                   SizedBox(width: 8),
-                   Text('New Chat'),
-                ],
-              ),
-            ),
-            const PopupMenuItem<String>(
-              value: 'history',
-              child: Row(
-                children: [
-                   Icon(Icons.history, size: 20),
-                   SizedBox(width: 8),
-                   Text('Chat History'),
-                ],
-              ),
+    );
+  }
+
+  Future<void> _importChat() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result == null || result.files.single.path == null) return;
+
+      final file = File(result.files.single.path!);
+      final jsonData = await file.readAsString();
+      
+      if (!mounted) return;
+      
+      final chatService = Provider.of<ChatService>(context, listen: false);
+      await chatService.importFromSillyTavern(jsonData);
+
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat imported successfully!'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1F2937),
+          title: const Text('Import Failed'),
+          content: Text('Error importing chat: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
             ),
           ],
         ),
-        const SizedBox(width: 8),
-      ],
-    );
+      );
+    }
+  }
+
+  Future<void> _exportChat() async {
+    try {
+      final chatService = Provider.of<ChatService>(context, listen: false);
+      final jsonData = chatService.exportToSillyTavern();
+      
+      if (jsonData == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No chat to export'), backgroundColor: Colors.orange),
+        );
+        return;
+      }
+
+      final characterName = chatService.activeCharacter?.name ?? 'chat';
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
+      final fileName = '${characterName}_$timestamp.json';
+
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export Chat',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (path == null) return;
+
+      final file = File(path);
+      await file.writeAsString(jsonData);
+
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat exported successfully!'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1F2937),
+          title: const Text('Export Failed'),
+          content: Text('Error exporting chat: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   void _showClearChatConfirmation(BuildContext context) {
@@ -393,47 +451,60 @@ class _ChatPageState extends State<ChatPage> {
             },
           ),
 
-          // Hamburger Menu
+          // Chat Management Menu
           PopupMenuButton<String>(
-            icon: const Icon(Icons.menu, color: Colors.white70),
+            icon: const Icon(Icons.folder_open, color: Colors.white70),
             padding: EdgeInsets.zero,
+            tooltip: 'Chat Management',
             onSelected: (value) {
-              if (value == 'regenerate') {
-                chatService.regenerateLastMessage();
-              } else if (value == 'impersonate') {
-                chatService.impersonateUser();
-              } else if (value == 'continue') {
-                chatService.continueGeneration();
+              if (value == 'new_chat') {
+                _showClearChatConfirmation(context);
+              } else if (value == 'history') {
+                _showHistoryDialog(context);
+              } else if (value == 'import') {
+                _importChat();
+              } else if (value == 'export') {
+                _exportChat();
               }
             },
             itemBuilder: (context) => [
               const PopupMenuItem(
-                value: 'regenerate',
+                value: 'new_chat',
                 child: Row(
                   children: [
-                    Icon(Icons.refresh, size: 20),
+                    Icon(Icons.chat_bubble_outline, size: 20),
                     SizedBox(width: 12),
-                    Text('Regenerate'),
+                    Text('New Chat'),
                   ],
                 ),
               ),
               const PopupMenuItem(
-                value: 'impersonate',
+                value: 'history',
                 child: Row(
                   children: [
-                    Icon(Icons.person_search, size: 20),
+                    Icon(Icons.history, size: 20),
                     SizedBox(width: 12),
-                    Text('Impersonate'),
+                    Text('Chat History'),
                   ],
                 ),
               ),
               const PopupMenuItem(
-                value: 'continue',
+                value: 'import',
                 child: Row(
                   children: [
-                    Icon(Icons.arrow_forward, size: 20),
+                    Icon(Icons.file_upload, size: 20),
                     SizedBox(width: 12),
-                    Text('Continue'),
+                    Text('Import Chat'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'export',
+                child: Row(
+                  children: [
+                    Icon(Icons.file_download, size: 20),
+                    SizedBox(width: 12),
+                    Text('Export Chat'),
                   ],
                 ),
               ),
@@ -645,8 +716,6 @@ class _ChatPageState extends State<ChatPage> {
                 const SizedBox(height: 16),
                 _SidebarSection(title: 'Note', content: 'Author Note placeholder...'),
                 const SizedBox(height: 16),
-                _SidebarSection(title: 'Character Persona', content: replace(character.personality)),
-                const SizedBox(height: 16),
                 _SidebarSection(title: 'Scenario', content: replace(character.scenario)),
                 const SizedBox(height: 16),
                 _SidebarSection(title: 'Description', content: replace(character.description)),
@@ -659,59 +728,25 @@ class _ChatPageState extends State<ChatPage> {
   }
 }
 
-class _TypingBubble extends StatelessWidget {
-  final File? characterImage;
 
-  const _TypingBubble({this.characterImage});
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            backgroundImage: characterImage != null ? FileImage(characterImage!) : null,
-            child: characterImage == null ? const Icon(Icons.person) : null,
-            radius: 16,
-          ),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF374151),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-                bottomRight: Radius.circular(12),
-              ),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent),
-                ),
-                SizedBox(width: 12),
-                Text('Typing...', style: TextStyle(color: Colors.white54, fontSize: 14)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final File? characterImage;
   final int index;
 
   const _MessageBubble({required this.message, this.characterImage, required this.index});
+
+  @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> {
+  bool _thoughtExpanded = false;
+
+  ChatMessage get message => widget.message;
+  File? get characterImage => widget.characterImage;
+  int get index => widget.index;
 
   @override
   Widget build(BuildContext context) {
@@ -770,7 +805,92 @@ class _MessageBubble extends StatelessWidget {
                     ],
                   ),
                   if (!message.isUser) const SizedBox(height: 4),
-                  _StyledChatMessage(text: message.text, isUser: message.isUser),
+                  // Collapsible Thought chip
+                  if (!message.isUser && message.hasThinking)
+                    GestureDetector(
+                      onTap: () => setState(() => _thoughtExpanded = !_thoughtExpanded),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _thoughtExpanded ? Icons.expand_more : Icons.chevron_right,
+                              size: 20,
+                              color: Colors.white54,
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2A4A5A),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'Thought',
+                                style: const TextStyle(fontSize: 12, color: Colors.tealAccent, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.lightbulb_outline, size: 16, color: Colors.amber),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Expanded thinking details
+                  if (!message.isUser && message.hasThinking && _thoughtExpanded)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8, left: 20),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A2A3A),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (message.thinkingDurationMs > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Text(
+                                'Thought for ${(message.thinkingDurationMs / 1000).toStringAsFixed(1)}s',
+                                style: const TextStyle(fontSize: 11, color: Colors.tealAccent, fontStyle: FontStyle.italic),
+                              ),
+                            ),
+                          if (message.thinkingContent != null)
+                            Text(
+                              message.thinkingContent!,
+                              style: const TextStyle(fontSize: 12, color: Colors.white54),
+                            ),
+                        ],
+                      ),
+                    ),
+                  // Live thinking timer
+                  if (!message.isUser && message.thinkingStartTime != null && message.thinkingDurationMs == 0)
+                    Consumer<ChatService>(
+                      builder: (context, chatService, _) {
+                        if (!chatService.isGenerating) return const SizedBox.shrink();
+                        final elapsed = DateTime.now().millisecondsSinceEpoch - message.thinkingStartTime!;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                width: 10, height: 10,
+                                child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.tealAccent),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Thinking ${(elapsed / 1000).toStringAsFixed(0)}s...',
+                                style: const TextStyle(fontSize: 11, color: Colors.white38, fontStyle: FontStyle.italic),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  _StyledChatMessage(text: message.displayText, isUser: message.isUser),
                   // Swipe arrows for alternate greetings on first message
                   if (index == 0 && !message.isUser)
                     Consumer<ChatService>(
@@ -816,6 +936,63 @@ class _MessageBubble extends StatelessWidget {
                         );
                       },
                     ),
+                // Swipe arrows for message variations (regenerated responses)
+                if (!message.isUser && message.sender != 'System')
+                  Consumer<ChatService>(
+                    builder: (context, chatService, _) {
+                      if (message.swipes.length <= 1) return const SizedBox.shrink();
+                      
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            // Continue button on last message - LEFT of swipes
+                            if (index == chatService.messages.length - 1 && !chatService.isGenerating) ...[
+                              Tooltip(
+                                message: 'Continue generation',
+                                child: InkWell(
+                                  onTap: () => chatService.continueGeneration(),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(4),
+                                    child: Icon(Icons.arrow_downward, size: 20, color: Colors.blue),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            InkWell(
+                              onTap: () => chatService.swipeMessage(index, -1),
+                              borderRadius: BorderRadius.circular(12),
+                              child: const Padding(
+                                padding: EdgeInsets.all(4),
+                                child: Icon(Icons.chevron_left, size: 20, color: Colors.white54),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${message.swipeIndex + 1}/${message.swipes.length}',
+                              style: const TextStyle(
+                                color: Colors.greenAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () => chatService.swipeMessage(index, 1),
+                              borderRadius: BorderRadius.circular(12),
+                              child: const Padding(
+                                padding: EdgeInsets.all(4),
+                                child: Icon(Icons.chevron_right, size: 20, color: Colors.white54),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),

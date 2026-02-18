@@ -5,9 +5,10 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:window_manager/window_manager.dart';
 import 'package:kobold_character_card_manager/services/storage_service.dart';
+import 'package:kobold_character_card_manager/services/llm_service.dart';
 import 'package:path/path.dart' as path;
 
-class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowListener {
+class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowListener implements LLMService {
   final StorageService _storageService;
   Process? _process;
   bool _isRunning = false;
@@ -17,6 +18,12 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
   List<String> get logs => List.unmodifiable(_logs);
   String _baseUrl = 'http://127.0.0.1:5001';
   String get baseUrl => _baseUrl;
+
+  // LLMService interface
+  @override
+  bool get isReady => _isRunning;
+  @override
+  String get backendName => 'KoboldCPP';
 
   KoboldService(this._storageService) {
     _purgeLogs();
@@ -154,7 +161,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     }
   }
 
-  Stream<String> generateStream(String prompt, {
+  Stream<String> _generateStreamInternal(String prompt, {
     int maxLength = 80,
     int minLength = 0,
     double temp = 0.7,
@@ -216,6 +223,23 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     } finally {
       client.close();
     }
+  }
+
+  /// LLMService interface implementation — delegates to the existing method.
+  @override
+  Stream<String> generateStream(GenerationParams params) {
+    return _generateStreamInternal(
+      params.prompt,
+      maxLength: params.maxLength,
+      minLength: params.minLength,
+      temp: params.temperature,
+      repPenalty: params.repeatPenalty,
+      topP: params.topP,
+      minP: params.minP,
+      repPenTokens: params.repPenTokens,
+      dynatempRange: params.dynatempRange,
+      stopSequences: params.stopSequences,
+    );
   }
 
   Future<String> generate(String prompt, {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:kobold_character_card_manager/services/storage_service.dart';
+import 'package:kobold_character_card_manager/services/llm_provider.dart';
 
 class ChatSettingsDialog extends StatefulWidget {
   const ChatSettingsDialog({super.key});
@@ -21,6 +22,8 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final storageService = Provider.of<StorageService>(context);
+    final llmProvider = Provider.of<LLMProvider>(context);
+    final isRemote = !llmProvider.isLocal;
     
     return Dialog(
         backgroundColor: const Color(0xFF1F2937),
@@ -46,6 +49,66 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                    child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                      children: [
+                       // Reasoning toggle (only for Remote API)
+                       if (isRemote) ...[
+                         const Text('Reasoning', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                         const SizedBox(height: 8),
+                         Row(
+                           children: [
+                             const Text('Request Reasoning', style: TextStyle(color: Colors.white)),
+                             const Spacer(),
+                             Switch(
+                               value: storageService.reasoningEnabled,
+                               onChanged: (val) => storageService.setReasoningEnabled(val),
+                               activeTrackColor: Colors.blueAccent,
+                             ),
+                           ],
+                         ),
+                         if (storageService.reasoningEnabled)
+                           Padding(
+                             padding: const EdgeInsets.only(bottom: 8),
+                             child: Row(
+                               children: [
+                                 const Text('Effort Level', style: TextStyle(color: Colors.white70)),
+                                 const Spacer(),
+                                 Container(
+                                   padding: const EdgeInsets.symmetric(horizontal: 12),
+                                   decoration: BoxDecoration(
+                                     color: const Color(0xFF374151),
+                                     borderRadius: BorderRadius.circular(8),
+                                   ),
+                                   child: DropdownButtonHideUnderline(
+                                     child: DropdownButton<String>(
+                                       value: storageService.reasoningEffort,
+                                       dropdownColor: const Color(0xFF374151),
+                                       style: const TextStyle(color: Colors.white),
+                                       items: const [
+                                         DropdownMenuItem(value: 'low', child: Text('Low')),
+                                         DropdownMenuItem(value: 'medium', child: Text('Medium')),
+                                         DropdownMenuItem(value: 'high', child: Text('High')),
+                                       ],
+                                       onChanged: (val) {
+                                         if (val != null) storageService.setReasoningEffort(val);
+                                       },
+                                     ),
+                                   ),
+                                 ),
+                               ],
+                             ),
+                           ),
+                         if (!storageService.reasoningEnabled)
+                           Padding(
+                             padding: const EdgeInsets.only(bottom: 8),
+                             child: Text(
+                               'Enable to request thinking/reasoning from compatible models',
+                               style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                             ),
+                           ),
+                         const SizedBox(height: 8),
+                         const Divider(color: Colors.white10),
+                         const SizedBox(height: 8),
+                       ],
+
                        _buildSlider('Temperature', storageService.temperature, 0.0, 2.0, (val) => storageService.setTemperature(val), divisions: 20),
                        _buildSlider('Min-P', storageService.minP, 0.0, 1.0, (val) => storageService.setMinP(val), divisions: 100),
                        _buildSlider('Repeat Penalty', storageService.repeatPenalty, 1.0, 3.0, (val) => storageService.setRepeatPenalty(val), divisions: 200),

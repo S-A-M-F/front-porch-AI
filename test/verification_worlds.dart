@@ -11,7 +11,7 @@ import 'dart:io';
 
 class MockKoboldService extends Fake implements KoboldService {
   @override
-  Future<String> generate(String prompt, {int maxLength = 80, int minLength = 0, double temp = 0.7, double repPenalty = 1.1, double topP = 0.9, double minP = 0.0, int repPenTokens = 64, double? dynatempRange}) async {
+  Future<String> generate(String prompt, {int maxLength = 80, int minLength = 0, double temp = 0.7, double repPenalty = 1.1, double topP = 0.9, double minP = 0.0, int repPenTokens = 64, double? dynatempRange, List<String>? stopSequences}) async {
     return "Mock Response";
   }
 }
@@ -43,7 +43,7 @@ class MockStorageService extends Fake implements StorageService {
 
 class MockUserPersonaService extends Fake implements UserPersonaService {
   @override
-  UserPersona persona = UserPersona(name: 'User', description: 'User Description');
+  UserPersona persona = UserPersona(id: 'default', name: 'User', description: 'User Description');
 }
 
 void main() {

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:kobold_character_card_manager/providers/app_state.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:desktop_webview_window/desktop_webview_window.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:kobold_character_card_manager/services/character_repository.dart';
 import 'package:kobold_character_card_manager/services/world_repository.dart';
 import 'package:kobold_character_card_manager/services/folder_service.dart';
@@ -14,6 +14,7 @@ import 'package:kobold_character_card_manager/services/v2_card_service.dart';
 import 'package:kobold_character_card_manager/ui/pages/edit_character_page.dart';
 import 'package:kobold_character_card_manager/ui/dialogs/tag_dialog.dart';
 import 'package:kobold_character_card_manager/models/character_card.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -759,233 +760,249 @@ class _HomePageState extends State<HomePage> {
   // ─── Browser Integrations ──────────────────────────────────────
 
   Future<void> _openBrowser(BuildContext context) async {
-    final repo = Provider.of<CharacterRepository>(context, listen: false);
-    final worldRepo = Provider.of<WorldRepository>(context, listen: false);
-    final messenger = ScaffoldMessenger.of(context);
+    // Skip embedded browser on Linux due to WPE WebKit rendering issues
+    if (Platform.isLinux) {
+      _showBrowserFallbackDialog(context, 'https://aicharactercards.com/', 'AI Character Cards');
+      return;
+    }
     
-    final webview = await WebviewWindow.create(
-      configuration: CreateConfiguration(
-        title: 'Browse Character Cards',
-        titleBarTopPadding: Platform.isMacOS ? 20 : 0,
-      ),
-    );
-    
-    Future<void> handleDownloadUrl(String url) async {
-      debugPrint('AG_DEBUG: Download card intercepted: $url');
+    try {
+      final repo = Provider.of<CharacterRepository>(context, listen: false);
+      final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+      final messenger = ScaffoldMessenger.of(context);
       
-      try {
-        final httpClient = HttpClient();
-        final request = await httpClient.getUrl(Uri.parse(url));
-        final httpResponse = await request.close();
+      Future<void> handleDownloadUrl(String url) async {
+        debugPrint('AG_DEBUG: Download card intercepted: $url');
         
-        final bytes = <int>[];
-        await for (final chunk in httpResponse) {
-          bytes.addAll(chunk);
-        }
-        
-        httpClient.close();
-        
-        final directory = await getApplicationDocumentsDirectory();
-        final charDir = Directory('${directory.path}/KoboldManager/Characters');
-        if (!await charDir.exists()) {
-          await charDir.create(recursive: true);
-        }
-        
-        final uri = Uri.parse(url);
-        String fileName;
-        if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.endsWith('.png')) {
-          fileName = uri.pathSegments.last;
-        } else {
-          fileName = 'card_${DateTime.now().millisecondsSinceEpoch}.png';
-        }
-        final tempFile = File('${charDir.path}/$fileName');
-        await tempFile.writeAsBytes(bytes);
-        
-        final card = await repo.importCharacter(tempFile, worldRepo: worldRepo);
-        
-        webview.close();
-        
-        // Show tag dialog after webview closes
-        if (card != null && context.mounted) {
-          final tags = await TagDialog.show(context, card);
-          if (tags != null && context.mounted) {
-            card.tags = List.from(tags);
-            await repo.updateCharacter(card);
+        try {
+          final httpClient = HttpClient();
+          final request = await httpClient.getUrl(Uri.parse(url));
+          final httpResponse = await request.close();
+          
+          final bytes = <int>[];
+          await for (final chunk in httpResponse) {
+            bytes.addAll(chunk);
           }
-        }
-
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('Character card downloaded and imported!'),
-            backgroundColor: Colors.green.shade800,
-          ),
-        );
-      } catch (e) {
-        debugPrint('AG_DEBUG: Download error: $e');
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Download failed: $e'),
-            backgroundColor: Colors.red.shade800,
-          ),
-        );
-      }
-    }
-    
-    if (Platform.isMacOS) {
-      webview.registerJavaScriptMessageHandler('downloadCard', (name, body) async {
-        await handleDownloadUrl(body.toString());
-      });
-    } else if (Platform.isWindows) {
-      webview.addOnWebMessageReceivedCallback((message) async {
-        if (message.startsWith('DOWNLOAD:')) {
-          final url = message.substring('DOWNLOAD:'.length);
-          await handleDownloadUrl(url);
-        }
-      });
-    }
-    
-    final String jsSendMessage = Platform.isMacOS
-        ? 'window.webkit.messageHandlers.downloadCard.postMessage(href)'
-        : 'window.chrome.webview.postMessage("DOWNLOAD:" + href)';
-    
-    webview.addScriptToExecuteOnDocumentCreated('''
-      (function() {
-        document.addEventListener('click', function(e) {
-          var target = e.target;
-          while (target && target.tagName !== 'A') {
-            target = target.parentElement;
+          
+          httpClient.close();
+          
+          final directory = await getApplicationDocumentsDirectory();
+          final charDir = Directory('${directory.path}/KoboldManager/Characters');
+          if (!await charDir.exists()) {
+            await charDir.create(recursive: true);
           }
-          if (target && target.href) {
-            var href = target.href;
-            if (href.includes('download_card_image=true') || 
-                (href.endsWith('.png') && !href.includes('aicharactercards.com/wp-content/uploads'))) {
-              e.preventDefault();
-              e.stopPropagation();
-              $jsSendMessage;
-              return false;
+          
+          final uri = Uri.parse(url);
+          String fileName;
+          if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.endsWith('.png')) {
+            fileName = uri.pathSegments.last;
+          } else {
+            fileName = 'card_${DateTime.now().millisecondsSinceEpoch}.png';
+          }
+          final tempFile = File('${charDir.path}/$fileName');
+          await tempFile.writeAsBytes(bytes);
+          
+          final card = await repo.importCharacter(tempFile, worldRepo: worldRepo);
+          
+          // Show tag dialog after download
+          if (card != null && context.mounted) {
+            final tags = await TagDialog.show(context, card);
+            if (tags != null && context.mounted) {
+              card.tags = List.from(tags);
+              await repo.updateCharacter(card);
             }
           }
-        }, true);
-      })();
-    ''');
-    
-    webview.launch('https://aicharactercards.com/');
+
+          messenger.showSnackBar(
+            SnackBar(
+              content: const Text('Character card downloaded and imported!'),
+              backgroundColor: Colors.green.shade800,
+            ),
+          );
+        } catch (e) {
+          debugPrint('AG_DEBUG: Download error: $e');
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Download failed: $e'),
+              backgroundColor: Colors.red.shade800,
+            ),
+          );
+        }
+      }
+      
+      final browser = CharacterBrowser(onDownload: handleDownloadUrl);
+      
+      await browser.openUrlRequest(
+        urlRequest: URLRequest(url: WebUri('https://aicharactercards.com/')),
+        settings: InAppBrowserClassSettings(
+          browserSettings: InAppBrowserSettings(
+            hideUrlBar: false,
+            toolbarTopBackgroundColor: const Color(0xFF1F2937),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('AG_DEBUG: Browser failed to launch: $e');
+      if (context.mounted) {
+        _showBrowserFallbackDialog(context, 'https://aicharactercards.com/', 'AI Character Cards');
+      }
+    }
   }
 
   Future<void> _openChubBrowser(BuildContext context) async {
-    final repo = Provider.of<CharacterRepository>(context, listen: false);
-    final worldRepo = Provider.of<WorldRepository>(context, listen: false);
-    final messenger = ScaffoldMessenger.of(context);
+    // Skip embedded browser on Linux due to WPE WebKit rendering issues
+    if (Platform.isLinux) {
+      _showBrowserFallbackDialog(context, 'https://chub.ai/', 'Chub.ai');
+      return;
+    }
     
-    final webview = await WebviewWindow.create(
-      configuration: CreateConfiguration(
-        title: 'Chub.ai - Character Hub',
-        titleBarTopPadding: Platform.isMacOS ? 20 : 0,
-      ),
-    );
-
-    Future<void> handleChubDownload(String url) async {
-      debugPrint('AG_DEBUG: Chub download intercepted: $url');
+    try {
+      final repo = Provider.of<CharacterRepository>(context, listen: false);
+      final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+      final messenger = ScaffoldMessenger.of(context);
       
-      try {
-        final httpClient = HttpClient();
-        final request = await httpClient.getUrl(Uri.parse(url));
-        final httpResponse = await request.close();
+      Future<void> handleChubDownload(String url) async {
+        debugPrint('AG_DEBUG: Chub download intercepted: $url');
         
-        final bytes = <int>[];
-        await for (final chunk in httpResponse) {
-          bytes.addAll(chunk);
-        }
-        
-        httpClient.close();
-        
-        final directory = await getApplicationDocumentsDirectory();
-        final charDir = Directory('${directory.path}/KoboldManager/Characters');
-        if (!await charDir.exists()) {
-          await charDir.create(recursive: true);
-        }
-        
-        final uri = Uri.parse(url);
-        String fileName;
-        if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.endsWith('.png')) {
-          fileName = uri.pathSegments.last;
-        } else {
-          fileName = 'chub_card_${DateTime.now().millisecondsSinceEpoch}.png';
-        }
-        final tempFile = File('${charDir.path}/$fileName');
-        await tempFile.writeAsBytes(bytes);
-        
-        final card = await repo.importCharacter(tempFile, worldRepo: worldRepo);
-        
-        webview.close();
-
-        // Show tag dialog — Chub.ai cards likely have tags already
-        if (card != null && context.mounted) {
-          final tags = await TagDialog.show(context, card);
-          if (tags != null && context.mounted) {
-            card.tags = List.from(tags);
-            await repo.updateCharacter(card);
+        try {
+          final httpClient = HttpClient();
+          final request = await httpClient.getUrl(Uri.parse(url));
+          final httpResponse = await request.close();
+          
+          final bytes = <int>[];
+          await for (final chunk in httpResponse) {
+            bytes.addAll(chunk);
           }
-        }
-
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('Chub character downloaded and imported!'),
-            backgroundColor: Colors.green.shade800,
-          ),
-        );
-      } catch (e) {
-        debugPrint('AG_DEBUG: Chub download error: $e');
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Chub download failed: $e'),
-            backgroundColor: Colors.red.shade800,
-          ),
-        );
-      }
-    }
-
-    if (Platform.isMacOS) {
-      webview.registerJavaScriptMessageHandler('downloadCard', (name, body) async {
-        await handleChubDownload(body.toString());
-      });
-    } else if (Platform.isWindows) {
-      webview.addOnWebMessageReceivedCallback((message) async {
-        if (message.startsWith('DOWNLOAD:')) {
-          final url = message.substring('DOWNLOAD:'.length);
-          await handleChubDownload(url);
-        }
-      });
-    }
-
-    final String jsSendMessage = Platform.isMacOS
-        ? 'window.webkit.messageHandlers.downloadCard.postMessage(href)'
-        : 'window.chrome.webview.postMessage("DOWNLOAD:" + href)';
-
-    webview.addScriptToExecuteOnDocumentCreated('''
-      (function() {
-        document.addEventListener('click', function(e) {
-          var target = e.target;
-          while (target && target.tagName !== 'A') {
-            target = target.parentElement;
+          
+          httpClient.close();
+          
+          final directory = await getApplicationDocumentsDirectory();
+          final charDir = Directory('${directory.path}/KoboldManager/Characters');
+          if (!await charDir.exists()) {
+            await charDir.create(recursive: true);
           }
-          if (target && target.href) {
-            var href = target.href;
-            if (href.endsWith('.png') || 
-                href.includes('/download') ||
-                href.includes('characterhub.org/characters/download') ||
-                (target.hasAttribute('download') && href.includes('.png'))) {
-              e.preventDefault();
-              e.stopPropagation();
-              $jsSendMessage;
-              return false;
+          
+          final uri = Uri.parse(url);
+          String fileName;
+          if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.endsWith('.png')) {
+            fileName = uri.pathSegments.last;
+          } else {
+            fileName = 'chub_card_${DateTime.now().millisecondsSinceEpoch}.png';
+          }
+          final tempFile = File('${charDir.path}/$fileName');
+          await tempFile.writeAsBytes(bytes);
+          
+          final card = await repo.importCharacter(tempFile, worldRepo: worldRepo);
+
+          // Show tag dialog — Chub.ai cards likely have tags already
+          if (card != null && context.mounted) {
+            final tags = await TagDialog.show(context, card);
+            if (tags != null && context.mounted) {
+              card.tags = List.from(tags);
+              await repo.updateCharacter(card);
             }
           }
-        }, true);
-      })();
-    ''');
 
-    webview.launch('https://chub.ai/');
+          messenger.showSnackBar(
+            SnackBar(
+              content: const Text('Chub character downloaded and imported!'),
+              backgroundColor: Colors.green.shade800,
+            ),
+          );
+        } catch (e) {
+          debugPrint('AG_DEBUG: Chub download error: $e');
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Chub download failed: $e'),
+              backgroundColor: Colors.red.shade800,
+            ),
+          );
+        }
+      }
+
+      final browser = CharacterBrowser(onDownload: handleChubDownload);
+      
+      await browser.openUrlRequest(
+        urlRequest: URLRequest(url: WebUri('https://chub.ai/')),
+        settings: InAppBrowserClassSettings(
+          browserSettings: InAppBrowserSettings(
+            hideUrlBar: false,
+            toolbarTopBackgroundColor: const Color(0xFF1F2937),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('AG_DEBUG: Chub browser failed to launch: $e');
+      if (context.mounted) {
+        _showBrowserFallbackDialog(context, 'https://chub.ai/', 'Chub.ai');
+      }
+    }
+  }
+
+  void _showBrowserFallbackDialog(BuildContext context, String url, String siteName) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Browser Rendering Issue', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'The embedded browser is having trouble rendering on your system. This is a known issue with certain Linux GPU configurations.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'You can still download characters manually:',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '1. Click "Open in Browser" below\n2. Download character .png files\n3. Use "Import Card" button to add them',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.open_in_browser),
+            label: const Text('Open in Browser'),
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } else {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not open $siteName'),
+                      backgroundColor: Colors.red.shade800,
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   void _showChubWarning(BuildContext context) {
@@ -1064,5 +1081,40 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+}
+
+// Custom InAppBrowser for character downloads
+class CharacterBrowser extends InAppBrowser {
+  final Future<void> Function(String url) onDownload;
+  
+  CharacterBrowser({required this.onDownload});
+  
+  @override
+  Future<NavigationActionPolicy>? shouldOverrideUrlLoading(NavigationAction navigationAction) async {
+    final url = navigationAction.request.url.toString();
+    
+    // Intercept character card downloads
+    if (url.endsWith('.png') || 
+        url.contains('download_card_image=true') ||
+        url.contains('/download') ||
+        url.contains('characterhub.org/characters/download')) {
+      
+      debugPrint('AG_DEBUG: Intercepted download URL: $url');
+      await onDownload(url);
+      return NavigationActionPolicy.CANCEL;
+    }
+    
+    return NavigationActionPolicy.ALLOW;
+  }
+  
+  @override  
+ void onLoadError(Uri? url, int code, String message) {
+    debugPrint('AG_DEBUG: Browser load error: $message');
+  }
+  
+  @override
+  void onExit() {
+    debugPrint('AG_DEBUG: Browser closed');
   }
 }

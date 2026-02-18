@@ -3,8 +3,11 @@ import 'package:kobold_character_card_manager/models/character_card.dart';
 import 'package:kobold_character_card_manager/models/lorebook.dart';
 import 'package:kobold_character_card_manager/services/chat_service.dart';
 import 'package:kobold_character_card_manager/services/kobold_service.dart';
+import 'package:kobold_character_card_manager/services/llm_service.dart';
 import 'package:kobold_character_card_manager/services/user_persona_service.dart';
 import 'package:kobold_character_card_manager/services/storage_service.dart';
+import 'package:kobold_character_card_manager/services/world_repository.dart';
+import 'package:kobold_character_card_manager/models/world.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 
@@ -21,9 +24,19 @@ class MockKoboldService extends ChangeNotifier implements KoboldService {
     double minP = 0.0,
     int repPenTokens = 64,
     double? dynatempRange,
+    List<String>? stopSequences,
   }) async {
     return 'Response mentioning magic key';
   }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {
+    yield 'Response mentioning magic key';
+  }
+
+  // LLMService interface
+  @override bool get isReady => true;
+  @override String get backendName => 'MockKobold';
 
   // Stubs for other methods
   @override String get baseUrl => '';
@@ -37,17 +50,26 @@ class MockKoboldService extends ChangeNotifier implements KoboldService {
     int contextSize = 4096,
     bool useVulkan = false,
     bool useCublas = false,
+    bool useMetal = false,
   }) async {}
   @override Future<void> stopKobold() async {}
 }
 
 class MockUserPersonaService extends ChangeNotifier implements UserPersonaService {
-  final _persona = UserPersona(name: 'User');
+  final _persona = UserPersona(id: 'default', name: 'User');
   @override
   UserPersona get persona => _persona;
+  @override
+  List<UserPersona> get personas => [_persona];
   
   @override
   Future<void> updatePersona(UserPersona newPersona) async {}
+  @override
+  Future<void> createPersona(String name, String description, String persona, String? avatarPath) async {}
+  @override
+  Future<void> deletePersona(String id) async {}
+  @override
+  Future<void> setActivePersona(String id) async {}
 }
 
 class MockStorageService extends ChangeNotifier implements StorageService {
@@ -60,6 +82,23 @@ class MockStorageService extends ChangeNotifier implements StorageService {
   @override double get dynamicTempRange => 0;
   @override int get maxLength => 200;
   @override int get minLength => 0;
+  @override List<String> get stopSequences => [];
+  @override double get textScale => 1.0;
+  @override List<Map<String, String>> get savedPrompts => [];
+  @override bool get displayBufferEnabled => true;
+  @override double get targetDisplayTps => 30.0;
+  @override bool get autostartBackend => false;
+  @override String? get lastUsedModelPath => null;
+  @override int get gpuLayers => 0;
+  @override int get contextSize => 8192;
+  @override String get backendType => 'kobold';
+  @override String get remoteApiKey => '';
+  @override String get remoteApiUrl => 'https://openrouter.ai/api/v1';
+  @override String get remoteModelName => '';
+  @override bool? get useMetal => null;
+  @override Future<void> get initialized => Future.value();
+  @override Directory get chatsDir => Directory('');
+  @override Directory get worldsDir => Directory('');
   
   @override Future<void> setSystemPrompt(String value) async {}
   @override Future<void> setMinP(double value) async {}
@@ -73,12 +112,46 @@ class MockStorageService extends ChangeNotifier implements StorageService {
   @override Future<void> setRootPath(String path) async {}
   @override Future<void> setUseCublas(bool value) async {}
   @override Future<void> setUseVulkan(bool value) async {}
+  @override Future<void> setUseMetal(bool value) async {}
+  @override Future<void> setAutostartBackend(bool value) async {}
+  @override Future<void> setLastUsedModelPath(String? value) async {}
+  @override Future<void> setGpuLayers(int value) async {}
+  @override Future<void> setContextSize(int value) async {}
+  @override Future<void> setStopSequences(List<String> value) async {}
+  @override Future<void> addStopSequence(String value) async {}
+  @override Future<void> removeStopSequence(String value) async {}
+  @override Future<void> setTextScale(double value) async {}
+  @override Future<void> savePrompt(String name, String content) async {}
+  @override Future<void> deleteSavedPrompt(String name) async {}
+  @override void loadSavedPrompt(String name) {}
+  @override Future<void> setDisplayBufferEnabled(bool value) async {}
+  @override Future<void> setTargetDisplayTps(double value) async {}
+  @override Future<void> setBackendType(String value) async {}
+  @override Future<void> setRemoteApiKey(String value) async {}
+  @override Future<void> setRemoteApiUrl(String value) async {}
+  @override Future<void> setRemoteModelName(String value) async {}
+
+  @override bool get reasoningEnabled => false;
+  @override String get reasoningEffort => 'medium';
+  @override Future<void> setReasoningEnabled(bool value) async {}
+  @override Future<void> setReasoningEffort(String value) async {}
 
   @override String? get rootPath => null;
   @override Directory get binDir => Directory('');
   @override Directory get modelsDir => Directory('');
   @override bool? get useCublas => false;
   @override bool? get useVulkan => false;
+}
+
+class MockWorldRepository extends ChangeNotifier implements WorldRepository {
+  @override List<World> get worlds => [];
+  @override bool get isLoading => false;
+  @override Future<void> loadWorlds() async {}
+  @override Future<void> saveWorld(World world) async {}
+  @override Future<void> deleteWorld(World world) async {}
+  @override World? getWorld(String id) => null;
+  @override Future<void> exportWorld(World world, String outputPath) async {}
+  @override Future<void> importWorld(File file) async {}
 }
 
 void main() {
@@ -100,7 +173,7 @@ void main() {
     final mockPersona = MockUserPersonaService();
     final mockStorage = MockStorageService();
     
-    final chatService = ChatService(mockKobold, mockPersona, mockStorage);
+    final chatService = ChatService(mockKobold, mockPersona, mockStorage, MockWorldRepository());
     
     final char = CharacterCard(name: 'TestChar', firstMessage: 'Hello');
     char.lorebook = Lorebook(entries: [
@@ -125,7 +198,7 @@ void main() {
     final mockPersona = MockUserPersonaService();
     final mockStorage = MockStorageService();
     
-    final chatService = ChatService(mockKobold, mockPersona, mockStorage);
+    final chatService = ChatService(mockKobold, mockPersona, mockStorage, MockWorldRepository());
     
     final char = CharacterCard(name: 'TestChar', firstMessage: 'Hello');
     char.lorebook = Lorebook(entries: [
@@ -147,7 +220,7 @@ void main() {
     final mockPersona = MockUserPersonaService();
     final mockStorage = MockStorageService();
     
-    final chatService = ChatService(mockKobold, mockPersona, mockStorage);
+    final chatService = ChatService(mockKobold, mockPersona, mockStorage, MockWorldRepository());
     
     final char = CharacterCard(name: 'TestChar', firstMessage: 'Hello');
     char.lorebook = Lorebook(entries: [
@@ -175,7 +248,7 @@ void main() {
     final mockPersona = MockUserPersonaService();
     final mockStorage = MockStorageService();
     
-    final chatService = ChatService(mockKobold, mockPersona, mockStorage);
+    final chatService = ChatService(mockKobold, mockPersona, mockStorage, MockWorldRepository());
     
     final char = CharacterCard(name: 'TestChar', firstMessage: 'Hello');
     char.lorebook = Lorebook(entries: [

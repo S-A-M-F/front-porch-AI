@@ -8,6 +8,8 @@ import 'package:kobold_character_card_manager/services/model_manager.dart';
 import 'package:kobold_character_card_manager/services/storage_service.dart';
 import 'package:kobold_character_card_manager/services/hardware_service.dart';
 import 'package:kobold_character_card_manager/services/optimization_service.dart';
+import 'package:kobold_character_card_manager/services/llm_provider.dart';
+import 'package:kobold_character_card_manager/services/open_router_service.dart';
 import 'package:kobold_character_card_manager/ui/widgets/log_view.dart';
 import 'package:kobold_character_card_manager/ui/dialogs/rocm_guidance_dialog.dart';
 import 'package:kobold_character_card_manager/providers/app_state.dart';
@@ -29,6 +31,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _useMetal = false;
   String? _selectedModelPath;
   late final TextEditingController _systemPromptController;
+
+  // Remote API state
+  List<RemoteModelInfo> _availableModels = [];
+  bool _isFetchingModels = false;
+  bool _isCheckingConnection = false;
 
   @override
   void initState() {
@@ -348,6 +355,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final modelManager = Provider.of<ModelManager>(context);
     final backendManager = Provider.of<BackendManager>(context);
     final koboldService = Provider.of<KoboldService>(context);
+    final llmProvider = Provider.of<LLMProvider>(context);
     final theme = Theme.of(context);
 
     // Auto-select first model if none selected and models exist
@@ -472,6 +480,363 @@ class _SettingsPageState extends State<SettingsPage> {
              ),
 
           const SizedBox(height: 24),
+          _buildSectionHeader('Backend Mode', context),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<BackendType>(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Row(
+                          children: [
+                            Icon(Icons.computer, size: 18, color: theme.iconTheme.color),
+                            const SizedBox(width: 6),
+                            const Text('Local (KoboldCPP)', style: TextStyle(fontSize: 13)),
+                          ],
+                        ),
+                        value: BackendType.kobold,
+                        groupValue: llmProvider.activeBackend,
+                        onChanged: (val) async {
+                          if (val != null) {
+                            await llmProvider.setActiveBackend(val);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Switched to local KoboldCPP backend.')),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<BackendType>(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Row(
+                          children: [
+                            Icon(Icons.cloud, size: 18, color: theme.iconTheme.color),
+                            const SizedBox(width: 6),
+                            const Text('Remote API', style: TextStyle(fontSize: 13)),
+                          ],
+                        ),
+                        value: BackendType.openRouter,
+                        groupValue: llmProvider.activeBackend,
+                        onChanged: (val) async {
+                          if (val != null) {
+                            final stoppedKobold = await llmProvider.setActiveBackend(val);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(
+                                  stoppedKobold
+                                      ? 'Shutting down KoboldCPP… Switched to Remote API.'
+                                      : 'Switched to Remote API backend.',
+                                )),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                if (llmProvider.isLocal)
+                  Text(
+                    'Use a local KoboldCPP instance to run models on your hardware.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  )
+                else
+                  Text(
+                    'Connect to OpenRouter, Nano-GPT, or any OpenAI-compatible API.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
+              ],
+            ),
+          ),
+
+          // ── Remote API Configuration ──
+          if (!llmProvider.isLocal) ...[
+            const SizedBox(height: 24),
+            _buildSectionHeader('API Configuration', context),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('API URL', style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  TextFormField(
+                    initialValue: storageService.remoteApiUrl,
+                    decoration: InputDecoration(
+                      hintText: 'https://openrouter.ai/api/v1',
+                      filled: true,
+                      fillColor: theme.scaffoldBackgroundColor,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    onChanged: (val) => storageService.setRemoteApiUrl(val.trim()),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('API Key', style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  TextFormField(
+                    initialValue: storageService.remoteApiKey,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: 'sk-or-...',
+                      filled: true,
+                      fillColor: theme.scaffoldBackgroundColor,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      suffixIcon: const Icon(Icons.key, size: 18),
+                    ),
+                    onChanged: (val) => storageService.setRemoteApiKey(val.trim()),
+                  ),
+                  const SizedBox(height: 12),
+                  // ── Check Connection Button ──
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isCheckingConnection ? null : () async {
+                        setState(() => _isCheckingConnection = true);
+                        final openRouter = Provider.of<OpenRouterService>(context, listen: false);
+                        // Ensure service has latest config
+                        openRouter.configure(
+                          apiUrl: storageService.remoteApiUrl,
+                          apiKey: storageService.remoteApiKey,
+                        );
+                        final result = await openRouter.testConnection();
+                        if (mounted) {
+                          setState(() => _isCheckingConnection = false);
+                          final isSuccess = result.contains('successful');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(
+                                    isSuccess ? Icons.check_circle : Icons.error,
+                                    color: isSuccess ? Colors.greenAccent : Colors.redAccent,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(result)),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      icon: _isCheckingConnection
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.wifi_tethering, size: 18),
+                      label: Text(_isCheckingConnection ? 'Checking...' : 'Check Connection'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent.withOpacity(0.8),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // ── Model Selection ──
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Model', style: theme.textTheme.bodySmall),
+                      TextButton.icon(
+                        onPressed: _isFetchingModels ? null : () async {
+                          setState(() => _isFetchingModels = true);
+                          final openRouter = Provider.of<OpenRouterService>(context, listen: false);
+                          openRouter.configure(
+                            apiUrl: storageService.remoteApiUrl,
+                            apiKey: storageService.remoteApiKey,
+                          );
+                          final models = await openRouter.fetchAvailableModels();
+                          if (mounted) {
+                            setState(() {
+                              _availableModels = models;
+                              _isFetchingModels = false;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(
+                                models.isEmpty
+                                    ? 'No models found. Check your API URL and key.'
+                                    : 'Found ${models.length} available models.',
+                              )),
+                            );
+                          }
+                        },
+                        icon: _isFetchingModels
+                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.refresh, size: 16),
+                        label: Text(_isFetchingModels ? 'Loading...' : 'Refresh Models'),
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (_availableModels.isNotEmpty)
+                    InkWell(
+                      onTap: () => _showModelSearchDialog(context, storageService),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: theme.scaffoldBackgroundColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: theme.dividerColor),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    storageService.remoteModelName.isNotEmpty
+                                        ? storageService.remoteModelName
+                                        : 'Tap to select a model...',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: storageService.remoteModelName.isNotEmpty
+                                          ? null
+                                          : Colors.grey,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (storageService.remoteModelName.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Builder(builder: (context) {
+                                      final match = _availableModels
+                                          .where((m) => m.id == storageService.remoteModelName)
+                                          .toList();
+                                      if (match.isEmpty) return const SizedBox.shrink();
+                                      return Text(
+                                        match.first.pricingLabel,
+                                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                                      );
+                                    }),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.arrow_drop_down, color: Colors.grey[500]),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    TextFormField(
+                      initialValue: storageService.remoteModelName,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. nousresearch/hermes-3-llama-3.1-405b',
+                        filled: true,
+                        fillColor: theme.scaffoldBackgroundColor,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        suffixIcon: const Icon(Icons.smart_toy, size: 18),
+                      ),
+                      onChanged: (val) => storageService.setRemoteModelName(val.trim()),
+                    ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Works with OpenRouter, Nano-GPT, or any OpenAI-compatible endpoint.',
+                            style: theme.textTheme.bodySmall?.copyWith(color: Colors.blue),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // ── Reasoning Settings ──
+                  Row(
+                    children: [
+                      const Icon(Icons.psychology, size: 16, color: Colors.blueAccent),
+                      const SizedBox(width: 6),
+                      Text('Request Reasoning', style: theme.textTheme.bodyMedium),
+                      const Spacer(),
+                      Switch(
+                        value: storageService.reasoningEnabled,
+                        onChanged: (val) => storageService.setReasoningEnabled(val),
+                        activeTrackColor: Colors.blueAccent,
+                      ),
+                    ],
+                  ),
+                  if (storageService.reasoningEnabled)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 22, bottom: 8),
+                      child: Row(
+                        children: [
+                          Text('Effort Level', style: theme.textTheme.bodySmall),
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: theme.scaffoldBackgroundColor,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: theme.dividerColor),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: storageService.reasoningEffort,
+                                isDense: true,
+                                items: const [
+                                  DropdownMenuItem(value: 'low', child: Text('Low')),
+                                  DropdownMenuItem(value: 'medium', child: Text('Medium')),
+                                  DropdownMenuItem(value: 'high', child: Text('High')),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) storageService.setReasoningEffort(val);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (!storageService.reasoningEnabled)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 22, bottom: 8),
+                      child: Text(
+                        'Enable to request thinking/reasoning from compatible models',
+                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+
+          // ── Local KoboldCPP sections (only when local mode) ──
+          if (llmProvider.isLocal) ...[
+          const SizedBox(height: 24),
           _buildSectionHeader('Koboldcpp Backend', context),
            // ... (Existing Backend Logic adapted) ...
             const SizedBox(height: 16),
@@ -577,6 +942,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _buildSectionHeader('Process Logs', context),
             const SizedBox(height: 8),
             LogView(logs: koboldService.logs),
+          ], // end isLocal
         ],
       ),
     );
@@ -601,12 +967,16 @@ class _SettingsPageState extends State<SettingsPage> {
            _buildSlider('Rep Pen Tokens', storageService.repeatPenaltyTokens.toDouble(), 0, 512, (val) => storageService.setRepeatPenaltyTokens(val.toInt()), context, divisions: 512),
            _buildSlider('Max Output Tokens', storageService.maxLength.toDouble(), 16, 2048, (val) => storageService.setMaxLength(val.toInt()), context, divisions: 2048 - 16),
            _buildSlider('Min Output Tokens', storageService.minLength.toDouble(), 0, 512, (val) => storageService.setMinLength(val.toInt()), context, divisions: 512),
-            _buildSlider('Context Size', _contextSizeValue, 4098, 15000, (val) {
-              setState(() {
-                _contextSizeValue = val;
-                _contextSizeController.text = val.toInt().toString();
-              });
-            }, context, divisions: 15000 - 4098),
+            Builder(builder: (context) {
+              final isApi = !Provider.of<LLMProvider>(context, listen: false).isLocal;
+              final maxCtx = isApi ? 500000.0 : 15000.0;
+              return _buildSlider('Context Size', _contextSizeValue.clamp(4098, maxCtx), 4098, maxCtx, (val) {
+                setState(() {
+                  _contextSizeValue = val;
+                  _contextSizeController.text = val.toInt().toString();
+                });
+              }, context, divisions: (maxCtx - 4098).toInt());
+            }),
            
            Row(
              children: [
@@ -973,6 +1343,131 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Shows a full dialog with a search bar to filter and select from available models.
+  void _showModelSearchDialog(BuildContext context, StorageService storageService) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        String searchQuery = '';
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final filtered = searchQuery.isEmpty
+                ? _availableModels
+                : _availableModels.where((m) {
+                    final q = searchQuery.toLowerCase();
+                    return m.id.toLowerCase().contains(q) ||
+                           m.name.toLowerCase().contains(q);
+                  }).toList();
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1F2937),
+              title: const Text('Select Model', style: TextStyle(color: Colors.white)),
+              content: SizedBox(
+                width: 500,
+                height: 450,
+                child: Column(
+                  children: [
+                    // Search bar
+                    TextField(
+                      autofocus: true,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'Search ${_availableModels.length} models...',
+                        hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+                        prefixIcon: const Icon(Icons.search, color: Colors.white38, size: 20),
+                        filled: true,
+                        fillColor: const Color(0xFF111827),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      onChanged: (val) => setDialogState(() => searchQuery = val),
+                    ),
+                    const SizedBox(height: 8),
+                    // Result count
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${filtered.length} models',
+                        style: const TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // Model list
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const Center(child: Text('No models match your search.', style: TextStyle(color: Colors.white38)))
+                          : ListView.builder(
+                              itemCount: filtered.length,
+                              itemBuilder: (ctx, i) {
+                                final model = filtered[i];
+                                final isSelected = model.id == storageService.remoteModelName;
+                                return ListTile(
+                                  dense: true,
+                                  selected: isSelected,
+                                  selectedTileColor: Colors.blueAccent.withOpacity(0.15),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  title: Text(
+                                    model.id,
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.blueAccent : Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Row(
+                                    children: [
+                                      if (model.isFree)
+                                        Container(
+                                          margin: const EdgeInsets.only(right: 6),
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text('FREE', style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                                        ),
+                                      Flexible(
+                                        child: Text(
+                                          model.pricingLabel,
+                                          style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: isSelected
+                                      ? const Icon(Icons.check_circle, color: Colors.blueAccent, size: 18)
+                                      : null,
+                                  onTap: () {
+                                    storageService.setRemoteModelName(model.id);
+                                    Navigator.pop(ctx);
+                                    setState(() {});  // Refresh the settings page
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

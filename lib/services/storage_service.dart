@@ -44,6 +44,16 @@ class StorageService extends ChangeNotifier {
   bool _displayBufferEnabled = true;
   double _targetDisplayTps = 6.0; // ~250 WPM average human reading speed
 
+  // External API settings
+  String _backendType = 'kobold'; // 'kobold' or 'openRouter'
+  String _remoteApiKey = '';
+  String _remoteApiUrl = 'https://openrouter.ai/api/v1';
+  String _remoteModelName = '';
+
+  // Reasoning settings
+  bool _reasoningEnabled = false;
+  String _reasoningEffort = 'medium'; // 'low', 'medium', 'high'
+
 
   // Getters
   String get systemPrompt => _systemPrompt;
@@ -67,6 +77,12 @@ class StorageService extends ChangeNotifier {
   List<Map<String, String>> get savedPrompts => List.unmodifiable(_savedPrompts);
   bool get displayBufferEnabled => _displayBufferEnabled;
   double get targetDisplayTps => _targetDisplayTps;
+  String get backendType => _backendType;
+  String get remoteApiKey => _remoteApiKey;
+  String get remoteApiUrl => _remoteApiUrl;
+  String get remoteModelName => _remoteModelName;
+  bool get reasoningEnabled => _reasoningEnabled;
+  String get reasoningEffort => _reasoningEffort;
 
   StorageService() {
     _init();
@@ -105,6 +121,14 @@ class StorageService extends ChangeNotifier {
     _textScale = _prefs?.getDouble('text_scale') ?? 1.0;
     _displayBufferEnabled = _prefs?.getBool('display_buffer_enabled') ?? true;
     _targetDisplayTps = _prefs?.getDouble('target_display_tps') ?? 30.0;
+
+    // External API settings
+    _backendType = _prefs?.getString('backend_type') ?? 'kobold';
+    _remoteApiKey = _prefs?.getString('remote_api_key') ?? '';
+    _remoteApiUrl = _prefs?.getString('remote_api_url') ?? 'https://openrouter.ai/api/v1';
+    _remoteModelName = _prefs?.getString('remote_model_name') ?? '';
+    _reasoningEnabled = _prefs?.getBool('reasoning_enabled') ?? false;
+    _reasoningEffort = _prefs?.getString('reasoning_effort') ?? 'medium';
 
     // Load saved prompts
     final promptsJson = _prefs?.getString('saved_prompts');
@@ -290,6 +314,44 @@ class StorageService extends ChangeNotifier {
   Future<void> setTargetDisplayTps(double value) async {
     _targetDisplayTps = value;
     await _prefs?.setDouble('target_display_tps', value);
+    notifyListeners();
+  }
+
+  // External API setters
+  Future<void> setBackendType(String value) async {
+    _backendType = value;
+    await _prefs?.setString('backend_type', value);
+    notifyListeners();
+  }
+
+  Future<void> setRemoteApiKey(String value) async {
+    _remoteApiKey = value;
+    await _prefs?.setString('remote_api_key', value);
+    notifyListeners();
+  }
+
+  Future<void> setRemoteApiUrl(String value) async {
+    _remoteApiUrl = value;
+    await _prefs?.setString('remote_api_url', value);
+    notifyListeners();
+  }
+
+  Future<void> setRemoteModelName(String value) async {
+    _remoteModelName = value;
+    await _prefs?.setString('remote_model_name', value);
+    notifyListeners();
+  }
+
+  // Reasoning setters
+  Future<void> setReasoningEnabled(bool value) async {
+    _reasoningEnabled = value;
+    await _prefs?.setBool('reasoning_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setReasoningEffort(String value) async {
+    _reasoningEffort = value;
+    await _prefs?.setString('reasoning_effort', value);
     notifyListeners();
   }
 }
