@@ -63,16 +63,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Remove inappwebview Linux plugin (uses external browser fallback)
+      - name: Disable inappwebview Linux plugin (uses external browser fallback)
         if: matrix.platform == 'linux'
         run: |
-          # Remove the plugin symlink
-          rm -rf linux/flutter/ephemeral/.plugin_symlinks/flutter_inappwebview_linux
-          # Remove from generated CMake plugin list
-          sed -i '/flutter_inappwebview_linux/d' linux/flutter/generated_plugins.cmake
-          # Remove from generated plugin registrant
-          sed -i '/flutter_inappwebview_linux/d' linux/flutter/generated_plugin_registrant.cc
-          sed -i '/flutter_inappwebview_linux/d' linux/flutter/generated_plugin_registrant.h
+          echo "" >> pubspec.yaml
+          echo "dependency_overrides:" >> pubspec.yaml
+          echo "  flutter_inappwebview_linux:" >> pubspec.yaml
+          echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
+          flutter pub get
 
       - name: Build Application
         run: flutter build ${{ matrix.platform }} --release
