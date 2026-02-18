@@ -861,8 +861,23 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final userName = _userPersonaService.persona.name;
+
+      // Determine the speaking character first (needed for system prompt priority)
+      CharacterCard speakingCharacter;
+      if (_activeGroup != null) {
+        speakingCharacter = (mode == GenerationMode.continue_ && _messages.isNotEmpty && !_messages.last.isUser)
+          ? _groupCharacters.firstWhere(
+              (c) => c.name == _messages.last.sender,
+              orElse: () => _pickNextGroupCharacter(),
+            )
+          : _pickNextGroupCharacter();
+      } else {
+        speakingCharacter = _activeCharacter!;
+      }
+
       // ── System prompt selection ──
-      // Priority: group custom > group default > user global > backend default
+      // Priority: group custom > group default > character > user global > backend default
       final String systemPrompt;
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
         // User wrote a custom group system prompt — use it
@@ -880,20 +895,6 @@ class ChatService extends ChangeNotifier {
         // Single-char mode, no user prompt — pick default based on backend
         final isApi = _llmProvider != null && !_llmProvider!.isLocal;
         systemPrompt = isApi ? defaultApiSystemPrompt : defaultKoboldSystemPrompt;
-      }
-      final userName = _userPersonaService.persona.name;
-
-      // Determine the speaking character
-      CharacterCard speakingCharacter;
-      if (_activeGroup != null) {
-        speakingCharacter = (mode == GenerationMode.continue_ && _messages.isNotEmpty && !_messages.last.isUser)
-          ? _groupCharacters.firstWhere(
-              (c) => c.name == _messages.last.sender,
-              orElse: () => _pickNextGroupCharacter(),
-            )
-          : _pickNextGroupCharacter();
-      } else {
-        speakingCharacter = _activeCharacter!;
       }
 
       // Build Lorebook content from all relevant characters
