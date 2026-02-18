@@ -130,6 +130,10 @@ class ChatService extends ChangeNotifier {
   List<CharacterCard> _groupCharacters = [];
   int _turnIndex = 0;
 
+  // ── Author's Note ──
+  String _authorNote = '';
+  int _authorNoteDepth = 4;
+
   /// Default system prompt for group chats, designed to prevent characters
   /// from speaking for each other and maintain turn discipline.
   static const String defaultGroupSystemPrompt =
@@ -235,6 +239,16 @@ class ChatService extends ChangeNotifier {
   int get greetingIndex => _greetingIndex;
 
   ChatService(this._koboldService, this._userPersonaService, this._storageService, this._worldRepository);
+
+  String get authorNote => _authorNote;
+  int get authorNoteDepth => _authorNoteDepth;
+
+  void setAuthorNote(String note, {int? depth}) {
+    _authorNote = note;
+    if (depth != null) _authorNoteDepth = depth;
+    _saveChat();
+    notifyListeners();
+  }
 
   /// Set the CharacterRepository so group mode can look up characters.
   void setCharacterRepository(CharacterRepository repo) {
@@ -413,8 +427,12 @@ class ChatService extends ChangeNotifier {
     }
 
     final file = File('${charDir.path}/$_currentSessionId.json');
-    final jsonList = _messages.map((m) => m.toJson()).toList();
-    await file.writeAsString(jsonEncode(jsonList));
+    final envelope = {
+      'messages': _messages.map((m) => m.toJson()).toList(),
+      'author_note': _authorNote,
+      'author_note_depth': _authorNoteDepth,
+    };
+    await file.writeAsString(jsonEncode(envelope));
   }
 
   Future<void> _loadLastSession() async {
@@ -435,9 +453,19 @@ class ChatService extends ChangeNotifier {
     
     try {
       final content = await lastFile.readAsString();
-      final List<dynamic> jsonList = jsonDecode(content);
+      final decoded = jsonDecode(content);
       _messages.clear();
-      _messages.addAll(jsonList.map((m) => ChatMessage.fromJson(m)));
+      
+      if (decoded is List) {
+        _messages.addAll(decoded.map((m) => ChatMessage.fromJson(m)));
+        _authorNote = '';
+        _authorNoteDepth = 4;
+      } else if (decoded is Map) {
+        final List<dynamic> jsonList = decoded['messages'] ?? [];
+        _messages.addAll(jsonList.map((m) => ChatMessage.fromJson(m)));
+        _authorNote = decoded['author_note'] ?? '';
+        _authorNoteDepth = decoded['author_note_depth'] ?? 4;
+      }
       
       if (_messages.isNotEmpty) {
         _scanLorebook(_messages.last.text);
@@ -495,10 +523,20 @@ class ChatService extends ChangeNotifier {
 
     try {
       final content = await file.readAsString();
-      final List<dynamic> jsonList = jsonDecode(content);
+      final decoded = jsonDecode(content);
       
       _messages.clear();
-      _messages.addAll(jsonList.map((m) => ChatMessage.fromJson(m)));
+      // Support both old format (plain array) and new envelope format
+      if (decoded is List) {
+        _messages.addAll(decoded.map((m) => ChatMessage.fromJson(m)));
+        _authorNote = '';
+        _authorNoteDepth = 4;
+      } else if (decoded is Map) {
+        final List<dynamic> jsonList = decoded['messages'] ?? [];
+        _messages.addAll(jsonList.map((m) => ChatMessage.fromJson(m)));
+        _authorNote = decoded['author_note'] ?? '';
+        _authorNoteDepth = decoded['author_note_depth'] ?? 4;
+      }
       _currentSessionId = sessionId;
       
       if (_messages.isNotEmpty) {
@@ -1250,7 +1288,15 @@ class ChatService extends ChangeNotifier {
   }
 
   String _buildChatHistory() {
-    return _messages.map((m) => "${m.sender}: ${m.text}").join("\n");
+    final lines = _messages.map((m) => "${m.sender}: ${m.text}").toList();
+    
+    // Inject author's note at configured depth from the bottom
+    if (_authorNote.isNotEmpty && lines.isNotEmpty) {
+      final insertAt = (lines.length - _authorNoteDepth).clamp(0, lines.length);
+      lines.insert(insertAt, '[Author\'s Note: $_authorNote]');
+    }
+    
+    return lines.join("\n");
   }
 
   void clearChat() async {

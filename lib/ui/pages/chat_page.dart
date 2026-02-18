@@ -223,7 +223,7 @@ class _ChatPageState extends State<ChatPage> {
                   if (isGroup)
                     _buildGroupSidebar(chatService)
                   else if (character != null)
-                    _buildRightSidebar(character),
+                    _buildRightSidebar(character, chatService),
                 ],
               ),
             ),
@@ -665,7 +665,7 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _buildRightSidebar(CharacterCard character) {
+  Widget _buildRightSidebar(CharacterCard character, ChatService chatService) {
     String replace(String text) {
       return text.replaceAll('{{char}}', character.name).replaceAll('{{user}}', 'User');
     }
@@ -810,7 +810,8 @@ class _ChatPageState extends State<ChatPage> {
                   const Text('No lorebook entries.', style: TextStyle(color: Colors.white30, fontSize: 12)),
                   
                 const SizedBox(height: 16),
-                _SidebarSection(title: 'Note', content: 'Author Note placeholder...'),
+                // Author's Note — editable
+                _AuthorNoteSection(chatService: chatService),
                 const SizedBox(height: 16),
                 _SidebarSection(title: 'Scenario', content: replace(character.scenario)),
                 const SizedBox(height: 16),
@@ -1386,6 +1387,117 @@ class _SidebarSection extends StatelessWidget {
         Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
         const SizedBox(height: 4),
         Text(content, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+      ],
+    );
+  }
+}
+
+class _AuthorNoteSection extends StatefulWidget {
+  final ChatService chatService;
+  const _AuthorNoteSection({required this.chatService});
+
+  @override
+  State<_AuthorNoteSection> createState() => _AuthorNoteSectionState();
+}
+
+class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.chatService.authorNote);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AuthorNoteSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_controller.text != widget.chatService.authorNote) {
+      _controller.text = widget.chatService.authorNote;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.sticky_note_2_outlined, size: 16, color: Colors.amber),
+            const SizedBox(width: 6),
+            const Text("Author's Note",
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70, fontSize: 13)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _controller,
+          maxLines: 4,
+          minLines: 2,
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+          decoration: InputDecoration(
+            hintText: 'Instructions injected into context...',
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+            filled: true,
+            fillColor: const Color(0xFF111827),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Colors.white12),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Colors.white12),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Colors.blueAccent),
+            ),
+            contentPadding: const EdgeInsets.all(10),
+          ),
+          onChanged: (val) {
+            widget.chatService.setAuthorNote(val, depth: widget.chatService.authorNoteDepth);
+          },
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Text('Depth: ', style: TextStyle(color: Colors.white54, fontSize: 11)),
+            Expanded(
+              child: SliderTheme(
+                data: SliderThemeData(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                  activeTrackColor: Colors.blueAccent,
+                  inactiveTrackColor: Colors.white12,
+                  thumbColor: Colors.blueAccent,
+                ),
+                child: Slider(
+                  value: widget.chatService.authorNoteDepth.toDouble(),
+                  min: 1,
+                  max: 20,
+                  divisions: 19,
+                  label: widget.chatService.authorNoteDepth.toString(),
+                  onChanged: (val) {
+                    widget.chatService.setAuthorNote(
+                      widget.chatService.authorNote,
+                      depth: val.round(),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Text('${widget.chatService.authorNoteDepth}',
+              style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          ],
+        ),
       ],
     );
   }
