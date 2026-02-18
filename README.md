@@ -10,6 +10,16 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
+## 🆕 What's New in V0.0.4
+
+- **Swipe Navigation**: Cycle through regenerated message variations with left/right arrows and a position counter (e.g. 2/3)
+- **Collapsible Thought Chip**: Model thinking (`<think>` blocks) is automatically hidden behind a collapsible "Thought 💡" chip — no more raw thinking text in the conversation
+- **Continue Generation**: Down-arrow button on the last AI message to prompt the model to continue its response
+- **Chat Import/Export**: Import and export chats in SillyTavern-compatible JSON format
+- **Linux Browser Fallback**: Graceful fallback to external browser for character card downloads on Linux (due to WPE WebKit rendering limitations)
+- **External API Groundwork**: Architecture for OpenRouter/Nano-GPT integration (abstract LLM service layer, provider switching)
+- **User Persona Enhancements**: Improved persona dialog and avatar support
+
 ## 💬 Join the Community
 
 Have questions, feedback, or just want to hang out? Connect with us:
