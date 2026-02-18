@@ -8,6 +8,7 @@ import 'package:front_porch_ai/ui/dialogs/chat_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/model_settings_dialog.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 
 class _StyledTextController extends TextEditingController {
@@ -602,6 +603,19 @@ class _ChatPageState extends State<ChatPage> {
             padding: EdgeInsets.zero,
             tooltip: 'Impersonate',
             onPressed: chatService.isGenerating ? null : () => chatService.impersonateUser(),
+          ),
+
+          // Context Budget Viewer
+          IconButton(
+            icon: const Icon(Icons.analytics_outlined, color: Colors.white70),
+            padding: EdgeInsets.zero,
+            tooltip: 'Context Budget',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (_) => ContextViewerDialog(chatService: chatService),
+              );
+            },
           ),
           
           const SizedBox(width: 4),

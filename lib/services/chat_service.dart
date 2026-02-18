@@ -134,6 +134,10 @@ class ChatService extends ChangeNotifier {
   String _authorNote = '';
   int _authorNoteDepth = 4;
 
+  // ── Context / Prompt Budget ──
+  Map<String, int> _lastPromptBudget = {};
+  String _lastAssembledPrompt = '';
+
   /// Default system prompt for group chats, designed to prevent characters
   /// from speaking for each other and maintain turn discipline.
   static const String defaultGroupSystemPrompt =
@@ -242,6 +246,9 @@ class ChatService extends ChangeNotifier {
 
   String get authorNote => _authorNote;
   int get authorNoteDepth => _authorNoteDepth;
+  Map<String, int> get lastPromptBudget => _lastPromptBudget;
+  String get lastAssembledPrompt => _lastAssembledPrompt;
+  int get contextSize => _storageService.contextSize;
 
   void setAuthorNote(String note, {int? depth}) {
     _authorNote = note;
@@ -919,6 +926,20 @@ class ChatService extends ChangeNotifier {
           "$history"
           "$postHistoryBlock"
           "$suffix";
+
+      // Track prompt budget for context viewer
+      _lastAssembledPrompt = prompt;
+      _lastPromptBudget = {
+        'System Prompt': (systemPrompt.length / 4).ceil(),
+        'Lorebook': (loreContent.length / 4).ceil(),
+        'Persona': (personaBlock.length / 4).ceil(),
+        'Scenario': ('Scenario: $scenario'.length / 4).ceil(),
+        'Examples': (mesExampleBlock.length / 4).ceil(),
+        'Chat History': (history.length / 4).ceil(),
+        'Post-History': (postHistoryBlock.length / 4).ceil(),
+      };
+      // Remove zero-value entries
+      _lastPromptBudget.removeWhere((_, v) => v == 0);
 
       // Stop sequences: include all character names + user
       final stopSequences = {
