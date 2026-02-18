@@ -17,6 +17,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
   UserPersona? _editingPersona;
   
   final _formKey = GlobalKey<FormState>();
+  late TextEditingController _titleController;
   late TextEditingController _nameController;
   late TextEditingController _descriptionController;
   String? _avatarPath;
@@ -24,12 +25,14 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
   @override
   void initState() {
     super.initState();
+    _titleController = TextEditingController();
     _nameController = TextEditingController();
     _descriptionController = TextEditingController();
   }
 
   @override
   void dispose() {
+    _titleController.dispose();
     _nameController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -39,6 +42,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
     setState(() {
       _isEditing = true;
       _editingPersona = persona;
+      _titleController.text = persona?.title ?? '';
       _nameController.text = persona?.name ?? '';
       _descriptionController.text = persona?.description ?? '';
       _avatarPath = persona?.avatarPath;
@@ -49,6 +53,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
     setState(() {
       _isEditing = false;
       _editingPersona = null;
+      _titleController.clear();
       _nameController.clear();
       _descriptionController.clear();
       _avatarPath = null;
@@ -75,6 +80,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
       if (_editingPersona != null) {
         // Update
         final updated = _editingPersona!.copyWith(
+          title: _titleController.text,
           name: _nameController.text,
           description: _descriptionController.text,
           avatarPath: _avatarPath,
@@ -83,9 +89,10 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
       } else {
         // Create
         await service.createPersona(
+          _titleController.text,
           _nameController.text,
           _descriptionController.text,
-          '', // Persona text unused for now? Or maybe add a field later.
+          '', // Persona text
           _avatarPath,
         );
       }
@@ -147,8 +154,11 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                         personaId: persona.id,
                         radius: 20,
                       ),
-                      title: Text(persona.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      subtitle: Text(persona.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
+                      title: Text(persona.displayLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      subtitle: Text(
+                        persona.title.isNotEmpty ? persona.name : persona.description,
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70),
+                      ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -242,10 +252,26 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                 child: Column(
                   children: [
                     TextFormField(
+                      controller: _titleController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Title (optional)',
+                        hintText: 'Label to distinguish this persona',
+                        hintStyle: TextStyle(color: Colors.white30),
+                        labelStyle: TextStyle(color: Colors.white70),
+                        filled: true,
+                        fillColor: Color(0xFF374151),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
                       controller: _nameController,
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         labelText: 'Name',
+                        hintText: 'Name sent to the AI',
+                        hintStyle: TextStyle(color: Colors.white30),
                         labelStyle: TextStyle(color: Colors.white70),
                         filled: true,
                         fillColor: Color(0xFF374151),

@@ -4,13 +4,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class UserPersona {
   final String id;
+  final String title;
   final String name;
   final String description;
   final String persona;
   final String? avatarPath;
 
+  /// Returns title if set, otherwise name — used for display in persona list
+  String get displayLabel => title.isNotEmpty ? title : name;
+
   UserPersona({
     required this.id,
+    this.title = '',
     this.name = 'User',
     this.description = '',
     this.persona = '',
@@ -18,6 +23,7 @@ class UserPersona {
   });
 
   UserPersona copyWith({
+    String? title,
     String? name,
     String? description,
     String? persona,
@@ -25,6 +31,7 @@ class UserPersona {
   }) {
     return UserPersona(
       id: this.id,
+      title: title ?? this.title,
       name: name ?? this.name,
       description: description ?? this.description,
       persona: persona ?? this.persona,
@@ -35,6 +42,7 @@ class UserPersona {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'title': title,
       'name': name,
       'description': description,
       'persona': persona,
@@ -45,6 +53,7 @@ class UserPersona {
   factory UserPersona.fromJson(Map<String, dynamic> json) {
     return UserPersona(
       id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      title: json['title'] ?? '',
       name: json['name'] ?? 'User',
       description: json['description'] ?? '',
       persona: json['persona'] ?? '',
@@ -122,9 +131,10 @@ class UserPersonaService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> createPersona(String name, String description, String persona, String? avatarPath) async {
+  Future<void> createPersona(String title, String name, String description, String persona, String? avatarPath) async {
     final newPersona = UserPersona(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: title,
       name: name,
       description: description,
       persona: persona,
