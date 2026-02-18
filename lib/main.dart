@@ -21,6 +21,7 @@ import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/setup_service.dart';
 import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/update_service.dart';
+import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 
@@ -84,20 +85,27 @@ void main(List<String> args) async {
               Provider.of<StorageService>(context, listen: false),
               Provider.of<WorldRepository>(context, listen: false),
             );
-            // Wire LLMProvider immediately at creation time
+            // Wire LLMProvider and CharacterRepository immediately at creation time
             chatService.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
+            chatService.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
             return chatService;
           },
           update: (context, kobold, persona, storage, worldRepo, previous) {
             if (previous != null) {
-              // Re-wire LLMProvider on every update to stay in sync
+              // Re-wire dependencies on every update to stay in sync
               previous.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
+              previous.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
               return previous;
             }
             final chatService = ChatService(kobold, persona, storage, worldRepo);
             chatService.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
+            chatService.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
             return chatService;
           },
+        ),
+        ChangeNotifierProxyProvider<StorageService, GroupChatRepository>(
+          create: (context) => GroupChatRepository(Provider.of<StorageService>(context, listen: false)),
+          update: (context, storage, previous) => previous ?? GroupChatRepository(storage),
         ),
         ChangeNotifierProxyProvider3<StorageService, BackendManager, KoboldService, SetupService>(
           create: (context) => SetupService(

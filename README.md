@@ -10,25 +10,37 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
-## 🆕 What's New in V0.0.4.2
+## 🆕 What's New in V0.5.0
+
+- 👥 **Group Chat (Pre-Alpha)**: Create multi-character group chats! Select 2+ characters and watch them interact with each other and with you in a shared conversation. Features round-robin and free-form turn orders, auto-advance mode, and full persistence.
+- ✨ **AI-Generated Scenarios & First Messages**: One-tap ✨ Generate buttons in the group creation dialog. The scenario generator produces concise 1-2 sentence setups; the first message generator creates vivid multi-paragraph opening scenes with dialogue, actions, and sensory details — grounded in the scenario you set.
+- 🎛️ **Generation Presets**: Quick-access preset chips (Creative, Balanced, Precise, Deterministic) in Generation Settings for one-tap parameter profiles.
+- 🎨 **Improved Chat Colorization**: Fixed multi-line `*action*` block detection — dialogue (amber) and actions (blue) now color correctly across line breaks.
+- 🧠 **Thinking Model Support**: Automatic `<think>` block stripping so models like GLM5 don't leak reasoning chains into chat or generated content.
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.0.4.2
 
 - 🖥️ **Windows Installer**: Proper `.exe` installer with GPL V3 license acceptance, Start Menu shortcuts, and optional desktop shortcut
 - 🍎 **macOS DMG**: Native disk image with drag-to-Applications layout and custom app icon
-- 🔄 **Windows Self-Update (Alpha)**: Installer-only feature — checks GitHub Releases for new versions on startup, downloads and installs silently with user consent. Fully optional with a settings toggle. Does not affect zip/portable or macOS/Linux users
+- 🔄 **Windows Self-Update (Alpha)**: Installer-only feature — checks GitHub Releases for new versions on startup, downloads and installs silently with user consent
 - 🏷️ **Persona Titles**: Add a distinct title to personas for easier identification in lists
 - 🔁 **Automatic Version Sync**: Version numbers auto-sync from Git branch/tag names via a post-checkout hook
-- 🐧 **Linux CI Fixes**: Resolved `flutter_inappwebview` build issues with a CI stub approach; fixed RPM packaging paths
-- 🎨 **Custom App Icons**: Replaced default Flutter icons with Front Porch AI branding on Windows (multi-res `.ico`) and macOS (appiconset PNGs)
+- 🎨 **Custom App Icons**: Replaced default Flutter icons with Front Porch AI branding
 
-## 🆕 What's New in V0.0.4
+### What's New in V0.0.4
 
-- 🚀 **External API Support — Chat with Cloud Models!** Front Porch AI now supports **OpenRouter** and **Nano-GPT** as full backend providers! Seamlessly switch between your local KoboldCPP instance and powerful cloud models like Claude, GPT-4, Gemini, DeepSeek, and more — all from the same interface. Includes a complete provider switching system, per-model configuration, and streaming support. Your local-first workflow just got a whole lot more powerful.
-- **Swipe Navigation**: Cycle through regenerated message variations with left/right arrows and a position counter (e.g. 2/3)
-- **Collapsible Thought Chip**: Model thinking (`<think>` blocks) is automatically hidden behind a collapsible "Thought 💡" chip — no more raw thinking text cluttering the conversation
+- 🚀 **External API Support — Chat with Cloud Models!** Front Porch AI now supports **OpenRouter** and **Nano-GPT** as full backend providers! Seamlessly switch between your local KoboldCPP instance and powerful cloud models like Claude, GPT-4, Gemini, DeepSeek, and more.
+- **Swipe Navigation**: Cycle through regenerated message variations with left/right arrows
+- **Collapsible Thought Chip**: Model thinking is automatically hidden behind a collapsible "Thought 💡" chip
 - **Continue Generation**: Down-arrow button on the last AI message to prompt the model to keep going
 - **Chat Import/Export**: Import and export chats in SillyTavern-compatible JSON format
-- **Linux Browser Fallback**: Graceful fallback to external browser for character card downloads on Linux
+- **Linux Browser Fallback**: Graceful fallback to external browser on Linux
 - **User Persona Enhancements**: Improved persona dialog and avatar support
+
+</details>
 
 ## 💬 Join the Community
 

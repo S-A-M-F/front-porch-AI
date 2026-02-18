@@ -204,6 +204,9 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
       final response = await client.send(request).timeout(const Duration(seconds: 60));
 
       if (response.statusCode != 200) {
+        if (response.statusCode == 405) {
+          throw Exception('STREAMING_NOT_SUPPORTED: The server returned HTTP 405. Streaming may not be supported by this backend.');
+        }
         throw Exception('HTTP ${response.statusCode}');
       }
 
@@ -304,7 +307,22 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
              await Future.delayed(const Duration(seconds: 2));
              throw const SocketException('Service Unavailable'); 
           }
-           throw Exception('HTTP ${response.statusCode} - ${response.body}');
+          if (response.statusCode == 405) {
+             // 405 won't succeed on retry — break immediately
+             throw Exception('The server returned HTTP 405 (Method Not Allowed). Check that your API URL is correct and the backend supports this endpoint.');
+          }
+          if (response.statusCode == 408) {
+             throw Exception('Request timed out (HTTP 408). The model may be too slow for the configured timeout.');
+          }
+          if (response.statusCode == 422) {
+             throw Exception('Invalid request (HTTP 422). The prompt may be too long for the model\'s context window.');
+          }
+          if (response.statusCode >= 500) {
+             _addLog('Server error ${response.statusCode}, retrying...');
+             await Future.delayed(const Duration(seconds: 2));
+             throw Exception('Server error (HTTP ${response.statusCode})');
+          }
+          throw Exception('API error: HTTP ${response.statusCode}');
         }
       } catch (e) {
         if (!isProcessAlive && _isRunning) {

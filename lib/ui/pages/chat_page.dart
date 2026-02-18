@@ -87,8 +87,9 @@ class _ChatPageState extends State<ChatPage> {
       builder: (context, chatService, child) {
         final character = chatService.activeCharacter;
         final messages = chatService.messages;
+        final isGroup = chatService.isGroupMode;
 
-        if (character == null) {
+        if (character == null && !isGroup) {
           return const Center(child: Text('No character selected.'));
         }
         
@@ -99,7 +100,9 @@ class _ChatPageState extends State<ChatPage> {
           children: [
             Scaffold(
               backgroundColor: const Color(0xFF111827), // Darker background like Backyard
-              appBar: _buildAppBar(context, character),
+              appBar: isGroup
+                  ? _buildGroupAppBar(context, chatService)
+                  : _buildAppBar(context, character!),
               body: Row(
                 children: [
                   Expanded(
@@ -112,10 +115,25 @@ class _ChatPageState extends State<ChatPage> {
                             itemCount: messages.length,
                             itemBuilder: (context, index) {
                               final msg = messages[index];
+                              // In group mode, pass the character's image based on sender
+                              File? senderImage;
+                              Color? senderColor;
+                              if (isGroup && !msg.isUser) {
+                                final senderChar = chatService.groupCharacters
+                                    .where((c) => c.name == msg.sender)
+                                    .firstOrNull;
+                                senderImage = senderChar?.imagePath != null ? File(senderChar!.imagePath!) : null;
+                                final senderIdx = chatService.groupCharacters
+                                    .indexWhere((c) => c.name == msg.sender);
+                                senderColor = _groupCharacterColor(senderIdx >= 0 ? senderIdx : 0);
+                              } else {
+                                senderImage = character?.imagePath != null ? File(character!.imagePath!) : null;
+                              }
                               return _MessageBubble(
                                 message: msg, 
-                                characterImage: character.imagePath != null ? File(character.imagePath!) : null,
+                                characterImage: senderImage,
                                 index: index,
+                                senderColor: senderColor,
                               );
                             },
                           ),
@@ -198,11 +216,14 @@ class _ChatPageState extends State<ChatPage> {
                               ],
                             ),
                           ),
-                        _buildInputArea(context, chatService),
+                  _buildInputArea(context, chatService),
                       ],
                     ),
                   ),
-                  _buildRightSidebar(character),
+                  if (isGroup)
+                    _buildGroupSidebar(chatService)
+                  else if (character != null)
+                    _buildRightSidebar(character),
                 ],
               ),
             ),
@@ -248,6 +269,70 @@ class _ChatPageState extends State<ChatPage> {
         ],
       ),
     );
+  }
+
+  PreferredSizeWidget _buildGroupAppBar(BuildContext context, ChatService chatService) {
+    final group = chatService.activeGroup!;
+    final chars = chatService.groupCharacters;
+    return AppBar(
+      backgroundColor: const Color(0xFF1F2937),
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      title: Row(
+        children: [
+          // Stacked avatars
+          SizedBox(
+            width: 24.0 + (chars.length.clamp(0, 4) - 1) * 16,
+            height: 32,
+            child: Stack(
+              children: [
+                for (int i = 0; i < chars.length.clamp(0, 4); i++)
+                  Positioned(
+                    left: i * 16.0,
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: _groupCharacterColor(i),
+                      backgroundImage: chars[i].imagePath != null ? FileImage(File(chars[i].imagePath!)) : null,
+                      child: chars[i].imagePath == null
+                          ? Text(chars[i].name[0], style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(group.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(
+                '${chars.length} characters • ${group.turnOrder.name}',
+                style: const TextStyle(fontSize: 12, color: Colors.white54),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Per-character color palette for group chats.
+  static Color _groupCharacterColor(int index) {
+    const colors = [
+      Color(0xFF8B5CF6), // Purple
+      Color(0xFF10B981), // Emerald
+      Color(0xFFF59E0B), // Amber
+      Color(0xFFEF4444), // Red
+      Color(0xFF3B82F6), // Blue
+      Color(0xFFEC4899), // Pink
+      Color(0xFF14B8A6), // Teal
+      Color(0xFFF97316), // Orange
+    ];
+    return colors[index % colors.length];
   }
 
   Future<void> _importChat() async {
@@ -549,6 +634,17 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
           const SizedBox(width: 4),
+          // Next Character button (group mode only)
+          if (chatService.isGroupMode && !chatService.isGenerating)
+            Tooltip(
+              message: chatService.nextCharacter != null
+                  ? 'Next: ${chatService.nextCharacter!.name}'
+                  : 'Trigger next character',
+              child: IconButton(
+                icon: const Icon(Icons.group, color: Colors.purpleAccent),
+                onPressed: () => chatService.triggerNextCharacter(),
+              ),
+            ),
           chatService.isGenerating
             ? IconButton(
                 icon: const Icon(Icons.stop_circle, color: Colors.redAccent),
@@ -726,6 +822,83 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
   }
+
+  /// Sidebar showing all characters in a group.
+  Widget _buildGroupSidebar(ChatService chatService) {
+    final chars = chatService.groupCharacters;
+    return Container(
+      width: 300,
+      decoration: const BoxDecoration(
+        color: Color(0xFF1F2937),
+        border: Border(left: BorderSide(color: Colors.white10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: Text('Group Characters', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'Tap a character to make them respond next',
+              style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.3)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView.builder(
+              itemCount: chars.length,
+              itemBuilder: (context, index) {
+                final ch = chars[index];
+                final color = _groupCharacterColor(index);
+                final isNext = chatService.nextCharacter?.name == ch.name;
+                return GestureDetector(
+                  onTap: chatService.isGenerating ? null : () => chatService.setNextCharacter(ch),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isNext ? color.withValues(alpha: 0.15) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: isNext ? Border.all(color: color.withValues(alpha: 0.4)) : null,
+                    ),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: color,
+                        backgroundImage: ch.imagePath != null ? FileImage(File(ch.imagePath!)) : null,
+                        child: ch.imagePath == null
+                            ? Text(ch.name[0], style: const TextStyle(fontWeight: FontWeight.bold))
+                            : null,
+                      ),
+                      title: Text(ch.name, style: const TextStyle(fontSize: 14)),
+                      subtitle: Text(
+                        ch.description.length > 40 ? '${ch.description.substring(0, 40)}...' : ch.description,
+                        style: const TextStyle(fontSize: 11, color: Colors.white38),
+                      ),
+                      trailing: isNext
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.purpleAccent.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
+                              ),
+                              child: const Text('Next ▶', style: TextStyle(fontSize: 10, color: Colors.purpleAccent, fontWeight: FontWeight.bold)),
+                            )
+                          : null,
+                      dense: true,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 
@@ -734,8 +907,9 @@ class _MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final File? characterImage;
   final int index;
+  final Color? senderColor; // Non-null in group mode
 
-  const _MessageBubble({required this.message, this.characterImage, required this.index});
+  const _MessageBubble({required this.message, this.characterImage, required this.index, this.senderColor});
 
   @override
   State<_MessageBubble> createState() => _MessageBubbleState();
@@ -768,7 +942,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: message.isUser ? const Color(0xFF3B82F6) : const Color(0xFF374151),
+                color: message.isUser
+                    ? const Color(0xFF3B82F6)
+                    : widget.senderColor != null
+                        ? widget.senderColor!.withValues(alpha: 0.15)
+                        : const Color(0xFF374151),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(12),
                   topRight: const Radius.circular(12),
@@ -783,7 +961,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (!message.isUser)
-                        Text(message.sender, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueAccent)),
+                        Text(message.sender, style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: widget.senderColor ?? Colors.blueAccent,
+                        )),
                       if (!message.isUser) const Spacer(),
                       if (message.sender != 'System') 
                         IconButton(
@@ -936,19 +1118,36 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         );
                       },
                     ),
-                // Swipe arrows for message variations (regenerated responses)
+                // Action buttons: regen, continue, swipe arrows
                 if (!message.isUser && message.sender != 'System')
                   Consumer<ChatService>(
                     builder: (context, chatService, _) {
-                      if (message.swipes.length <= 1) return const SizedBox.shrink();
-                      
+                      final isLastBotMessage = index == chatService.messages.length - 1 && !chatService.isGenerating;
+                      final hasSwipes = message.swipes.length > 1;
+
+                      // Nothing to show if not last message and no swipes
+                      if (!isLastBotMessage && !hasSwipes) return const SizedBox.shrink();
+
                       return Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            // Continue button on last message - LEFT of swipes
-                            if (index == chatService.messages.length - 1 && !chatService.isGenerating) ...[
+                            // Regen button — last bot message only
+                            if (isLastBotMessage) ...[
+                              Tooltip(
+                                message: 'Regenerate',
+                                child: InkWell(
+                                  onTap: () => chatService.regenerateLastMessage(),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(4),
+                                    child: Icon(Icons.refresh, size: 20, color: Colors.orangeAccent),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Continue button
                               Tooltip(
                                 message: 'Continue generation',
                                 child: InkWell(
@@ -960,34 +1159,37 @@ class _MessageBubbleState extends State<_MessageBubble> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              if (hasSwipes) const SizedBox(width: 12),
                             ],
-                            InkWell(
-                              onTap: () => chatService.swipeMessage(index, -1),
-                              borderRadius: BorderRadius.circular(12),
-                              child: const Padding(
-                                padding: EdgeInsets.all(4),
-                                child: Icon(Icons.chevron_left, size: 20, color: Colors.white54),
+                            // Swipe arrows — only when multiple swipes exist
+                            if (hasSwipes) ...[
+                              InkWell(
+                                onTap: () => chatService.swipeMessage(index, -1),
+                                borderRadius: BorderRadius.circular(12),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.chevron_left, size: 20, color: Colors.white54),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${message.swipeIndex + 1}/${message.swipes.length}',
-                              style: const TextStyle(
-                                color: Colors.greenAccent,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+                              const SizedBox(width: 4),
+                              Text(
+                                '${message.swipeIndex + 1}/${message.swipes.length}',
+                                style: const TextStyle(
+                                  color: Colors.greenAccent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 4),
-                            InkWell(
-                              onTap: () => chatService.swipeMessage(index, 1),
-                              borderRadius: BorderRadius.circular(12),
-                              child: const Padding(
-                                padding: EdgeInsets.all(4),
-                                child: Icon(Icons.chevron_right, size: 20, color: Colors.white54),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => chatService.swipeMessage(index, 1),
+                                borderRadius: BorderRadius.circular(12),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.chevron_right, size: 20, color: Colors.white54),
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       );
@@ -1100,7 +1302,7 @@ class _StyledChatMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Two-pass approach:
-    // Pass 1: Split on asterisk blocks *...*
+    // Pass 1: Split on asterisk blocks *...* (including multi-line)
     // Pass 2: Within each segment, colorize quoted dialogue "..."
     // This ensures quotes inside asterisk blocks still get yellow treatment
 
@@ -1108,7 +1310,8 @@ class _StyledChatMessage extends StatelessWidget {
     const dialogueStyle = TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w500);
     const actionStyle = TextStyle(color: Color(0xFF90CAF9));
 
-    final asteriskRegex = RegExp(r'\*[^*]+\*');
+    // dotAll flag lets . match newlines, so *multi-line blocks* are captured
+    final asteriskRegex = RegExp(r'\*[^*]+\*', dotAll: true);
     final quoteRegex = RegExp(r'"[^"]*"');
 
     List<TextSpan> spans = [];
@@ -1121,7 +1324,7 @@ class _StyledChatMessage extends StatelessWidget {
         _addColorizedQuotes(spans, text.substring(lastEnd, match.start), plainStyle, dialogueStyle, quoteRegex);
       }
 
-      // Process the asterisk block — colorize inner quotes as yellow, rest as blue
+      // Process the asterisk block — colorize inner quotes as yellow, rest as blue italic
       final blockText = match.group(0)!;
       _addColorizedQuotes(spans, blockText, actionStyle, dialogueStyle, quoteRegex);
 

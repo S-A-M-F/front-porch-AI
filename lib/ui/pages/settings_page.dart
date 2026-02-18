@@ -14,6 +14,7 @@ import 'package:front_porch_ai/ui/widgets/log_view.dart';
 import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/update_service.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -442,6 +443,32 @@ class _SettingsPageState extends State<SettingsPage> {
                 tooltip: 'Delete a saved prompt',
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 onPressed: () => _showDeletePromptDialog(context, storageService),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Built-in preset chips
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              _buildPresetChip(
+                label: '📡 API Default',
+                prompt: ChatService.defaultApiSystemPrompt,
+                storageService: storageService,
+                context: context,
+              ),
+              _buildPresetChip(
+                label: '🖥️ KoboldCPP',
+                prompt: ChatService.defaultKoboldSystemPrompt,
+                storageService: storageService,
+                context: context,
+              ),
+              _buildPresetChip(
+                label: '👥 Group Chat',
+                prompt: ChatService.defaultGroupSystemPrompt,
+                storageService: storageService,
+                context: context,
               ),
             ],
           ),
@@ -1481,6 +1508,44 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             );
           },
+        );
+      },
+    );
+  }
+
+  /// Builds a compact chip that loads a built-in system prompt preset.
+  Widget _buildPresetChip({
+    required String label,
+    required String prompt,
+    required StorageService storageService,
+    required BuildContext context,
+  }) {
+    final isActive = _systemPromptController.text == prompt;
+    return ActionChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: isActive ? Colors.white : Colors.white70,
+        ),
+      ),
+      backgroundColor: isActive ? Colors.deepPurple : const Color(0xFF2D3748),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isActive ? Colors.deepPurpleAccent : Colors.white24,
+        ),
+      ),
+      onPressed: () {
+        setState(() {
+          _systemPromptController.text = prompt;
+        });
+        storageService.setSystemPrompt(prompt);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Loaded "$label" system prompt'),
+            duration: const Duration(seconds: 2),
+          ),
         );
       },
     );

@@ -2,6 +2,31 @@
 
 All notable changes to Front Porch AI will be documented in this file.
 
+## [V0.5.0] - 2026-02-17
+
+### ✨ New Features
+- **Group Chat (Pre-Alpha)**: Create multi-character group chats with 2+ characters. Characters interact with each other and with the user in a shared conversation.
+  - **Round Robin & Free-Form Turn Order**: Choose between structured round-robin turns or dynamic free-form conversations.
+  - **Auto-Advance**: Toggle automatic character responses — characters respond one after another without user input.
+  - **AI-Generated Scenarios**: ✨ Generate button produces a concise 1-2 sentence scenario from character personalities.
+  - **AI-Generated First Messages**: ✨ Generate button creates a vivid multi-paragraph opening scene based on the scenario and characters, with dialogue, actions, and sensory details.
+  - **Pre-Alpha Warning Dialog**: Users are notified about the experimental nature of group chat before creating one.
+  - **Group Chat Persistence**: Group chats are saved and restored between sessions via `GroupChatRepository`.
+- **Generation Presets**: Quick-access preset chips (Creative, Balanced, Precise, Deterministic) in the Generation Settings dialog for one-tap parameter profiles.
+- **Chat Text Colorization Improvements**: Fixed multi-line `*action*` block detection with `dotAll` regex, ensuring correct blue/amber coloring across line breaks.
+- **Thinking Model Support**: Automatic `<think>...</think>` block stripping for thinking models (e.g., GLM5) that emit reasoning chains in output.
+
+### 🏗️ Infrastructure
+- **Package Rename**: Renamed package from `kobold_character_card_manager` to `front_porch_ai` across the entire codebase.
+- **Installer Fix**: Resolved Windows installer exe name mismatch (`front_porch_ai.exe` → `Front Porch AI.exe`).
+
+### 🐛 Bug Fixes
+- Stop sequences (`END SCENE`, `---`, `[END]`) added to AI generation to prevent abrupt cutoffs.
+- Reasoning/planning text automatically filtered from generated content.
+- Fixed `<think>` tag leakage from thinking-enabled models in generated first messages.
+
+---
+
 ## [v0.0.3.4] - 2026-02-16
 
 ### ✨ New Features

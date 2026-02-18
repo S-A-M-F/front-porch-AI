@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,8 +9,12 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/folder_service.dart';
+import 'package:front_porch_ai/services/group_chat_repository.dart';
+import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/ui/pages/chat_page.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/ui/pages/edit_character_page.dart';
 import 'package:front_porch_ai/ui/dialogs/tag_dialog.dart';
@@ -28,6 +33,36 @@ class _HomePageState extends State<HomePage> {
   String? _activeFolderId; // null = top level view
   final _searchController = TextEditingController();
 
+  // Multi-select for group creation
+  bool _isSelecting = false;
+  final Set<String> _selectedCharacterIds = {}; // imagePath-based IDs
+
+  String _getCharacterIdFromCard(CharacterCard card) {
+    if (card.imagePath != null) {
+      return path.basenameWithoutExtension(card.imagePath!);
+    }
+    return card.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
+  }
+
+  void _toggleSelect(CharacterCard character) {
+    final id = _getCharacterIdFromCard(character);
+    setState(() {
+      if (_selectedCharacterIds.contains(id)) {
+        _selectedCharacterIds.remove(id);
+        if (_selectedCharacterIds.isEmpty) _isSelecting = false;
+      } else {
+        _selectedCharacterIds.add(id);
+      }
+    });
+  }
+
+  void _cancelSelection() {
+    setState(() {
+      _isSelecting = false;
+      _selectedCharacterIds.clear();
+    });
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -36,13 +71,13 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<CharacterRepository, FolderService>(
-      builder: (context, repo, folderService, child) {
+    return Consumer3<CharacterRepository, FolderService, GroupChatRepository>(
+      builder: (context, repo, folderService, groupRepo, child) {
         if (repo.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (repo.characters.isEmpty) {
+        if (repo.characters.isEmpty && groupRepo.groups.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -97,92 +132,160 @@ class _HomePageState extends State<HomePage> {
         // Filter characters based on search and active folder
         final filteredCharacters = _getFilteredCharacters(repo, folderService);
 
-        return Column(
+        return Stack(
           children: [
-            // Header row
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-              child: Row(
-                children: [
-                  if (_activeFolderId != null) ...[
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      tooltip: 'Back to all characters',
-                      onPressed: () => setState(() => _activeFolderId = null),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _getActiveFolderName(folderService),
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                  ] else
-                    Text('My Characters', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  if (_activeFolderId == null)
-                    IconButton(
-                      tooltip: 'New Folder',
-                      icon: const Icon(Icons.create_new_folder_outlined),
-                      onPressed: () => _createFolder(context, folderService),
-                    ),
-                  IconButton(
-                    tooltip: 'Import Card',
-                    icon: const Icon(Icons.download),
-                    onPressed: () => _importCharacter(context),
+            Column(
+              children: [
+                // Header row
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                  child: Row(
+                    children: [
+                      if (_isSelecting) ...[
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Cancel selection',
+                          onPressed: _cancelSelection,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_selectedCharacterIds.length} selected',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.purpleAccent,
+                          ),
+                        ),
+                      ] else if (_activeFolderId != null) ...[
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          tooltip: 'Back to all characters',
+                          onPressed: () => setState(() => _activeFolderId = null),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _getActiveFolderName(folderService),
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ] else
+                        Text('My Characters', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      if (!_isSelecting) ...[
+                        IconButton(
+                          tooltip: 'Select characters for group chat',
+                          icon: const Icon(Icons.group_add, color: Colors.purpleAccent),
+                          onPressed: () => setState(() => _isSelecting = true),
+                        ),
+                        if (_activeFolderId == null)
+                          IconButton(
+                            tooltip: 'New Folder',
+                            icon: const Icon(Icons.create_new_folder_outlined),
+                            onPressed: () => _createFolder(context, folderService),
+                          ),
+                        IconButton(
+                          tooltip: 'Import Card',
+                          icon: const Icon(Icons.download),
+                          onPressed: () => _importCharacter(context),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () => _openBrowser(context),
+                          icon: const Icon(Icons.public),
+                          label: const Text('AI Cards'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () => _showChubWarning(context),
+                          icon: const Icon(Icons.warning_amber_rounded),
+                          label: const Text('Chub.ai'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => _openBrowser(context),
-                    icon: const Icon(Icons.public),
-                    label: const Text('AI Cards'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => _showChubWarning(context),
-                    icon: const Icon(Icons.warning_amber_rounded),
-                    label: const Text('Chub.ai'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-
-            // Search bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: TextField(
-                controller: _searchController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Search by name or tag...',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  prefixIcon: const Icon(Icons.search, color: Colors.white38),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, color: Colors.white38),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: const Color(0xFF1E293B),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                onChanged: (value) => setState(() => _searchQuery = value),
-              ),
-            ),
-            const SizedBox(height: 12),
 
-            // Grid with folders and characters
-            Expanded(
-              child: _buildGrid(context, repo, folderService, filteredCharacters),
+                // Search bar
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: TextField(
+                    controller: _searchController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Search by name or tag...',
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      prefixIcon: const Icon(Icons.search, color: Colors.white38),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.white38),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: const Color(0xFF1E293B),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onChanged: (value) => setState(() => _searchQuery = value),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Grid with folders, groups, and characters
+                Expanded(
+                  child: _buildGrid(context, repo, folderService, filteredCharacters, groupRepo),
+                ),
+              ],
             ),
+            // Selection action bar
+            if (_isSelecting)
+              Positioned(
+                left: 0, right: 0, bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F2937),
+                    border: const Border(top: BorderSide(color: Colors.white10)),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, -2)),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.group, color: Colors.purpleAccent.withValues(alpha: 0.7)),
+                      const SizedBox(width: 12),
+                      Text(
+                        '${_selectedCharacterIds.length} character${_selectedCharacterIds.length == 1 ? '' : 's'} selected',
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: _cancelSelection,
+                        child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: _selectedCharacterIds.length >= 2
+                            ? () => _showCreateGroupDialog(context, repo)
+                            : null,
+                        icon: const Icon(Icons.group_add),
+                        label: const Text('Create Group'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purpleAccent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.white10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -219,10 +322,13 @@ class _HomePageState extends State<HomePage> {
     return folder?.name ?? 'Folder';
   }
 
-  Widget _buildGrid(BuildContext context, CharacterRepository repo, FolderService folderService, List<CharacterCard> filteredCharacters) {
+  Widget _buildGrid(BuildContext context, CharacterRepository repo, FolderService folderService, List<CharacterCard> filteredCharacters, GroupChatRepository groupRepo) {
     // At top level and not searching, show folder cards + unfoldered characters
     final showFolders = _activeFolderId == null && _searchQuery.isEmpty;
     final folders = showFolders ? folderService.folders : <CharacterFolder>[];
+
+    // Show group cards at top level only
+    final groups = (showFolders && !_isSelecting) ? groupRepo.groups : <GroupChat>[];
 
     // At top level, show unfoldered characters only (unless searching)
     List<CharacterCard> displayCharacters;
@@ -233,7 +339,7 @@ class _HomePageState extends State<HomePage> {
       displayCharacters = filteredCharacters;
     }
 
-    final totalItems = folders.length + displayCharacters.length;
+    final totalItems = folders.length + groups.length + displayCharacters.length;
     if (totalItems == 0) {
       return Center(
         child: Text(
@@ -244,7 +350,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     return GridView.builder(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.fromLTRB(24, 24, 24, _isSelecting ? 80 : 24),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 300,
         childAspectRatio: 0.7,
@@ -257,8 +363,13 @@ class _HomePageState extends State<HomePage> {
         if (index < folders.length) {
           return _buildFolderCard(context, folders[index], folderService, repo);
         }
+        // Then group cards
+        final groupOffset = index - folders.length;
+        if (groupOffset < groups.length) {
+          return _buildGroupCard(context, groups[groupOffset], repo);
+        }
         // Then character cards
-        final character = displayCharacters[index - folders.length];
+        final character = displayCharacters[groupOffset - groups.length];
         return _buildCharacterCard(context, character, folderService);
       },
     );
@@ -363,17 +474,27 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildCharacterCardInner(BuildContext context, CharacterCard character, FolderService folderService) {
+    final charId = _getCharacterIdFromCard(character);
+    final isSelected = _selectedCharacterIds.contains(charId);
+
     return Card(
       color: Theme.of(context).cardColor,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+        side: BorderSide(
+          color: isSelected ? Colors.purpleAccent : Theme.of(context).dividerColor.withValues(alpha: 0.1),
+          width: isSelected ? 2.5 : 1,
+        ),
       ),
       child: Stack(
         children: [
           InkWell(
             onTap: () async {
+              if (_isSelecting) {
+                _toggleSelect(character);
+                return;
+              }
               final chatService = Provider.of<ChatService>(context, listen: false);
               await chatService.setActiveCharacter(character);
               if (context.mounted) {
@@ -422,7 +543,7 @@ class _HomePageState extends State<HomePage> {
                               children: character.tags.take(3).map((tag) => Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: Colors.amber.shade900.withOpacity(0.3),
+                                  color: Colors.amber.shade900.withValues(alpha: 0.3),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -448,56 +569,662 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Material(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(20),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _editCharacter(context, character),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Icon(Icons.edit, color: Colors.white, size: 20),
-                    ),
-                  ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _exportCharacter(context, character),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Icon(Icons.upload, color: Colors.white, size: 20),
-                    ),
-                  ),
-                  // Remove from folder button (only when inside a folder)
-                  if (_activeFolderId != null)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () async {
-                        await folderService.removeFromFolder(_activeFolderId!, character.imagePath!);
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(Icons.folder_off, color: Colors.amber, size: 20),
-                      ),
-                    ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _confirmDeleteCharacter(context, character),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Icon(Icons.delete, color: Colors.redAccent, size: 20),
-                    ),
-                  ),
-                ],
+          // Selection checkbox overlay
+          if (_isSelecting)
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.purpleAccent : Colors.black54,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: isSelected ? Colors.purpleAccent : Colors.white38, width: 2),
+                ),
+                child: isSelected
+                    ? const Icon(Icons.check, size: 16, color: Colors.white)
+                    : null,
               ),
             ),
+          // Action buttons (hide during selection mode)
+          if (!_isSelecting)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Material(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => _editCharacter(context, character),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Icon(Icons.edit, color: Colors.white, size: 20),
+                      ),
+                    ),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => _exportCharacter(context, character),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Icon(Icons.upload, color: Colors.white, size: 20),
+                      ),
+                    ),
+                    // Remove from folder button (only when inside a folder)
+                    if (_activeFolderId != null)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () async {
+                          await folderService.removeFromFolder(_activeFolderId!, character.imagePath!);
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Icon(Icons.folder_off, color: Colors.amber, size: 20),
+                        ),
+                      ),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => _confirmDeleteCharacter(context, character),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Group Card ─────────────────────────────────────────────────
+
+  Widget _buildGroupCard(BuildContext context, GroupChat group, CharacterRepository repo) {
+    // Resolve character cards for the group
+    final characters = <CharacterCard>[];
+    for (final id in group.characterIds) {
+      final match = repo.characters.where((c) => _getCharacterIdFromCard(c) == id).firstOrNull;
+      if (match != null) characters.add(match);
+    }
+
+    return Card(
+      color: const Color(0xFF1E293B),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.purpleAccent.withValues(alpha: 0.3)),
+      ),
+      child: InkWell(
+        onTap: () async {
+          final chatService = Provider.of<ChatService>(context, listen: false);
+          await chatService.setActiveGroup(group);
+          if (context.mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ChatPage()),
+            );
+          }
+        },
+        child: Stack(
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 16),
+                // Stacked avatars
+                SizedBox(
+                  height: 80,
+                  width: double.infinity,
+                  child: Center(
+                    child: SizedBox(
+                      width: 40.0 + (characters.take(4).length - 1) * 30.0,
+                      height: 80,
+                      child: Stack(
+                        children: [
+                          for (int i = 0; i < characters.take(4).length; i++)
+                            Positioned(
+                              left: i * 30.0,
+                              child: Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.purpleAccent, width: 2),
+                                  image: characters[i].imagePath != null
+                                      ? DecorationImage(
+                                          image: FileImage(File(characters[i].imagePath!)),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                  color: characters[i].imagePath == null ? Colors.grey.shade700 : null,
+                                ),
+                                child: characters[i].imagePath == null
+                                    ? const Icon(Icons.person, color: Colors.white24, size: 28)
+                                    : null,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Group icon badge
+                const Icon(Icons.group, color: Colors.purpleAccent, size: 20),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    group.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${characters.length} character${characters.length == 1 ? '' : 's'}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                const SizedBox(height: 4),
+                // Turn order label
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.purpleAccent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    group.turnOrder == TurnOrder.roundRobin ? 'Round Robin' : 'Random',
+                    style: TextStyle(color: Colors.purpleAccent.withValues(alpha: 0.8), fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+            // Delete group button
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Material(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _confirmDeleteGroup(context, group),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Icon(Icons.delete, color: Colors.redAccent, size: 18),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteGroup(BuildContext context, GroupChat group) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2D1111),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.redAccent, width: 2),
+        ),
+        title: const Text('Delete Group', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Delete group "${group.name}"?\n\nThe characters themselves will NOT be deleted.',
+          style: const TextStyle(color: Colors.white70, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () {
+              final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+              groupRepo.delete(group.id);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Delete'),
           ),
         ],
+      ),
+    );
+  }
+
+  // ─── Group Creation Dialog ──────────────────────────────────────
+
+  void _showCreateGroupDialog(BuildContext context, CharacterRepository repo) {
+    // Show pre-alpha warning first
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+            SizedBox(width: 8),
+            Text('Pre-Alpha Feature', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: const Text(
+          'Group Chat is a pre-alpha feature. Expect rough edges and results that may vary depending on your model and backend.',
+          style: TextStyle(color: Colors.white70, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showCreateGroupDialogInner(context, repo);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateGroupDialogInner(BuildContext context, CharacterRepository repo) {
+    final nameController = TextEditingController();
+    final firstMessageController = TextEditingController();
+    final scenarioController = TextEditingController();
+    final systemPromptController = TextEditingController(text: ChatService.defaultGroupSystemPrompt);
+    TurnOrder selectedTurnOrder = TurnOrder.roundRobin;
+    bool autoAdvance = false;
+    bool isGeneratingFirstMessage = false;
+    bool isGeneratingScenario = false;
+
+    // Build default name from selected character names
+    final selectedChars = <CharacterCard>[];
+    for (final id in _selectedCharacterIds) {
+      final match = repo.characters.where((c) => _getCharacterIdFromCard(c) == id).firstOrNull;
+      if (match != null) selectedChars.add(match);
+    }
+    nameController.text = selectedChars.map((c) => c.name).join(' & ');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1F2937),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.group_add, color: Colors.purpleAccent),
+              SizedBox(width: 8),
+              Text('Create Group Chat', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Selected characters preview
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: selectedChars.map((c) => Chip(
+                    avatar: c.imagePath != null
+                        ? CircleAvatar(backgroundImage: FileImage(File(c.imagePath!)))
+                        : const CircleAvatar(child: Icon(Icons.person, size: 14)),
+                    label: Text(c.name, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                    backgroundColor: Colors.purpleAccent.withValues(alpha: 0.2),
+                    side: BorderSide(color: Colors.purpleAccent.withValues(alpha: 0.4)),
+                  )).toList(),
+                ),
+                const SizedBox(height: 16),
+                // Group name
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Group Name',
+                    labelStyle: TextStyle(color: Colors.white54),
+                    hintText: 'Enter a group name...',
+                    hintStyle: TextStyle(color: Colors.white24),
+                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.purpleAccent)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Turn order
+                const Text('Turn Order', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 8),
+                SegmentedButton<TurnOrder>(
+                  segments: const [
+                    ButtonSegment(value: TurnOrder.roundRobin, label: Text('Round Robin'), icon: Icon(Icons.repeat)),
+                    ButtonSegment(value: TurnOrder.random, label: Text('Random'), icon: Icon(Icons.shuffle)),
+                  ],
+                  selected: {selectedTurnOrder},
+                  onSelectionChanged: (val) => setDialogState(() => selectedTurnOrder = val.first),
+                  style: ButtonStyle(
+                    foregroundColor: WidgetStateProperty.resolveWith((states) =>
+                        states.contains(WidgetState.selected) ? Colors.white : Colors.white54),
+                    backgroundColor: WidgetStateProperty.resolveWith((states) =>
+                        states.contains(WidgetState.selected) ? Colors.purpleAccent : Colors.transparent),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Auto-advance toggle
+                SwitchListTile(
+                  value: autoAdvance,
+                  onChanged: (val) => setDialogState(() => autoAdvance = val),
+                  title: const Text('Auto-Advance', style: TextStyle(color: Colors.white, fontSize: 14)),
+                  subtitle: const Text(
+                    'Characters respond automatically one after another',
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                  activeColor: Colors.purpleAccent,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 16),
+                // ── Scenario (optional) — with Generate button ──
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Scenario (optional)',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: isGeneratingScenario ? null : () async {
+                        final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+                        final service = llmProvider.activeService;
+                        if (!service.isReady) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('LLM backend is not ready. Start KoboldCPP or configure your API first.')),
+                          );
+                          return;
+                        }
+
+                        setDialogState(() => isGeneratingScenario = true);
+
+                        final charNames = selectedChars.map((c) => c.name).join(', ');
+                        final charBriefs = selectedChars.map((c) {
+                          final trait = c.personality.isNotEmpty
+                              ? c.personality.split('.').first
+                              : (c.description.isNotEmpty ? c.description.split('.').first : c.name);
+                          return '${c.name} ($trait)';
+                        }).join(', ');
+
+                        final scenarioPrompt =
+                            '[Output ONLY the scenario text. No planning, reasoning, or explanation. '
+                            'Do NOT use <think> tags.]\n\n'
+                            'Write a brief scenario (1-2 sentences max) for a group roleplay with: $charBriefs.\n'
+                            'The scenario should describe WHERE the characters are and WHAT is happening.\n'
+                            'Use {{user}} to refer to the player. Keep it concise like:\n'
+                            '"{{user}} and $charNames are hanging out at a rooftop bar downtown on a Friday night."\n\n'
+                            'SCENARIO: ';
+
+                        try {
+                          final buffer = StringBuffer();
+                          final params = GenerationParams(
+                            prompt: scenarioPrompt,
+                            maxLength: 150,
+                            temperature: 0.9,
+                            stopSequences: ['\n\n', 'END', '---'],
+                          );
+                          await for (final token in service.generateStream(params)) {
+                            buffer.write(token);
+                          }
+                          var result = buffer.toString()
+                              .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+                              .replaceAll(RegExp(r'</think>', caseSensitive: false), '')
+                              .replaceAll(RegExp(r'^SCENARIO:\s*', caseSensitive: false), '')
+                              .replaceAll('"', '')
+                              .trim();
+
+                          if (result.isNotEmpty) {
+                            scenarioController.text = result;
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Generation failed: $e')),
+                            );
+                          }
+                        } finally {
+                          setDialogState(() => isGeneratingScenario = false);
+                        }
+                      },
+                      icon: isGeneratingScenario
+                          ? const SizedBox(
+                              width: 14, height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent),
+                            )
+                          : const Icon(Icons.auto_awesome, size: 16, color: Colors.amberAccent),
+                      label: Text(
+                        isGeneratingScenario ? 'Generating...' : 'Generate',
+                        style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+                      ),
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                TextField(
+                  controller: scenarioController,
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. {{user}} and friends are at a rooftop bar...',
+                    hintStyle: TextStyle(color: Colors.white24),
+                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.purpleAccent)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // ── First Message (optional) — with Generate button ──
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'First Message (optional)',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: isGeneratingFirstMessage ? null : () async {
+                        final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+                        final service = llmProvider.activeService;
+                        if (!service.isReady) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('LLM backend is not ready. Start KoboldCPP or configure your API first.')),
+                          );
+                          return;
+                        }
+
+                        setDialogState(() => isGeneratingFirstMessage = true);
+
+                        // Build a meta-prompt from all selected characters
+                        final charDescriptions = selectedChars.map((c) {
+                          final persona = c.personality.isNotEmpty ? c.personality : c.description;
+                          final scenario = c.scenario.isNotEmpty ? ' Scenario: ${c.scenario}' : '';
+                          return '- ${c.name}: $persona$scenario';
+                        }).join('\n');
+
+                        final scenarioContext = scenarioController.text.trim().isNotEmpty
+                            ? '\nThe group scenario is: ${scenarioController.text.trim()}'
+                            : '';
+
+                        final metaPrompt =
+                            '[INSTRUCTIONS: Output ONLY the creative scene text. '
+                            'Do NOT plan, reason, analyze, or explain what you will write. '
+                            'Do NOT list requirements or break down the task. '
+                            'Do NOT use <think> tags. Start writing the scene IMMEDIATELY.]\n\n'
+                            'Write a vivid, immersive opening scene (4-6 paragraphs, at least 400 words) '
+                            'for a group roleplay featuring:\n$charDescriptions\n$scenarioContext\n\n'
+                            'CRITICAL REQUIREMENTS:\n'
+                            '- {{user}} is PRESENT in the scene. Characters notice, acknowledge, and speak TO {{user}}.\n'
+                            '- EACH character MUST have at least 2 lines of spoken dialogue using quotation marks.\n'
+                            '- Characters MUST interact with EACH OTHER — they speak to, react to, and acknowledge one another.\n'
+                            '- Describe the environment with rich sensory details (sights, sounds, smells, textures).\n'
+                            '- Show each character doing physical actions that reveal their personality.\n'
+                            '- Use third-person narration with *asterisks* for actions and descriptions.\n'
+                            '- Do NOT write any dialogue, thoughts, or actions for {{user}}.\n'
+                            '- End with a character directly addressing {{user}}, creating a natural moment for {{user}} to respond.\n'
+                            '- When the scene is complete, write "END SCENE" on its own line.\n\n'
+                            'BEGIN SCENE:\n';
+
+                        try {
+                          final buffer = StringBuffer();
+                          final params = GenerationParams(
+                            prompt: metaPrompt,
+                            maxLength: 2000,
+                            temperature: 0.85,
+                            stopSequences: ['END SCENE', '---', '[END]'],
+                          );
+                          await for (final token in service.generateStream(params)) {
+                            buffer.write(token);
+                          }
+                          var result = buffer.toString()
+                              .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+                              .replaceAll(RegExp(r'</think>', caseSensitive: false), '');
+
+                          final sceneMarker = result.indexOf('BEGIN SCENE:');
+                          if (sceneMarker >= 0) {
+                            result = result.substring(sceneMarker + 'BEGIN SCENE:'.length);
+                          }
+
+                          final lines = result.split('\n');
+                          final cleaned = lines.where((line) {
+                            final trimmed = line.trimLeft();
+                            if (trimmed.startsWith('The user wants') ||
+                                trimmed.startsWith('I need to') ||
+                                trimmed.startsWith('I will') ||
+                                trimmed.startsWith('I should') ||
+                                trimmed.startsWith('Let me ') ||
+                                trimmed.startsWith('I\'ll ') ||
+                                RegExp(r'^\d+\.\s+(Write|Use|Set|Make|Do|Keep|NOT|Create|End|Establish)').hasMatch(trimmed)) {
+                              return false;
+                            }
+                            return true;
+                          }).join('\n').trim();
+
+                          if (cleaned.isNotEmpty) {
+                            firstMessageController.text = cleaned;
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Generation failed: $e')),
+                            );
+                          }
+                        } finally {
+                          setDialogState(() => isGeneratingFirstMessage = false);
+                        }
+                      },
+                      icon: isGeneratingFirstMessage
+                          ? const SizedBox(
+                              width: 14, height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent),
+                            )
+                          : const Icon(Icons.auto_awesome, size: 16, color: Colors.amberAccent),
+                      label: Text(
+                        isGeneratingFirstMessage ? 'Generating...' : 'Generate',
+                        style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+                      ),
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                TextField(
+                  controller: firstMessageController,
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    hintText: 'Custom greeting or tap Generate ✨ (uses scenario above)',
+                    hintStyle: TextStyle(color: Colors.white24),
+                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.purpleAccent)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // System Prompt (optional)
+                TextField(
+                  controller: systemPromptController,
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'System Prompt (optional)',
+                    labelStyle: TextStyle(color: Colors.white54),
+                    hintText: 'Override the global system prompt...',
+                    hintStyle: TextStyle(color: Colors.white24),
+                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.purpleAccent)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.check),
+              label: const Text('Create'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purpleAccent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                final name = nameController.text.trim();
+                if (name.isEmpty) return;
+
+                final group = GroupChat(
+                  id: 'group_${DateTime.now().millisecondsSinceEpoch}',
+                  name: name,
+                  characterIds: _selectedCharacterIds.toList(),
+                  turnOrder: selectedTurnOrder,
+                  autoAdvance: autoAdvance,
+                  firstMessage: firstMessageController.text.trim(),
+                  scenario: scenarioController.text.trim(),
+                  systemPrompt: systemPromptController.text.trim(),
+                );
+
+                final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+                groupRepo.save(group);
+
+                Navigator.pop(ctx);
+                _cancelSelection();
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Group "$name" created!'),
+                    backgroundColor: Colors.purpleAccent.shade700,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
