@@ -58,7 +58,16 @@ jobs:
             FLUTTER_VERSION="${VERSION}+0"
           fi
           echo "Setting version to: $FLUTTER_VERSION"
-          sed "s/^version: .*/version: $FLUTTER_VERSION/" pubspec.yaml > pubspec.tmp && mv pubspec.tmp pubspec.yaml
+          # Use Python for cross-platform reliability (sed can fail silently with Windows \r\n line endings)
+          python3 -c "
+          import re
+          with open('pubspec.yaml', 'r') as f: content = f.read()
+          content = re.sub(r'^version: .*$', 'version: $FLUTTER_VERSION', content, flags=re.MULTILINE)
+          with open('pubspec.yaml', 'w') as f: f.write(content)
+          "
+          # Verify the version was actually updated (visible in CI logs)
+          echo "Verifying pubspec version:"
+          grep '^version:' pubspec.yaml
 
       - name: Install dependencies
         run: flutter pub get
