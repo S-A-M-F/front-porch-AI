@@ -16,6 +16,7 @@ Front Porch AI is proudly licensed under the **GPL v3** because we believe your 
 - 📝 **Author's Note / Memory**: A per-session note injected into the prompt at a configurable depth (1–20 messages back). Edit it right from the sidebar — automatically saved and restored with each session.
 - 📊 **Context / Token Budget Viewer**: See exactly how your context window is being used with a color-coded stacked bar chart, per-section token counts, percentages, and expandable raw prompt text. Access it via the analytics button in the chat input area.
 - 🌿 **Chat Branching**: Fork the conversation from any message to explore alternate storylines. Branch metadata is tracked and displayed in the session history dialog.
+- 🖥️ **Windows Installer Now Stable**: The Windows `.exe` installer has graduated from alpha — fully tested and production-ready.
 
 <details>
 <summary><strong>📦 Previous Releases</strong></summary>
