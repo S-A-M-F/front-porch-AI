@@ -2,18 +2,18 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:kobold_character_card_manager/providers/app_state.dart';
+import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:kobold_character_card_manager/services/character_repository.dart';
-import 'package:kobold_character_card_manager/services/world_repository.dart';
-import 'package:kobold_character_card_manager/services/folder_service.dart';
-import 'package:kobold_character_card_manager/ui/pages/chat_page.dart';
-import 'package:kobold_character_card_manager/services/chat_service.dart';
-import 'package:kobold_character_card_manager/services/v2_card_service.dart';
-import 'package:kobold_character_card_manager/ui/pages/edit_character_page.dart';
-import 'package:kobold_character_card_manager/ui/dialogs/tag_dialog.dart';
-import 'package:kobold_character_card_manager/models/character_card.dart';
+import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
+import 'package:front_porch_ai/services/folder_service.dart';
+import 'package:front_porch_ai/ui/pages/chat_page.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/services/v2_card_service.dart';
+import 'package:front_porch_ai/ui/pages/edit_character_page.dart';
+import 'package:front_porch_ai/ui/dialogs/tag_dialog.dart';
+import 'package:front_porch_ai/models/character_card.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class HomePage extends StatefulWidget {

@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:kobold_character_card_manager/services/hardware_service.dart';
+import 'package:front_porch_ai/services/hardware_service.dart';
 
 class OptimizationResult {
   final int gpuLayers;

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:image/image.dart' as img;
-import 'package:kobold_character_card_manager/models/character_card.dart';
-import 'package:kobold_character_card_manager/models/lorebook.dart';
+import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/lorebook.dart';
 
 class V2CardService {
   Future<void> saveCardAsPng(CharacterCard card, String outputPath, String? sourceImagePath) async {

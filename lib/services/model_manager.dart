@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
-import 'package:kobold_character_card_manager/services/storage_service.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 
 class ModelManager extends ChangeNotifier {
   final StorageService _storageService;

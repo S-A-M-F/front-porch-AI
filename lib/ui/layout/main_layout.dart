@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:kobold_character_card_manager/ui/widgets/sidebar.dart';
-import 'package:kobold_character_card_manager/ui/pages/home_page.dart';
-import 'package:kobold_character_card_manager/ui/pages/create_character_page.dart';
-import 'package:kobold_character_card_manager/ui/pages/model_manager_page.dart';
-import 'package:kobold_character_card_manager/ui/pages/settings_page.dart';
-import 'package:kobold_character_card_manager/ui/pages/user_persona_page.dart';
-import 'package:kobold_character_card_manager/ui/pages/world_management_page.dart';
+import 'package:front_porch_ai/ui/widgets/sidebar.dart';
+import 'package:front_porch_ai/ui/pages/home_page.dart';
+import 'package:front_porch_ai/ui/pages/create_character_page.dart';
+import 'package:front_porch_ai/ui/pages/model_manager_page.dart';
+import 'package:front_porch_ai/ui/pages/settings_page.dart';
+import 'package:front_porch_ai/ui/pages/user_persona_page.dart';
+import 'package:front_porch_ai/ui/pages/world_management_page.dart';
 import 'package:provider/provider.dart';
-import 'package:kobold_character_card_manager/providers/app_state.dart';
+import 'package:front_porch_ai/providers/app_state.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});

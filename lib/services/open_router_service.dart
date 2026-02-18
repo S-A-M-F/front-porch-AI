@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:kobold_character_card_manager/services/llm_service.dart';
+import 'package:front_porch_ai/services/llm_service.dart';
 
 /// Metadata for a remote model, including pricing.
 class RemoteModelInfo {

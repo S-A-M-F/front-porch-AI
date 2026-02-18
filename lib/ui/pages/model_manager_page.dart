@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:kobold_character_card_manager/services/model_manager.dart';
+import 'package:front_porch_ai/services/model_manager.dart';
 
 class ModelManagerPage extends StatefulWidget {
   const ModelManagerPage({super.key});

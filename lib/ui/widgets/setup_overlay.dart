@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:kobold_character_card_manager/services/setup_service.dart';
-import 'package:kobold_character_card_manager/services/backend_manager.dart';
+import 'package:front_porch_ai/services/setup_service.dart';
+import 'package:front_porch_ai/services/backend_manager.dart';
 
 class SetupOverlay extends StatefulWidget {
   const SetupOverlay({super.key});

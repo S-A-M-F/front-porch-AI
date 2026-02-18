@@ -5,24 +5,24 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import 'package:window_manager/window_manager.dart';
-import 'package:kobold_character_card_manager/providers/app_state.dart';
-import 'package:kobold_character_card_manager/ui/layout/main_layout.dart'; // Keep original import for MainLayout
-import 'package:kobold_character_card_manager/services/kobold_service.dart';
-import 'package:kobold_character_card_manager/services/open_router_service.dart';
-import 'package:kobold_character_card_manager/services/llm_provider.dart';
-import 'package:kobold_character_card_manager/services/character_repository.dart';
-import 'package:kobold_character_card_manager/services/backend_manager.dart';
-import 'package:kobold_character_card_manager/services/model_manager.dart';
-import 'package:kobold_character_card_manager/services/storage_service.dart';
-import 'package:kobold_character_card_manager/services/hardware_service.dart';
-import 'package:kobold_character_card_manager/services/chat_service.dart';
-import 'package:kobold_character_card_manager/services/user_persona_service.dart';
-import 'package:kobold_character_card_manager/services/world_repository.dart';
-import 'package:kobold_character_card_manager/services/setup_service.dart';
-import 'package:kobold_character_card_manager/services/folder_service.dart';
-import 'package:kobold_character_card_manager/services/update_service.dart';
-import 'package:kobold_character_card_manager/ui/widgets/setup_overlay.dart';
-import 'package:kobold_character_card_manager/ui/dialogs/update_dialog.dart';
+import 'package:front_porch_ai/providers/app_state.dart';
+import 'package:front_porch_ai/ui/layout/main_layout.dart'; // Keep original import for MainLayout
+import 'package:front_porch_ai/services/kobold_service.dart';
+import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/backend_manager.dart';
+import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/hardware_service.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
+import 'package:front_porch_ai/services/setup_service.dart';
+import 'package:front_porch_ai/services/folder_service.dart';
+import 'package:front_porch_ai/services/update_service.dart';
+import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
+import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();

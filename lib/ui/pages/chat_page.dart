@@ -1,13 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:kobold_character_card_manager/services/chat_service.dart';
-import 'package:kobold_character_card_manager/models/character_card.dart';
-import 'package:kobold_character_card_manager/ui/dialogs/edit_character_dialog.dart';
-import 'package:kobold_character_card_manager/ui/dialogs/chat_settings_dialog.dart';
-import 'package:kobold_character_card_manager/ui/dialogs/model_settings_dialog.dart';
-import 'package:kobold_character_card_manager/services/user_persona_service.dart';
-import 'package:kobold_character_card_manager/ui/dialogs/user_persona_dialog.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/ui/dialogs/edit_character_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/chat_settings_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/model_settings_dialog.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
+import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 
 class _StyledTextController extends TextEditingController {

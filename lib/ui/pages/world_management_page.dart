@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:kobold_character_card_manager/models/world.dart';
-import 'package:kobold_character_card_manager/models/lorebook.dart';
-import 'package:kobold_character_card_manager/services/world_repository.dart';
+import 'package:front_porch_ai/models/world.dart';
+import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
 
 class WorldManagementPage extends StatelessWidget {
   const WorldManagementPage({super.key});

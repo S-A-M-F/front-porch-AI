@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:kobold_character_card_manager/services/update_service.dart';
+import 'package:front_porch_ai/services/update_service.dart';
 
 /// Dialog shown when a new version is available.
 /// Three stages: prompt → downloading → ready to install.

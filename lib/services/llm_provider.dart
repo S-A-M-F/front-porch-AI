@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
-import 'package:kobold_character_card_manager/services/llm_service.dart';
-import 'package:kobold_character_card_manager/services/kobold_service.dart';
-import 'package:kobold_character_card_manager/services/open_router_service.dart';
-import 'package:kobold_character_card_manager/services/storage_service.dart';
+import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/kobold_service.dart';
+import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 
 /// The available backend types.
 enum BackendType { kobold, openRouter }

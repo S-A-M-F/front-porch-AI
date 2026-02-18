@@ -1,13 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kobold_character_card_manager/services/chat_service.dart';
-import 'package:kobold_character_card_manager/models/character_card.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/models/character_card.dart';
 import 'dart:io';
 import 'dart:convert';
-import 'package:kobold_character_card_manager/services/kobold_service.dart';
-import 'package:kobold_character_card_manager/services/user_persona_service.dart';
-import 'package:kobold_character_card_manager/services/storage_service.dart';
-import 'package:kobold_character_card_manager/services/world_repository.dart';
-import 'package:kobold_character_card_manager/models/world.dart';
+import 'package:front_porch_ai/services/kobold_service.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
+import 'package:front_porch_ai/models/world.dart';
 
 class MockKoboldService extends Fake implements KoboldService {
   @override

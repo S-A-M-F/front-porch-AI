@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:kobold_character_card_manager/models/character_card.dart';
-import 'package:kobold_character_card_manager/models/lorebook.dart';
-import 'package:kobold_character_card_manager/models/world.dart';
-import 'package:kobold_character_card_manager/services/v2_card_service.dart';
-import 'package:kobold_character_card_manager/services/world_repository.dart';
+import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/models/world.dart';
+import 'package:front_porch_ai/services/v2_card_service.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
 
 class CharacterRepository extends ChangeNotifier {
   final List<CharacterCard> _characters = [];

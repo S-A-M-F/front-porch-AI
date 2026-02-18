@@ -1,13 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kobold_character_card_manager/models/character_card.dart';
-import 'package:kobold_character_card_manager/models/lorebook.dart';
-import 'package:kobold_character_card_manager/services/chat_service.dart';
-import 'package:kobold_character_card_manager/services/kobold_service.dart';
-import 'package:kobold_character_card_manager/services/llm_service.dart';
-import 'package:kobold_character_card_manager/services/user_persona_service.dart';
-import 'package:kobold_character_card_manager/services/storage_service.dart';
-import 'package:kobold_character_card_manager/services/world_repository.dart';
-import 'package:kobold_character_card_manager/models/world.dart';
+import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/services/kobold_service.dart';
+import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
+import 'package:front_porch_ai/models/world.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 

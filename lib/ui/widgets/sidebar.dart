@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
-import 'package:kobold_character_card_manager/providers/app_state.dart';
-import 'package:kobold_character_card_manager/services/update_service.dart';
-import 'package:kobold_character_card_manager/ui/dialogs/update_dialog.dart';
+import 'package:front_porch_ai/providers/app_state.dart';
+import 'package:front_porch_ai/services/update_service.dart';
+import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 
 class Sidebar extends StatelessWidget {
   const Sidebar({super.key});

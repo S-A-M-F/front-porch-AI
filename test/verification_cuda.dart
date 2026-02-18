@@ -3,16 +3,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:kobold_character_card_manager/services/hardware_service.dart';
-import 'package:kobold_character_card_manager/ui/pages/settings_page.dart';
-import 'package:kobold_character_card_manager/services/storage_service.dart';
-import 'package:kobold_character_card_manager/services/kobold_service.dart';
-import 'package:kobold_character_card_manager/services/llm_service.dart';
-import 'package:kobold_character_card_manager/services/llm_provider.dart';
-import 'package:kobold_character_card_manager/services/open_router_service.dart';
-import 'package:kobold_character_card_manager/services/backend_manager.dart';
-import 'package:kobold_character_card_manager/services/model_manager.dart';
-import 'package:kobold_character_card_manager/providers/app_state.dart';
+import 'package:front_porch_ai/services/hardware_service.dart';
+import 'package:front_porch_ai/ui/pages/settings_page.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/kobold_service.dart';
+import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/backend_manager.dart';
+import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/providers/app_state.dart';
 
 // Mock Services
 class MockHardwareService extends ChangeNotifier implements HardwareService {

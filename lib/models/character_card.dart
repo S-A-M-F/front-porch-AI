@@ -1,4 +1,4 @@
-import 'package:kobold_character_card_manager/models/lorebook.dart';
+import 'package:front_porch_ai/models/lorebook.dart';
 
 class CharacterCard {
   String name;

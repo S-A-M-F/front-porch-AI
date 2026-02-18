@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart';
-import 'package:kobold_character_card_manager/services/model_manager.dart';
-import 'package:kobold_character_card_manager/services/storage_service.dart';
+import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
 

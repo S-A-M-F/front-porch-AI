@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:kobold_character_card_manager/models/character_card.dart';
-import 'package:kobold_character_card_manager/models/lorebook.dart';
-import 'package:kobold_character_card_manager/services/character_repository.dart';
-import 'package:kobold_character_card_manager/services/world_repository.dart';
+import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
 
 class EditCharacterDialog extends StatefulWidget {
   final CharacterCard character;

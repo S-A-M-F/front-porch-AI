@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:kobold_character_card_manager/services/user_persona_service.dart';
-import 'package:kobold_character_card_manager/utils/persona_colors.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
+import 'package:front_porch_ai/utils/persona_colors.dart';
 
 class UserPersonaDialog extends StatefulWidget {
   const UserPersonaDialog({super.key});
