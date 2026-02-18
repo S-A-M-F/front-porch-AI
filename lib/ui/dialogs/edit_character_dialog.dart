@@ -21,6 +21,8 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
   late TextEditingController _scenarioController;
   late TextEditingController _firstMessageController;
   late TextEditingController _mesExampleController;
+  late TextEditingController _systemPromptController;
+  late TextEditingController _postHistoryController;
   List<TextEditingController> _altGreetingControllers = [];
 
   late TabController _tabController;
@@ -36,6 +38,8 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     _scenarioController = TextEditingController(text: widget.character.scenario);
     _firstMessageController = TextEditingController(text: widget.character.firstMessage);
     _mesExampleController = TextEditingController(text: widget.character.mesExample);
+    _systemPromptController = TextEditingController(text: widget.character.systemPrompt);
+    _postHistoryController = TextEditingController(text: widget.character.postHistoryInstructions);
 
     _altGreetingControllers = widget.character.alternateGreetings
         .map((g) => TextEditingController(text: g))
@@ -59,6 +63,8 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     _scenarioController.dispose();
     _firstMessageController.dispose();
     _mesExampleController.dispose();
+    _systemPromptController.dispose();
+    _postHistoryController.dispose();
     for (final c in _altGreetingControllers) {
       c.dispose();
     }
@@ -143,6 +149,8 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     widget.character.scenario = _scenarioController.text;
     widget.character.firstMessage = _firstMessageController.text;
     widget.character.mesExample = _mesExampleController.text;
+    widget.character.systemPrompt = _systemPromptController.text;
+    widget.character.postHistoryInstructions = _postHistoryController.text;
     widget.character.alternateGreetings = _altGreetingControllers
         .map((c) => c.text)
         .where((t) => t.isNotEmpty)
@@ -444,6 +452,23 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
             maxLines: 5,
             expandable: true,
             hintText: '(Examples of chat dialog. Begin each example with <START> on a new line.)',
+          ),
+          const SizedBox(height: 24),
+          // System Prompt
+          _buildTextField(
+            controller: _systemPromptController,
+            label: 'System Prompt (optional)',
+            maxLines: 4,
+            expandable: true,
+            hintText: 'Custom system prompt for this character. If blank, the global system prompt is used.',
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _postHistoryController,
+            label: 'Post-History Instructions (optional)',
+            maxLines: 3,
+            expandable: true,
+            hintText: 'Instructions injected after chat history (jailbreak/reminder).',
           ),
         ],
       ),

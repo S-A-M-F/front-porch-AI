@@ -79,6 +79,8 @@ class V2CardService {
         scenario: data['scenario'] ?? jsonMap['scenario'] ?? '',
         firstMessage: data['first_mes'] ?? jsonMap['first_mes'] ?? '',
         mesExample: data['mes_example'] ?? jsonMap['mes_example'] ?? '',
+        systemPrompt: data['system_prompt'] ?? jsonMap['system_prompt'] ?? '',
+        postHistoryInstructions: data['post_history_instructions'] ?? jsonMap['post_history_instructions'] ?? '',
         alternateGreetings: (data['alternate_greetings'] ?? jsonMap['alternate_greetings']) != null
           ? List<String>.from(data['alternate_greetings'] ?? jsonMap['alternate_greetings'])
           : const [],

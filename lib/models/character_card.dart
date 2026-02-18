@@ -7,6 +7,8 @@ class CharacterCard {
   String scenario;
   String firstMessage;
   String mesExample;
+  String systemPrompt;
+  String postHistoryInstructions;
   List<String> alternateGreetings;
   List<String> tags;
   String? imagePath;
@@ -21,6 +23,8 @@ class CharacterCard {
     this.scenario = '',
     this.firstMessage = '',
     this.mesExample = '',
+    this.systemPrompt = '',
+    this.postHistoryInstructions = '',
     this.alternateGreetings = const [],
     this.tags = const [],
     this.imagePath,
@@ -44,6 +48,8 @@ class CharacterCard {
       'scenario': scenario,
       'first_mes': firstMessage,
       'mes_example': mesExample,
+      'system_prompt': systemPrompt,
+      'post_history_instructions': postHistoryInstructions,
       'alternate_greetings': alternateGreetings,
       'tags': tags,
       'character_book': lorebook?.toJson(),

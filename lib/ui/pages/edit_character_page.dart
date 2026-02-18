@@ -22,6 +22,8 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   late TextEditingController _scenarioController;
   late TextEditingController _firstMessageController;
   late TextEditingController _mesExampleController;
+  late TextEditingController _systemPromptController;
+  late TextEditingController _postHistoryController;
 
   late TabController _tabController;
   List<LorebookEntry> _loreEntries = [];
@@ -44,6 +46,10 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         TextEditingController(text: widget.character.firstMessage);
     _mesExampleController =
         TextEditingController(text: widget.character.mesExample);
+    _systemPromptController =
+        TextEditingController(text: widget.character.systemPrompt);
+    _postHistoryController =
+        TextEditingController(text: widget.character.postHistoryInstructions);
 
     if (widget.character.lorebook != null) {
       _loreEntries = List.from(widget.character.lorebook!.entries);
@@ -70,6 +76,8 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       _scenarioController,
       _firstMessageController,
       _mesExampleController,
+      _systemPromptController,
+      _postHistoryController,
     ]) {
       c.addListener(_updateTokenCount);
     }
@@ -87,6 +95,8 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     _scenarioController.dispose();
     _firstMessageController.dispose();
     _mesExampleController.dispose();
+    _systemPromptController.dispose();
+    _postHistoryController.dispose();
     for (final c in _altGreetingControllers) {
       c.dispose();
     }
@@ -101,7 +111,9 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         _personalityController.text.length +
         _scenarioController.text.length +
         _firstMessageController.text.length +
-        _mesExampleController.text.length;
+        _mesExampleController.text.length +
+        _systemPromptController.text.length +
+        _postHistoryController.text.length;
     for (final c in _altGreetingControllers) {
       totalChars += c.text.length;
     }
@@ -197,6 +209,8 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     widget.character.scenario = _scenarioController.text;
     widget.character.firstMessage = _firstMessageController.text;
     widget.character.mesExample = _mesExampleController.text;
+    widget.character.systemPrompt = _systemPromptController.text;
+    widget.character.postHistoryInstructions = _postHistoryController.text;
     widget.character.alternateGreetings = _altGreetingControllers
         .map((c) => c.text)
         .where((t) => t.isNotEmpty)
@@ -497,6 +511,23 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             maxLines: 6,
             expandable: true,
             hintText: '(Examples of chat dialog. Begin each example with <START> on a new line.)',
+          ),
+          const SizedBox(height: 24),
+          // System Prompt section
+          _buildTextField(
+            controller: _systemPromptController,
+            label: 'System Prompt (optional)',
+            maxLines: 4,
+            expandable: true,
+            hintText: 'Custom system prompt for this character. If blank, the global system prompt is used.',
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _postHistoryController,
+            label: 'Post-History Instructions (optional)',
+            maxLines: 3,
+            expandable: true,
+            hintText: 'Instructions injected after chat history (jailbreak/reminder).',
           ),
           const SizedBox(height: 24),
           // Tags section

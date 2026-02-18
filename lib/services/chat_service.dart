@@ -767,6 +767,9 @@ class ChatService extends ChangeNotifier {
       } else if (_activeGroup != null) {
         // Group mode, no custom prompt — use the group default
         systemPrompt = defaultGroupSystemPrompt;
+      } else if (speakingCharacter.systemPrompt.isNotEmpty) {
+        // Character has its own system prompt — use it
+        systemPrompt = speakingCharacter.systemPrompt;
       } else if (_storageService.systemPrompt.isNotEmpty) {
         // Single-char mode with a user-defined global prompt — respect it
         systemPrompt = _storageService.systemPrompt;
@@ -863,6 +866,12 @@ class ChatService extends ChangeNotifier {
         mesExampleBlock = '${speakingCharacter.replacePlaceholders(speakingCharacter.mesExample, userName: userName)}\n';
       }
 
+      // Build post-history instructions block
+      String postHistoryBlock = '';
+      if (speakingCharacter.postHistoryInstructions.isNotEmpty) {
+        postHistoryBlock = '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
+      }
+
       final prompt = "$systemPrompt\n"
           "$loreContent"
           "$personaBlock\n"
@@ -870,6 +879,7 @@ class ChatService extends ChangeNotifier {
           "$mesExampleBlock"
           "<START>\n"
           "$history"
+          "$postHistoryBlock"
           "$suffix";
 
       // Stop sequences: include all character names + user

@@ -23,6 +23,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   final _scenarioController = TextEditingController();
   final _firstMessageController = TextEditingController();
   final _mesExampleController = TextEditingController();
+  final _systemPromptController = TextEditingController();
+  final _postHistoryController = TextEditingController();
   final List<TextEditingController> _altGreetingControllers = [];
   String? _imagePath;
 
@@ -39,6 +41,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       _scenarioController,
       _firstMessageController,
       _mesExampleController,
+      _systemPromptController,
+      _postHistoryController,
     ]) {
       c.addListener(_updateTokenCount);
     }
@@ -50,7 +54,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         _personalityController.text.length +
         _scenarioController.text.length +
         _firstMessageController.text.length +
-        _mesExampleController.text.length;
+        _mesExampleController.text.length +
+        _systemPromptController.text.length +
+        _postHistoryController.text.length;
     for (final c in _altGreetingControllers) {
       totalChars += c.text.length;
     }
@@ -104,6 +110,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           scenario: _scenarioController.text,
           firstMessage: _firstMessageController.text,
           mesExample: _mesExampleController.text,
+          systemPrompt: _systemPromptController.text,
+          postHistoryInstructions: _postHistoryController.text,
           alternateGreetings: _altGreetingControllers
               .map((c) => c.text)
               .where((t) => t.isNotEmpty)
@@ -399,6 +407,23 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                           label: 'Example Dialogues',
                           hint: '(Examples of chat dialog. Begin each example with <START> on a new line.)',
                           maxLines: 6,
+                          expandable: true,
+                        ),
+                        const SizedBox(height: 24),
+                        // System Prompt section
+                        _buildTextField(
+                          controller: _systemPromptController,
+                          label: 'System Prompt (optional)',
+                          hint: 'Custom system prompt for this character. If blank, the global system prompt is used.',
+                          maxLines: 4,
+                          expandable: true,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _postHistoryController,
+                          label: 'Post-History Instructions (optional)',
+                          hint: 'Instructions injected after chat history (jailbreak/reminder).',
+                          maxLines: 3,
                           expandable: true,
                         ),
                       ],
