@@ -138,6 +138,10 @@ class ChatService extends ChangeNotifier {
   Map<String, int> _lastPromptBudget = {};
   String _lastAssembledPrompt = '';
 
+  // ── Chat Branching ──
+  String? _parentSessionId;
+  int? _forkIndex;
+
   /// Default system prompt for group chats, designed to prevent characters
   /// from speaking for each other and maintain turn discipline.
   static const String defaultGroupSystemPrompt =
@@ -249,6 +253,8 @@ class ChatService extends ChangeNotifier {
   Map<String, int> get lastPromptBudget => _lastPromptBudget;
   String get lastAssembledPrompt => _lastAssembledPrompt;
   int get contextSize => _storageService.contextSize;
+  String? get parentSessionId => _parentSessionId;
+  int? get forkIndex => _forkIndex;
 
   void setAuthorNote(String note, {int? depth}) {
     _authorNote = note;
@@ -438,6 +444,8 @@ class ChatService extends ChangeNotifier {
       'messages': _messages.map((m) => m.toJson()).toList(),
       'author_note': _authorNote,
       'author_note_depth': _authorNoteDepth,
+      if (_parentSessionId != null) 'parent_session': _parentSessionId,
+      if (_forkIndex != null) 'fork_index': _forkIndex,
     };
     await file.writeAsString(jsonEncode(envelope));
   }
@@ -467,11 +475,15 @@ class ChatService extends ChangeNotifier {
         _messages.addAll(decoded.map((m) => ChatMessage.fromJson(m)));
         _authorNote = '';
         _authorNoteDepth = 4;
+        _parentSessionId = null;
+        _forkIndex = null;
       } else if (decoded is Map) {
         final List<dynamic> jsonList = decoded['messages'] ?? [];
         _messages.addAll(jsonList.map((m) => ChatMessage.fromJson(m)));
         _authorNote = decoded['author_note'] ?? '';
         _authorNoteDepth = decoded['author_note_depth'] ?? 4;
+        _parentSessionId = decoded['parent_session'];
+        _forkIndex = decoded['fork_index'];
       }
       
       if (_messages.isNotEmpty) {
@@ -499,12 +511,23 @@ class ChatService extends ChangeNotifier {
       
       // Peek at first message for a preview?
       String preview = "New Conversation";
+      String? parentSession;
+      int? forkIdx;
       try {
         final content = await (f as File).readAsString();
-        final List<dynamic> jsonList = jsonDecode(content);
-        if (jsonList.length > 1) {
-          // Use the first user message or second message as preview
-          preview = jsonList[1]['text'];
+        final decoded = jsonDecode(content);
+        List<dynamic> msgList;
+        if (decoded is List) {
+          msgList = decoded;
+        } else if (decoded is Map) {
+          msgList = decoded['messages'] ?? [];
+          parentSession = decoded['parent_session'];
+          forkIdx = decoded['fork_index'];
+        } else {
+          msgList = [];
+        }
+        if (msgList.length > 1) {
+          preview = msgList[1]['text'] ?? '';
           if (preview.length > 50) preview = '${preview.substring(0, 50)}...';
         }
       } catch (_) {}
@@ -513,6 +536,8 @@ class ChatService extends ChangeNotifier {
         'id': id,
         'date': date,
         'preview': preview,
+        if (parentSession != null) 'parent_session': parentSession,
+        if (forkIdx != null) 'fork_index': forkIdx,
       });
     }
 
@@ -538,11 +563,15 @@ class ChatService extends ChangeNotifier {
         _messages.addAll(decoded.map((m) => ChatMessage.fromJson(m)));
         _authorNote = '';
         _authorNoteDepth = 4;
+        _parentSessionId = null;
+        _forkIndex = null;
       } else if (decoded is Map) {
         final List<dynamic> jsonList = decoded['messages'] ?? [];
         _messages.addAll(jsonList.map((m) => ChatMessage.fromJson(m)));
         _authorNote = decoded['author_note'] ?? '';
         _authorNoteDepth = decoded['author_note_depth'] ?? 4;
+        _parentSessionId = decoded['parent_session'];
+        _forkIndex = decoded['fork_index'];
       }
       _currentSessionId = sessionId;
       
@@ -553,6 +582,35 @@ class ChatService extends ChangeNotifier {
     } catch (e) {
       print('Error loading session $sessionId: $e');
     }
+  }
+
+  /// Create a new session by forking from message at [messageIndex].
+  /// Copies messages 0..messageIndex into a new session and switches to it.
+  Future<void> forkFromMessage(int messageIndex) async {
+    if ((_activeCharacter == null && _activeGroup == null) || _currentSessionId == null) return;
+    if (messageIndex < 0 || messageIndex >= _messages.length) return;
+
+    final oldSessionId = _currentSessionId!;
+    final forkedMessages = _messages.sublist(0, messageIndex + 1).map((m) =>
+      ChatMessage(
+        text: m.text,
+        sender: m.sender,
+        isUser: m.isUser,
+        characterId: m.characterId,
+        swipes: List.from(m.swipes),
+        swipeIndex: m.swipeIndex,
+        swipeDurations: List.from(m.swipeDurations),
+      )
+    ).toList();
+
+    _messages.clear();
+    _messages.addAll(forkedMessages);
+    _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
+    _parentSessionId = oldSessionId;
+    _forkIndex = messageIndex;
+
+    await _saveChat();
+    notifyListeners();
   }
 
   // Import chat from SillyTavern JSON format

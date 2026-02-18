@@ -480,10 +480,22 @@ class _ChatPageState extends State<ChatPage> {
                   final date = s['date'] as DateTime;
                   final dateStr = '${date.year}-${date.month}-${date.day} ${date.hour}:${date.minute.toString().padLeft(2, "0")}';
                   final isCurrent = s['id'] == chatService.currentSessionId;
+                  final isBranch = s['parent_session'] != null;
 
                   return ListTile(
+                    leading: isBranch 
+                      ? const Icon(Icons.call_split, size: 18, color: Colors.blueAccent) 
+                      : null,
                     title: Text(s['preview'], style: const TextStyle(fontSize: 14)),
-                    subtitle: Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                        if (isBranch)
+                          Text('↳ Branched at message #${(s['fork_index'] ?? 0) + 1}',
+                            style: const TextStyle(fontSize: 11, color: Colors.blueAccent)),
+                      ],
+                    ),
                     trailing: isCurrent ? const Icon(Icons.check, color: Colors.greenAccent) : null,
                     onTap: () {
                       chatService.loadSession(s['id']);
@@ -994,6 +1006,16 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         const SizedBox(width: 8),
                       if (message.sender != 'System') 
                         IconButton(
+                          icon: const Icon(Icons.call_split, size: 16, color: Colors.white38),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Fork from here',
+                          onPressed: () => _showForkConfirmation(context, index),
+                        ),
+                      if (message.sender != 'System')
+                        const SizedBox(width: 8),
+                      if (message.sender != 'System') 
+                        IconButton(
                           icon: const Icon(Icons.delete_outline, size: 16, color: Colors.white38),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
@@ -1258,6 +1280,44 @@ class _MessageBubbleState extends State<_MessageBubble> {
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showForkConfirmation(BuildContext context, int index) {
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        title: Row(
+          children: const [
+            Icon(Icons.call_split, color: Colors.blueAccent, size: 22),
+            SizedBox(width: 8),
+            Text('Fork Conversation'),
+          ],
+        ),
+        content: Text('Create a new branch from message #${index + 1}?\n\nThe current chat will remain unchanged. A new conversation will be created with messages up to this point.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              chatService.forkFromMessage(index);
+              if (mounted) {
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(content: Text('Conversation forked! You are now on the new branch.')),
+                );
+              }
+            },
+            icon: const Icon(Icons.call_split, size: 18),
+            label: const Text('Fork'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
           ),
         ],
       ),
