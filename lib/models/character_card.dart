@@ -15,6 +15,7 @@ class CharacterCard {
   String? folderId;
   Lorebook? lorebook;
   List<String> worldNames;
+  String? ttsVoice; // Piper voice key for per-character TTS
 
   CharacterCard({
     required this.name,
@@ -31,6 +32,7 @@ class CharacterCard {
     this.folderId,
     this.lorebook,
     this.worldNames = const [],
+    this.ttsVoice,
   });
 
   /// All greetings: primary first message + alternates
@@ -54,6 +56,7 @@ class CharacterCard {
       'tags': tags,
       'character_book': lorebook?.toJson(),
       'world_names': worldNames,
+      if (ttsVoice != null) 'tts_voice': ttsVoice,
     };
   }
 

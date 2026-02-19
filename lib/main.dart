@@ -22,6 +22,8 @@ import 'package:front_porch_ai/services/setup_service.dart';
 import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
+import 'package:front_porch_ai/services/voice_manager.dart';
+import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 
@@ -117,6 +119,15 @@ void main(List<String> args) async {
               previous ?? SetupService(storage, backend, kobold),
         ),
         ChangeNotifierProvider(create: (_) => UpdateService()),
+        ChangeNotifierProvider(create: (_) => VoiceManager()),
+        ChangeNotifierProxyProvider2<StorageService, VoiceManager, TtsService>(
+          create: (context) => TtsService(
+            Provider.of<StorageService>(context, listen: false),
+            Provider.of<VoiceManager>(context, listen: false),
+          ),
+          update: (context, storage, voiceManager, previous) =>
+              previous ?? TtsService(storage, voiceManager),
+        ),
       ],
       child: const MyApp(),
     ),

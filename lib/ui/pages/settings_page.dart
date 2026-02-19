@@ -15,6 +15,7 @@ import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -485,6 +486,50 @@ class _SettingsPageState extends State<SettingsPage> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onChanged: (val) => storageService.setSystemPrompt(val),
+          ),
+
+          const SizedBox(height: 24),
+          _buildSectionHeader('Text-to-Speech', context),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.volume_up, color: Colors.blueAccent, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_engineDisplayName(storageService.ttsEngine), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        storageService.ttsEnabled
+                            ? 'Enabled — Voice: ${storageService.ttsVoiceModel.isEmpty ? "Not set" : storageService.ttsVoiceModel}'
+                            : 'Disabled',
+                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      ),
+                    ],
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (_) => const TtsSettingsDialog(),
+                  ),
+                  icon: const Icon(Icons.settings, size: 16),
+                  label: const Text('Configure'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                ),
+              ],
+            ),
           ),
 
           const SizedBox(height: 24),
@@ -1550,5 +1595,14 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       },
     );
+  }
+}
+
+String _engineDisplayName(String engineId) {
+  switch (engineId) {
+    case 'kokoro': return 'Kokoro TTS';
+    case 'openai': return 'OpenAI TTS';
+    case 'piper': return 'Piper TTS';
+    default: return 'TTS';
   }
 }

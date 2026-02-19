@@ -93,6 +93,7 @@ class V2CardService {
         worldNames: (data['world_names'] ?? jsonMap['world_names']) != null 
           ? List<String>.from(data['world_names'] ?? jsonMap['world_names']) 
           : const [],
+        ttsVoice: data['tts_voice'] ?? jsonMap['tts_voice'],
         imagePath: path,
       );
     } catch (e) {

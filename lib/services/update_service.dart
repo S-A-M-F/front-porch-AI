@@ -182,23 +182,31 @@ class UpdateService extends ChangeNotifier {
   /// Run the update immediately and exit (or relaunch on Linux).
   Future<void> installNow() async {
     if (_pendingInstallerPath == null) return;
-    if (Platform.isLinux) {
-      await _replaceAppImage(_pendingInstallerPath!);
-      await _relaunchAppImage();
-    } else {
-      await _launchWindowsInstaller(_pendingInstallerPath!);
+    try {
+      if (Platform.isLinux) {
+        await _replaceAppImage(_pendingInstallerPath!);
+        await _relaunchAppImage();
+      } else {
+        await _launchWindowsInstaller(_pendingInstallerPath!);
+      }
+      exit(0);
+    } catch (e) {
+      debugPrint('Install now failed: $e');
     }
-    exit(0);
   }
 
   /// Run the pending update on app close.
   /// Call this from the window close handler.
   Future<void> installOnClose() async {
     if (_pendingInstallerPath == null) return;
-    if (Platform.isLinux) {
-      await _replaceAppImage(_pendingInstallerPath!);
-    } else {
-      await _launchWindowsInstaller(_pendingInstallerPath!);
+    try {
+      if (Platform.isLinux) {
+        await _replaceAppImage(_pendingInstallerPath!);
+      } else {
+        await _launchWindowsInstaller(_pendingInstallerPath!);
+      }
+    } catch (e) {
+      debugPrint('Install on close failed: $e');
     }
   }
 
@@ -212,15 +220,39 @@ class UpdateService extends ChangeNotifier {
   }
 
   /// Replace the currently running AppImage with the downloaded update.
+  /// Uses rm + cp instead of Dart's File.copy() because the destination
+  /// may be a running executable — deleting first avoids write conflicts.
   Future<void> _replaceAppImage(String downloadedPath) async {
-    final currentAppImage = Platform.environment['APPIMAGE']!;
-    await File(downloadedPath).copy(currentAppImage);
+    final currentAppImage = Platform.environment['APPIMAGE'];
+    if (currentAppImage == null || currentAppImage.isEmpty) {
+      debugPrint('APPIMAGE env var not set — cannot replace');
+      return;
+    }
+    debugPrint('Replacing AppImage: $currentAppImage with $downloadedPath');
+
+    // Delete the old AppImage first (Linux allows unlinking running executables)
+    final rmResult = await Process.run('rm', ['-f', currentAppImage]);
+    if (rmResult.exitCode != 0) {
+      debugPrint('rm failed: ${rmResult.stderr}');
+    }
+
+    // Copy the new AppImage to the original location
+    final cpResult = await Process.run('cp', [downloadedPath, currentAppImage]);
+    if (cpResult.exitCode != 0) {
+      debugPrint('cp failed: ${cpResult.stderr}');
+      throw Exception('Failed to copy new AppImage: ${cpResult.stderr}');
+    }
+
+    // Make executable
     await Process.run('chmod', ['+x', currentAppImage]);
+    debugPrint('AppImage replaced successfully');
   }
 
   /// Relaunch the AppImage after replacing it.
   Future<void> _relaunchAppImage() async {
-    final currentAppImage = Platform.environment['APPIMAGE']!;
+    final currentAppImage = Platform.environment['APPIMAGE'];
+    if (currentAppImage == null || currentAppImage.isEmpty) return;
+    debugPrint('Relaunching AppImage: $currentAppImage');
     await Process.start(
       currentAppImage, [],
       mode: ProcessStartMode.detached,

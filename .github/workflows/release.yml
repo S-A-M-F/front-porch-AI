@@ -44,7 +44,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev libwebkit2gtk-4.1-dev ninja-build pkg-config cmake
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev libwebkit2gtk-4.1-dev ninja-build pkg-config cmake libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 
       - name: Sync Version from Tag
         shell: bash
@@ -95,6 +95,78 @@ jobs:
 
       - name: Build Application
         run: flutter build ${{ matrix.platform }} --release
+
+      - name: Bundle TTS Engines (Piper + Kokoro)
+        shell: bash
+        run: |
+          PIPER_VERSION="1.4.1"
+          DEST="${{ matrix.build_path }}/piper"
+          PYLIB="$DEST/pylib"
+          mkdir -p "$PYLIB"
+
+          # Install all Python TTS dependencies into a pylib/ subdirectory
+          # to avoid collisions (piper_tts creates a piper/ module directory
+          # that would conflict with the wrapper script named 'piper').
+          python3 -m pip install --target="$PYLIB" \
+            piper_tts==${PIPER_VERSION} \
+            kokoro-onnx \
+            soundfile \
+            --only-binary=:all:
+
+          # Create wrapper scripts for Piper invocation
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            cat > "$DEST/piper.bat" << 'BATCH'
+          @echo off
+          set SCRIPT_DIR=%~dp0
+          set PYTHONPATH=%SCRIPT_DIR%pylib
+          python -m piper %*
+          BATCH
+          else
+            cat > "$DEST/piper" << 'SHELL'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          export PYTHONPATH="$SCRIPT_DIR/pylib"
+          python3 -m piper "$@"
+          SHELL
+            chmod +x "$DEST/piper"
+          fi
+
+          # Bundle the Kokoro TTS helper script
+          cp kokoro_tts.py "$DEST/kokoro_tts.py"
+
+          # Create a Kokoro wrapper script
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            cat > "$DEST/kokoro_tts.bat" << 'BATCH'
+          @echo off
+          set SCRIPT_DIR=%~dp0
+          set PYTHONPATH=%SCRIPT_DIR%pylib
+          python "%SCRIPT_DIR%\kokoro_tts.py" %*
+          BATCH
+          else
+            cat > "$DEST/kokoro_tts" << 'SHELL'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          export PYTHONPATH="$SCRIPT_DIR/pylib"
+          python3 "$SCRIPT_DIR/kokoro_tts.py" "$@"
+          SHELL
+            chmod +x "$DEST/kokoro_tts"
+          fi
+
+          # For macOS, also copy into the app bundle Resources
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app 2>/dev/null | head -1)
+            if [ -n "$APP_NAME" ]; then
+              RESOURCES="$APP_NAME/Contents/Resources/piper"
+              mkdir -p "$RESOURCES"
+              cp -R "$DEST/"* "$RESOURCES/"
+              chmod +x "$RESOURCES/piper" 2>/dev/null || true
+              chmod +x "$RESOURCES/kokoro_tts" 2>/dev/null || true
+            fi
+          fi
+
+          echo "TTS engines bundled at: $DEST"
+          ls -la "$DEST"
+
 
       - name: Package Windows (zip)
         if: matrix.platform == 'windows'

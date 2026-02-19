@@ -141,6 +141,16 @@ class MockStorageService extends ChangeNotifier implements StorageService {
   @override Directory get modelsDir => Directory('');
   @override bool? get useCublas => false;
   @override bool? get useVulkan => false;
+
+  // TTS settings
+  @override bool get ttsEnabled => false;
+  @override String get ttsVoiceModel => '';
+  @override double get ttsSpeechRate => 1.0;
+  @override bool get ttsAutoPlay => false;
+  @override Future<void> setTtsEnabled(bool value) async {}
+  @override Future<void> setTtsVoiceModel(String value) async {}
+  @override Future<void> setTtsSpeechRate(double value) async {}
+  @override Future<void> setTtsAutoPlay(bool value) async {}
 }
 
 class MockWorldRepository extends ChangeNotifier implements WorldRepository {

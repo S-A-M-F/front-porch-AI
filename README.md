@@ -10,16 +10,28 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
-## 🆕 What's New in V0.6.0
+## 🆕 What's New in V0.7.0
+
+- 🔊 **Multi-Engine Text-to-Speech**: Three TTS engines to choose from — all accessible from the new TTS button in the chat sidebar:
+  - **Kokoro TTS** (local, default) — High-quality offline TTS powered by kokoro-onnx. 50+ voices across 9 languages. Models auto-download on first use.
+  - **OpenAI TTS** (cloud) — Premium cloud-based TTS with 10 voices (alloy, ash, coral, echo, nova, etc.). Supports tts-1 and tts-1-hd models. Requires API key.
+  - **Piper TTS** (fallback) — Lightweight local engine with downloadable voice packs.
+- ⚡ **Parallel TTS Generation**: Sentences are generated concurrently for dramatically faster audio output. Configurable worker count (1–16) based on your CPU cores.
+- 🔁 **TTS Audio Caching**: Replay the same message instantly without regenerating. Cache auto-invalidates on message edits, voice changes, or engine switches.
+- ⏹️ **Stop Generation**: Cancel in-progress TTS generation with a stop button next to the progress spinner.
+- 🎛️ **TTS Settings in Chat**: Quick-access TTS configuration button in the chat sidebar alongside Chat and Model settings.
+- 🔄 **Linux AppImage Self-Update**: AppImage users are automatically notified when a new version is available. Download and install updates with a single click — the app replaces itself and relaunches seamlessly.
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.6.0
 
 - 🎭 **Per-Character System Prompts**: Each character can now carry its own system prompt and post-history instructions. Priority chain: Character → Group → Global → Backend Default. Define character-specific behavior without touching global settings.
 - 📝 **Author's Note / Memory**: A per-session note injected into the prompt at a configurable depth (1–20 messages back). Edit it right from the sidebar — automatically saved and restored with each session.
 - 📊 **Context / Token Budget Viewer**: See exactly how your context window is being used with a color-coded stacked bar chart, per-section token counts, percentages, and expandable raw prompt text. Access it via the analytics button in the chat input area.
 - 🌿 **Chat Branching**: Fork the conversation from any message to explore alternate storylines. Branch metadata is tracked and displayed in the session history dialog.
 - 🖥️ **Windows Installer Now Stable**: The Windows `.exe` installer has graduated from alpha — fully tested and production-ready.
-
-<details>
-<summary><strong>📦 Previous Releases</strong></summary>
 
 ### What's New in V0.5.0
 

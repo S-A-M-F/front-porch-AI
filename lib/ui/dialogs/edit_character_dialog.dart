@@ -4,6 +4,8 @@ import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
+import 'package:front_porch_ai/services/voice_manager.dart';
+import 'package:front_porch_ai/ui/dialogs/voice_browser_dialog.dart';
 
 class EditCharacterDialog extends StatefulWidget {
   final CharacterCard character;
@@ -28,6 +30,8 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
   late TabController _tabController;
   List<LorebookEntry> _loreEntries = [];
   List<String> _selectedWorldNames = [];
+  String? _selectedTtsVoice;
+  List<String> _installedVoices = [];
 
   @override
   void initState() {
@@ -52,7 +56,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     }
 
     _selectedWorldNames = List.from(widget.character.worldNames);
+    _selectedTtsVoice = widget.character.ttsVoice;
     _tabController = TabController(length: 3, vsync: this);
+    _loadInstalledVoices();
   }
 
   @override
@@ -70,6 +76,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     }
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadInstalledVoices() async {
+    final vm = Provider.of<VoiceManager>(context, listen: false);
+    final voices = await vm.listInstalledVoices();
+    if (mounted) setState(() => _installedVoices = voices);
   }
 
   void _openExpandedEditor(String title, TextEditingController controller, {String? hintText}) {
@@ -156,6 +168,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
         .where((t) => t.isNotEmpty)
         .toList();
     widget.character.worldNames = _selectedWorldNames;
+    widget.character.ttsVoice = _selectedTtsVoice;
 
     // Update Lorebook
     if (widget.character.lorebook == null) {
@@ -469,6 +482,57 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
             maxLines: 3,
             expandable: true,
             hintText: 'Instructions injected after chat history (jailbreak/reminder).',
+          ),
+          const SizedBox(height: 24),
+          // TTS Voice selector
+          const Text('TTS Voice', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white54)),
+          const SizedBox(height: 4),
+          const Text('Optional. Overrides the global default voice for this character.',
+              style: TextStyle(fontSize: 11, color: Colors.white30)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedTtsVoice,
+                  dropdownColor: const Color(0xFF374151),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Use global default',
+                    hintStyle: const TextStyle(color: Colors.white30),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String>(
+                      value: null,
+                      child: Text('Use global default', style: TextStyle(color: Colors.white54)),
+                    ),
+                    ..._installedVoices.map((v) =>
+                      DropdownMenuItem(value: v, child: Text(v, overflow: TextOverflow.ellipsis)),
+                    ),
+                  ],
+                  onChanged: (val) => setState(() => _selectedTtsVoice = val),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.download, color: Colors.blueAccent, size: 20),
+                tooltip: 'Browse & download voices',
+                onPressed: () async {
+                  await showDialog(
+                    context: context,
+                    builder: (_) => const VoiceBrowserDialog(),
+                  );
+                  await _loadInstalledVoices();
+                },
+              ),
+            ],
           ),
         ],
       ),

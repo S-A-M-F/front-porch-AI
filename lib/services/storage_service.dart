@@ -54,6 +54,16 @@ class StorageService extends ChangeNotifier {
   bool _reasoningEnabled = false;
   String _reasoningEffort = 'medium'; // 'low', 'medium', 'high'
 
+  // TTS settings
+  bool _ttsEnabled = false;
+  String _ttsEngine = 'kokoro'; // 'kokoro', 'openai', 'piper'
+  String _ttsVoiceModel = ''; // voice key, e.g. 'af_heart' or 'en_US-lessac-medium'
+  double _ttsSpeechRate = 1.0;
+  bool _ttsAutoPlay = false;
+  String _openaiTtsApiKey = '';
+  String _openaiTtsModel = 'tts-1'; // 'tts-1' or 'tts-1-hd'
+  int _ttsConcurrency = Platform.numberOfProcessors.clamp(1, 16);
+
 
   // Getters
   String get systemPrompt => _systemPrompt;
@@ -83,6 +93,14 @@ class StorageService extends ChangeNotifier {
   String get remoteModelName => _remoteModelName;
   bool get reasoningEnabled => _reasoningEnabled;
   String get reasoningEffort => _reasoningEffort;
+  bool get ttsEnabled => _ttsEnabled;
+  String get ttsEngine => _ttsEngine;
+  String get ttsVoiceModel => _ttsVoiceModel;
+  double get ttsSpeechRate => _ttsSpeechRate;
+  bool get ttsAutoPlay => _ttsAutoPlay;
+  String get openaiTtsApiKey => _openaiTtsApiKey;
+  String get openaiTtsModel => _openaiTtsModel;
+  int get ttsConcurrency => _ttsConcurrency;
 
   StorageService() {
     _init();
@@ -129,6 +147,16 @@ class StorageService extends ChangeNotifier {
     _remoteModelName = _prefs?.getString('remote_model_name') ?? '';
     _reasoningEnabled = _prefs?.getBool('reasoning_enabled') ?? false;
     _reasoningEffort = _prefs?.getString('reasoning_effort') ?? 'medium';
+
+    // TTS settings
+    _ttsEnabled = _prefs?.getBool('tts_enabled') ?? false;
+    _ttsEngine = _prefs?.getString('tts_engine') ?? 'kokoro';
+    _ttsVoiceModel = _prefs?.getString('tts_voice_model') ?? '';
+    _ttsSpeechRate = _prefs?.getDouble('tts_speech_rate') ?? 1.0;
+    _ttsAutoPlay = _prefs?.getBool('tts_auto_play') ?? false;
+    _openaiTtsApiKey = _prefs?.getString('openai_tts_api_key') ?? '';
+    _ttsConcurrency = _prefs?.getInt('tts_concurrency') ?? Platform.numberOfProcessors.clamp(1, 16);
+    _openaiTtsModel = _prefs?.getString('openai_tts_model') ?? 'tts-1';
 
     // Load saved prompts
     final promptsJson = _prefs?.getString('saved_prompts');
@@ -352,6 +380,55 @@ class StorageService extends ChangeNotifier {
   Future<void> setReasoningEffort(String value) async {
     _reasoningEffort = value;
     await _prefs?.setString('reasoning_effort', value);
+    notifyListeners();
+  }
+
+  // TTS setters
+  Future<void> setTtsEnabled(bool value) async {
+    _ttsEnabled = value;
+    await _prefs?.setBool('tts_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setTtsEngine(String value) async {
+    _ttsEngine = value;
+    await _prefs?.setString('tts_engine', value);
+    notifyListeners();
+  }
+
+  Future<void> setTtsVoiceModel(String value) async {
+    _ttsVoiceModel = value;
+    await _prefs?.setString('tts_voice_model', value);
+    notifyListeners();
+  }
+
+  Future<void> setTtsSpeechRate(double value) async {
+    _ttsSpeechRate = value;
+    await _prefs?.setDouble('tts_speech_rate', value);
+    notifyListeners();
+  }
+
+  Future<void> setTtsAutoPlay(bool value) async {
+    _ttsAutoPlay = value;
+    await _prefs?.setBool('tts_auto_play', value);
+    notifyListeners();
+  }
+
+  Future<void> setOpenaiTtsApiKey(String value) async {
+    _openaiTtsApiKey = value;
+    await _prefs?.setString('openai_tts_api_key', value);
+    notifyListeners();
+  }
+
+  Future<void> setOpenaiTtsModel(String value) async {
+    _openaiTtsModel = value;
+    await _prefs?.setString('openai_tts_model', value);
+    notifyListeners();
+  }
+
+  Future<void> setTtsConcurrency(int value) async {
+    _ttsConcurrency = value.clamp(1, 16);
+    await _prefs?.setInt('tts_concurrency', _ttsConcurrency);
     notifyListeners();
   }
 }

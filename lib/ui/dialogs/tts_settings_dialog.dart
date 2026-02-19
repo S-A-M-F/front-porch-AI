@@ -1,0 +1,595 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/voice_manager.dart';
+import 'package:front_porch_ai/services/tts_service.dart';
+import 'package:front_porch_ai/services/tts_voice_info.dart';
+import 'package:front_porch_ai/ui/dialogs/voice_browser_dialog.dart';
+
+/// Dialog for configuring TTS settings with multi-engine support.
+class TtsSettingsDialog extends StatefulWidget {
+  const TtsSettingsDialog({super.key});
+
+  @override
+  State<TtsSettingsDialog> createState() => _TtsSettingsDialogState();
+}
+
+class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
+  List<String> _installedPiperVoices = [];
+  final _apiKeyController = TextEditingController();
+  bool _obscureApiKey = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInstalledVoices();
+    final storage = Provider.of<StorageService>(context, listen: false);
+    _apiKeyController.text = storage.openaiTtsApiKey;
+  }
+
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInstalledVoices() async {
+    final vm = Provider.of<VoiceManager>(context, listen: false);
+    final voices = await vm.listInstalledVoices();
+    if (mounted) setState(() => _installedPiperVoices = voices);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer2<StorageService, TtsService>(
+      builder: (context, storage, tts, _) {
+        final engineId = storage.ttsEngine;
+        final voices = tts.activeVoices;
+
+        return Dialog(
+          backgroundColor: const Color(0xFF1F2937),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            width: 540,
+            constraints: const BoxConstraints(maxHeight: 650),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: Colors.white10)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.volume_up, color: Colors.blueAccent),
+                      const SizedBox(width: 12),
+                      const Text('Text-to-Speech Settings',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Enable TTS
+                        SwitchListTile(
+                          title: const Text('Enable Text-to-Speech',
+                              style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Add speaker buttons to character messages',
+                              style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          value: storage.ttsEnabled,
+                          activeColor: Colors.blueAccent,
+                          contentPadding: EdgeInsets.zero,
+                          onChanged: (val) => storage.setTtsEnabled(val),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // ──── Engine selector ────
+                        const Text('TTS Engine',
+                            style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 8),
+                        _buildEngineSelector(storage),
+
+                        const SizedBox(height: 20),
+
+                        // ──── Engine-specific settings ────
+                        if (engineId == 'kokoro') ..._buildKokoroSettings(storage, tts, voices),
+                        if (engineId == 'openai') ..._buildOpenAiSettings(storage, tts, voices),
+                        if (engineId == 'piper') ..._buildPiperSettings(storage, tts),
+
+                        const SizedBox(height: 20),
+
+                        // ──── Common settings ────
+                        // Speech rate
+                        Row(
+                          children: [
+                            const Text('Speech Rate',
+                                style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+                            const Spacer(),
+                            Text('${storage.ttsSpeechRate.toStringAsFixed(1)}x',
+                                style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        Slider(
+                          value: storage.ttsSpeechRate,
+                          min: 0.5,
+                          max: 2.0,
+                          divisions: 15,
+                          activeColor: Colors.blueAccent,
+                          inactiveColor: Colors.white12,
+                          onChanged: (val) => storage.setTtsSpeechRate(val),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('0.5x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              Text('1.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              Text('2.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Concurrency (only for Kokoro/OpenAI)
+                        if (engineId != 'piper') ...[
+                          Row(
+                            children: [
+                              const Text('TTS Workers',
+                                  style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+                              const SizedBox(width: 6),
+                              Tooltip(
+                                message: 'Number of sentences generated simultaneously.\nMore workers = faster generation but higher CPU usage.',
+                                child: Icon(Icons.info_outline, color: Colors.white24, size: 14),
+                              ),
+                              const Spacer(),
+                              Text('${storage.ttsConcurrency} workers',
+                                  style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          Slider(
+                            value: storage.ttsConcurrency.toDouble(),
+                            min: 1,
+                            max: 16,
+                            divisions: 15,
+                            activeColor: Colors.blueAccent,
+                            inactiveColor: Colors.white12,
+                            onChanged: (val) => storage.setTtsConcurrency(val.round()),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('1', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                                Text('Suggested: ${Platform.numberOfProcessors} (${Platform.numberOfProcessors} cores)',
+                                    style: const TextStyle(color: Colors.white24, fontSize: 10)),
+                                const Text('16', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 16),
+
+                        // Auto-play
+                        SwitchListTile(
+                          title: const Text('Auto-Play',
+                              style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Automatically speak new character messages',
+                              style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          value: storage.ttsAutoPlay,
+                          activeColor: Colors.blueAccent,
+                          contentPadding: EdgeInsets.zero,
+                          onChanged: (val) => storage.setTtsAutoPlay(val),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Test button
+                        if (storage.ttsVoiceModel.isNotEmpty)
+                          Center(
+                            child: ElevatedButton.icon(
+                              onPressed: tts.isSpeaking
+                                  ? () => tts.stop()
+                                  : () => tts.speak(
+                                      'Hello! This is a test of the text to speech system. The quick brown fox jumps over the lazy dog.'),
+                              icon: Icon(tts.isSpeaking ? Icons.stop : Icons.play_arrow),
+                              label: Text(tts.isSpeaking ? 'Stop' : 'Test Voice'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: tts.isSpeaking ? Colors.redAccent : Colors.green,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Engine selector — segmented control style.
+  Widget _buildEngineSelector(StorageService storage) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          _engineTab(storage, 'kokoro', '🔊 Kokoro', 'High quality, local'),
+          _engineTab(storage, 'openai', '☁️ OpenAI', 'Premium, cloud API'),
+          _engineTab(storage, 'piper', '📦 Piper', 'Lightweight, local'),
+        ],
+      ),
+    );
+  }
+
+  Widget _engineTab(StorageService storage, String id, String label, String subtitle) {
+    final selected = storage.ttsEngine == id;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          storage.setTtsEngine(id);
+          // Clear voice model when switching engines
+          storage.setTtsVoiceModel('');
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: selected ? Border.all(color: Colors.blueAccent, width: 1) : null,
+          ),
+          child: Column(
+            children: [
+              Text(label,
+                  style: TextStyle(
+                    color: selected ? Colors.blueAccent : Colors.white54,
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  )),
+              const SizedBox(height: 2),
+              Text(subtitle,
+                  style: TextStyle(
+                    color: selected ? Colors.white38 : Colors.white24,
+                    fontSize: 9,
+                  )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Kokoro-specific settings.
+  List<Widget> _buildKokoroSettings(
+      StorageService storage, TtsService tts, List<TtsVoiceInfo> voices) {
+    // Group voices by language
+    final languages = <String, List<TtsVoiceInfo>>{};
+    for (final v in voices) {
+      languages.putIfAbsent(v.language, () => []).add(v);
+    }
+
+    return [
+      const Text('Voice',
+          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: voices.any((v) => v.id == storage.ttsVoiceModel)
+            ? storage.ttsVoiceModel
+            : null,
+        dropdownColor: const Color(0xFF374151),
+        style: const TextStyle(color: Colors.white),
+        isExpanded: true,
+        decoration: InputDecoration(
+          hintText: 'Select a voice',
+          hintStyle: const TextStyle(color: Colors.white30),
+          filled: true,
+          fillColor: Colors.black26,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        ),
+        items: languages.entries.expand((entry) {
+          return [
+            DropdownMenuItem<String>(
+              enabled: false,
+              value: '__header_${entry.key}',
+              child: Text(entry.key,
+                  style: const TextStyle(
+                      color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+            ...entry.value.map((v) => DropdownMenuItem(
+              value: v.id,
+              child: Row(
+                children: [
+                  Text(v.gender == 'Female' ? '♀ ' : v.gender == 'Male' ? '♂ ' : '⚬ ',
+                      style: TextStyle(
+                        color: v.gender == 'Female' ? Colors.pinkAccent : Colors.cyanAccent,
+                        fontSize: 13,
+                      )),
+                  Text(v.name, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            )),
+          ];
+        }).toList(),
+        onChanged: (val) {
+          if (val != null && !val.startsWith('__header_')) {
+            storage.setTtsVoiceModel(val);
+          }
+        },
+      ),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.black26,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.blueAccent, size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                tts.isDownloadingModel
+                    ? 'Downloading Kokoro model (${(tts.modelDownloadProgress * 100).toInt()}%)...'
+                    : '~300MB model will be downloaded on first use',
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ),
+            if (tts.isDownloadingModel)
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  value: tts.modelDownloadProgress,
+                  strokeWidth: 2,
+                  color: Colors.blueAccent,
+                ),
+              ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  /// OpenAI TTS-specific settings.
+  List<Widget> _buildOpenAiSettings(
+      StorageService storage, TtsService tts, List<TtsVoiceInfo> voices) {
+    return [
+      // API Key
+      const Text('API Key',
+          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _apiKeyController,
+        obscureText: _obscureApiKey,
+        style: const TextStyle(color: Colors.white, fontSize: 13),
+        decoration: InputDecoration(
+          hintText: 'sk-...',
+          hintStyle: const TextStyle(color: Colors.white24),
+          filled: true,
+          fillColor: Colors.black26,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          suffixIcon: IconButton(
+            icon: Icon(_obscureApiKey ? Icons.visibility_off : Icons.visibility,
+                color: Colors.white38, size: 18),
+            onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
+          ),
+        ),
+        onChanged: (val) => storage.setOpenaiTtsApiKey(val.trim()),
+      ),
+      const SizedBox(height: 12),
+
+      // Model
+      const Text('Model',
+          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: storage.openaiTtsModel,
+        dropdownColor: const Color(0xFF374151),
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Colors.black26,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        ),
+        items: const [
+          DropdownMenuItem(value: 'tts-1',
+              child: Text('TTS Standard — \$15/1M chars')),
+          DropdownMenuItem(value: 'tts-1-hd',
+              child: Text('TTS HD — \$30/1M chars')),
+        ],
+        onChanged: (val) {
+          if (val != null) storage.setOpenaiTtsModel(val);
+        },
+      ),
+      const SizedBox(height: 12),
+
+      // Voice
+      const Text('Voice',
+          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: voices.any((v) => v.id == storage.ttsVoiceModel)
+            ? storage.ttsVoiceModel
+            : null,
+        dropdownColor: const Color(0xFF374151),
+        style: const TextStyle(color: Colors.white),
+        isExpanded: true,
+        decoration: InputDecoration(
+          hintText: 'Select a voice',
+          hintStyle: const TextStyle(color: Colors.white30),
+          filled: true,
+          fillColor: Colors.black26,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        ),
+        items: voices.map((v) => DropdownMenuItem(
+          value: v.id,
+          child: Row(
+            children: [
+              Text(v.gender == 'Female' ? '♀ ' : v.gender == 'Male' ? '♂ ' : '⚬ ',
+                  style: TextStyle(
+                    color: v.gender == 'Female' ? Colors.pinkAccent : Colors.cyanAccent,
+                    fontSize: 13,
+                  )),
+              Text(v.name),
+              const SizedBox(width: 6),
+              Text('(${v.gender})',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ],
+          ),
+        )).toList(),
+        onChanged: (val) {
+          if (val != null) storage.setTtsVoiceModel(val);
+        },
+      ),
+
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.black26,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.cloud_outlined, color: Colors.amber, size: 16),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Requires an OpenAI API key. Usage is billed per character.',
+                style: TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  /// Piper legacy settings.
+  List<Widget> _buildPiperSettings(StorageService storage, TtsService tts) {
+    return [
+      const Text('Default Voice',
+          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              value: _installedPiperVoices.contains(storage.ttsVoiceModel)
+                  ? storage.ttsVoiceModel
+                  : null,
+              dropdownColor: const Color(0xFF374151),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: _installedPiperVoices.isEmpty
+                    ? 'No voices installed'
+                    : 'Select a voice',
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: Colors.black26,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              items: _installedPiperVoices.map((v) =>
+                DropdownMenuItem(value: v, child: Text(v, overflow: TextOverflow.ellipsis)),
+              ).toList(),
+              onChanged: (val) {
+                if (val != null) storage.setTtsVoiceModel(val);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: () async {
+              await showDialog(
+                context: context,
+                builder: (_) => const VoiceBrowserDialog(),
+              );
+              await _loadInstalledVoices();
+            },
+            icon: const Icon(Icons.download, size: 16),
+            label: const Text('Browse'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.black26,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              tts.isPiperAvailable ? Icons.check_circle : Icons.warning_amber,
+              color: tts.isPiperAvailable ? Colors.greenAccent : Colors.amber,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                tts.isPiperAvailable
+                    ? 'Piper TTS engine is ready'
+                    : 'Piper TTS engine not found. Requires bundled Piper binary.',
+                style: TextStyle(
+                  color: tts.isPiperAvailable ? Colors.greenAccent : Colors.amber,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+}

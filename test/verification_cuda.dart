@@ -149,6 +149,16 @@ class MockStorageService extends ChangeNotifier implements StorageService {
   @override String get reasoningEffort => 'medium';
   @override Future<void> setReasoningEnabled(bool value) async {}
   @override Future<void> setReasoningEffort(String value) async {}
+
+  // TTS settings
+  @override bool get ttsEnabled => false;
+  @override String get ttsVoiceModel => '';
+  @override double get ttsSpeechRate => 1.0;
+  @override bool get ttsAutoPlay => false;
+  @override Future<void> setTtsEnabled(bool value) async {}
+  @override Future<void> setTtsVoiceModel(String value) async {}
+  @override Future<void> setTtsSpeechRate(double value) async {}
+  @override Future<void> setTtsAutoPlay(bool value) async {}
 }
 
 // Minimal mocks for other services just to satisfy Provider
