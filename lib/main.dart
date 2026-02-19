@@ -214,11 +214,11 @@ class _MyAppState extends State<MyApp> with WindowListener {
   }
 
   Future<void> _checkForUpdates(BuildContext context) async {
-    if (!UpdateService.isSupported) return;
-
     final updateService = Provider.of<UpdateService>(context, listen: false);
     await updateService.initialize();
 
+    // Only check for updates on platforms that support self-update
+    if (!UpdateService.isSupported) return;
     if (!updateService.autoCheckEnabled) return;
 
     final hasUpdate = await updateService.checkForUpdate();

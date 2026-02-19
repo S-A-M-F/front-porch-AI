@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/update_service.dart';
@@ -133,7 +134,9 @@ class UpdateDialog extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'If you choose "Later", the update will install automatically when you close the app.',
+            Platform.isLinux
+                ? 'If you choose "Later", the update will be applied when you close the app.'
+                : 'If you choose "Later", the update will install automatically when you close the app.',
             style: TextStyle(color: Colors.white38, fontSize: 12),
           ),
         ],
