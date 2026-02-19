@@ -5,12 +5,14 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/app_version.dart';
 
-/// Windows-only self-update service.
-/// Checks GitHub Releases for new versions and downloads/runs the installer.
+/// Cross-platform self-update service.
+/// Checks GitHub Releases for new versions and downloads/runs the update.
+/// Supports Windows (Inno Setup installer) and Linux (AppImage replacement).
 class UpdateService extends ChangeNotifier {
   static const String _repoOwner = 'linux4life1';
   static const String _repoName = 'front-porch-AI';
-  static const String _installerAsset = 'Front_Porch_AI_Setup.exe';
+  static const String _windowsAsset = 'Front_Porch_AI_Setup.exe';
+  static const String _linuxAsset = 'Front_Porch_AI-Linux.AppImage';
   static const String _prefsKeyAutoCheck = 'update_auto_check';
 
   String _currentVersion = '';
@@ -37,21 +39,35 @@ class UpdateService extends ChangeNotifier {
   bool get hasPendingInstaller => _pendingInstallerPath != null;
 
   /// Whether this platform supports self-update.
-  /// Returns true only on Windows AND when installed via the installer
-  /// (not from the portable zip). The installer creates a .installed marker file.
+  /// Windows: true when installed via the Inno Setup installer (.installed marker).
+  /// Linux: true when running as an AppImage ($APPIMAGE env var is set).
   static bool get isSupported {
-    if (!Platform.isWindows) return false;
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-    return File('$exeDir\\.installed').existsSync();
+    if (Platform.isWindows) {
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      return File('$exeDir\\.installed').existsSync();
+    }
+    if (Platform.isLinux) {
+      return Platform.environment.containsKey('APPIMAGE');
+    }
+    return false;
+  }
+
+  /// The correct asset name for this platform's update package.
+  static String get _platformAsset {
+    if (Platform.isWindows) return _windowsAsset;
+    if (Platform.isLinux) return _linuxAsset;
+    return '';
   }
 
   Future<void> initialize() async {
-    if (!isSupported) return;
-    
-    // Use hardcoded version constant instead of PackageInfo.fromPlatform()
-    // which is unreliable on Windows (returns stale version from exe resources).
+    // Always set version so the sidebar displays it on every platform.
     _currentVersion = appVersion;
-    
+
+    if (!isSupported) {
+      notifyListeners();
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     _autoCheckEnabled = prefs.getBool(_prefsKeyAutoCheck) ?? true;
     notifyListeners();
@@ -87,17 +103,18 @@ class UpdateService extends ChangeNotifier {
       final tagName = (data['tag_name'] as String? ?? '').replaceFirst(RegExp(r'^[vV]'), '');
       final assets = data['assets'] as List<dynamic>? ?? [];
 
-      // Find the installer asset
+      // Find the platform-specific update asset
+      final targetAsset = _platformAsset;
       String? installerUrl;
       for (final asset in assets) {
-        if (asset['name'] == _installerAsset) {
+        if (asset['name'] == targetAsset) {
           installerUrl = asset['browser_download_url'] as String?;
           break;
         }
       }
 
       if (installerUrl == null) {
-        debugPrint('No installer asset found in latest release');
+        debugPrint('No update asset ($targetAsset) found in latest release');
         return false;
       }
 
@@ -128,7 +145,9 @@ class UpdateService extends ChangeNotifier {
 
     try {
       final tempDir = Directory.systemTemp;
-      final installerPath = '${tempDir.path}\\$_installerAsset';
+      final assetName = _platformAsset;
+      final sep = Platform.isWindows ? '\\' : '/';
+      final installerPath = '${tempDir.path}$sep$assetName';
       final file = File(installerPath);
 
       final request = http.Request('GET', Uri.parse(_downloadUrl));
@@ -160,27 +179,84 @@ class UpdateService extends ChangeNotifier {
     }
   }
 
-  /// Run the installer immediately and exit the app.
+  /// Run the update immediately and exit (or relaunch on Linux).
   Future<void> installNow() async {
     if (_pendingInstallerPath == null) return;
-    await _launchInstaller(_pendingInstallerPath!);
-    exit(0);
+    try {
+      if (Platform.isLinux) {
+        await _replaceAppImage(_pendingInstallerPath!);
+        await _relaunchAppImage();
+      } else {
+        await _launchWindowsInstaller(_pendingInstallerPath!);
+      }
+      exit(0);
+    } catch (e) {
+      debugPrint('Install now failed: $e');
+    }
   }
 
-  /// Run the pending installer on app close.
+  /// Run the pending update on app close.
   /// Call this from the window close handler.
   Future<void> installOnClose() async {
     if (_pendingInstallerPath == null) return;
-    await _launchInstaller(_pendingInstallerPath!);
+    try {
+      if (Platform.isLinux) {
+        await _replaceAppImage(_pendingInstallerPath!);
+      } else {
+        await _launchWindowsInstaller(_pendingInstallerPath!);
+      }
+    } catch (e) {
+      debugPrint('Install on close failed: $e');
+    }
   }
 
-  Future<void> _launchInstaller(String path) async {
+  Future<void> _launchWindowsInstaller(String path) async {
     await Process.start(path, [
       '/VERYSILENT',
       '/SUPPRESSMSGBOXES',
       '/NORESTART',
       '/CLOSEAPPLICATIONS',
     ]);
+  }
+
+  /// Replace the currently running AppImage with the downloaded update.
+  /// Uses rm + cp instead of Dart's File.copy() because the destination
+  /// may be a running executable — deleting first avoids write conflicts.
+  Future<void> _replaceAppImage(String downloadedPath) async {
+    final currentAppImage = Platform.environment['APPIMAGE'];
+    if (currentAppImage == null || currentAppImage.isEmpty) {
+      debugPrint('APPIMAGE env var not set — cannot replace');
+      return;
+    }
+    debugPrint('Replacing AppImage: $currentAppImage with $downloadedPath');
+
+    // Delete the old AppImage first (Linux allows unlinking running executables)
+    final rmResult = await Process.run('rm', ['-f', currentAppImage]);
+    if (rmResult.exitCode != 0) {
+      debugPrint('rm failed: ${rmResult.stderr}');
+    }
+
+    // Copy the new AppImage to the original location
+    final cpResult = await Process.run('cp', [downloadedPath, currentAppImage]);
+    if (cpResult.exitCode != 0) {
+      debugPrint('cp failed: ${cpResult.stderr}');
+      throw Exception('Failed to copy new AppImage: ${cpResult.stderr}');
+    }
+
+    // Make executable
+    await Process.run('chmod', ['+x', currentAppImage]);
+    debugPrint('AppImage replaced successfully');
+  }
+
+  /// Relaunch the AppImage after replacing it.
+  Future<void> _relaunchAppImage() async {
+    final currentAppImage = Platform.environment['APPIMAGE'];
+    if (currentAppImage == null || currentAppImage.isEmpty) return;
+    debugPrint('Relaunching AppImage: $currentAppImage');
+    await Process.start(
+      currentAppImage, [],
+      mode: ProcessStartMode.detached,
+    );
   }
 
   /// Compare version strings (e.g. "0.0.4.1" vs "0.0.4")

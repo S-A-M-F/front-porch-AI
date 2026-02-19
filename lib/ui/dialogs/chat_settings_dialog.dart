@@ -115,6 +115,7 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                        _buildSlider('Rep Pen Tokens', storageService.repeatPenaltyTokens.toDouble(), 0, 512, (val) => storageService.setRepeatPenaltyTokens(val.toInt()), divisions: 512),
                        _buildSlider('Max Output Tokens', storageService.maxLength.toDouble(), 16, 2048, (val) => storageService.setMaxLength(val.toInt()), divisions: 2048 - 16),
                        _buildSlider('Min Output Tokens', storageService.minLength.toDouble(), 0, 512, (val) => storageService.setMinLength(val.toInt()), divisions: 512),
+                       _buildIntSlider('Context Size', storageService.contextSize.toDouble().clamp(512, isRemote ? 500000 : 15000), 512, isRemote ? 500000.0 : 15000.0, (val) => storageService.setContextSize(val.toInt()), step: 512),
 
                        const SizedBox(height: 16),
                        Row(
@@ -243,6 +244,30 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
           min: min,
           max: max,
           divisions: divisions,
+          onChanged: onChanged,
+          activeColor: Colors.blueAccent,
+          inactiveColor: Colors.white24,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIntSlider(String label, double value, double min, double max, Function(double) onChanged, {int step = 1}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.white70)),
+            Text(value.toInt().toString(), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+          ],
+        ),
+        Slider(
+          value: value.clamp(min, max),
+          min: min,
+          max: max,
+          divisions: ((max - min) / step).round(),
           onChanged: onChanged,
           activeColor: Colors.blueAccent,
           inactiveColor: Colors.white24,

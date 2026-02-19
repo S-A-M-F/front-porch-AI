@@ -817,11 +817,184 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  Future<void> impersonateUser() async {
-    if (_activeCharacter == null || _isGenerating) return;
-    
-    // Impersonate adds a bot-generated response for the USER
-    await _generateResponse(GenerationMode.impersonate);
+  Future<void> impersonateUser({String prefix = '', required Function(String accumulated) onToken}) async {
+    if ((_activeCharacter == null && _activeGroup == null) || _isGenerating) return;
+
+    _isGenerating = true;
+    _cancelRequested = false;
+    notifyListeners();
+
+    try {
+      final userName = _userPersonaService.persona.name;
+
+      // Determine the speaking character (needed for prompt construction)
+      CharacterCard speakingCharacter;
+      if (_activeGroup != null) {
+        speakingCharacter = _groupCharacters.first;
+      } else {
+        speakingCharacter = _activeCharacter!;
+      }
+
+      // Build prompt the same way _generateResponse does
+      final String systemPrompt;
+      if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
+        systemPrompt = _activeGroup!.systemPrompt;
+      } else if (_activeGroup != null) {
+        systemPrompt = defaultGroupSystemPrompt;
+      } else if (speakingCharacter.systemPrompt.isNotEmpty) {
+        systemPrompt = speakingCharacter.systemPrompt;
+      } else if (_storageService.systemPrompt.isNotEmpty) {
+        systemPrompt = _storageService.systemPrompt;
+      } else {
+        final isApi = _llmProvider != null && !_llmProvider!.isLocal;
+        systemPrompt = isApi ? defaultApiSystemPrompt : defaultKoboldSystemPrompt;
+      }
+
+      // Lorebook
+      String loreContent = '';
+      List<String> activeLoreStrings = [];
+      final loreCharacters = _activeGroup != null ? _groupCharacters : [_activeCharacter!];
+      for (final ch in loreCharacters) {
+        if (ch.lorebook != null) {
+          final activeEntries = ch.lorebook!.entries.where((e) => e.enabled && (e.isTriggered || e.constant));
+          activeLoreStrings.addAll(activeEntries.map((e) => e.content));
+        }
+        for (final worldName in ch.worldNames) {
+          final world = _worldRepository.worlds.where((w) => w.name == worldName).firstOrNull;
+          if (world == null) continue;
+          final activeWorldEntries = world.lorebook.entries.where((e) => e.enabled && (e.isTriggered || e.constant));
+          activeLoreStrings.addAll(activeWorldEntries.map((e) => e.content));
+        }
+      }
+      if (activeLoreStrings.isNotEmpty) {
+        loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
+        loreContent = speakingCharacter.replacePlaceholders(loreContent, userName: userName);
+      }
+
+      // Persona & scenario
+      String personaBlock;
+      if (_activeGroup != null) {
+        final personas = _groupCharacters.map((ch) =>
+          "${ch.name}'s Persona: ${ch.replacePlaceholders(ch.personality, userName: userName)}").toList();
+        personaBlock = personas.join('\n');
+      } else {
+        personaBlock = "${speakingCharacter.name}'s Persona: ${speakingCharacter.replacePlaceholders(speakingCharacter.personality, userName: userName)}";
+      }
+
+      String rawScenario = '';
+      if (_activeGroup != null && _activeGroup!.scenario.isNotEmpty) {
+        rawScenario = _activeGroup!.scenario;
+      } else {
+        final scenarioChar = _activeGroup != null ? _groupCharacters.first : speakingCharacter;
+        rawScenario = scenarioChar.scenario;
+      }
+      final scenario = speakingCharacter.replacePlaceholders(rawScenario, userName: userName);
+
+      String history = _buildChatHistory();
+
+      // Suffix: user name + any partial text the user typed
+      String suffix = "\n$userName:";
+      if (prefix.isNotEmpty) {
+        suffix = "$suffix $prefix";
+      }
+
+      String mesExampleBlock = '';
+      if (_activeGroup != null) {
+        final examples = _groupCharacters
+            .where((ch) => ch.mesExample.isNotEmpty)
+            .map((ch) => ch.replacePlaceholders(ch.mesExample, userName: userName))
+            .toList();
+        if (examples.isNotEmpty) {
+          mesExampleBlock = '${examples.join('\n')}\n';
+        }
+      } else if (speakingCharacter.mesExample.isNotEmpty) {
+        mesExampleBlock = '${speakingCharacter.replacePlaceholders(speakingCharacter.mesExample, userName: userName)}\n';
+      }
+
+      String postHistoryBlock = '';
+      if (speakingCharacter.postHistoryInstructions.isNotEmpty) {
+        postHistoryBlock = '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
+      }
+
+      String authorNoteBlock = '';
+      if (_authorNote.isNotEmpty) {
+        authorNoteBlock = '[Author\'s Note: $_authorNote]\n';
+      }
+
+      // Impersonate instruction — comprehensive guidance for writing as the user
+      final impersonateInstruction =
+          '[System: You are now writing as $userName (the user), NOT as ${speakingCharacter.name} or any other character. '
+          'Compose $userName\'s next message in first person. '
+          'Match $userName\'s established voice, personality, and writing style from the conversation so far. '
+          'Write only $userName\'s words and actions — never narrate for ${speakingCharacter.name} or other characters. '
+          'Do not include meta-commentary, stage directions for others, or break the fourth wall. '
+          'Keep the response natural, and consistent with the scene.]\n';
+
+      final prompt = "$systemPrompt\n"
+          "$loreContent"
+          "$personaBlock\n"
+          "Scenario: $scenario\n"
+          "$mesExampleBlock"
+          "<START>\n"
+          "$history"
+          "$postHistoryBlock"
+          "$authorNoteBlock"
+          "$impersonateInstruction"
+          "$suffix";
+
+      // Stop sequences: character names only (not user — we ARE the user)
+      final stopSequences = {
+        ..._storageService.stopSequences,
+      };
+      if (_activeGroup != null) {
+        for (final ch in _groupCharacters) {
+          stopSequences.add('\n${ch.name}:');
+        }
+      } else {
+        stopSequences.add('\n${_activeCharacter!.name}:');
+      }
+
+      final llmService = _llmProvider?.activeService ?? _koboldService;
+      final genParams = GenerationParams(
+        prompt: prompt,
+        maxLength: _storageService.maxLength,
+        minLength: _storageService.minLength,
+        minP: _storageService.minP,
+        temperature: _storageService.temperature,
+        repeatPenalty: _storageService.repeatPenalty,
+        repPenTokens: _storageService.repeatPenaltyTokens,
+        dynatempRange: _storageService.dynamicTempEnabled ? _storageService.dynamicTempRange : null,
+        stopSequences: stopSequences.toList(),
+        // Always disable reasoning for impersonate — we only want plain text
+        reasoningEnabled: false,
+        reasoningEffort: _storageService.reasoningEffort,
+      );
+
+      final stream = llmService.generateStream(genParams);
+      String accumulated = prefix;
+      bool inThinkBlock = false;
+
+      await for (final token in stream) {
+        if (_cancelRequested) break;
+        // Filter out <think>...</think> reasoning blocks entirely
+        if (token.contains('<think>')) {
+          inThinkBlock = true;
+          continue;
+        }
+        if (token.contains('</think>')) {
+          inThinkBlock = false;
+          continue;
+        }
+        if (inThinkBlock) continue;
+        accumulated += token;
+        onToken(accumulated);
+      }
+    } catch (e) {
+      print('Impersonate error: $e');
+    } finally {
+      _isGenerating = false;
+      notifyListeners();
+    }
   }
 
   /// Trigger the next character to speak in group mode.
@@ -976,6 +1149,12 @@ class ChatService extends ChangeNotifier {
         postHistoryBlock = '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
       }
 
+      // Author's note — placed right before the character speaks for maximum influence
+      String authorNoteBlock = '';
+      if (_authorNote.isNotEmpty) {
+        authorNoteBlock = '[Author\'s Note: $_authorNote]\n';
+      }
+
       final prompt = "$systemPrompt\n"
           "$loreContent"
           "$personaBlock\n"
@@ -984,6 +1163,7 @@ class ChatService extends ChangeNotifier {
           "<START>\n"
           "$history"
           "$postHistoryBlock"
+          "$authorNoteBlock"
           "$suffix";
 
       // Track prompt budget for context viewer
@@ -996,16 +1176,20 @@ class ChatService extends ChangeNotifier {
         'Examples': (mesExampleBlock.length / 4).ceil(),
         'Chat History': (history.length / 4).ceil(),
         'Post-History': (postHistoryBlock.length / 4).ceil(),
+        'Author\'s Note': (authorNoteBlock.length / 4).ceil(),
       };
       // Remove zero-value entries
       _lastPromptBudget.removeWhere((_, v) => v == 0);
 
-      // Stop sequences: include all character names + user
+      // Stop sequences: include character names, and user name (except when impersonating)
       final stopSequences = {
         ..._storageService.stopSequences,
-        '\nUser:',
-        '\n${_userPersonaService.persona.name}:',
       };
+      // In impersonate mode the model IS the user, so don't stop on user name
+      if (mode != GenerationMode.impersonate) {
+        stopSequences.add('\nUser:');
+        stopSequences.add('\n${_userPersonaService.persona.name}:');
+      }
       if (_activeGroup != null) {
         for (final ch in _groupCharacters) {
           stopSequences.add('\n${ch.name}:');
@@ -1369,13 +1553,6 @@ class ChatService extends ChangeNotifier {
 
   String _buildChatHistory() {
     final lines = _messages.map((m) => "${m.sender}: ${m.text}").toList();
-    
-    // Inject author's note at configured depth from the bottom
-    if (_authorNote.isNotEmpty && lines.isNotEmpty) {
-      final insertAt = (lines.length - _authorNoteDepth).clamp(0, lines.length);
-      lines.insert(insertAt, '[Author\'s Note: $_authorNote]');
-    }
-    
     return lines.join("\n");
   }
 

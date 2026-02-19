@@ -614,7 +614,18 @@ class _ChatPageState extends State<ChatPage> {
             icon: const Icon(Icons.auto_fix_high, color: Colors.white70),
             padding: EdgeInsets.zero,
             tooltip: 'Impersonate',
-            onPressed: chatService.isGenerating ? null : () => chatService.impersonateUser(),
+            onPressed: chatService.isGenerating ? null : () {
+              final prefix = _controller.text;
+              chatService.impersonateUser(
+                prefix: prefix,
+                onToken: (accumulated) {
+                  _controller.text = accumulated;
+                  _controller.selection = TextSelection.fromPosition(
+                    TextPosition(offset: accumulated.length),
+                  );
+                },
+              );
+            },
           ),
 
           // Context Budget Viewer
