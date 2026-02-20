@@ -253,6 +253,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4.  Push to the Branch (`git push origin feature/AmazingFeature`)
 5.  Open a Pull Request
 
+## 🔒 Privacy
+
+Front Porch AI does not collect, store, or transmit any personal data. See our full [Privacy Policy](https://linux4life1.github.io/front-porch-AI/privacy.html).
+
 ## 📄 License
 
 This project is licensed under the **GPLv3 License** - see the [LICENSE](LICENSE) file for details.
