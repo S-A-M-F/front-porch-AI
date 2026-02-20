@@ -2,6 +2,27 @@
 
 All notable changes to Front Porch AI will be documented in this file.
 
+## [V0.7.1] - 2026-02-20
+
+### ✨ New Features
+- **Grid Scale Slider**: Adjustable slider in the header to resize character card PNGs on the home screen (150–450px). Preference persists across sessions.
+  - Cards adapt responsively: compact text at medium sizes, image-only with gradient name overlay at tiny sizes.
+- **Message Count Badges**: Each character card displays a 💬 badge showing how many messages you've sent to that character (AI replies are not counted).
+- **Sort by Messages Sent**: New sort option in the dropdown to order characters by most messages sent first.
+- **Multi-Select Folder Organization**: Dedicated blue folder icon button enables a separate selection mode for moving multiple characters into folders at once, independent of the purple group chat selection mode.
+- **Bulk PNG Import**: Import an entire folder of character card PNGs in one action via the import menu.
+- **Character Sorting**: Sort characters by Name (A→Z), Recent Activity, or Import Date with persisted preferences.
+
+### 🐛 Bug Fixes
+- **Folder Rename Bug**: Fixed path separator mismatch (mixed `/` and `\` on Windows) that caused characters to disappear from folders after renaming or on rebuild.
+- **Cross-Chat Message Leak**: Fixed a bug where messages from one chat session could appear in another character's chat.
+- **UI Overflow at Small Grid Scales**: Folder cards and character cards now gracefully adapt their layout when shrunk via the grid slider — no more overflow errors.
+
+### 🏗️ Infrastructure
+- **Removed Duplicate Windows Installer**: The transitional `Front_Porch_AI_Setup_Alpha.exe` artifact has been retired from CI/CD. Only `Front_Porch_AI_Setup.exe` is produced going forward.
+
+---
+
 ## [V0.6.0] - 2026-02-18
 
 ### ✨ New Features

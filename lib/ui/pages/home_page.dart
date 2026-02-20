@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -20,6 +21,7 @@ import 'package:front_porch_ai/ui/pages/edit_character_page.dart';
 import 'package:front_porch_ai/ui/dialogs/tag_dialog.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -35,7 +37,73 @@ class _HomePageState extends State<HomePage> {
 
   // Multi-select for group creation
   bool _isSelecting = false;
+  // Multi-select for folder organization
+  bool _isOrganizing = false;
   final Set<String> _selectedCharacterIds = {}; // imagePath-based IDs
+
+  // Sorting
+  String _sortMode = 'name'; // 'name', 'recent', 'importDate', 'messages'
+  final Map<String, DateTime> _lastActivityCache = {};
+  final Map<String, int> _messageCountCache = {};
+
+  // Grid scale
+  double _gridScale = 300.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load persisted sort preference
+    final storage = Provider.of<StorageService>(context, listen: false);
+    _sortMode = storage.sortMode;
+    _gridScale = storage.gridScale;
+    _refreshLastActivityCache();
+  }
+
+  /// Scans chat directories to build a map of characterId → newest file mod time.
+  Future<void> _refreshLastActivityCache() async {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final chatsDir = storage.chatsDir;
+    if (!await chatsDir.exists()) {
+      if (mounted) setState(() {});
+      return;
+    }
+    final newCache = <String, DateTime>{};
+    final newMsgCount = <String, int>{};
+    await for (final entity in chatsDir.list()) {
+      if (entity is Directory) {
+        final charId = path.basename(entity.path);
+        DateTime? newest;
+        int userMsgCount = 0;
+        await for (final file in entity.list()) {
+          if (file is File && file.path.endsWith('.json')) {
+            final stat = await file.stat();
+            if (newest == null || stat.modified.isAfter(newest)) {
+              newest = stat.modified;
+            }
+            // Count user messages in this session
+            try {
+              final content = await file.readAsString();
+              final json = jsonDecode(content);
+              final messages = json['messages'] as List? ?? [];
+              userMsgCount += messages.where((m) => m['is_user'] == true).length;
+            } catch (_) {}
+          }
+        }
+        if (newest != null) newCache[charId] = newest;
+        newMsgCount[charId] = userMsgCount;
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _lastActivityCache
+          ..clear()
+          ..addAll(newCache);
+        _messageCountCache
+          ..clear()
+          ..addAll(newMsgCount);
+      });
+    }
+  }
 
   String _getCharacterIdFromCard(CharacterCard card) {
     if (card.imagePath != null) {
@@ -49,7 +117,10 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       if (_selectedCharacterIds.contains(id)) {
         _selectedCharacterIds.remove(id);
-        if (_selectedCharacterIds.isEmpty) _isSelecting = false;
+        if (_selectedCharacterIds.isEmpty) {
+          _isSelecting = false;
+          _isOrganizing = false;
+        }
       } else {
         _selectedCharacterIds.add(id);
       }
@@ -59,6 +130,7 @@ class _HomePageState extends State<HomePage> {
   void _cancelSelection() {
     setState(() {
       _isSelecting = false;
+      _isOrganizing = false;
       _selectedCharacterIds.clear();
     });
   }
@@ -105,6 +177,13 @@ class _HomePageState extends State<HomePage> {
                       label: const Text('Import Card'),
                       style: _buttonStyle(),
                     ),
+                    const SizedBox(width: 16),
+                    ElevatedButton.icon(
+                      onPressed: () => _folderImportCharacters(context),
+                      icon: const Icon(Icons.library_add),
+                      label: const Text('Bulk Import'),
+                      style: _buttonStyle(),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -141,7 +220,7 @@ class _HomePageState extends State<HomePage> {
                   padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
                   child: Row(
                     children: [
-                      if (_isSelecting) ...[
+                      if (_isSelecting || _isOrganizing) ...[
                         IconButton(
                           icon: const Icon(Icons.close),
                           tooltip: 'Cancel selection',
@@ -152,7 +231,7 @@ class _HomePageState extends State<HomePage> {
                           '${_selectedCharacterIds.length} selected',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Colors.purpleAccent,
+                            color: _isOrganizing ? Colors.blueAccent : Colors.purpleAccent,
                           ),
                         ),
                       ] else if (_activeFolderId != null) ...[
@@ -168,12 +247,81 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ] else
                         Text('My Characters', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 16),
+                      // Sort dropdown
+                      if (!_isSelecting && !_isOrganizing)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E293B),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _sortMode,
+                              icon: const Icon(Icons.sort, size: 18, color: Colors.white54),
+                              dropdownColor: const Color(0xFF1E293B),
+                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                              isDense: true,
+                              items: const [
+                                DropdownMenuItem(value: 'name', child: Text('Name (A→Z)')),
+                                DropdownMenuItem(value: 'recent', child: Text('Recent Activity')),
+                                DropdownMenuItem(value: 'importDate', child: Text('Import Date')),
+                                DropdownMenuItem(value: 'messages', child: Text('Messages Sent')),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _sortMode = value);
+                                  Provider.of<StorageService>(context, listen: false).setSortMode(value);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      // Grid scale slider
+                      if (!_isSelecting && !_isOrganizing)
+                        SizedBox(
+                          width: 120,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.grid_view, size: 16, color: Colors.white38),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderThemeData(
+                                    trackHeight: 3,
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                    activeTrackColor: Colors.blueAccent.withValues(alpha: 0.7),
+                                    inactiveTrackColor: Colors.white12,
+                                    thumbColor: Colors.blueAccent,
+                                  ),
+                                  child: Slider(
+                                    value: _gridScale,
+                                    min: 150,
+                                    max: 450,
+                                    onChanged: (v) => setState(() => _gridScale = v),
+                                    onChangeEnd: (v) {
+                                      Provider.of<StorageService>(context, listen: false).setGridScale(v);
+                                    },
+                                  ),
+                                ),
+                              ),
+                              const Icon(Icons.view_module, size: 16, color: Colors.white38),
+                            ],
+                          ),
+                        ),
                       const Spacer(),
-                      if (!_isSelecting) ...[
+                      if (!_isSelecting && !_isOrganizing) ...[
                         IconButton(
                           tooltip: 'Select characters for group chat',
                           icon: const Icon(Icons.group_add, color: Colors.purpleAccent),
                           onPressed: () => setState(() => _isSelecting = true),
+                        ),
+                        IconButton(
+                          tooltip: 'Organize into folders',
+                          icon: const Icon(Icons.drive_file_move_outlined, color: Colors.blueAccent),
+                          onPressed: () => setState(() => _isOrganizing = true),
                         ),
                         if (_activeFolderId == null)
                           IconButton(
@@ -181,10 +329,17 @@ class _HomePageState extends State<HomePage> {
                             icon: const Icon(Icons.create_new_folder_outlined),
                             onPressed: () => _createFolder(context, folderService),
                           ),
-                        IconButton(
-                          tooltip: 'Import Card',
+                        PopupMenuButton<String>(
+                          tooltip: 'Import Characters',
                           icon: const Icon(Icons.download),
-                          onPressed: () => _importCharacter(context),
+                          onSelected: (value) {
+                            if (value == 'cards') _importCharacter(context);
+                            if (value == 'folder') _folderImportCharacters(context);
+                          },
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(value: 'cards', child: ListTile(leading: Icon(Icons.download), title: Text('Import Cards'), dense: true)),
+                            const PopupMenuItem(value: 'folder', child: ListTile(leading: Icon(Icons.library_add), title: Text('Import Folder'), dense: true)),
+                          ],
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton.icon(
@@ -243,8 +398,8 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
             ),
-            // Selection action bar
-            if (_isSelecting)
+            // Group chat selection bar (purple)
+            if (_isSelecting && _selectedCharacterIds.isNotEmpty)
               Positioned(
                 left: 0, right: 0, bottom: 0,
                 child: Container(
@@ -261,7 +416,7 @@ class _HomePageState extends State<HomePage> {
                       Icon(Icons.group, color: Colors.purpleAccent.withValues(alpha: 0.7)),
                       const SizedBox(width: 12),
                       Text(
-                        '${_selectedCharacterIds.length} character${_selectedCharacterIds.length == 1 ? '' : 's'} selected',
+                        '${_selectedCharacterIds.length} selected',
                         style: const TextStyle(color: Colors.white70, fontSize: 14),
                       ),
                       const Spacer(),
@@ -286,6 +441,49 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
+            // Organize selection bar (blue)
+            if (_isOrganizing && _selectedCharacterIds.isNotEmpty)
+              Positioned(
+                left: 0, right: 0, bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F2937),
+                    border: const Border(top: BorderSide(color: Colors.white10)),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, -2)),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.drive_file_move, color: Colors.blueAccent.withValues(alpha: 0.7)),
+                      const SizedBox(width: 12),
+                      Text(
+                        '${_selectedCharacterIds.length} selected',
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: _cancelSelection,
+                        child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: _selectedCharacterIds.isNotEmpty
+                            ? () => _showMoveToFolderDialog(context, repo, folderService)
+                            : null,
+                        icon: const Icon(Icons.drive_file_move, size: 18),
+                        label: const Text('Move to Folder'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.white10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -298,7 +496,11 @@ class _HomePageState extends State<HomePage> {
     if (_activeFolderId != null) {
       // Show only characters in this folder
       final folderPaths = folderService.getCharactersInFolder(_activeFolderId!);
-      characters = repo.characters.where((c) => folderPaths.contains(c.imagePath)).toList();
+      // Normalize path separators for comparison (Windows vs Unix style)
+      final normalizedFolderPaths = folderPaths.map((p) => p.replaceAll('\\', '/')).toSet();
+      characters = repo.characters.where((c) =>
+        c.imagePath != null && normalizedFolderPaths.contains(c.imagePath!.replaceAll('\\', '/'))
+      ).toList();
     } else {
       characters = repo.characters.toList();
     }
@@ -313,7 +515,49 @@ class _HomePageState extends State<HomePage> {
       }).toList();
     }
 
+    // Apply sort
+    switch (_sortMode) {
+      case 'name':
+        characters.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case 'recent':
+        characters.sort((a, b) {
+          final aId = _getCharacterIdFromCard(a);
+          final bId = _getCharacterIdFromCard(b);
+          final aTime = _lastActivityCache[aId] ?? DateTime(1970);
+          final bTime = _lastActivityCache[bId] ?? DateTime(1970);
+          return bTime.compareTo(aTime); // newest first
+        });
+        break;
+      case 'importDate':
+        characters.sort((a, b) {
+          final aEpoch = _extractImportEpoch(a);
+          final bEpoch = _extractImportEpoch(b);
+          return bEpoch.compareTo(aEpoch); // newest first
+        });
+        break;
+    }
+    if (_sortMode == 'messages') {
+      characters.sort((a, b) {
+        final aId = _getCharacterIdFromCard(a);
+        final bId = _getCharacterIdFromCard(b);
+        final aCount = _messageCountCache[aId] ?? 0;
+        final bCount = _messageCountCache[bId] ?? 0;
+        return bCount.compareTo(aCount); // most messages first
+      });
+    }
+
     return characters;
+  }
+
+  /// Extracts the import epoch from a character's PNG filename.
+  /// Filenames follow the pattern: `CharName_EPOCH.png`
+  int _extractImportEpoch(CharacterCard card) {
+    if (card.imagePath == null) return 0;
+    final basename = path.basenameWithoutExtension(card.imagePath!);
+    final lastUnderscore = basename.lastIndexOf('_');
+    if (lastUnderscore == -1) return 0;
+    return int.tryParse(basename.substring(lastUnderscore + 1)) ?? 0;
   }
 
   String _getActiveFolderName(FolderService folderService) {
@@ -328,13 +572,15 @@ class _HomePageState extends State<HomePage> {
     final folders = showFolders ? folderService.folders : <CharacterFolder>[];
 
     // Show group cards at top level only
-    final groups = (showFolders && !_isSelecting) ? groupRepo.groups : <GroupChat>[];
+    final groups = (showFolders && !_isSelecting && !_isOrganizing) ? groupRepo.groups : <GroupChat>[];
 
     // At top level, show unfoldered characters only (unless searching)
     List<CharacterCard> displayCharacters;
     if (showFolders) {
-      final folderedPaths = folderService.getUnfolderedCharacterPaths();
-      displayCharacters = filteredCharacters.where((c) => !folderedPaths.contains(c.imagePath)).toList();
+      final folderedPaths = folderService.getUnfolderedCharacterPaths().map((p) => p.replaceAll('\\', '/')).toSet();
+      displayCharacters = filteredCharacters.where((c) =>
+        c.imagePath == null || !folderedPaths.contains(c.imagePath!.replaceAll('\\', '/'))
+      ).toList();
     } else {
       displayCharacters = filteredCharacters;
     }
@@ -350,9 +596,9 @@ class _HomePageState extends State<HomePage> {
     }
 
     return GridView.builder(
-      padding: EdgeInsets.fromLTRB(24, 24, 24, _isSelecting ? 80 : 24),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 300,
+      padding: EdgeInsets.fromLTRB(24, 24, 24, (_isSelecting || _isOrganizing) ? 80 : 24),
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: _gridScale,
         childAspectRatio: 0.7,
         crossAxisSpacing: 24,
         mainAxisSpacing: 24,
@@ -396,50 +642,65 @@ class _HomePageState extends State<HomePage> {
           ),
           child: InkWell(
             onTap: () => setState(() => _activeFolderId = folder.id),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.folder,
-                  size: 72,
-                  color: isHovering ? Colors.amber : Colors.amber.shade700,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  folder.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '$charCount character${charCount == 1 ? '' : 's'}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-                const SizedBox(height: 16),
-                // Folder action buttons
-                Row(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmall = constraints.maxHeight < 200;
+                final isTiny = constraints.maxHeight < 140;
+                final iconSize = isTiny ? 32.0 : (isSmall ? 48.0 : 72.0);
+                final fontSize = isTiny ? 11.0 : (isSmall ? 13.0 : 16.0);
+
+                return Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.white54, size: 18),
-                      tooltip: 'Rename',
-                      onPressed: () => _renameFolder(context, folder, folderService),
+                    Icon(
+                      Icons.folder,
+                      size: iconSize,
+                      color: isHovering ? Colors.amber : Colors.amber.shade700,
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
-                      tooltip: 'Delete folder',
-                      onPressed: () => _deleteFolder(context, folder, folderService),
+                    SizedBox(height: isTiny ? 4 : (isSmall ? 8 : 16)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        folder.name,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: fontSize,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: isTiny ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
+                    if (!isTiny) ...[
+                      SizedBox(height: isSmall ? 4 : 8),
+                      Text(
+                        '$charCount character${charCount == 1 ? '' : 's'}',
+                        style: TextStyle(color: Colors.white54, fontSize: isSmall ? 11 : 13),
+                      ),
+                    ],
+                    if (!isSmall) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.white54, size: 18),
+                            tooltip: 'Rename',
+                            onPressed: () => _renameFolder(context, folder, folderService),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
+                            tooltip: 'Delete folder',
+                            onPressed: () => _deleteFolder(context, folder, folderService),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
-                ),
-              ],
+                );
+              },
             ),
           ),
         );
@@ -448,6 +709,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildCharacterCard(BuildContext context, CharacterCard character, FolderService folderService) {
+
     return LongPressDraggable<CharacterCard>(
       data: character,
       feedback: Material(
@@ -475,6 +737,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildCharacterCardInner(BuildContext context, CharacterCard character, FolderService folderService) {
     final charId = _getCharacterIdFromCard(character);
+    final msgCount = _messageCountCache[charId] ?? 0;
     final isSelected = _selectedCharacterIds.contains(charId);
 
     return Card(
@@ -491,86 +754,156 @@ class _HomePageState extends State<HomePage> {
         children: [
           InkWell(
             onTap: () async {
-              if (_isSelecting) {
+              if (_isSelecting || _isOrganizing) {
                 _toggleSelect(character);
                 return;
               }
               final chatService = Provider.of<ChatService>(context, listen: false);
               await chatService.setActiveCharacter(character);
               if (context.mounted) {
-                Navigator.of(context).push(
+                await Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ChatPage()),
                 );
+                // Refresh cache when returning from chat
+                _refreshLastActivityCache();
               }
             },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: character.imagePath != null
-                      ? Image.file(
-                          File(character.imagePath!),
-                          fit: BoxFit.cover,
-                        )
-                      : Container(
-                          color: Colors.grey.shade800,
-                          child: const Icon(Icons.person, size: 64, color: Colors.white24),
-                        ),
-                ),
-                Expanded(
-                  flex: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          character.name,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        // Tag chips (show first 3 tags)
-                        if (character.tags.isNotEmpty)
-                          Flexible(
-                            child: Wrap(
-                              spacing: 4,
-                              runSpacing: 2,
-                              children: character.tags.take(3).map((tag) => Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.shade900.withValues(alpha: 0.3),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  tag,
-                                  style: TextStyle(color: Colors.amber.shade300, fontSize: 10),
-                                ),
-                              )).toList(),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompact = constraints.maxWidth < 200;
+                final isTiny = constraints.maxWidth < 160;
+
+                if (isTiny) {
+                  // Very small: image only with name overlay
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      character.imagePath != null
+                          ? Image.file(File(character.imagePath!), fit: BoxFit.cover)
+                          : Container(
+                              color: Colors.grey.shade800,
+                              child: const Icon(Icons.person, size: 32, color: Colors.white24),
                             ),
-                          )
-                        else
-                          Flexible(
-                            child: Text(
-                              character.formattedDescription,
-                              style: Theme.of(context).textTheme.bodySmall,
-                              maxLines: 2,
+                      Positioned(
+                        left: 0, right: 0, bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [Colors.black87, Colors.transparent],
+                            ),
+                          ),
+                          child: Text(
+                            character.name,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: isCompact ? 4 : 3,
+                      child: character.imagePath != null
+                          ? Image.file(
+                              File(character.imagePath!),
+                              fit: BoxFit.cover,
+                            )
+                          : Container(
+                              color: Colors.grey.shade800,
+                              child: Icon(Icons.person, size: isCompact ? 32 : 64, color: Colors.white24),
+                            ),
+                    ),
+                    Expanded(
+                      flex: 1,
+                      child: Padding(
+                        padding: EdgeInsets.all(isCompact ? 6.0 : 12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              character.name,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: isCompact ? 12 : null,
+                              ),
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                      ],
+                            if (!isCompact) ...[
+                              const SizedBox(height: 4),
+                              // Tag chips (show first 3 tags)
+                              if (character.tags.isNotEmpty)
+                                Flexible(
+                                  child: Wrap(
+                                    spacing: 4,
+                                    runSpacing: 2,
+                                    children: character.tags.take(3).map((tag) => Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.shade900.withValues(alpha: 0.3),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        tag,
+                                        style: TextStyle(color: Colors.amber.shade300, fontSize: 10),
+                                      ),
+                                    )).toList(),
+                                  ),
+                                )
+                              else
+                                Flexible(
+                                  child: Text(
+                                    character.formattedDescription,
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
+          // Message count badge
+          if (msgCount > 0 && !_isSelecting && !_isOrganizing)
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.chat_bubble_outline, size: 12, color: Colors.white70),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$msgCount',
+                      style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Selection checkbox overlay
-          if (_isSelecting)
+          if (_isSelecting || _isOrganizing)
             Positioned(
               top: 8,
               left: 8,
@@ -578,9 +911,9 @@ class _HomePageState extends State<HomePage> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.purpleAccent : Colors.black54,
+                  color: isSelected ? (_isOrganizing ? Colors.blueAccent : Colors.purpleAccent) : Colors.black54,
                   shape: BoxShape.circle,
-                  border: Border.all(color: isSelected ? Colors.purpleAccent : Colors.white38, width: 2),
+                  border: Border.all(color: isSelected ? (_isOrganizing ? Colors.blueAccent : Colors.purpleAccent) : Colors.white38, width: 2),
                 ),
                 child: isSelected
                     ? const Icon(Icons.check, size: 16, color: Colors.white)
@@ -588,7 +921,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           // Action buttons (hide during selection mode)
-          if (!_isSelecting)
+          if (!_isSelecting && !_isOrganizing)
             Positioned(
               top: 8,
               right: 8,
@@ -665,9 +998,10 @@ class _HomePageState extends State<HomePage> {
           final chatService = Provider.of<ChatService>(context, listen: false);
           await chatService.setActiveGroup(group);
           if (context.mounted) {
-            Navigator.of(context).push(
+            await Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const ChatPage()),
             );
+            _refreshLastActivityCache();
           }
         },
         child: Stack(
@@ -808,6 +1142,118 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ─── Group Creation Dialog ──────────────────────────────────────
+
+  void _showMoveToFolderDialog(BuildContext context, CharacterRepository repo, FolderService folderService) {
+    final folders = folderService.folders;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.blueAccent, width: 0.5),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.drive_file_move, color: Colors.blueAccent),
+            const SizedBox(width: 12),
+            Text(
+              'Move ${_selectedCharacterIds.length} character${_selectedCharacterIds.length == 1 ? '' : 's'} to folder',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (folders.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('No folders yet. Create one below.', style: TextStyle(color: Colors.white54)),
+                ),
+              ...folders.map((folder) => ListTile(
+                leading: const Icon(Icons.folder, color: Colors.amberAccent),
+                title: Text(folder.name, style: const TextStyle(color: Colors.white)),
+                subtitle: Text('${folder.characterPaths.length} characters', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                hoverColor: Colors.white10,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _moveSelectedToFolder(context, folder.id, repo, folderService);
+                },
+              )),
+              const Divider(color: Colors.white12),
+              ListTile(
+                leading: const Icon(Icons.create_new_folder, color: Colors.greenAccent),
+                title: const Text('New Folder', style: TextStyle(color: Colors.greenAccent)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                hoverColor: Colors.white10,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final name = await _promptFolderName(context);
+                  if (name != null && name.isNotEmpty && context.mounted) {
+                    final folder = await folderService.createFolder(name);
+                    await _moveSelectedToFolder(context, folder.id, repo, folderService);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _promptFolderName(BuildContext context) async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('New Folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Folder name'),
+          onSubmitted: (val) => Navigator.pop(ctx, val),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _moveSelectedToFolder(BuildContext context, String folderId, CharacterRepository repo, FolderService folderService) async {
+    // Resolve selected IDs back to imagePaths
+    for (final id in _selectedCharacterIds) {
+      final card = repo.characters.where((c) => _getCharacterIdFromCard(c) == id).firstOrNull;
+      if (card?.imagePath != null) {
+        await folderService.addToFolder(folderId, card!.imagePath!);
+      }
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Moved ${_selectedCharacterIds.length} character${_selectedCharacterIds.length == 1 ? '' : 's'} to folder')),
+      );
+    }
+    _cancelSelection();
+  }
 
   void _showCreateGroupDialog(BuildContext context, CharacterRepository repo) {
     // Show pre-alpha warning first
@@ -1428,11 +1874,22 @@ class _HomePageState extends State<HomePage> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['png', 'json'],
+      allowMultiple: true,
     );
     
-    if (result != null && result.files.single.path != null) {
-      if (!context.mounted) return;
-      final file = File(result.files.single.path!);
+    if (result == null || result.files.isEmpty) return;
+    if (!context.mounted) return;
+
+    final files = result.files
+        .where((f) => f.path != null)
+        .map((f) => File(f.path!))
+        .toList();
+
+    if (files.isEmpty) return;
+
+    // Single file: use the original flow with tag dialog
+    if (files.length == 1) {
+      final file = files.first;
       try {
         final worldRepo = Provider.of<WorldRepository>(context, listen: false);
         final repo = Provider.of<CharacterRepository>(context, listen: false);
@@ -1453,7 +1910,176 @@ class _HomePageState extends State<HomePage> {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
         }
       }
+      return;
     }
+
+    // Multiple files: use bulk import with progress dialog
+    _runBulkImport(context, files);
+  }
+
+  Future<void> _folderImportCharacters(BuildContext context) async {
+    final dirPath = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select folder containing character PNGs',
+    );
+
+    if (dirPath == null) return;
+    if (!context.mounted) return;
+
+    // Scan the folder for PNG files
+    final dir = Directory(dirPath);
+    final files = <File>[];
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is File && entity.path.toLowerCase().endsWith('.png')) {
+        files.add(entity);
+      }
+    }
+
+    if (files.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No PNG files found in the selected folder.')),
+        );
+      }
+      return;
+    }
+
+    _runBulkImport(context, files);
+  }
+
+  /// Shared bulk import with progress dialog — used by both multi-select and folder import.
+  void _runBulkImport(BuildContext context, List<File> files) {
+    bool cancelled = false;
+    int currentCount = 0;
+    int totalCount = files.length;
+    int importedCount = 0;
+    int failedCount = 0;
+    String currentName = '';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            // Start the import on first build
+            if (currentCount == 0 && !cancelled) {
+              final repo = Provider.of<CharacterRepository>(context, listen: false);
+              final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+              repo.importCharacters(
+                files,
+                worldRepo: worldRepo,
+                isCancelled: () => cancelled,
+                onProgress: (current, total, name, error) {
+                  if (ctx.mounted) {
+                    setDialogState(() {
+                      currentCount = current;
+                      currentName = name;
+                      if (error == null) {
+                        importedCount++;
+                      } else {
+                        failedCount++;
+                      }
+                    });
+                  }
+                },
+              ).then((summary) {
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                if (context.mounted) {
+                  final msg = failedCount > 0
+                      ? 'Imported $importedCount character${importedCount == 1 ? '' : 's'} ($failedCount failed)'
+                      : 'Imported $importedCount character${importedCount == 1 ? '' : 's'} successfully!';
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+                }
+              });
+            }
+
+            final progress = totalCount > 0 ? currentCount / totalCount : 0.0;
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.5)),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.library_add, color: Colors.blueAccent),
+                  SizedBox(width: 12),
+                  Text('Bulk Import', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 12,
+                        backgroundColor: Colors.white10,
+                        valueColor: const AlwaysStoppedAnimation(Colors.blueAccent),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Status text
+                    Text(
+                      currentCount == 0
+                          ? 'Starting import...'
+                          : 'Importing $currentCount of $totalCount...',
+                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    // Current file name
+                    if (currentName.isNotEmpty)
+                      Text(
+                        currentName,
+                        style: const TextStyle(color: Colors.white38, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    const SizedBox(height: 16),
+                    // Counts row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _bulkStatChip(Icons.check_circle, Colors.green, '$importedCount imported'),
+                        const SizedBox(width: 16),
+                        _bulkStatChip(Icons.error, Colors.redAccent, '$failedCount failed'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    cancelled = true;
+                  },
+                  child: Text(
+                    cancelled ? 'Cancelling...' : 'Cancel',
+                    style: TextStyle(color: cancelled ? Colors.white38 : Colors.redAccent),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _bulkStatChip(IconData icon, Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(color: color, fontSize: 13)),
+      ],
+    );
   }
 
   Future<void> _exportCharacter(BuildContext context, character) async {

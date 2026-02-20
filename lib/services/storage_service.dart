@@ -64,6 +64,12 @@ class StorageService extends ChangeNotifier {
   String _openaiTtsModel = 'tts-1'; // 'tts-1' or 'tts-1-hd'
   int _ttsConcurrency = Platform.numberOfProcessors.clamp(1, 16);
 
+  // Sort preference
+  String _sortMode = 'name'; // 'name', 'recent', 'importDate'
+
+  // Grid scale preference
+  double _gridScale = 300.0; // maxCrossAxisExtent in pixels (150-450)
+
 
   // Getters
   String get systemPrompt => _systemPrompt;
@@ -101,6 +107,8 @@ class StorageService extends ChangeNotifier {
   String get openaiTtsApiKey => _openaiTtsApiKey;
   String get openaiTtsModel => _openaiTtsModel;
   int get ttsConcurrency => _ttsConcurrency;
+  String get sortMode => _sortMode;
+  double get gridScale => _gridScale;
 
   StorageService() {
     _init();
@@ -157,6 +165,8 @@ class StorageService extends ChangeNotifier {
     _openaiTtsApiKey = _prefs?.getString('openai_tts_api_key') ?? '';
     _ttsConcurrency = _prefs?.getInt('tts_concurrency') ?? Platform.numberOfProcessors.clamp(1, 16);
     _openaiTtsModel = _prefs?.getString('openai_tts_model') ?? 'tts-1';
+    _sortMode = _prefs?.getString('sort_mode') ?? 'name';
+    _gridScale = _prefs?.getDouble('grid_scale') ?? 300.0;
 
     // Load saved prompts
     final promptsJson = _prefs?.getString('saved_prompts');
@@ -429,6 +439,18 @@ class StorageService extends ChangeNotifier {
   Future<void> setTtsConcurrency(int value) async {
     _ttsConcurrency = value.clamp(1, 16);
     await _prefs?.setInt('tts_concurrency', _ttsConcurrency);
+    notifyListeners();
+  }
+
+  Future<void> setSortMode(String value) async {
+    _sortMode = value;
+    await _prefs?.setString('sort_mode', value);
+    notifyListeners();
+  }
+
+  Future<void> setGridScale(double value) async {
+    _gridScale = value.clamp(150.0, 450.0);
+    await _prefs?.setDouble('grid_scale', _gridScale);
     notifyListeners();
   }
 }

@@ -156,6 +156,46 @@ class CharacterRepository extends ChangeNotifier {
     }
   }
 
+  /// Bulk import multiple character PNG files.
+  /// [onProgress] is called after each file with (current, total, cardName, error).
+  /// Returns a summary map: {imported: int, failed: int, errors: List<String>}.
+  Future<Map<String, dynamic>> importCharacters(
+    List<File> files, {
+    WorldRepository? worldRepo,
+    void Function(int current, int total, String name, String? error)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    int imported = 0;
+    int failed = 0;
+    final List<String> errors = [];
+
+    for (int i = 0; i < files.length; i++) {
+      // Check cancellation
+      if (isCancelled != null && isCancelled()) break;
+
+      final file = files[i];
+      final fileName = file.path.split(Platform.pathSeparator).last;
+      try {
+        final card = await importCharacter(file, worldRepo: worldRepo);
+        if (card != null) {
+          imported++;
+          onProgress?.call(i + 1, files.length, card.name, null);
+        } else {
+          failed++;
+          final err = 'No card data found in $fileName';
+          errors.add(err);
+          onProgress?.call(i + 1, files.length, fileName, err);
+        }
+      } catch (e) {
+        failed++;
+        final err = '$fileName: $e';
+        errors.add(err);
+        onProgress?.call(i + 1, files.length, fileName, e.toString());
+      }
+    }
+
+    return {'imported': imported, 'failed': failed, 'errors': errors};
+  }
 
   Future<void> updateCharacter(CharacterCard card) async {
     if (card.imagePath == null) return;

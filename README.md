@@ -10,7 +10,21 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
-## 🆕 What's New in V0.7.0
+## 🆕 What's New in V0.7.1
+
+- 🔍 **Grid Scale Slider**: Resize character cards on the home screen with a header slider (150–450px). Cards adapt responsively — compact text at medium sizes, image-only with name overlay at tiny sizes.
+- 💬 **Message Count Badges**: Each character card shows a chat bubble badge with how many messages you've sent (AI replies excluded).
+- 📊 **Sort by Messages Sent**: New sort option to order characters by message count.
+- 📂 **Multi-Select Folder Organization**: Dedicated folder selection mode for moving multiple characters into folders at once.
+- 📥 **Bulk PNG Import**: Import an entire folder of character card PNGs in one action.
+- 🐛 **Folder Rename Fix**: Fixed path separator mismatch that caused characters to disappear from folders on Windows.
+- 🐛 **Cross-Chat Message Leak Fix**: Messages from one chat no longer appear in another character's session.
+- 🏗️ **CI/CD Cleanup**: Removed the transitional `Front_Porch_AI_Setup_Alpha.exe` duplicate from releases.
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.7.0
 
 - 🔊 **Multi-Engine Text-to-Speech**: Three TTS engines to choose from — all accessible from the new TTS button in the chat sidebar:
   - **Kokoro TTS** (local, default) — High-quality offline TTS powered by kokoro-onnx. 50+ voices across 9 languages. Models auto-download on first use.
@@ -21,9 +35,6 @@ Front Porch AI is proudly licensed under the **GPL v3** because we believe your 
 - ⏹️ **Stop Generation**: Cancel in-progress TTS generation with a stop button next to the progress spinner.
 - 🎛️ **TTS Settings in Chat**: Quick-access TTS configuration button in the chat sidebar alongside Chat and Model settings.
 - 🔄 **Linux AppImage Self-Update**: AppImage users are automatically notified when a new version is available. Download and install updates with a single click — the app replaces itself and relaunches seamlessly.
-
-<details>
-<summary><strong>📦 Previous Releases</strong></summary>
 
 ### What's New in V0.6.0
 

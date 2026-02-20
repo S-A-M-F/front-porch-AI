@@ -114,6 +114,7 @@ class ChatService extends ChangeNotifier {
   bool _isGenerating = false;
   bool _isLoadingSession = false;
   bool _cancelRequested = false;
+  int _generationEpoch = 0;
   String? _currentSessionId;
   double _generationProgress = 0.0;
   int _tokensGenerated = 0;
@@ -274,6 +275,10 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> setActiveCharacter(CharacterCard? character) async {
+    // Cancel any in-flight generation before switching context
+    await _cancelAndWaitForGeneration();
+    _generationEpoch++;
+
     // If same character is already active, don't reset unless empty
     if (_activeCharacter?.name == character?.name && 
         _activeCharacter?.imagePath == character?.imagePath && 
@@ -334,6 +339,10 @@ class ChatService extends ChangeNotifier {
 
   /// Enter group chat mode with the given GroupChat definition.
   Future<void> setActiveGroup(GroupChat group) async {
+    // Cancel any in-flight generation before switching context
+    await _cancelAndWaitForGeneration();
+    _generationEpoch++;
+
     if (_characterRepository == null) return;
 
     // Clear 1:1 mode
@@ -1025,6 +1034,7 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> _generateResponse(GenerationMode mode) async {
+    final epoch = ++_generationEpoch;
     _isGenerating = true;
     _generationProgress = 0.0;
     _tokensGenerated = 0;
@@ -1251,6 +1261,7 @@ class ChatService extends ChangeNotifier {
 
       // Helper to update the visible message from buffer
       void _flushBufferToDisplay() {
+        if (epoch != _generationEpoch) return; // stale generation
         if (_tokenBuffer.isEmpty && _displayedTokenCount == 0) return;
         // Build displayed text from all tokens up to _displayedTokenCount
         final displayTokens = _tokenBuffer.take(_displayedTokenCount).join();
@@ -1275,6 +1286,7 @@ class ChatService extends ChangeNotifier {
         if (_drainTimer != null) return;
         final interval = Duration(milliseconds: (1000.0 / targetTps).round());
         _drainTimer = Timer.periodic(interval, (_) {
+          if (epoch != _generationEpoch) { _drainTimer?.cancel(); _drainTimer = null; return; } // stale
           if (_displayedTokenCount < _tokenBuffer.length) {
             _displayedTokenCount++;
             _flushBufferToDisplay();
@@ -1413,16 +1425,19 @@ class ChatService extends ChangeNotifier {
       _generationStartTime = null;
       notifyListeners();
 
-      final finalResponse = accumulatedResponse.trim();
-      if (finalResponse.isNotEmpty) {
-        _scanLorebook(finalResponse);
+      // Only finalize if this generation is still current
+      if (epoch == _generationEpoch) {
+        final finalResponse = accumulatedResponse.trim();
+        if (finalResponse.isNotEmpty) {
+          _scanLorebook(finalResponse);
+        }
+        
+        // Bot message counts as a message towards depth
+        _decrementLoreDepth();
+        
+        // Save session after AI message is complete
+        await _saveChat();
       }
-      
-      // Bot message counts as a message towards depth
-      _decrementLoreDepth();
-      
-      // Save session after AI message is complete
-      await _saveChat();
 
     } catch (e) {
       _drainTimer?.cancel();
@@ -1573,6 +1588,16 @@ class ChatService extends ChangeNotifier {
   void stopGeneration() {
     if (_isGenerating) {
       _cancelRequested = true;
+    }
+  }
+
+  /// Cancel any in-flight generation and wait for it to fully stop.
+  Future<void> _cancelAndWaitForGeneration() async {
+    if (!_isGenerating) return;
+    _cancelRequested = true;
+    // Spin until _generateResponse finishes its cleanup
+    while (_isGenerating) {
+      await Future.delayed(const Duration(milliseconds: 10));
     }
   }
 
