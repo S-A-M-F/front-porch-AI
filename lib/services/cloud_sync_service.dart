@@ -76,6 +76,16 @@ class CloudSyncService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Get the active cloud storage provider.
+  CloudStorageProvider? get provider => _provider;
+
+  /// Disconnect and clear the active provider.
+  void clearProvider() {
+    _provider = null;
+    _status = SyncStatus.idle;
+    notifyListeners();
+  }
+
   /// Run a full bi-directional sync of chats and characters.
   /// [validCharIds] and [validGroupIds] are used to clean up orphaned remote folders.
   Future<void> fullSync(String chatsDir, String charactersDir, {

@@ -462,56 +462,157 @@ class _ChatPageState extends State<ChatPage> {
 
   void _showHistoryDialog(BuildContext context) async {
     final chatService = Provider.of<ChatService>(context, listen: false);
-    final sessions = await chatService.getSessions();
+    var sessions = await chatService.getSessions();
 
     if (!context.mounted) return;
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
-        title: const Text('Chat History'),
-        content: SizedBox(
-          width: 400,
-          height: 300,
-          child: sessions.isEmpty 
-            ? const Center(child: Text('No previous chats found.'))
-            : ListView.builder(
-                itemCount: sessions.length,
-                itemBuilder: (context, index) {
-                  final s = sessions[index];
-                  final date = s['date'] as DateTime;
-                  final dateStr = '${date.year}-${date.month}-${date.day} ${date.hour}:${date.minute.toString().padLeft(2, "0")}';
-                  final isCurrent = s['id'] == chatService.currentSessionId;
-                  final isBranch = s['parent_session'] != null;
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1F2937),
+          title: const Text('Chat History'),
+          content: SizedBox(
+            width: 420,
+            height: 350,
+            child: sessions.isEmpty 
+              ? const Center(child: Text('No previous chats found.'))
+              : ListView.builder(
+                  itemCount: sessions.length,
+                  itemBuilder: (context, index) {
+                    final s = sessions[index];
+                    final date = s['date'] as DateTime;
+                    final dateStr = '${date.year}-${date.month}-${date.day} ${date.hour}:${date.minute.toString().padLeft(2, "0")}';
+                    final isCurrent = s['id'] == chatService.currentSessionId;
+                    final isBranch = s['parent_session'] != null;
+                    final description = s['session_description'] as String?;
 
-                  return ListTile(
-                    leading: isBranch 
-                      ? const Icon(Icons.call_split, size: 18, color: Colors.blueAccent) 
-                      : null,
-                    title: Text(s['preview'], style: const TextStyle(fontSize: 14)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.white54)),
-                        if (isBranch)
-                          Text('↳ Branched at message #${(s['fork_index'] ?? 0) + 1}',
-                            style: const TextStyle(fontSize: 11, color: Colors.blueAccent)),
-                      ],
-                    ),
-                    trailing: isCurrent ? const Icon(Icons.check, color: Colors.greenAccent) : null,
-                    onTap: () {
-                      chatService.loadSession(s['id']);
-                      Navigator.of(context).pop();
-                    },
-                  );
-                },
+                    return ListTile(
+                      leading: isBranch 
+                        ? const Icon(Icons.call_split, size: 18, color: Colors.blueAccent) 
+                        : null,
+                      title: Text(s['preview'], style: const TextStyle(fontSize: 14)),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                          if (description != null && description.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                description,
+                                style: const TextStyle(fontSize: 11, color: Colors.white38, fontStyle: FontStyle.italic),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          if (isBranch)
+                            Text('↳ Branched at message #${(s['fork_index'] ?? 0) + 1}',
+                              style: const TextStyle(fontSize: 11, color: Colors.blueAccent)),
+                        ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 16, color: Colors.white38),
+                            tooltip: 'Edit name & description',
+                            onPressed: () => _showEditSessionDialog(
+                              context, chatService, s,
+                              onSaved: () async {
+                                sessions = await chatService.getSessions();
+                                setDialogState(() {});
+                              },
+                            ),
+                          ),
+                          if (isCurrent)
+                            const Icon(Icons.check, color: Colors.greenAccent),
+                        ],
+                      ),
+                      onTap: () {
+                        chatService.loadSession(s['id']);
+                        Navigator.of(context).pop();
+                      },
+                    );
+                  },
+                ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditSessionDialog(
+    BuildContext context,
+    ChatService chatService,
+    Map<String, dynamic> session, {
+    required VoidCallback onSaved,
+  }) {
+    final nameController = TextEditingController(text: session['session_name'] ?? '');
+    final descController = TextEditingController(text: session['session_description'] ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        title: const Text('Edit Chat Session'),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Session Name',
+                  labelStyle: const TextStyle(color: Colors.white54),
+                  hintText: 'e.g. "Adventure in the forest"',
+                  hintStyle: const TextStyle(color: Colors.white24),
+                  filled: true,
+                  fillColor: const Color(0xFF374151),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descController,
+                style: const TextStyle(color: Colors.white),
+                maxLines: 3,
+                minLines: 2,
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  labelStyle: const TextStyle(color: Colors.white54),
+                  hintText: 'Optional — appears under the timestamp',
+                  hintStyle: const TextStyle(color: Colors.white24),
+                  filled: true,
+                  fillColor: const Color(0xFF374151),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await chatService.renameSession(session['id'], nameController.text.trim());
+              await chatService.updateSessionDescription(session['id'], descController.text.trim());
+              Navigator.of(ctx).pop();
+              onSaved();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+            child: const Text('Save', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

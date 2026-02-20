@@ -140,6 +140,10 @@ class ChatService extends ChangeNotifier {
   Map<String, int> _lastPromptBudget = {};
   String _lastAssembledPrompt = '';
 
+  // ── Session Metadata ──
+  String? _sessionName;
+  String? _sessionDescription;
+
   // ── Chat Branching ──
   String? _parentSessionId;
   int? _forkIndex;
@@ -257,6 +261,8 @@ class ChatService extends ChangeNotifier {
   int get contextSize => _storageService.contextSize;
   String? get parentSessionId => _parentSessionId;
   int? get forkIndex => _forkIndex;
+  String? get sessionName => _sessionName;
+  String? get sessionDescription => _sessionDescription;
 
   void setAuthorNote(String note, {int? depth}) {
     _authorNote = note;
@@ -460,6 +466,8 @@ class ChatService extends ChangeNotifier {
       'messages': _messages.map((m) => m.toJson()).toList(),
       'author_note': _authorNote,
       'author_note_depth': _authorNoteDepth,
+      if (_sessionName != null) 'session_name': _sessionName,
+      if (_sessionDescription != null) 'session_description': _sessionDescription,
       if (_parentSessionId != null) 'parent_session': _parentSessionId,
       if (_forkIndex != null) 'fork_index': _forkIndex,
     };
@@ -494,6 +502,8 @@ class ChatService extends ChangeNotifier {
         _messages.addAll(decoded.map((m) => ChatMessage.fromJson(m)));
         _authorNote = '';
         _authorNoteDepth = 4;
+        _sessionName = null;
+        _sessionDescription = null;
         _parentSessionId = null;
         _forkIndex = null;
       } else if (decoded is Map) {
@@ -501,6 +511,8 @@ class ChatService extends ChangeNotifier {
         _messages.addAll(jsonList.map((m) => ChatMessage.fromJson(m)));
         _authorNote = decoded['author_note'] ?? '';
         _authorNoteDepth = decoded['author_note_depth'] ?? 4;
+        _sessionName = decoded['session_name'];
+        _sessionDescription = decoded['session_description'];
         _parentSessionId = decoded['parent_session'];
         _forkIndex = decoded['fork_index'];
       }
@@ -530,6 +542,8 @@ class ChatService extends ChangeNotifier {
       
       // Peek at first message for a preview?
       String preview = "New Conversation";
+      String? sessionName;
+      String? sessionDescription;
       String? parentSession;
       int? forkIdx;
       try {
@@ -540,12 +554,16 @@ class ChatService extends ChangeNotifier {
           msgList = decoded;
         } else if (decoded is Map) {
           msgList = decoded['messages'] ?? [];
+          sessionName = decoded['session_name'];
+          sessionDescription = decoded['session_description'];
           parentSession = decoded['parent_session'];
           forkIdx = decoded['fork_index'];
         } else {
           msgList = [];
         }
-        if (msgList.length > 1) {
+        if (sessionName != null && sessionName.isNotEmpty) {
+          preview = sessionName;
+        } else if (msgList.length > 1) {
           preview = msgList[1]['text'] ?? '';
           if (preview.length > 50) preview = '${preview.substring(0, 50)}...';
         }
@@ -555,6 +573,8 @@ class ChatService extends ChangeNotifier {
         'id': id,
         'date': date,
         'preview': preview,
+        if (sessionName != null) 'session_name': sessionName,
+        if (sessionDescription != null) 'session_description': sessionDescription,
         if (parentSession != null) 'parent_session': parentSession,
         if (forkIdx != null) 'fork_index': forkIdx,
       });
@@ -582,6 +602,8 @@ class ChatService extends ChangeNotifier {
         _messages.addAll(decoded.map((m) => ChatMessage.fromJson(m)));
         _authorNote = '';
         _authorNoteDepth = 4;
+        _sessionName = null;
+        _sessionDescription = null;
         _parentSessionId = null;
         _forkIndex = null;
       } else if (decoded is Map) {
@@ -589,6 +611,8 @@ class ChatService extends ChangeNotifier {
         _messages.addAll(jsonList.map((m) => ChatMessage.fromJson(m)));
         _authorNote = decoded['author_note'] ?? '';
         _authorNoteDepth = decoded['author_note_depth'] ?? 4;
+        _sessionName = decoded['session_name'];
+        _sessionDescription = decoded['session_description'];
         _parentSessionId = decoded['parent_session'];
         _forkIndex = decoded['fork_index'];
       }
@@ -600,6 +624,58 @@ class ChatService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       print('Error loading session $sessionId: $e');
+    }
+  }
+
+  /// Rename a session. Updates the JSON file directly.
+  Future<void> renameSession(String sessionId, String name) async {
+    if (_activeCharacter == null && _activeGroup == null) return;
+
+    final charId = _getCharacterId();
+    final file = File('${_storageService.chatsDir.path}/$charId/$sessionId.json');
+    if (!await file.exists()) return;
+
+    try {
+      final content = await file.readAsString();
+      final decoded = jsonDecode(content);
+      if (decoded is Map<String, dynamic>) {
+        decoded['session_name'] = name.isEmpty ? null : name;
+        await file.writeAsString(jsonEncode(decoded));
+      }
+
+      // Update in-memory if this is the current session
+      if (sessionId == _currentSessionId) {
+        _sessionName = name.isEmpty ? null : name;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error renaming session: $e');
+    }
+  }
+
+  /// Update the description of a session. Updates the JSON file directly.
+  Future<void> updateSessionDescription(String sessionId, String description) async {
+    if (_activeCharacter == null && _activeGroup == null) return;
+
+    final charId = _getCharacterId();
+    final file = File('${_storageService.chatsDir.path}/$charId/$sessionId.json');
+    if (!await file.exists()) return;
+
+    try {
+      final content = await file.readAsString();
+      final decoded = jsonDecode(content);
+      if (decoded is Map<String, dynamic>) {
+        decoded['session_description'] = description.isEmpty ? null : description;
+        await file.writeAsString(jsonEncode(decoded));
+      }
+
+      // Update in-memory if this is the current session
+      if (sessionId == _currentSessionId) {
+        _sessionDescription = description.isEmpty ? null : description;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error updating session description: $e');
     }
   }
 

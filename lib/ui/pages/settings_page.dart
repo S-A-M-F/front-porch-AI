@@ -1710,38 +1710,64 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ],
 
-                // Google Drive sign-in button
+                // Google Drive sign-in / disconnect buttons
                 if (provider == 'gdrive') ...[
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: syncService.isConnected ? null : () async {
-                        try {
-                          final gProvider = GoogleDriveProvider();
-                          await gProvider.connect({});
-                          syncService.setProvider(gProvider);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('✅ Signed in to Google Drive!')),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('❌ Google sign-in failed: $e')),
-                            );
-                          }
-                        }
-                      },
-                      icon: Icon(syncService.isConnected ? Icons.check_circle : Icons.login, size: 18),
-                      label: Text(syncService.isConnected ? 'Connected to Google Drive' : 'Sign in with Google'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: syncService.isConnected ? Colors.green.shade700 : Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: syncService.isConnected ? null : () async {
+                            try {
+                              final gProvider = GoogleDriveProvider();
+                              await gProvider.connect({});
+                              syncService.setProvider(gProvider);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('✅ Signed in to Google Drive!')),
+                                );
+                                setState(() {});
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('❌ Google sign-in failed: $e')),
+                                );
+                              }
+                            }
+                          },
+                          icon: Icon(syncService.isConnected ? Icons.check_circle : Icons.login, size: 18),
+                          label: Text(syncService.isConnected ? 'Connected' : 'Sign in with Google'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: syncService.isConnected ? Colors.green.shade700 : Colors.blueAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
                       ),
-                    ),
+                      if (syncService.isConnected) ...[
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            await syncService.provider?.disconnect();
+                            syncService.clearProvider();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Disconnected from Google Drive')),
+                              );
+                              setState(() {});
+                            }
+                          },
+                          icon: const Icon(Icons.logout, size: 18),
+                          label: const Text('Disconnect'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red.shade700,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
 

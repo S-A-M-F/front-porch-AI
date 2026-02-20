@@ -124,6 +124,7 @@ class GoogleDriveProvider extends CloudStorageProvider {
     do {
       final fileList = await _driveApi!.files.list(
         q: "'$folderId' in parents and trashed = false",
+        spaces: 'appDataFolder',
         $fields: 'files(id, name, mimeType, modifiedTime, size), nextPageToken',
         pageToken: pageToken,
       );
@@ -162,6 +163,7 @@ class GoogleDriveProvider extends CloudStorageProvider {
     // Check if file already exists
     final existing = await _driveApi!.files.list(
       q: "'$parentId' in parents and name = '$fileName' and trashed = false",
+      spaces: 'appDataFolder',
       $fields: 'files(id)',
     );
 
@@ -232,6 +234,7 @@ class GoogleDriveProvider extends CloudStorageProvider {
 
     final fileList = await _driveApi!.files.list(
       q: "'$parentId' in parents and name = '$fileName' and trashed = false",
+      spaces: 'appDataFolder',
       $fields: 'files(id)',
     );
 
@@ -245,7 +248,7 @@ class GoogleDriveProvider extends CloudStorageProvider {
     if (_driveApi == null) throw Exception('Not connected to Google Drive');
 
     final folderId = await _getOrCreateFolderId(remotePath);
-    if (folderId == null || folderId == 'root') return;
+    if (folderId == null || folderId == 'root' || folderId == 'appDataFolder') return;
 
     // Delete the folder (Google Drive cascades to contents)
     try {
@@ -263,7 +266,7 @@ class GoogleDriveProvider extends CloudStorageProvider {
     if (_folderIdCache.containsKey(remotePath)) return _folderIdCache[remotePath];
 
     final parts = remotePath.split('/').where((p) => p.isNotEmpty).toList();
-    String parentId = 'root';
+    String parentId = 'appDataFolder';
 
     for (int i = 0; i < parts.length; i++) {
       final partPath = '/${parts.sublist(0, i + 1).join('/')}';
@@ -274,7 +277,7 @@ class GoogleDriveProvider extends CloudStorageProvider {
 
       // Search for existing folder
       final query = "'$parentId' in parents and name = '${parts[i]}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
-      final list = await _driveApi!.files.list(q: query, $fields: 'files(id)');
+      final list = await _driveApi!.files.list(q: query, spaces: 'appDataFolder', $fields: 'files(id)');
 
       if (list.files != null && list.files!.isNotEmpty) {
         parentId = list.files!.first.id!;
