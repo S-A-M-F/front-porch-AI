@@ -23,6 +23,7 @@ import 'package:front_porch_ai/ui/dialogs/tag_dialog.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/tts_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -760,12 +761,28 @@ class _HomePageState extends State<HomePage> {
                 return;
               }
               final chatService = Provider.of<ChatService>(context, listen: false);
-              await chatService.setActiveCharacter(character);
+              final charId = _getCharacterIdFromCard(character);
+              final sessions = await chatService.getSessionsForId(charId);
+
+              if (!context.mounted) return;
+
+              if (sessions.length > 1) {
+                final selectedId = await _showSessionPickerDialog(context, sessions, character.name);
+                if (selectedId == null || !context.mounted) return;
+                await chatService.setActiveCharacter(character);
+                if (selectedId != '__new__') {
+                  await chatService.loadSession(selectedId);
+                }
+                if (selectedId == '__new__') {
+                  await chatService.startNewChat();
+                }
+              } else {
+                await chatService.setActiveCharacter(character);
+              }
               if (context.mounted) {
                 await Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ChatPage()),
                 );
-                // Refresh cache when returning from chat
                 _refreshLastActivityCache();
               }
             },
@@ -997,7 +1014,24 @@ class _HomePageState extends State<HomePage> {
       child: InkWell(
         onTap: () async {
           final chatService = Provider.of<ChatService>(context, listen: false);
-          await chatService.setActiveGroup(group);
+          final groupId = 'group_${group.id}';
+          final sessions = await chatService.getSessionsForId(groupId);
+
+          if (!context.mounted) return;
+
+          if (sessions.length > 1) {
+            final selectedId = await _showSessionPickerDialog(context, sessions, group.name);
+            if (selectedId == null || !context.mounted) return;
+            await chatService.setActiveGroup(group);
+            if (selectedId != '__new__') {
+              await chatService.loadSession(selectedId);
+            }
+            if (selectedId == '__new__') {
+              await chatService.startNewChat();
+            }
+          } else {
+            await chatService.setActiveGroup(group);
+          }
           if (context.mounted) {
             await Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const ChatPage()),
@@ -1007,84 +1041,104 @@ class _HomePageState extends State<HomePage> {
         },
         child: Stack(
           children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(height: 16),
-                // Stacked avatars
-                SizedBox(
-                  height: 80,
-                  width: double.infinity,
-                  child: Center(
-                    child: SizedBox(
-                      width: 40.0 + (characters.take(4).length - 1) * 30.0,
-                      height: 80,
-                      child: Stack(
-                        children: [
-                          for (int i = 0; i < characters.take(4).length; i++)
-                            Positioned(
-                              left: i * 30.0,
-                              child: Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.purpleAccent, width: 2),
-                                  image: characters[i].imagePath != null
-                                      ? DecorationImage(
-                                          image: FileImage(File(characters[i].imagePath!)),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                  color: characters[i].imagePath == null ? Colors.grey.shade700 : null,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final h = constraints.maxHeight;
+                final isCompact = h < 220;
+                final avatarSize = isCompact ? 40.0 : 56.0;
+                final avatarAreaH = isCompact ? 50.0 : 80.0;
+                final overlapStep = isCompact ? 22.0 : 30.0;
+                final nameFontSize = isCompact ? 12.0 : 16.0;
+                final subFontSize = isCompact ? 10.0 : 13.0;
+                final badgeFontSize = isCompact ? 9.0 : 11.0;
+                final iconSize = isCompact ? 16.0 : 20.0;
+
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(height: isCompact ? 8 : 16),
+                    // Stacked avatars
+                    SizedBox(
+                      height: avatarAreaH,
+                      width: double.infinity,
+                      child: Center(
+                        child: SizedBox(
+                          width: avatarSize + (characters.take(4).length - 1) * overlapStep,
+                          height: avatarAreaH,
+                          child: Stack(
+                            children: [
+                              for (int i = 0; i < characters.take(4).length; i++)
+                                Positioned(
+                                  left: i * overlapStep,
+                                  child: Container(
+                                    width: avatarSize,
+                                    height: avatarSize,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.purpleAccent, width: 2),
+                                      image: characters[i].imagePath != null
+                                          ? DecorationImage(
+                                              image: FileImage(File(characters[i].imagePath!)),
+                                              fit: BoxFit.cover,
+                                            )
+                                          : null,
+                                      color: characters[i].imagePath == null ? Colors.grey.shade700 : null,
+                                    ),
+                                    child: characters[i].imagePath == null
+                                        ? Icon(Icons.person, color: Colors.white24, size: avatarSize * 0.5)
+                                        : null,
+                                  ),
                                 ),
-                                child: characters[i].imagePath == null
-                                    ? const Icon(Icons.person, color: Colors.white24, size: 28)
-                                    : null,
-                              ),
-                            ),
-                        ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Group icon badge
-                const Icon(Icons.group, color: Colors.purpleAccent, size: 20),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    group.name,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                    SizedBox(height: isCompact ? 4 : 16),
+                    // Group icon badge
+                    Icon(Icons.group, color: Colors.purpleAccent, size: iconSize),
+                    SizedBox(height: isCompact ? 2 : 8),
+                    Flexible(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          group.name,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: nameFontSize,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: isCompact ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${characters.length} character${characters.length == 1 ? '' : 's'}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-                const SizedBox(height: 4),
-                // Turn order label
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.purpleAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    group.turnOrder == TurnOrder.roundRobin ? 'Round Robin' : 'Random',
-                    style: TextStyle(color: Colors.purpleAccent.withValues(alpha: 0.8), fontSize: 11),
-                  ),
-                ),
-              ],
+                    if (!isCompact) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '${characters.length} character${characters.length == 1 ? '' : 's'}',
+                        style: TextStyle(color: Colors.white54, fontSize: subFontSize),
+                      ),
+                    ],
+                    SizedBox(height: isCompact ? 2 : 4),
+                    // Turn order label
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: isCompact ? 4 : 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.purpleAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        group.turnOrder == TurnOrder.roundRobin ? 'Round Robin' : 'Random',
+                        style: TextStyle(color: Colors.purpleAccent.withValues(alpha: 0.8), fontSize: badgeFontSize),
+                      ),
+                    ),
+                    SizedBox(height: isCompact ? 4 : 0),
+                  ],
+                );
+              },
             ),
             // Delete group button
             Positioned(
@@ -1105,6 +1159,125 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Shows a dialog letting the user choose which saved session to resume.
+  /// Returns the session ID, '__new__' for a new chat, or null if cancelled.
+  Future<String?> _showSessionPickerDialog(
+    BuildContext context,
+    List<Map<String, dynamic>> sessions,
+    String characterName,
+  ) {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.blueAccent, width: 0.5),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.chat_bubble_outline, color: Colors.blueAccent, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Continue a chat with $characterName?',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          height: 350,
+          child: Column(
+            children: [
+              // New chat button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.of(ctx).pop('__new__'),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Start New Chat'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.greenAccent,
+                    side: const BorderSide(color: Colors.greenAccent),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Divider(color: Colors.white10),
+              const SizedBox(height: 4),
+              // Session list
+              Expanded(
+                child: ListView.builder(
+                  itemCount: sessions.length,
+                  itemBuilder: (context, index) {
+                    final s = sessions[index];
+                    final date = s['date'] as DateTime;
+                    final dateStr = '${date.year}-${date.month.toString().padLeft(2, "0")}-${date.day.toString().padLeft(2, "0")} ${date.hour}:${date.minute.toString().padLeft(2, "0")}';
+                    final messageCount = s['message_count'] ?? 0;
+                    final isBranch = s['parent_session'] != null;
+                    final description = s['session_description'] as String?;
+
+                    return Card(
+                      color: const Color(0xFF374151),
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: ListTile(
+                        leading: isBranch
+                            ? const Icon(Icons.call_split, size: 20, color: Colors.blueAccent)
+                            : const Icon(Icons.chat, size: 20, color: Colors.white38),
+                        title: Text(
+                          s['preview'],
+                          style: const TextStyle(fontSize: 13, color: Colors.white),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(dateStr, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                                const SizedBox(width: 8),
+                                Text('$messageCount msgs', style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                              ],
+                            ),
+                            if (description != null && description.isNotEmpty)
+                              Text(
+                                description,
+                                style: const TextStyle(fontSize: 11, color: Colors.white38, fontStyle: FontStyle.italic),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            if (isBranch)
+                              Text('↳ Branched at message #${(s['fork_index'] ?? 0) + 1}',
+                                  style: const TextStyle(fontSize: 10, color: Colors.blueAccent)),
+                          ],
+                        ),
+                        onTap: () => Navigator.of(ctx).pop(s['id']),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+        ],
       ),
     );
   }
@@ -1302,6 +1475,8 @@ class _HomePageState extends State<HomePage> {
     bool autoAdvance = false;
     bool isGeneratingFirstMessage = false;
     bool isGeneratingScenario = false;
+    bool directorMode = false;
+    final Map<String, String> characterVoices = {}; // charId -> voiceKey
 
     // Build default name from selected character names
     final selectedChars = <CharacterCard>[];
@@ -1379,8 +1554,9 @@ class _HomePageState extends State<HomePage> {
                 // Auto-advance toggle
                 SwitchListTile(
                   value: autoAdvance,
-                  onChanged: (val) => setDialogState(() => autoAdvance = val),
-                  title: const Text('Auto-Advance', style: TextStyle(color: Colors.white, fontSize: 14)),
+                  onChanged: directorMode ? null : (val) => setDialogState(() => autoAdvance = val),
+                  title: Text('Auto-Advance',
+                      style: TextStyle(color: directorMode ? Colors.white30 : Colors.white, fontSize: 14)),
                   subtitle: const Text(
                     'Characters respond automatically one after another',
                     style: TextStyle(color: Colors.white38, fontSize: 12),
@@ -1388,6 +1564,177 @@ class _HomePageState extends State<HomePage> {
                   activeColor: Colors.purpleAccent,
                   contentPadding: EdgeInsets.zero,
                 ),
+                const SizedBox(height: 8),
+                // ── Director Mode toggle ──
+                SwitchListTile(
+                  value: directorMode,
+                  onChanged: (val) async {
+                    setDialogState(() {
+                      directorMode = val;
+                      if (val) autoAdvance = true;
+                    });
+                    // Auto-generate scenario, first message, and set director prompt
+                    if (val) {
+                      systemPromptController.text = ChatService.observerModeSystemPrompt;
+                      // Auto-generate scenario
+                      final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+                      final service = llmProvider.activeService;
+                      if (service.isReady && scenarioController.text.trim().isEmpty) {
+                        setDialogState(() => isGeneratingScenario = true);
+                        try {
+                          final charBriefs = selectedChars.map((c) {
+                            final trait = c.personality.isNotEmpty
+                                ? c.personality.split('.').first
+                                : (c.description.isNotEmpty ? c.description.split('.').first : c.name);
+                            return '${c.name} ($trait)';
+                          }).join(', ');
+                          final scenarioPrompt =
+                              '[Output ONLY the scenario text. No planning, reasoning, or explanation. '
+                              'Do NOT use <think> tags.]\n\n'
+                              'Write a brief scenario (1-2 sentences max) for a group roleplay with: $charBriefs.\n'
+                              'This is a DIRECTOR MODE scenario — there is NO user/player present. '
+                              'The characters interact ONLY with each other.\n'
+                              'Describe WHERE the characters are and WHAT is happening between them.\n\n'
+                              'SCENARIO: ';
+                          final buffer = StringBuffer();
+                          final params = GenerationParams(
+                            prompt: scenarioPrompt,
+                            maxLength: 500,
+                            temperature: 0.9,
+                            stopSequences: ['\n\n', 'END', '---', '<think>'],
+                          );
+                          await for (final token in service.generateStream(params)) {
+                            buffer.write(token);
+                          }
+                          var result = buffer.toString()
+                              .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+                              .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
+                              .replaceAll(RegExp(r'</think>', caseSensitive: false), '')
+                              .replaceAll(RegExp(r'^SCENARIO:\s*', caseSensitive: false), '')
+                              .replaceAll('"', '')
+                              .trim();
+                          if (result.isNotEmpty) scenarioController.text = result;
+                        } catch (_) {}
+                        setDialogState(() => isGeneratingScenario = false);
+                        // Auto-generate first message using the scenario
+                        if (service.isReady) {
+                          setDialogState(() => isGeneratingFirstMessage = true);
+                          try {
+                            final charDescriptions = selectedChars.map((c) {
+                              final persona = c.personality.isNotEmpty ? c.personality : c.description;
+                              return '- ${c.name}: $persona';
+                            }).join('\n');
+                            final scenarioCtx = scenarioController.text.trim().isNotEmpty
+                                ? '\nThe scenario is: ${scenarioController.text.trim()}'
+                                : '';
+                            final metaPrompt =
+                                '[INSTRUCTIONS: Output ONLY the creative scene text. '
+                                'Do NOT plan, reason, analyze, or explain. '
+                                'Do NOT use <think> tags. Start writing IMMEDIATELY.]\n\n'
+                                'Write a vivid, immersive opening scene (3-5 paragraphs) '
+                                'for a DIRECTOR MODE group roleplay featuring:\n$charDescriptions\n$scenarioCtx\n\n'
+                                'CRITICAL: There is NO user/player present. Characters interact ONLY with each other.\n'
+                                'Each character MUST have at least 2 lines of dialogue.\n'
+                                'Characters address and react to EACH OTHER.\n'
+                                'Use *asterisks* for actions.\n'
+                                'When done, write "END SCENE" on its own line.\n\n'
+                                'BEGIN SCENE:\n';
+                            final buffer = StringBuffer();
+                            final params = GenerationParams(
+                              prompt: metaPrompt,
+                              maxLength: 2000,
+                              temperature: 0.85,
+                              stopSequences: ['END SCENE', '---', '[END]', '<think>'],
+                            );
+                            await for (final token in service.generateStream(params)) {
+                              buffer.write(token);
+                            }
+                            var result = buffer.toString()
+                                .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+                                .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
+                                .replaceAll(RegExp(r'</think>', caseSensitive: false), '');
+                            final marker = result.indexOf('BEGIN SCENE:');
+                            if (marker >= 0) result = result.substring(marker + 'BEGIN SCENE:'.length);
+                            final cleaned = result.split('\n').where((line) {
+                              final t = line.trimLeft();
+                              return !(t.startsWith('The user wants') ||
+                                  t.startsWith('I need to') ||
+                                  t.startsWith('I will') ||
+                                  t.startsWith('I should') ||
+                                  t.startsWith('Let me ') ||
+                                  t.startsWith('I\'ll ') ||
+                                  RegExp(r'^\d+\.\s+(Write|Use|Set|Make|Do|Keep|NOT|Create|End|Establish)').hasMatch(t));
+                            }).join('\n').trim();
+                            if (cleaned.isNotEmpty) firstMessageController.text = cleaned;
+                          } catch (_) {}
+                          setDialogState(() => isGeneratingFirstMessage = false);
+                        }
+                      }
+                    } else {
+                      // Revert to default group prompt
+                      systemPromptController.text = ChatService.defaultGroupSystemPrompt;
+                    }
+                  },
+                  title: Row(
+                    children: [
+                      const Icon(Icons.movie_creation, size: 16, color: Colors.amberAccent),
+                      const SizedBox(width: 6),
+                      const Text('Director Mode', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    ],
+                  ),
+                  subtitle: const Text(
+                    'Characters chat autonomously — you direct the scene',
+                    style: TextStyle(color: Colors.amberAccent, fontSize: 11),
+                  ),
+                  activeColor: Colors.amberAccent,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                // ── Per-character voice selection ──
+                if (selectedChars.length > 1) ...[
+                  const SizedBox(height: 12),
+                  const Text('Character Voices', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  ...selectedChars.map((c) {
+                    final charId = _getCharacterIdFromCard(c);
+                    final currentVoice = characterVoices[charId] ?? c.ttsVoice;
+                    final tts = Provider.of<TtsService>(context, listen: false);
+                    final voices = tts.activeVoices;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          c.imagePath != null
+                              ? CircleAvatar(radius: 12, backgroundImage: FileImage(File(c.imagePath!)))
+                              : const CircleAvatar(radius: 12, child: Icon(Icons.person, size: 12)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(c.name, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                          ),
+                          DropdownButton<String>(
+                            value: (currentVoice != null && currentVoice.isNotEmpty) ? currentVoice : null,
+                            hint: const Text('Default', style: TextStyle(color: Colors.white30, fontSize: 11)),
+                            dropdownColor: const Color(0xFF2D3748),
+                            underline: const SizedBox(),
+                            isDense: true,
+                            style: const TextStyle(color: Colors.white70, fontSize: 11),
+                            items: [
+                              const DropdownMenuItem(value: '', child: Text('Default', style: TextStyle(fontSize: 11))),
+                              ...voices.map((v) => DropdownMenuItem(
+                                    value: v.id,
+                                    child: Text(v.name, style: const TextStyle(fontSize: 11)),
+                                  )),
+                            ],
+                            onChanged: (val) {
+                              setDialogState(() {
+                                characterVoices[charId] = val ?? '';
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
                 const SizedBox(height: 16),
                 // ── Scenario (optional) — with Generate button ──
                 Row(
@@ -1432,15 +1779,16 @@ class _HomePageState extends State<HomePage> {
                           final buffer = StringBuffer();
                           final params = GenerationParams(
                             prompt: scenarioPrompt,
-                            maxLength: 150,
+                            maxLength: 500,
                             temperature: 0.9,
-                            stopSequences: ['\n\n', 'END', '---'],
+                            stopSequences: ['\n\n', 'END', '---', '<think>'],
                           );
                           await for (final token in service.generateStream(params)) {
                             buffer.write(token);
                           }
                           var result = buffer.toString()
                               .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+                              .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
                               .replaceAll(RegExp(r'</think>', caseSensitive: false), '')
                               .replaceAll(RegExp(r'^SCENARIO:\s*', caseSensitive: false), '')
                               .replaceAll('"', '')
@@ -1542,15 +1890,16 @@ class _HomePageState extends State<HomePage> {
                           final buffer = StringBuffer();
                           final params = GenerationParams(
                             prompt: metaPrompt,
-                            maxLength: 2000,
+                            maxLength: 4000,
                             temperature: 0.85,
-                            stopSequences: ['END SCENE', '---', '[END]'],
+                            stopSequences: ['END SCENE', '---', '[END]', '<think>'],
                           );
                           await for (final token in service.generateStream(params)) {
                             buffer.write(token);
                           }
                           var result = buffer.toString()
                               .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+                              .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
                               .replaceAll(RegExp(r'</think>', caseSensitive: false), '');
 
                           final sceneMarker = result.indexOf('BEGIN SCENE:');
@@ -1652,6 +2001,7 @@ class _HomePageState extends State<HomePage> {
                   characterIds: _selectedCharacterIds.toList(),
                   turnOrder: selectedTurnOrder,
                   autoAdvance: autoAdvance,
+                  directorMode: directorMode,
                   firstMessage: firstMessageController.text.trim(),
                   scenario: scenarioController.text.trim(),
                   systemPrompt: systemPromptController.text.trim(),
@@ -1659,6 +2009,16 @@ class _HomePageState extends State<HomePage> {
 
                 final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
                 groupRepo.save(group);
+
+                // Save per-character voices
+                final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+                for (final entry in characterVoices.entries) {
+                  final card = charRepo.characters.where((c) => _getCharacterIdFromCard(c) == entry.key).firstOrNull;
+                  if (card != null && entry.value != card.ttsVoice) {
+                    card.ttsVoice = entry.value.isEmpty ? null : entry.value;
+                    charRepo.updateCharacter(card);
+                  }
+                }
 
                 Navigator.pop(ctx);
                 _cancelSelection();

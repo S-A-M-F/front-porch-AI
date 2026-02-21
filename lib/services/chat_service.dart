@@ -9,6 +9,7 @@ import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
@@ -109,6 +110,7 @@ class ChatService extends ChangeNotifier {
   final WorldRepository _worldRepository;
   LLMProvider? _llmProvider;
   CharacterRepository? _characterRepository;
+  TtsService? _ttsService;
 
   CharacterCard? _activeCharacter;
   final List<ChatMessage> _messages = [];
@@ -131,6 +133,11 @@ class ChatService extends ChangeNotifier {
   GroupChat? _activeGroup;
   List<CharacterCard> _groupCharacters = [];
   int _turnIndex = 0;
+
+  // ── Director Mode ──
+  bool _observerMode = false;
+  bool _autoPlayActive = false;
+  double directorDelaySec = 15.0; // seconds between auto-chat responses
 
   // ── Author's Note ──
   String _authorNote = '';
@@ -161,6 +168,24 @@ class ChatService extends ChangeNotifier {
       '5. Write in the style of collaborative roleplay: use *asterisks* for actions/narration and regular text for dialogue.\n'
       '6. Keep responses concise and punchy \u2014 leave room for the next character to respond.\n'
       '7. Never break character or reference the fact that you are an AI.';
+
+  /// System prompt for Observer Mode — characters interact with each other, user is not present.
+  static const String observerModeSystemPrompt =
+      'You are roleplaying in a multi-character group conversation. '
+      'The user is NOT a participant in this story — they are an invisible observer/director. '
+      'CRITICAL RULES:\n'
+      '1. You MUST only write dialogue and actions for the character whose turn it is. '
+      'NEVER write for other characters.\n'
+      '2. Characters should interact naturally WITH EACH OTHER — address other characters by name, '
+      'respond to what they said, react to their actions. Build on the conversation organically.\n'
+      '3. Stay fully in character — use the speaking character\'s unique voice and personality.\n'
+      '4. If a [Director] note appears, follow its guidance to steer the scene (introduce new topics, '
+      'create conflict, have a character enter/leave, etc.) but do NOT acknowledge the director directly.\n'
+      '5. Write in collaborative roleplay style: *asterisks* for actions, regular text for dialogue.\n'
+      '6. Keep responses concise — leave room for the next character to respond.\n'
+      '7. Never break character or reference being an AI.\n'
+      '8. Characters may naturally address each other, start side conversations, argue, agree, '
+      'tell stories, ask questions, or react emotionally — make the conversation feel alive and dynamic.';
 
   /// Default system prompt for local KoboldCPP backends (smaller models).
   /// Kept concise so it doesn't eat too much of the limited context window.
@@ -224,6 +249,8 @@ class ChatService extends ChangeNotifier {
   bool get isBuffering => _isBuffering;
   bool get isGroupMode => _activeGroup != null;
   GroupChat? get activeGroup => _activeGroup;
+  bool get observerMode => _observerMode;
+  bool get autoPlayActive => _autoPlayActive;
   List<CharacterCard> get groupCharacters => List.unmodifiable(_groupCharacters);
   /// The character who will speak next in group mode.
   CharacterCard? get nextCharacter {
@@ -285,6 +312,31 @@ class ChatService extends ChangeNotifier {
   CloudSyncService? _cloudSyncService;
   void setCloudSyncService(CloudSyncService service) {
     _cloudSyncService = service;
+  }
+
+  /// Set the TtsService after construction (for TTS-aware auto-play delay).
+  void setTtsService(TtsService service) {
+    _ttsService = service;
+  }
+
+  /// Wait for TTS to finish speaking, then apply the configured delay before auto-play.
+  void _waitForTtsThenContinue() {
+    if (!_autoPlayActive || !_observerMode) return;
+    Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (!_autoPlayActive || !_observerMode) {
+        timer.cancel();
+        return;
+      }
+      if (_ttsService == null || !_ttsService!.isSpeaking) {
+        timer.cancel();
+        final delayMs = (directorDelaySec * 1000).round();
+        Future.delayed(Duration(milliseconds: delayMs), () {
+          if (_autoPlayActive && !_isGenerating) {
+            _autoPlayNext();
+          }
+        });
+      }
+    });
   }
 
   Future<void> setActiveCharacter(CharacterCard? character) async {
@@ -365,6 +417,7 @@ class ChatService extends ChangeNotifier {
     _isLoadingSession = true;
     _turnIndex = 0;
     _activeGroup = group;
+    _observerMode = group.directorMode;
     notifyListeners();
 
     // Resolve character IDs to cards
@@ -523,6 +576,65 @@ class ChatService extends ChangeNotifier {
     } catch (e) {
       print('Error loading chat session: $e');
     }
+  }
+
+  /// Get sessions for a given character/group ID without setting it as active.
+  Future<List<Map<String, dynamic>>> getSessionsForId(String charId) async {
+    final charDir = Directory('${_storageService.chatsDir.path}/$charId');
+    if (!await charDir.exists()) return [];
+
+    final files = await charDir.list().where((f) => f is File && f.path.endsWith('.json')).toList();
+
+    List<Map<String, dynamic>> sessions = [];
+    for (var f in files) {
+      final id = path.basenameWithoutExtension(f.path);
+      final timestamp = int.tryParse(id) ?? 0;
+      final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+
+      String preview = "New Conversation";
+      String? sessionName;
+      String? sessionDescription;
+      String? parentSession;
+      int? forkIdx;
+      int messageCount = 0;
+      try {
+        final content = await (f as File).readAsString();
+        final decoded = jsonDecode(content);
+        List<dynamic> msgList;
+        if (decoded is List) {
+          msgList = decoded;
+        } else if (decoded is Map) {
+          msgList = decoded['messages'] ?? [];
+          sessionName = decoded['session_name'];
+          sessionDescription = decoded['session_description'];
+          parentSession = decoded['parent_session'];
+          forkIdx = decoded['fork_index'];
+        } else {
+          msgList = [];
+        }
+        messageCount = msgList.length;
+        if (sessionName != null && sessionName.isNotEmpty) {
+          preview = sessionName;
+        } else if (msgList.length > 1) {
+          preview = msgList[1]['text'] ?? '';
+          if (preview.length > 50) preview = '${preview.substring(0, 50)}...';
+        }
+      } catch (_) {}
+
+      sessions.add({
+        'id': id,
+        'date': date,
+        'preview': preview,
+        'message_count': messageCount,
+        if (sessionName != null) 'session_name': sessionName,
+        if (sessionDescription != null) 'session_description': sessionDescription,
+        if (parentSession != null) 'parent_session': parentSession,
+        if (forkIdx != null) 'fork_index': forkIdx,
+      });
+    }
+
+    sessions.sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+    return sessions;
   }
 
   Future<List<Map<String, dynamic>>> getSessions() async {
@@ -832,6 +944,12 @@ class ChatService extends ChangeNotifier {
   Future<void> sendMessage(String text) async {
     if ((_activeCharacter == null && _activeGroup == null) || text.trim().isEmpty) return;
 
+    // In observer mode, route to sendDirectorNote instead
+    if (_observerMode && _activeGroup != null) {
+      await sendDirectorNote(text);
+      return;
+    }
+
     final senderName = _userPersonaService.persona.name;
     _messages.add(ChatMessage(text: text, sender: senderName, isUser: true));
     await _saveChat();
@@ -842,6 +960,57 @@ class ChatService extends ChangeNotifier {
 
     // User message counts as a message towards depth
     _decrementLoreDepth();
+
+    await _generateResponse(GenerationMode.normal);
+  }
+
+  /// Set observer mode on/off.
+  void setObserverMode(bool value) {
+    _observerMode = value;
+    if (!value) {
+      _autoPlayActive = false;
+    }
+    notifyListeners();
+  }
+
+  /// Send a director note — appears as a bracketed instruction in the prompt
+  /// but is not part of the in-story dialogue.
+  Future<void> sendDirectorNote(String text) async {
+    if (_activeGroup == null || text.trim().isEmpty) return;
+
+    _messages.add(ChatMessage(
+      text: text,
+      sender: 'Director',
+      isUser: true,
+      characterId: '__director__',
+    ));
+    await _saveChat();
+    notifyListeners();
+
+    _scanLorebook(text);
+    _decrementLoreDepth();
+
+    await _generateResponse(GenerationMode.normal);
+  }
+
+  /// Start auto-play: characters keep chatting automatically.
+  void startAutoPlay() {
+    if (_activeGroup == null || !_observerMode) return;
+    _autoPlayActive = true;
+    notifyListeners();
+    _autoPlayNext();
+  }
+
+  /// Stop auto-play.
+  void stopAutoPlay() {
+    _autoPlayActive = false;
+    notifyListeners();
+  }
+
+  /// Internal: trigger the next auto-play response.
+  Future<void> _autoPlayNext() async {
+    if (!_autoPlayActive || !_observerMode || _activeGroup == null) return;
+    if (_isGenerating) return; // wait for current generation to finish
 
     await _generateResponse(GenerationMode.normal);
   }
@@ -935,7 +1104,7 @@ class ChatService extends ChangeNotifier {
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
         systemPrompt = _activeGroup!.systemPrompt;
       } else if (_activeGroup != null) {
-        systemPrompt = defaultGroupSystemPrompt;
+        systemPrompt = _observerMode ? observerModeSystemPrompt : defaultGroupSystemPrompt;
       } else if (speakingCharacter.systemPrompt.isNotEmpty) {
         systemPrompt = speakingCharacter.systemPrompt;
       } else if (_storageService.systemPrompt.isNotEmpty) {
@@ -1152,8 +1321,8 @@ class ChatService extends ChangeNotifier {
         // User wrote a custom group system prompt — use it
         systemPrompt = _activeGroup!.systemPrompt;
       } else if (_activeGroup != null) {
-        // Group mode, no custom prompt — use the group default
-        systemPrompt = defaultGroupSystemPrompt;
+        // Group mode, no custom prompt — use observer or default
+        systemPrompt = _observerMode ? observerModeSystemPrompt : defaultGroupSystemPrompt;
       } else if (speakingCharacter.systemPrompt.isNotEmpty) {
         // Character has its own system prompt — use it
         systemPrompt = speakingCharacter.systemPrompt;
@@ -1523,6 +1692,21 @@ class ChatService extends ChangeNotifier {
         
         // Save session after AI message is complete
         await _saveChat();
+
+        // Auto-play: if director mode is active, queue the next character
+        if (_autoPlayActive && _observerMode && _activeGroup != null) {
+          // If TTS is active, wait for it to finish before starting the delay
+          if (_ttsService != null && _ttsService!.isSpeaking) {
+            _waitForTtsThenContinue();
+          } else {
+            final delayMs = (directorDelaySec * 1000).round();
+            Future.delayed(Duration(milliseconds: delayMs), () {
+              if (_autoPlayActive && !_isGenerating) {
+                _autoPlayNext();
+              }
+            });
+          }
+        }
       }
 
     } catch (e) {
@@ -1653,7 +1837,13 @@ class ChatService extends ChangeNotifier {
   }
 
   String _buildChatHistory() {
-    final lines = _messages.map((m) => "${m.sender}: ${m.text}").toList();
+    final lines = _messages.map((m) {
+      // Director notes get bracketed so the AI treats them as instructions
+      if (m.characterId == '__director__') {
+        return '[Director: ${m.text}]';
+      }
+      return '${m.sender}: ${m.text}';
+    }).toList();
     return lines.join("\n");
   }
 

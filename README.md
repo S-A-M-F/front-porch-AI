@@ -12,16 +12,27 @@ Front Porch AI is proudly licensed under the **GPL v3** because we believe your 
 
 ## 🆕 What's New in V0.8.0-beta
 
-- ☁️ **Cloud Sync**: Bi-directional sync of your characters and chat sessions across devices. Supported providers:
-  - **Google Drive** — OAuth 2.0 authentication with your personal Google account. Characters and chats sync to a dedicated `FrontPorchAI` folder in your Drive.
-  - **Nextcloud / WebDAV** — Connect to any self-hosted or third-party WebDAV server with URL + username/password authentication.
-- 🔄 **Full Bi-Directional Sync**: Characters (PNG cards) and chat sessions sync both ways — newer files always win. New sessions created on either device are automatically pulled in.
-- 🧹 **Orphan Cleanup**: When you delete a character or group chat locally, the remote files are cleaned up on the next sync. Orphaned local folders from deleted remote data are also removed.
-- 🔒 **Privacy Policy**: New PRIVACY.md documenting data handling — no telemetry, no analytics, cloud sync is opt-in and connects only to accounts you own.
-- 🏷️ **Beta Prerelease Support**: Release workflow now automatically flags beta versions as prereleases on GitHub, so they won't trigger auto-updates for stable users.
+- ☁️ **Cloud Sync (Alpha)**: Sync your characters and chat sessions across devices. An alpha-stage warning now appears when enabling the feature.
+  - **Google Drive** — OAuth 2.0 with your personal Google account.
+  - **Nextcloud / WebDAV** — Connect to any self-hosted or third-party WebDAV server.
+  - **Browse Cloud Characters** — New button to browse all characters stored in the cloud, see which ones are already on your device, and selectively download new ones with avatar previews.
+  - **Upload-Only Character Sync** — Characters are uploaded automatically; downloads are user-initiated so you stay in control of your local library.
+- 🎬 **Director Mode**: A complete overhaul of Group Chat turn management. Take control of multi-character conversations:
+  - Manually choose which character speaks next.
+  - Guide the flow of group conversations instead of relying solely on automated turn orders.
+- 👥 **Group Chat Improvements**: Overhauled group chat experience with better stability, improved turn handling, and responsive card layouts that adapt to all UI scale sizes.
+- 🎨 **Responsive UI**: Group chat cards now scale gracefully at all grid sizes — no more overflow at small card sizes.
+- 🔒 **Privacy Policy**: PRIVACY.md documenting data handling — no telemetry, no analytics, cloud sync is opt-in and connects only to accounts you own.
+- 🏷️ **Beta Prerelease Support**: Beta versions are flagged as prereleases on GitHub so they won't trigger auto-updates for stable users.
 
 <details>
 <summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.8.0-beta
+
+- ☁️ **Cloud Sync**: Bi-directional sync of your characters and chat sessions across devices via Google Drive or Nextcloud/WebDAV.
+- 🔄 **Full Bi-Directional Sync**: Characters (PNG cards) and chat sessions sync both ways — newer files always win.
+- 🧹 **Orphan Cleanup**: Deleted characters/groups are cleaned up remotely on next sync.
 
 ### What's New in V0.7.1
 
@@ -90,6 +101,17 @@ Have questions, feedback, or just want to hang out? Connect with us:
 - **Discord**: [Join our server](https://discord.gg/EqJrJPjdT)
 - **Matrix**: [matrix.dreamersai.art](https://matrix.dreamersai.art)
 
+## 🌟 Contributors
+
+A huge thank you to the people who have helped shape Front Porch AI through their testing, feedback, and ideas:
+
+| Contributor | Role |
+|---|---|
+| **Hakko504** | Bug Testing, UI/Feature Suggestions |
+| **PacmanIncarnate** | Bug Testing, Feature Suggestions |
+
+And to the growing community of users who have shown up with kind words, encouragement, and genuine enthusiasm — you've turned what started as a solo project into something worth building every day. Your bug reports, feature ideas, and willingness to test rough edges have made Front Porch AI better in ways no single developer could. Thank you for believing in what this project can become.
+
 <p align="center">
   <img src="docs/screenshots/home.png" width="800" alt="Home Page - Character Grid with Folders">
 </p>
@@ -151,8 +173,10 @@ Create detailed character cards (V2 spec compatible) with a user-friendly form U
 - **Model Hub**: Built-in integration with HuggingFace to search for and download GGUF models directly.
 - **Process Management**: Robustly handles the lifecycle of the AI backend, ensuring clean shutdowns.
 
-### ☁️ Cloud Sync
-- **Cross-Device Sync**: Bi-directional sync of characters and chat sessions via Google Drive or Nextcloud/WebDAV.
+### ☁️ Cloud Sync (Alpha)
+- **Cross-Device Sync**: Sync characters and chat sessions via Google Drive or Nextcloud/WebDAV.
+- **Browse Cloud Characters**: View all characters stored in the cloud, see which are already on your device, and selectively download new ones with avatar previews.
+- **Upload-Only Characters**: Characters upload automatically; downloads are user-initiated to keep you in control.
 - **Conflict Resolution**: Newer files always win — never lose edits.
 - **Orphan Cleanup**: Remote files for deleted characters/groups are automatically cleaned up on next sync.
 - **Privacy-First**: Syncs only to accounts you own. No data ever passes through our servers.

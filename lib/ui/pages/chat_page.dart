@@ -12,6 +12,8 @@ import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/voice_manager.dart';
+import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:file_picker/file_picker.dart';
 
 class _StyledTextController extends TextEditingController {
@@ -113,31 +115,77 @@ class _ChatPageState extends State<ChatPage> {
                     child: Column(
                       children: [
                         Expanded(
-                          child: ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.all(20),
-                            itemCount: messages.length,
-                            itemBuilder: (context, index) {
-                              final msg = messages[index];
-                              // In group mode, pass the character's image based on sender
-                              File? senderImage;
-                              Color? senderColor;
-                              if (isGroup && !msg.isUser) {
-                                final senderChar = chatService.groupCharacters
-                                    .where((c) => c.name == msg.sender)
-                                    .firstOrNull;
-                                senderImage = senderChar?.imagePath != null ? File(senderChar!.imagePath!) : null;
-                                final senderIdx = chatService.groupCharacters
-                                    .indexWhere((c) => c.name == msg.sender);
-                                senderColor = _groupCharacterColor(senderIdx >= 0 ? senderIdx : 0);
-                              } else {
-                                senderImage = character?.imagePath != null ? File(character!.imagePath!) : null;
-                              }
-                              return _MessageBubble(
-                                message: msg, 
-                                characterImage: senderImage,
-                                index: index,
-                                senderColor: senderColor,
+                          child: Builder(
+                            builder: (context) {
+                              final storageService = Provider.of<StorageService>(context);
+                              final bgKey = storageService.chatBackground;
+                              const bgAssets = {
+                                'cyberpunk_bedroom': 'assets/backgrounds/cyberpunk_bedroom.png',
+                                'coffee_shop': 'assets/backgrounds/coffee_shop.png',
+                                'beach': 'assets/backgrounds/beach.png',
+                                'futuristic_city': 'assets/backgrounds/futuristic_city.png',
+                                'edm_rave': 'assets/backgrounds/edm_rave.png',
+                                'cozy_library': 'assets/backgrounds/cozy_library.png',
+                                'rainy_japan': 'assets/backgrounds/rainy_japan.png',
+                                'space_station': 'assets/backgrounds/space_station.png',
+                                'enchanted_forest': 'assets/backgrounds/enchanted_forest.png',
+                                'anime_cherry_blossom': 'assets/backgrounds/anime_cherry_blossom.png',
+                                'anime_rooftop': 'assets/backgrounds/anime_rooftop.png',
+                                'anime_rooftop_sunset': 'assets/backgrounds/anime_rooftop_sunset.png',
+                                'cherry_blossom': 'assets/backgrounds/cherry_blossom.png',
+                                'beach_waves': 'assets/backgrounds/beach_waves.png',
+                                'waifu_gaming_room': 'assets/backgrounds/waifu_gaming_room.png',
+                                'waifu_beach_bar': 'assets/backgrounds/waifu_beach_bar.png',
+                                'waifu_garden': 'assets/backgrounds/waifu_garden.png',
+                                'waifu_neon': 'assets/backgrounds/waifu_neon.png',
+                                'waifu_beach': 'assets/backgrounds/waifu_beach.png',
+                              };
+                              final bgPath = bgAssets[bgKey];
+
+                              return Stack(
+                                children: [
+                                  if (bgPath != null) ...[
+                                    Positioned.fill(
+                                      child: Image.asset(
+                                        bgPath,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned.fill(
+                                      child: Container(
+                                        color: Colors.black.withOpacity(0.45),
+                                      ),
+                                    ),
+                                  ],
+                                  ListView.builder(
+                                    controller: _scrollController,
+                                    padding: const EdgeInsets.all(20),
+                                    itemCount: messages.length,
+                                    itemBuilder: (context, index) {
+                                      final msg = messages[index];
+                                      // In group mode, pass the character's image based on sender
+                                      File? senderImage;
+                                      Color? senderColor;
+                                      if (isGroup && !msg.isUser) {
+                                        final senderChar = chatService.groupCharacters
+                                            .where((c) => c.name == msg.sender)
+                                            .firstOrNull;
+                                        senderImage = senderChar?.imagePath != null ? File(senderChar!.imagePath!) : null;
+                                        final senderIdx = chatService.groupCharacters
+                                            .indexWhere((c) => c.name == msg.sender);
+                                        senderColor = _groupCharacterColor(senderIdx >= 0 ? senderIdx : 0);
+                                      } else {
+                                        senderImage = character?.imagePath != null ? File(character!.imagePath!) : null;
+                                      }
+                                      return _MessageBubble(
+                                        message: msg, 
+                                        characterImage: senderImage,
+                                        index: index,
+                                        senderColor: senderColor,
+                                      );
+                                    },
+                                  ),
+                                ],
                               );
                             },
                           ),
@@ -755,8 +803,8 @@ class _ChatPageState extends State<ChatPage> {
               textInputAction: TextInputAction.send,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Type a message...',
-                hintStyle: const TextStyle(color: Colors.white38),
+                hintText: chatService.observerMode ? 'Direct the scene...' : 'Type a message...',
+                hintStyle: TextStyle(color: chatService.observerMode ? Colors.amberAccent.withValues(alpha: 0.5) : Colors.white38),
                 filled: true,
                 fillColor: const Color(0xFF374151),
                 isDense: true,
@@ -775,8 +823,26 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
           const SizedBox(width: 4),
-          // Next Character button (group mode only)
-          if (chatService.isGroupMode && !chatService.isGenerating)
+          // Auto-play button (observer mode only)
+          if (chatService.isGroupMode && chatService.observerMode && !chatService.isGenerating)
+            Tooltip(
+              message: chatService.autoPlayActive ? 'Pause auto-chat' : 'Start auto-chat',
+              child: IconButton(
+                icon: Icon(
+                  chatService.autoPlayActive ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                  color: chatService.autoPlayActive ? Colors.orangeAccent : Colors.amberAccent,
+                ),
+                onPressed: () {
+                  if (chatService.autoPlayActive) {
+                    chatService.stopAutoPlay();
+                  } else {
+                    chatService.startAutoPlay();
+                  }
+                },
+              ),
+            ),
+          // Next Character button (group mode only, not in auto-play)
+          if (chatService.isGroupMode && !chatService.isGenerating && !chatService.autoPlayActive)
             Tooltip(
               message: chatService.nextCharacter != null
                   ? 'Next: ${chatService.nextCharacter!.name}'
@@ -789,11 +855,19 @@ class _ChatPageState extends State<ChatPage> {
           chatService.isGenerating
             ? IconButton(
                 icon: const Icon(Icons.stop_circle, color: Colors.redAccent),
-                tooltip: 'Stop Generation',
-                onPressed: () => chatService.stopGeneration(),
+                tooltip: chatService.autoPlayActive ? 'Stop Auto-Chat' : 'Stop Generation',
+                onPressed: () {
+                  chatService.stopAutoPlay();
+                  chatService.stopGeneration();
+                },
               )
-            : IconButton(
-                icon: const Icon(Icons.send, color: Colors.blueAccent),
+            : Tooltip(
+                message: chatService.observerMode ? 'Send director note' : 'Send message',
+                child: IconButton(
+                icon: Icon(
+                  chatService.observerMode ? Icons.movie_creation : Icons.send,
+                  color: chatService.observerMode ? Colors.amberAccent : Colors.blueAccent,
+                ),
                 onPressed: () {
                    if (_controller.text.isNotEmpty && !chatService.isGenerating) {
                       chatService.sendMessage(_controller.text);
@@ -801,6 +875,7 @@ class _ChatPageState extends State<ChatPage> {
                    }
                 },
               ),
+            ),
         ],
       ),
     );
@@ -995,9 +1070,149 @@ class _ChatPageState extends State<ChatPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Settings buttons ──
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.white10)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => const ChatSettingsDialog(),
+                          );
+                        },
+                        icon: const Icon(Icons.settings, size: 16),
+                        label: const Text('Chat', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: const BorderSide(color: Colors.white24),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => const ModelSettingsDialog(),
+                          );
+                        },
+                        icon: const Icon(Icons.memory, size: 16),
+                        label: const Text('Model', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: const BorderSide(color: Colors.white24),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => const TtsSettingsDialog(),
+                          );
+                        },
+                        icon: const Icon(Icons.volume_up, size: 16),
+                        label: const Text('TTS', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: const BorderSide(color: Colors.white24),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showClearChatConfirmation(context),
+                    icon: const Icon(Icons.add_comment, size: 16),
+                    label: const Text('New Chat'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white70,
+                      side: const BorderSide(color: Colors.white24),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // ── Director Mode toggle ──
+                Row(
+                  children: [
+                    const Icon(Icons.movie_creation, size: 16, color: Colors.white54),
+                    const SizedBox(width: 8),
+                    const Text('Director Mode', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    const Spacer(),
+                    Switch(
+                      value: chatService.observerMode,
+                      activeColor: Colors.amberAccent,
+                      onChanged: chatService.isGenerating ? null : (val) => chatService.setObserverMode(val),
+                    ),
+                  ],
+                ),
+                if (chatService.observerMode) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: 4),
+                    child: Text(
+                      'Characters chat autonomously. Use the input box to direct the scene.',
+                      style: TextStyle(fontSize: 10, color: Colors.amberAccent.withValues(alpha: 0.7)),
+                    ),
+                  ),
+                  // Delay slider
+                  Consumer<StorageService>(
+                    builder: (context, storage, _) {
+                      chatService.directorDelaySec = storage.directorDelay;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text('Response Delay', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                              const Spacer(),
+                              Text('${storage.directorDelay.toStringAsFixed(1)}s',
+                                  style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 3,
+                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                            ),
+                            child: Slider(
+                              value: storage.directorDelay,
+                              min: 0.5,
+                              max: 60.0,
+                              divisions: 119,
+                              activeColor: Colors.amberAccent,
+                              inactiveColor: Colors.white12,
+                              onChanged: (val) => storage.setDirectorDelay(val),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+
           const Padding(
-            padding: EdgeInsets.all(12),
-            child: Text('Group Characters', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            padding: EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: Text('Characters', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1033,9 +1248,27 @@ class _ChatPageState extends State<ChatPage> {
                             : null,
                       ),
                       title: Text(ch.name, style: const TextStyle(fontSize: 14)),
-                      subtitle: Text(
-                        ch.description.length > 40 ? '${ch.description.substring(0, 40)}...' : ch.description,
-                        style: const TextStyle(fontSize: 11, color: Colors.white38),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            ch.description.length > 40 ? '${ch.description.substring(0, 40)}...' : ch.description,
+                            style: const TextStyle(fontSize: 11, color: Colors.white38),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _showVoicePickerForCharacter(ch),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 24),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: Icon(Icons.record_voice_over, size: 12, color: ch.ttsVoice != null ? Colors.amberAccent : Colors.white24),
+                            label: Text(
+                              ch.ttsVoice ?? 'Default voice',
+                              style: TextStyle(fontSize: 10, color: ch.ttsVoice != null ? Colors.amberAccent : Colors.white24),
+                            ),
+                          ),
+                        ],
                       ),
                       trailing: isNext
                           ? Container(
@@ -1057,6 +1290,67 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showVoicePickerForCharacter(CharacterCard character) {
+    final tts = Provider.of<TtsService>(context, listen: false);
+    final voices = tts.activeVoices;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1F2937),
+          title: Text('Voice for ${character.name}', style: const TextStyle(fontSize: 16)),
+          content: SizedBox(
+            width: 300,
+            height: 400,
+            child: voices.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No voices available.\nConfigure a TTS engine in TTS Settings first.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  )
+                : ListView(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.block, color: Colors.white38),
+                        title: const Text('Use global default', style: TextStyle(color: Colors.white70)),
+                        selected: character.ttsVoice == null,
+                        selectedTileColor: Colors.blueAccent.withValues(alpha: 0.1),
+                        onTap: () {
+                          character.ttsVoice = null;
+                          Provider.of<CharacterRepository>(ctx, listen: false).updateCharacter(character);
+                          Navigator.pop(ctx);
+                          setState(() {});
+                        },
+                      ),
+                      ...voices.map((v) => ListTile(
+                        leading: Icon(
+                          v.gender == 'Female' ? Icons.female : v.gender == 'Male' ? Icons.male : Icons.record_voice_over,
+                          size: 18,
+                          color: v.gender == 'Female' ? Colors.pinkAccent : v.gender == 'Male' ? Colors.cyanAccent : Colors.amberAccent,
+                        ),
+                        title: Text(v.name, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        subtitle: Text('${v.language} · ${v.gender}',
+                            style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                        selected: character.ttsVoice == v.id,
+                        selectedTileColor: Colors.blueAccent.withValues(alpha: 0.1),
+                        onTap: () {
+                          character.ttsVoice = v.id;
+                          Provider.of<CharacterRepository>(ctx, listen: false).updateCharacter(character);
+                          Navigator.pop(ctx);
+                          setState(() {});
+                        },
+                      )),
+                    ],
+                  ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1084,35 +1378,42 @@ class _MessageBubbleState extends State<_MessageBubble> {
 
   @override
   Widget build(BuildContext context) {
+    final isDirectorNote = message.characterId == '__director__';
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isDirectorNote
+            ? MainAxisAlignment.center
+            : (message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start),
         children: [
-          if (!message.isUser) 
+          if (!message.isUser && !isDirectorNote) 
             CircleAvatar(
               backgroundImage: characterImage != null ? FileImage(characterImage!) : null,
               child: characterImage == null ? const Icon(Icons.person) : null,
               radius: 16,
             ),
-          if (!message.isUser) const SizedBox(width: 12),
+          if (!message.isUser && !isDirectorNote) const SizedBox(width: 12),
           
           Flexible(
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: message.isUser
-                    ? const Color(0xFF3B82F6)
-                    : widget.senderColor != null
-                        ? widget.senderColor!.withValues(alpha: 0.15)
-                        : const Color(0xFF374151),
+                color: isDirectorNote
+                    ? Colors.amberAccent.withValues(alpha: 0.1)
+                    : message.isUser
+                        ? const Color(0xFF3B82F6)
+                        : widget.senderColor != null
+                            ? widget.senderColor!.withValues(alpha: 0.15)
+                            : const Color(0xFF374151),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(12),
                   topRight: const Radius.circular(12),
-                  bottomLeft: message.isUser ? const Radius.circular(12) : Radius.zero,
-                  bottomRight: message.isUser ? Radius.zero : const Radius.circular(12),
+                  bottomLeft: message.isUser && !isDirectorNote ? const Radius.circular(12) : Radius.zero,
+                  bottomRight: message.isUser && !isDirectorNote ? Radius.zero : const Radius.circular(12),
                 ),
+                border: isDirectorNote ? Border.all(color: Colors.amberAccent.withValues(alpha: 0.3)) : null,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1120,15 +1421,26 @@ class _MessageBubbleState extends State<_MessageBubble> {
                    Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (!message.isUser)
+                      if (isDirectorNote) ...[
+                        const Icon(Icons.movie_creation, size: 14, color: Colors.amberAccent),
+                        const SizedBox(width: 6),
+                        const Text('Director', style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: Colors.amberAccent,
+                          fontStyle: FontStyle.italic,
+                        )),
+                        const Spacer(),
+                      ] else if (!message.isUser) ...[
                         Text(message.sender, style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                           color: widget.senderColor ?? Colors.blueAccent,
                         )),
-                      if (!message.isUser) const Spacer(),
+                        const Spacer(),
+                      ],
                       // TTS speaker button
-                      if (!message.isUser && message.sender != 'System')
+                      if (!message.isUser && message.sender != 'System' && !isDirectorNote)
                         Consumer2<TtsService, StorageService>(
                           builder: (context, tts, storage, _) {
                             if (!storage.ttsEnabled) return const SizedBox.shrink();
@@ -1593,14 +1905,16 @@ class _StyledChatMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final storageService = Provider.of<StorageService>(context);
+    final scaledSize = 14.0 * storageService.textScale;
     // Two-pass approach:
     // Pass 1: Split on asterisk blocks *...* (including multi-line)
     // Pass 2: Within each segment, colorize quoted dialogue "..."
     // This ensures quotes inside asterisk blocks still get yellow treatment
 
-    const plainStyle = TextStyle(color: Colors.white);
-    const dialogueStyle = TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w500);
-    const actionStyle = TextStyle(color: Color(0xFF90CAF9));
+    final plainStyle = TextStyle(color: Colors.white, fontSize: scaledSize);
+    final dialogueStyle = TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w500, fontSize: scaledSize);
+    final actionStyle = TextStyle(color: const Color(0xFF90CAF9), fontSize: scaledSize);
 
     // dotAll flag lets . match newlines, so *multi-line blocks* are captured
     final asteriskRegex = RegExp(r'\*[^*]+\*', dotAll: true);
@@ -1632,7 +1946,7 @@ class _StyledChatMessage extends StatelessWidget {
       return SelectionArea(
         child: Text(
           text,
-          style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+          style: TextStyle(color: Colors.white, fontSize: scaledSize, height: 1.4),
         ),
       );
     }
@@ -1640,7 +1954,7 @@ class _StyledChatMessage extends StatelessWidget {
     return SelectionArea(
       child: RichText(
         text: TextSpan(
-          style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4, fontFamily: 'Roboto'),
+          style: TextStyle(color: Colors.white, fontSize: scaledSize, height: 1.4, fontFamily: 'Roboto'),
           children: spans,
         ),
       ),

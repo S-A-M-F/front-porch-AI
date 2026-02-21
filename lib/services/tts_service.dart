@@ -66,6 +66,32 @@ class TtsService extends ChangeNotifier {
   /// Available voices for the active engine.
   List<TtsVoiceInfo> get activeVoices => activeEngine.availableVoices;
 
+  /// Manually download / ensure the model for the active engine is ready.
+  /// Returns true if the model is ready after this call.
+  Future<bool> downloadModel() async {
+    if (_isDownloadingModel) return false; // already downloading
+    _isDownloadingModel = true;
+    _modelDownloadProgress = 0.0;
+    notifyListeners();
+
+    try {
+      final ready = await activeEngine.ensureModelReady(onProgress: (p) {
+        _modelDownloadProgress = p;
+        notifyListeners();
+      });
+      return ready;
+    } catch (e) {
+      print('TTS downloadModel error: $e');
+      return false;
+    } finally {
+      _isDownloadingModel = false;
+      notifyListeners();
+    }
+  }
+
+  /// Whether the active engine's model files are already downloaded.
+  Future<bool> isModelDownloaded() => activeEngine.isAvailable;
+
   TtsService(this._storageService, this._voiceManager);
 
   @override

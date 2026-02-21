@@ -351,30 +351,86 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
           color: Colors.black26,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Row(
-          children: [
-            const Icon(Icons.info_outline, color: Colors.blueAccent, size: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                tts.isDownloadingModel
-                    ? 'Downloading Kokoro model (${(tts.modelDownloadProgress * 100).toInt()}%)...'
-                    : '~300MB model will be downloaded on first use',
-                style: const TextStyle(color: Colors.white38, fontSize: 11),
+        child: tts.isDownloadingModel
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Downloading Kokoro model (${(tts.modelDownloadProgress * 100).toInt()}%)...',
+                        style: const TextStyle(color: Colors.blueAccent, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(
+                    value: tts.modelDownloadProgress,
+                    backgroundColor: Colors.white12,
+                    color: Colors.blueAccent,
+                    minHeight: 4,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ],
+              )
+            : FutureBuilder<bool>(
+                future: tts.isModelDownloaded(),
+                builder: (context, snapshot) {
+                  final isDownloaded = snapshot.data == true;
+                  if (isDownloaded) {
+                    return Row(
+                      children: const [
+                        Icon(Icons.check_circle, color: Colors.green, size: 16),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Kokoro model downloaded ✓',
+                            style: TextStyle(color: Colors.green, fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      const Icon(Icons.download_rounded, color: Colors.blueAccent, size: 16),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          '~300MB model required for Kokoro TTS',
+                          style: TextStyle(color: Colors.white38, fontSize: 11),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final success = await tts.downloadModel();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(success ? 'Kokoro model ready!' : 'Download failed — check connection'),
+                              backgroundColor: success ? Colors.green : Colors.redAccent,
+                            ));
+                          }
+                        },
+                        icon: const Icon(Icons.download, size: 14),
+                        label: const Text('Download'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          textStyle: const TextStyle(fontSize: 12),
+                          minimumSize: const Size(0, 30),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
-            ),
-            if (tts.isDownloadingModel)
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  value: tts.modelDownloadProgress,
-                  strokeWidth: 2,
-                  color: Colors.blueAccent,
-                ),
-              ),
-          ],
-        ),
       ),
     ];
   }

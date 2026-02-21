@@ -22,6 +22,7 @@ import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
 
+import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -1639,7 +1640,50 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   Switch(
                     value: isEnabled,
-                    onChanged: (val) => storageService.setCloudSyncEnabled(val),
+                    onChanged: (val) async {
+                      if (val) {
+                        // Show alpha warning before enabling
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: const Color(0xFF1E293B),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            title: Row(
+                              children: [
+                                Icon(Icons.warning_amber_rounded, color: Colors.amber.shade400, size: 24),
+                                const SizedBox(width: 10),
+                                const Text('Alpha Feature', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            content: const Text(
+                              'Cloud Sync is currently in alpha. While functional, you may encounter '
+                              'occasional issues. Your local data will not be affected.\n\n'
+                              'Supported providers: Google Drive, Nextcloud (WebDAV).',
+                              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blueAccent,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Enable Anyway'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          storageService.setCloudSyncEnabled(true);
+                        }
+                      } else {
+                        storageService.setCloudSyncEnabled(false);
+                      }
+                    },
                   ),
                 ],
               ),
@@ -1850,7 +1894,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                             final chatsPath = storageService.chatsDir.path;
                             final rootPath = storageService.rootPath ?? chatsPath;
-                            final charactersPath = '$rootPath${Platform.pathSeparator}characters';
+                            final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
 
                             // Build valid ID sets for orphan cleanup
                             final charRepo = Provider.of<CharacterRepository>(context, listen: false);
@@ -1872,6 +1916,16 @@ class _SettingsPageState extends State<SettingsPage> {
                                   SnackBar(content: Text('✅ Synced ${syncService.syncedFiles} files!')),
                                 );
                               }
+
+                              // Check for remote-only characters and offer to download
+                              if (mounted) {
+                                final remoteOnly = await syncService.listRemoteOnlyCharacters(charactersPath);
+                                if (remoteOnly.isNotEmpty && mounted) {
+                                  await _showCharacterPullDialog(
+                                    context, syncService, charRepo, charactersPath, remoteOnly,
+                                  );
+                                }
+                              }
                             } else if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('❌ Sync error: ${syncService.lastError}')),
@@ -1892,6 +1946,55 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Browse Cloud Characters button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: syncService.status == SyncStatus.syncing
+                          ? null
+                          : () async {
+                              final storageService = Provider.of<StorageService>(context, listen: false);
+                              final rootPath = storageService.rootPath ?? storageService.chatsDir.path;
+                              final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
+                              final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+
+                              // Ensure provider is connected
+                              if (!syncService.isConnected) {
+                                CloudStorageProvider p;
+                                switch (storageService.cloudSyncProvider) {
+                                  case 'webdav':
+                                    p = WebDavProvider();
+                                    break;
+                                  case 'gdrive':
+                                    p = GoogleDriveProvider();
+                                    break;
+                                  default:
+                                    return;
+                                }
+                                await p.connect({
+                                  'url': storageService.cloudSyncUrl,
+                                  'username': storageService.cloudSyncUsername,
+                                  'password': storageService.cloudSyncPassword,
+                                });
+                                syncService.setProvider(p);
+                              }
+
+                              if (mounted) {
+                                await _showCloudCharacterBrowser(
+                                  context, syncService, charRepo, charactersPath,
+                                );
+                              }
+                            },
+                      icon: const Icon(Icons.cloud_outlined, size: 16),
+                      label: const Text('Browse Cloud Characters'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.blueAccent,
+                        side: const BorderSide(color: Colors.blueAccent, width: 1),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                    ),
                   ),
                 ],
 
@@ -1929,6 +2032,628 @@ class _SettingsPageState extends State<SettingsPage> {
       return '${dt.month}/${dt.day} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       return isoTime;
+    }
+  }
+
+  /// Show a dialog with a grid of remote-only characters for selective download.
+  Future<void> _showCharacterPullDialog(
+    BuildContext context,
+    CloudSyncService syncService,
+    CharacterRepository charRepo,
+    String charactersDir,
+    List<String> remoteFilenames,
+  ) async {
+    // Download all remote-only PNGs to a temp directory for preview
+    final tempPreviews = await syncService.downloadCharactersToTemp(remoteFilenames);
+    if (tempPreviews.isEmpty) return;
+
+    // Try to extract character names from the PNGs
+    final v2 = V2CardService();
+    final charInfos = <String, String>{}; // filename → display name
+    for (final entry in tempPreviews.entries) {
+      try {
+        final card = await v2.readCard(entry.value);
+        charInfos[entry.key] = card?.name ?? path.basenameWithoutExtension(entry.key);
+      } catch (_) {
+        charInfos[entry.key] = path.basenameWithoutExtension(entry.key);
+      }
+    }
+
+    if (!context.mounted) return;
+
+    final selected = <String>{...tempPreviews.keys}; // select all by default
+
+    final result = await showDialog<Set<String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  const Icon(Icons.cloud_download, color: Colors.blueAccent, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Characters Available from Cloud',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '${tempPreviews.length} character(s) not on this device',
+                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 500,
+                height: 400,
+                child: Column(
+                  children: [
+                    // Select all / none bar
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => setDialogState(() => selected.addAll(tempPreviews.keys)),
+                          child: const Text('Select All', style: TextStyle(color: Colors.blueAccent, fontSize: 12)),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () => setDialogState(() => selected.clear()),
+                          child: const Text('Select None', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${selected.length} selected',
+                          style: const TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Character grid
+                    Expanded(
+                      child: GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          childAspectRatio: 0.75,
+                        ),
+                        itemCount: tempPreviews.length,
+                        itemBuilder: (ctx, index) {
+                          final filename = tempPreviews.keys.elementAt(index);
+                          final tempPath = tempPreviews[filename]!;
+                          final displayName = charInfos[filename] ?? filename;
+                          final isSelected = selected.contains(filename);
+
+                          return GestureDetector(
+                            onTap: () {
+                              setDialogState(() {
+                                if (isSelected) {
+                                  selected.remove(filename);
+                                } else {
+                                  selected.add(filename);
+                                }
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? Colors.blueAccent : Colors.white12,
+                                  width: isSelected ? 2.5 : 1,
+                                ),
+                                boxShadow: isSelected
+                                    ? [BoxShadow(color: Colors.blueAccent.withOpacity(0.3), blurRadius: 8)]
+                                    : null,
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(11),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    // Character avatar
+                                    Image.file(
+                                      File(tempPath),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        color: Colors.black26,
+                                        child: const Icon(Icons.person, color: Colors.white24, size: 48),
+                                      ),
+                                    ),
+                                    // Gradient overlay for name readability
+                                    Positioned(
+                                      bottom: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                            colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
+                                          ),
+                                        ),
+                                        child: Text(
+                                          displayName,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Selection checkbox
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isSelected
+                                              ? Colors.blueAccent
+                                              : Colors.black54,
+                                        ),
+                                        padding: const EdgeInsets.all(2),
+                                        child: Icon(
+                                          isSelected ? Icons.check : Icons.add,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, <String>{}),
+                  child: const Text('Skip', style: TextStyle(color: Colors.white38)),
+                ),
+                ElevatedButton.icon(
+                  onPressed: selected.isEmpty
+                      ? null
+                      : () => Navigator.pop(ctx, selected),
+                  icon: const Icon(Icons.download, size: 16),
+                  label: Text('Download ${selected.length}'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.white12,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    // Copy selected files to the characters directory
+    if (result != null && result.isNotEmpty) {
+      final dir = Directory(charactersDir);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+
+      int copied = 0;
+      for (final filename in result) {
+        final tempPath = tempPreviews[filename];
+        if (tempPath != null && File(tempPath).existsSync()) {
+          final destPath = path.join(charactersDir, filename);
+          try {
+            await File(tempPath).copy(destPath);
+            copied++;
+          } catch (e) {
+            debugPrint('Error copying character $filename: $e');
+          }
+        }
+      }
+
+      // Reload character repository
+      await charRepo.loadCharacters();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✅ Downloaded $copied character(s)!')),
+        );
+      }
+    }
+
+    // Clean up temp files
+    for (final tempPath in tempPreviews.values) {
+      try {
+        final f = File(tempPath);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+  }
+
+  /// Show a dialog browsing ALL characters on the cloud.
+  Future<void> _showCloudCharacterBrowser(
+    BuildContext context,
+    CloudSyncService syncService,
+    CharacterRepository charRepo,
+    String charactersDir,
+  ) async {
+    // Show a loading indicator while we fetch
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    // Fetch the list of all remote characters
+    final allRemote = await syncService.listAllRemoteCharacters(charactersDir);
+
+    if (!context.mounted) return;
+    Navigator.pop(context); // dismiss loading
+
+    if (allRemote.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No characters found on cloud.')),
+        );
+      }
+      return;
+    }
+
+    // For characters already on device, use local path; for others, download to temp
+    final localExist = <String>{};
+    final needDownload = <String>[];
+    for (final r in allRemote) {
+      if (r.existsLocally) {
+        localExist.add(r.name);
+      } else {
+        needDownload.add(r.name);
+      }
+    }
+
+    // Show loading for temp downloads if needed
+    Map<String, String> tempPreviews = {};
+    if (needDownload.isNotEmpty) {
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => Center(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text('Fetching ${needDownload.length} preview(s)...',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12, decoration: TextDecoration.none),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+
+      tempPreviews = await syncService.downloadCharactersToTemp(needDownload);
+
+      if (context.mounted) Navigator.pop(context); // dismiss loading
+    }
+
+    // Build a combined map of filename → image path
+    final imagePaths = <String, String>{};
+    for (final r in allRemote) {
+      if (r.existsLocally) {
+        imagePaths[r.name] = path.join(charactersDir, r.name);
+      } else if (tempPreviews.containsKey(r.name)) {
+        imagePaths[r.name] = tempPreviews[r.name]!;
+      }
+    }
+
+    // Extract character names
+    final v2 = V2CardService();
+    final charNames = <String, String>{};
+    for (final entry in imagePaths.entries) {
+      try {
+        final card = await v2.readCard(entry.value);
+        charNames[entry.key] = card?.name ?? path.basenameWithoutExtension(entry.key);
+      } catch (_) {
+        charNames[entry.key] = path.basenameWithoutExtension(entry.key);
+      }
+    }
+
+    if (!context.mounted) return;
+
+    // Track which remote-only characters the user wants to download
+    final selected = <String>{};
+
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final hasDownloadable = needDownload.isNotEmpty;
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  const Icon(Icons.cloud, color: Colors.blueAccent, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Cloud Characters',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '${allRemote.length} character(s) • ${localExist.length} on device • ${needDownload.length} available',
+                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 520,
+                height: 420,
+                child: Column(
+                  children: [
+                    if (hasDownloadable) ...[
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () => setDialogState(() => selected.addAll(needDownload)),
+                            child: const Text('Select All New', style: TextStyle(color: Colors.blueAccent, fontSize: 12)),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: () => setDialogState(() => selected.clear()),
+                            child: const Text('Clear', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                          ),
+                          const Spacer(),
+                          if (selected.isNotEmpty)
+                            Text(
+                              '${selected.length} to download',
+                              style: const TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    Expanded(
+                      child: GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          childAspectRatio: 0.75,
+                        ),
+                        itemCount: allRemote.length,
+                        itemBuilder: (ctx, index) {
+                          final info = allRemote[index];
+                          final imgPath = imagePaths[info.name];
+                          final displayName = charNames[info.name] ?? info.name;
+                          final isLocal = info.existsLocally;
+                          final isSelected = selected.contains(info.name);
+
+                          return GestureDetector(
+                            onTap: isLocal
+                                ? null // already on device, no action
+                                : () {
+                                    setDialogState(() {
+                                      if (isSelected) {
+                                        selected.remove(info.name);
+                                      } else {
+                                        selected.add(info.name);
+                                      }
+                                    });
+                                  },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isLocal
+                                      ? Colors.green.withOpacity(0.5)
+                                      : isSelected
+                                          ? Colors.blueAccent
+                                          : Colors.white12,
+                                  width: isSelected ? 2.5 : 1,
+                                ),
+                                boxShadow: isSelected
+                                    ? [BoxShadow(color: Colors.blueAccent.withOpacity(0.3), blurRadius: 8)]
+                                    : null,
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(11),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    // Character avatar
+                                    if (imgPath != null)
+                                      Image.file(
+                                        File(imgPath),
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          color: Colors.black26,
+                                          child: const Icon(Icons.person, color: Colors.white24, size: 48),
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        color: Colors.black26,
+                                        child: const Icon(Icons.person, color: Colors.white24, size: 48),
+                                      ),
+                                    // Gradient overlay for name
+                                    Positioned(
+                                      bottom: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                            colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
+                                          ),
+                                        ),
+                                        child: Text(
+                                          displayName,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Status badge
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isLocal
+                                              ? Colors.green
+                                              : isSelected
+                                                  ? Colors.blueAccent
+                                                  : Colors.black54,
+                                        ),
+                                        padding: const EdgeInsets.all(2),
+                                        child: Icon(
+                                          isLocal
+                                              ? Icons.check
+                                              : isSelected
+                                                  ? Icons.check
+                                                  : Icons.cloud_download_outlined,
+                                          color: Colors.white,
+                                          size: 14,
+                                        ),
+                                      ),
+                                    ),
+                                    // "On device" label for local characters
+                                    if (isLocal)
+                                      Positioned(
+                                        top: 4,
+                                        left: 4,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.withOpacity(0.85),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Text(
+                                            'On device',
+                                            style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, <String>{}),
+                  child: const Text('Close', style: TextStyle(color: Colors.white38)),
+                ),
+                if (hasDownloadable)
+                  ElevatedButton.icon(
+                    onPressed: selected.isEmpty
+                        ? null
+                        : () => Navigator.pop(ctx, selected),
+                    icon: const Icon(Icons.download, size: 16),
+                    label: Text('Download ${selected.length}'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.white12,
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    // Download selected characters
+    if (result != null && result.isNotEmpty) {
+      final dir = Directory(charactersDir);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+
+      int copied = 0;
+      for (final filename in result) {
+        final tempPath = tempPreviews[filename];
+        if (tempPath != null && File(tempPath).existsSync()) {
+          final destPath = path.join(charactersDir, filename);
+          try {
+            await File(tempPath).copy(destPath);
+            copied++;
+          } catch (e) {
+            debugPrint('Error copying character $filename: $e');
+          }
+        }
+      }
+
+      await charRepo.loadCharacters();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✅ Downloaded $copied character(s)!')),
+        );
+      }
+    }
+
+    // Clean up temp files
+    for (final tempPath in tempPreviews.values) {
+      try {
+        final f = File(tempPath);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
     }
   }
 }

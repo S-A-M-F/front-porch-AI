@@ -103,6 +103,8 @@ void main(List<String> args) async {
               // Re-wire dependencies on every update to stay in sync
               previous.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
               previous.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
+              // Wire TtsService if available (it's registered later in the tree)
+              try { previous.setTtsService(Provider.of<TtsService>(context, listen: false)); } catch (_) {}
               return previous;
             }
             final chatService = ChatService(kobold, persona, storage, worldRepo);
@@ -282,7 +284,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
       // Get the characters directory (same parent as chats)
       final chatsPath = storage.chatsDir.path;
       final rootPath = storage.rootPath ?? chatsPath;
-      final charactersPath = '$rootPath${Platform.pathSeparator}characters';
+      final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
 
       // Build valid ID sets for orphan cleanup
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);

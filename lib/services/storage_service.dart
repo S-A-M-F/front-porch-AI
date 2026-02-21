@@ -40,6 +40,7 @@ class StorageService extends ChangeNotifier {
   int _contextSize = 8192;
   List<String> _stopSequences = ["\nUser:", "\n###", "\nScenario:", "<END>", "\nSystem:", "\n(Note:", "\n[Note:", "\n{Note:"];
   double _textScale = 1.0;
+  String _chatBackground = 'none';
   List<Map<String, String>> _savedPrompts = [];
   bool _displayBufferEnabled = true;
   double _targetDisplayTps = 6.0; // ~250 WPM average human reading speed
@@ -63,6 +64,7 @@ class StorageService extends ChangeNotifier {
   String _openaiTtsApiKey = '';
   String _openaiTtsModel = 'tts-1'; // 'tts-1' or 'tts-1-hd'
   int _ttsConcurrency = Platform.numberOfProcessors.clamp(1, 16);
+  double _directorDelay = 15.0; // seconds between auto-chat responses in Director Mode
 
   // Sort preference
   String _sortMode = 'name'; // 'name', 'recent', 'importDate'
@@ -98,6 +100,7 @@ class StorageService extends ChangeNotifier {
   int get contextSize => _contextSize;
   List<String> get stopSequences => List.unmodifiable(_stopSequences);
   double get textScale => _textScale;
+  String get chatBackground => _chatBackground;
   List<Map<String, String>> get savedPrompts => List.unmodifiable(_savedPrompts);
   bool get displayBufferEnabled => _displayBufferEnabled;
   double get targetDisplayTps => _targetDisplayTps;
@@ -115,6 +118,7 @@ class StorageService extends ChangeNotifier {
   String get openaiTtsApiKey => _openaiTtsApiKey;
   String get openaiTtsModel => _openaiTtsModel;
   int get ttsConcurrency => _ttsConcurrency;
+  double get directorDelay => _directorDelay;
   String get sortMode => _sortMode;
   double get gridScale => _gridScale;
   bool get cloudSyncEnabled => _cloudSyncEnabled;
@@ -159,6 +163,7 @@ class StorageService extends ChangeNotifier {
     _contextSize = _prefs?.getInt('context_size') ?? _contextSize;
     _stopSequences = _prefs?.getStringList('stop_sequences') ?? _stopSequences;
     _textScale = _prefs?.getDouble('text_scale') ?? 1.0;
+    _chatBackground = _prefs?.getString('chat_background') ?? 'none';
     _displayBufferEnabled = _prefs?.getBool('display_buffer_enabled') ?? true;
     _targetDisplayTps = _prefs?.getDouble('target_display_tps') ?? 30.0;
 
@@ -179,6 +184,7 @@ class StorageService extends ChangeNotifier {
     _openaiTtsApiKey = _prefs?.getString('openai_tts_api_key') ?? '';
     _ttsConcurrency = _prefs?.getInt('tts_concurrency') ?? Platform.numberOfProcessors.clamp(1, 16);
     _openaiTtsModel = _prefs?.getString('openai_tts_model') ?? 'tts-1';
+    _directorDelay = _prefs?.getDouble('director_delay') ?? 15.0;
     _sortMode = _prefs?.getString('sort_mode') ?? 'name';
     _gridScale = _prefs?.getDouble('grid_scale') ?? 300.0;
 
@@ -365,6 +371,12 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setChatBackground(String value) async {
+    _chatBackground = value;
+    await _prefs?.setString('chat_background', value);
+    notifyListeners();
+  }
+
   Future<void> setDisplayBufferEnabled(bool value) async {
     _displayBufferEnabled = value;
     await _prefs?.setBool('display_buffer_enabled', value);
@@ -461,6 +473,12 @@ class StorageService extends ChangeNotifier {
   Future<void> setTtsConcurrency(int value) async {
     _ttsConcurrency = value.clamp(1, 16);
     await _prefs?.setInt('tts_concurrency', _ttsConcurrency);
+    notifyListeners();
+  }
+
+  Future<void> setDirectorDelay(double value) async {
+    _directorDelay = value.clamp(0.5, 60.0);
+    await _prefs?.setDouble('director_delay', _directorDelay);
     notifyListeners();
   }
 

@@ -132,18 +132,17 @@ class CloudSyncService extends ChangeNotifier {
       );
       notifyListeners();
 
-      // Sync chats
+      // Sync chats (bi-directional)
       await _syncDirectory(
         localDir: chatsDir,
         remoteDir: '/FrontPorchAI/chats',
         recursive: true,
       );
 
-      // Sync character PNGs
-      await _syncDirectory(
+      // Upload local character PNGs to remote (upload-only; download is user-selected)
+      await _uploadOnlyDirectory(
         localDir: charactersDir,
         remoteDir: '/FrontPorchAI/characters',
-        recursive: false,
         extensions: ['.png'],
       );
 
@@ -155,6 +154,191 @@ class CloudSyncService extends ChangeNotifier {
       debugPrint('Cloud sync error: $e');
     }
     notifyListeners();
+  }
+
+  /// Upload local files to remote (no downloading). Used for characters
+  /// so the user can selectively choose which remote characters to pull.
+  Future<void> _uploadOnlyDirectory({
+    required String localDir,
+    required String remoteDir,
+    List<String>? extensions,
+  }) async {
+    final localDirectory = Directory(localDir);
+    debugPrint('[CloudSync] _uploadOnlyDirectory: localDir=$localDir, remoteDir=$remoteDir');
+    if (!await localDirectory.exists()) {
+      debugPrint('[CloudSync] _uploadOnlyDirectory: local directory does NOT exist, skipping');
+      return;
+    }
+
+    final localFiles = <String, File>{};
+    await _collectLocalFiles(localDirectory, localDir, localFiles, false, extensions);
+    debugPrint('[CloudSync] _uploadOnlyDirectory: found ${localFiles.length} local files');
+    for (final f in localFiles.keys) {
+      debugPrint('[CloudSync]   local file: $f');
+    }
+
+    // Gather remote files for comparison
+    List<RemoteFileInfo> remoteFiles;
+    try {
+      remoteFiles = await _provider!.listFiles(remoteDir);
+    } catch (e) {
+      debugPrint('[CloudSync] _uploadOnlyDirectory: error listing remote: $e');
+      remoteFiles = [];
+    }
+    debugPrint('[CloudSync] _uploadOnlyDirectory: found ${remoteFiles.length} remote files');
+
+    final remoteNames = remoteFiles
+        .map((rf) => path.basename(rf.remotePath))
+        .toSet();
+
+    for (final entry in localFiles.entries) {
+      final relativePath = entry.key;
+      final localFile = entry.value;
+      final remotePath = '$remoteDir/${relativePath.replaceAll('\\', '/')}';
+      final baseName = path.basename(relativePath);
+
+      if (!remoteNames.contains(baseName)) {
+        await _provider!.ensureDir(path.dirname(remotePath).replaceAll('\\', '/'));
+        await _provider!.uploadFile(localFile.path, remotePath);
+        _syncedFiles++;
+      } else {
+        // Upload if local is newer
+        final remoteInfo = remoteFiles.firstWhere(
+          (rf) => path.basename(rf.remotePath) == baseName,
+          orElse: () => RemoteFileInfo(remotePath: '', lastModified: null),
+        );
+        if (remoteInfo.lastModified != null) {
+          final localStat = await localFile.stat();
+          if (localStat.modified.isAfter(remoteInfo.lastModified!)) {
+            await _provider!.uploadFile(localFile.path, remotePath);
+            _syncedFiles++;
+          }
+        }
+      }
+      _processedFiles++;
+      notifyListeners();
+    }
+  }
+
+  /// List ALL character PNGs on the remote.
+  /// Returns a list of (filename, existsLocally) pairs.
+  Future<List<({String name, bool existsLocally})>> listAllRemoteCharacters(String localCharactersDir) async {
+    debugPrint('[CloudSync] listAllRemoteCharacters: localCharactersDir=$localCharactersDir');
+    if (_provider == null || !_provider!.isConnected) {
+      debugPrint('[CloudSync] listAllRemoteCharacters: provider null or not connected');
+      return [];
+    }
+
+    try {
+      await _provider!.ensureDir('/FrontPorchAI/characters');
+      final remoteFiles = await _provider!.listFiles('/FrontPorchAI/characters');
+      debugPrint('[CloudSync] listAllRemoteCharacters: ${remoteFiles.length} remote files found');
+      for (final rf in remoteFiles) {
+        debugPrint('[CloudSync]   remote: ${rf.remotePath}');
+      }
+
+      final localDir = Directory(localCharactersDir);
+      final localNames = <String>{};
+      if (await localDir.exists()) {
+        await for (final entity in localDir.list()) {
+          if (entity is File && entity.path.toLowerCase().endsWith('.png')) {
+            localNames.add(path.basename(entity.path));
+          }
+        }
+        debugPrint('[CloudSync] listAllRemoteCharacters: ${localNames.length} local PNGs found');
+      } else {
+        debugPrint('[CloudSync] listAllRemoteCharacters: local dir does NOT exist');
+      }
+
+      final result = <({String name, bool existsLocally})>[];
+      for (final rf in remoteFiles) {
+        final name = path.basename(rf.remotePath);
+        if (name.toLowerCase().endsWith('.png')) {
+          result.add((name: name, existsLocally: localNames.contains(name)));
+        }
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Error listing remote characters: $e');
+      return [];
+    }
+  }
+
+  /// List character PNGs that exist on the remote but NOT locally.
+  /// Returns a list of filenames (e.g. ['char_abc.png', 'char_def.png']).
+  Future<List<String>> listRemoteOnlyCharacters(String localCharactersDir) async {
+    if (_provider == null || !_provider!.isConnected) return [];
+
+    try {
+      await _provider!.ensureDir('/FrontPorchAI/characters');
+      final remoteFiles = await _provider!.listFiles('/FrontPorchAI/characters');
+
+      final localDir = Directory(localCharactersDir);
+      final localNames = <String>{};
+      if (await localDir.exists()) {
+        await for (final entity in localDir.list()) {
+          if (entity is File && entity.path.toLowerCase().endsWith('.png')) {
+            localNames.add(path.basename(entity.path));
+          }
+        }
+      }
+
+      final remoteOnly = <String>[];
+      for (final rf in remoteFiles) {
+        final name = path.basename(rf.remotePath);
+        if (name.toLowerCase().endsWith('.png') && !localNames.contains(name)) {
+          remoteOnly.add(name);
+        }
+      }
+      return remoteOnly;
+    } catch (e) {
+      debugPrint('Error listing remote characters: $e');
+      return [];
+    }
+  }
+
+  /// Download specific character PNGs from remote by filename.
+  Future<int> downloadCharacters(String localCharactersDir, List<String> filenames) async {
+    if (_provider == null || !_provider!.isConnected) return 0;
+
+    final dir = Directory(localCharactersDir);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    int downloaded = 0;
+    for (final name in filenames) {
+      try {
+        final remotePath = '/FrontPorchAI/characters/$name';
+        final localPath = path.join(localCharactersDir, name);
+        await _provider!.downloadFile(remotePath, localPath);
+        downloaded++;
+      } catch (e) {
+        debugPrint('Error downloading character $name: $e');
+      }
+    }
+    return downloaded;
+  }
+
+  /// Download remote-only character PNGs to a temp directory for preview.
+  /// Returns a map of filename → temp file path.
+  Future<Map<String, String>> downloadCharactersToTemp(List<String> filenames) async {
+    if (_provider == null || !_provider!.isConnected) return {};
+
+    final tempDir = await Directory.systemTemp.createTemp('fp_char_preview_');
+    final result = <String, String>{};
+
+    for (final name in filenames) {
+      try {
+        final remotePath = '/FrontPorchAI/characters/$name';
+        final localPath = path.join(tempDir.path, name);
+        await _provider!.downloadFile(remotePath, localPath);
+        result[name] = localPath;
+      } catch (e) {
+        debugPrint('Error downloading preview for $name: $e');
+      }
+    }
+    return result;
   }
 
   /// Upload a single file after saving (fire-and-forget).

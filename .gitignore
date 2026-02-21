@@ -84,3 +84,7 @@ appimagetool
 front_porch_ai.desktop
 front_porch_ai.png
 
+# AI assistant metadata
+.antigravity/
+.agent/
+.gemini/

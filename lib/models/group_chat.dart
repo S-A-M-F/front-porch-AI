@@ -14,6 +14,7 @@ class GroupChat {
   List<String> characterIds; // references into CharacterRepository
   TurnOrder turnOrder;
   bool autoAdvance; // auto-trigger next character after one responds
+  bool directorMode; // start in director mode when entering this group
   String firstMessage; // custom group greeting (empty = use first character's)
   String scenario; // group-level scenario override (empty = use first character's)
   String systemPrompt; // group-level system prompt override (empty = use global)
@@ -24,6 +25,7 @@ class GroupChat {
     required this.characterIds,
     this.turnOrder = TurnOrder.roundRobin,
     this.autoAdvance = false,
+    this.directorMode = false,
     this.firstMessage = '',
     this.scenario = '',
     this.systemPrompt = '',
@@ -36,6 +38,7 @@ class GroupChat {
       'character_ids': characterIds,
       'turn_order': turnOrder.name,
       'auto_advance': autoAdvance,
+      'director_mode': directorMode,
       'first_message': firstMessage,
       'scenario': scenario,
       'system_prompt': systemPrompt,
@@ -55,6 +58,7 @@ class GroupChat {
         orElse: () => TurnOrder.roundRobin,
       ),
       autoAdvance: json['auto_advance'] ?? false,
+      directorMode: json['director_mode'] ?? false,
       firstMessage: json['first_message'] ?? '',
       scenario: json['scenario'] ?? '',
       systemPrompt: json['system_prompt'] ?? '',
