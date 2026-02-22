@@ -182,7 +182,7 @@ class CloudSyncService extends ChangeNotifier {
     RemoteFileInfo? remoteInfo;
     try {
       final remoteFiles = await _provider!.listFiles('/FrontPorchAI');
-      remoteInfo = remoteFiles.where((f) => f.name == 'character_folders.json').firstOrNull;
+      remoteInfo = remoteFiles.where((f) => path.basename(f.remotePath) == 'character_folders.json').firstOrNull;
     } catch (_) {}
 
     if (localHasData && remoteInfo != null) {
