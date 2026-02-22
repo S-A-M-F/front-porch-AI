@@ -124,8 +124,8 @@ jobs:
             --hidden-import numpy \
             --hidden-import onnxruntime \
             --distpath "$DEST" \
-            --workpath /tmp/kokoro_build \
-            --specpath /tmp/kokoro_build \
+            --workpath ./build_tmp/kokoro \
+            --specpath ./build_tmp/kokoro \
             --clean \
             --noconfirm
           echo "Kokoro built at: $DEST/kokoro_tts/"
@@ -141,8 +141,8 @@ jobs:
             --hidden-import piper_phonemize \
             --hidden-import onnxruntime \
             --distpath "$DEST" \
-            --workpath /tmp/piper_build \
-            --specpath /tmp/piper_build \
+            --workpath ./build_tmp/piper \
+            --specpath ./build_tmp/piper \
             --clean \
             --noconfirm
           echo "Piper built at: $DEST/piper/"
