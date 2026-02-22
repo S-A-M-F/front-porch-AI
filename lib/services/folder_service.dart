@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 class CharacterFolder {
   final String id;
   String name;
   final String? parentId; // null = top-level folder
-  final List<String> characterPaths; // imagePath references
+  final List<String> characterPaths; // filename-only references (e.g. "Miku_123.png")
 
   CharacterFolder({
     required this.id,
@@ -24,11 +25,14 @@ class CharacterFolder {
   };
 
   factory CharacterFolder.fromJson(Map<String, dynamic> json) {
+    // Normalize any absolute paths to filenames only (migration for old data)
+    final rawPaths = List<String>.from(json['characterPaths'] ?? []);
+    final normalizedPaths = rawPaths.map((p) => path.basename(p)).toList();
     return CharacterFolder(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
       parentId: json['parentId'],
-      characterPaths: List<String>.from(json['characterPaths'] ?? []),
+      characterPaths: normalizedPaths,
     );
   }
 }
@@ -44,6 +48,11 @@ class FolderService extends ChangeNotifier {
 
   FolderService() {
     _init();
+  }
+
+  /// Normalize a character path to just its filename for portable storage.
+  static String _normalize(String characterPath) {
+    return path.basename(characterPath);
   }
 
   Future<void> _init() async {
@@ -111,13 +120,14 @@ class FolderService extends ChangeNotifier {
   }
 
   Future<void> addToFolder(String folderId, String characterPath) async {
+    final filename = _normalize(characterPath);
     final folder = _folders.firstWhere((f) => f.id == folderId);
-    if (!folder.characterPaths.contains(characterPath)) {
-      folder.characterPaths.add(characterPath);
+    if (!folder.characterPaths.contains(filename)) {
+      folder.characterPaths.add(filename);
       // Remove from any other folder
       for (final other in _folders) {
         if (other.id != folderId) {
-          other.characterPaths.remove(characterPath);
+          other.characterPaths.remove(filename);
         }
       }
       await _save();
@@ -126,23 +136,25 @@ class FolderService extends ChangeNotifier {
   }
 
   Future<void> removeFromFolder(String folderId, String characterPath) async {
+    final filename = _normalize(characterPath);
     final folder = _folders.firstWhere((f) => f.id == folderId);
-    folder.characterPaths.remove(characterPath);
+    folder.characterPaths.remove(filename);
     await _save();
     notifyListeners();
   }
 
   /// Get the folder a character belongs to (if any)
   CharacterFolder? getFolderForCharacter(String characterPath) {
+    final filename = _normalize(characterPath);
     for (final folder in _folders) {
-      if (folder.characterPaths.contains(characterPath)) {
+      if (folder.characterPaths.contains(filename)) {
         return folder;
       }
     }
     return null;
   }
 
-  /// Get characters in a specific folder
+  /// Get character filenames in a specific folder
   List<String> getCharactersInFolder(String folderId) {
     final folder = _folders.firstWhere(
       (f) => f.id == folderId,
@@ -151,7 +163,7 @@ class FolderService extends ChangeNotifier {
     return folder.characterPaths;
   }
 
-  /// Get characters in a folder AND all its subfolders recursively
+  /// Get character filenames in a folder AND all its subfolders recursively
   List<String> getCharactersInFolderRecursive(String folderId) {
     final paths = <String>[];
     // Add direct characters
@@ -168,7 +180,7 @@ class FolderService extends ChangeNotifier {
     return _folders.where((f) => f.parentId == parentId).toList();
   }
 
-  /// Get characters not in any folder
+  /// Get all character filenames that are in ANY folder (for filtering unfoldered)
   Set<String> getUnfolderedCharacterPaths() {
     final folderedPaths = <String>{};
     for (final folder in _folders) {

@@ -553,11 +553,10 @@ class _HomePageState extends State<HomePage> {
     final skipFolderFilter = _searchAll && _searchQuery.isNotEmpty;
     if (_activeFolderId != null && !skipFolderFilter) {
       // Show only characters in this folder
-      final folderPaths = folderService.getCharactersInFolderRecursive(_activeFolderId!);
-      // Normalize path separators for comparison (Windows vs Unix style)
-      final normalizedFolderPaths = folderPaths.map((p) => p.replaceAll('\\', '/')).toSet();
+      final folderFilenames = folderService.getCharactersInFolderRecursive(_activeFolderId!);
+      // Compare by filename since FolderService stores filenames only
       characters = repo.characters.where((c) =>
-        c.imagePath != null && normalizedFolderPaths.contains(c.imagePath!.replaceAll('\\', '/'))
+        c.imagePath != null && folderFilenames.contains(path.basename(c.imagePath!))
       ).toList();
     } else {
       characters = repo.characters.toList();
@@ -635,9 +634,9 @@ class _HomePageState extends State<HomePage> {
     // At top level, show unfoldered characters only (unless searching)
     List<CharacterCard> displayCharacters;
     if (showFolders && _activeFolderId == null) {
-      final folderedPaths = folderService.getUnfolderedCharacterPaths().map((p) => p.replaceAll('\\', '/')).toSet();
+      final folderedFilenames = folderService.getUnfolderedCharacterPaths();
       displayCharacters = filteredCharacters.where((c) =>
-        c.imagePath == null || !folderedPaths.contains(c.imagePath!.replaceAll('\\', '/'))
+        c.imagePath == null || !folderedFilenames.contains(path.basename(c.imagePath!))
       ).toList();
     } else {
       displayCharacters = filteredCharacters;
