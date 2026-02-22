@@ -118,6 +118,7 @@ jobs:
             --collect-all csvw \
             --collect-all segments \
             --collect-all phonemizer \
+            --collect-all espeakng_loader \
             --hidden-import kokoro_onnx \
             --hidden-import soundfile \
             --hidden-import numpy \
