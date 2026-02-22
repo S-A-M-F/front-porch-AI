@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:front_porch_ai/services/llm_service.dart';
 
@@ -71,7 +72,14 @@ class OpenRouterService extends LLMService {
     if (modelName != null && modelName != _modelName) { _modelName = modelName; changed = true; }
     final newReady = _apiKey.isNotEmpty && _modelName.isNotEmpty;
     if (newReady != _isReady) { _isReady = newReady; changed = true; }
-    if (changed) notifyListeners();
+    if (changed) {
+      // Defer notification to after the current frame to avoid calling
+      // notifyListeners() during the widget build phase, which crashes
+      // release builds (setState called during build).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
+    }
   }
 
   /// Test whether the API connection is working.
