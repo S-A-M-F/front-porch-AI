@@ -53,6 +53,9 @@ class _HomePageState extends State<HomePage> {
   // Grid scale
   double _gridScale = 300.0;
 
+  // Scroll controller for the character grid (visible scrollbar)
+  final ScrollController _gridScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -142,6 +145,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _searchController.dispose();
+    _gridScrollController.dispose();
     super.dispose();
   }
 
@@ -649,29 +653,34 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
-    return GridView.builder(
-      padding: EdgeInsets.fromLTRB(24, 24, 24, (_isSelecting || _isOrganizing) ? 80 : 24),
-      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: _gridScale,
-        childAspectRatio: 0.7,
-        crossAxisSpacing: 24,
-        mainAxisSpacing: 24,
+    return Scrollbar(
+      controller: _gridScrollController,
+      thumbVisibility: true,
+      child: GridView.builder(
+        controller: _gridScrollController,
+        padding: EdgeInsets.fromLTRB(24, 24, 24, (_isSelecting || _isOrganizing) ? 80 : 24),
+        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: _gridScale,
+          childAspectRatio: 0.7,
+          crossAxisSpacing: 24,
+          mainAxisSpacing: 24,
+        ),
+        itemCount: totalItems,
+        itemBuilder: (context, index) {
+          // Render folder cards first
+          if (index < folders.length) {
+            return _buildFolderCard(context, folders[index], folderService, repo);
+          }
+          // Then group cards
+          final groupOffset = index - folders.length;
+          if (groupOffset < groups.length) {
+            return _buildGroupCard(context, groups[groupOffset], repo);
+          }
+          // Then character cards
+          final character = displayCharacters[groupOffset - groups.length];
+          return _buildCharacterCard(context, character, folderService);
+        },
       ),
-      itemCount: totalItems,
-      itemBuilder: (context, index) {
-        // Render folder cards first
-        if (index < folders.length) {
-          return _buildFolderCard(context, folders[index], folderService, repo);
-        }
-        // Then group cards
-        final groupOffset = index - folders.length;
-        if (groupOffset < groups.length) {
-          return _buildGroupCard(context, groups[groupOffset], repo);
-        }
-        // Then character cards
-        final character = displayCharacters[groupOffset - groups.length];
-        return _buildCharacterCard(context, character, folderService);
-      },
     );
   }
 
