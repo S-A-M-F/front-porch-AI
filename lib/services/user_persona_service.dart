@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -171,5 +172,37 @@ class UserPersonaService extends ChangeNotifier {
       _activePersonaId = id;
       await _savePersonas();
     }
+  }
+
+  // ── Cloud Sync helpers ──────────────────────────────────────────────
+
+  /// Export all personas + active ID to a JSON file for cloud sync.
+  Future<void> exportToFile(String filePath) async {
+    final data = {
+      'active_persona_id': _activePersonaId,
+      'personas': _personas.map((p) => p.toJson()).toList(),
+    };
+    final file = File(filePath);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(jsonEncode(data));
+  }
+
+  /// Import personas from a JSON file (downloaded from cloud).
+  Future<void> importFromFile(String filePath) async {
+    final file = File(filePath);
+    if (!await file.exists()) return;
+    final content = await file.readAsString();
+    final data = jsonDecode(content) as Map<String, dynamic>;
+    final list = (data['personas'] as List?)?.map((e) => UserPersona.fromJson(e)).toList();
+    if (list != null && list.isNotEmpty) {
+      _personas = list;
+      _activePersonaId = data['active_persona_id'] ?? _personas.first.id;
+      await _savePersonas(); // persist to SharedPreferences
+    }
+  }
+
+  /// Reload personas from SharedPreferences (e.g. after cloud sync import).
+  Future<void> reload() async {
+    await _loadPersonas();
   }
 }

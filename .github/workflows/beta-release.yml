@@ -1,0 +1,250 @@
+name: Beta Release (Standalone Only)
+
+on:
+  push:
+    tags:
+      - '*beta*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build Beta Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            asset_name: Front_Porch_AI_Windows.zip
+            build_path: build/windows/x64/runner/Release
+          - os: macos-latest
+            platform: macos
+            asset_name: Front_Porch_AI_MacOS.zip
+            build_path: build/macos/Build/Products/Release
+          - os: ubuntu-22.04
+            platform: linux
+            asset_name: Front_Porch_AI_Linux.tar.gz
+            build_path: build/linux/x64/release/bundle
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.1'
+          channel: 'stable'
+          cache: true
+
+      - name: Install Linux Dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev libwebkit2gtk-4.1-dev ninja-build pkg-config cmake libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+
+      - name: Sync Version from Tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION=$(echo "$TAG" | sed 's/^[vV]//')
+          # Convert 4-part (0.0.4.1) to Flutter format (0.0.4+1)
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.([0-9]+)$ ]]; then
+            FLUTTER_VERSION="$(echo $VERSION | sed 's/\.\([^.]*\)$/+\1/')"
+          else
+            FLUTTER_VERSION="${VERSION}+0"
+          fi
+          echo "Setting version to: $FLUTTER_VERSION"
+          # Extract the display version (without build number) for the Dart constant
+          DISPLAY_VERSION=$(echo "$FLUTTER_VERSION" | sed 's/+.*//')
+          # Use Python for cross-platform reliability (sed can fail silently with Windows \r\n line endings)
+          python3 -c "
+          import re
+          # Update pubspec.yaml
+          with open('pubspec.yaml', 'r') as f: content = f.read()
+          content = re.sub(r'^version: .*$', 'version: $FLUTTER_VERSION', content, flags=re.MULTILINE)
+          with open('pubspec.yaml', 'w') as f: f.write(content)
+          # Update Dart version constant
+          with open('lib/app_version.dart', 'w') as f:
+              f.write(\"/// Single source of truth for the app version.\n\")
+              f.write(\"/// Update this constant whenever a new release is made.\n\")
+              f.write(\"/// This avoids reliance on platform-specific version resource extraction\n\")
+              f.write(\"/// (e.g., PackageInfo.fromPlatform) which can be unreliable on Windows.\n\")
+              f.write(\"const String appVersion = '$DISPLAY_VERSION';\n\")
+          "
+          # Verify both were updated (visible in CI logs)
+          echo "Verifying pubspec version:"
+          grep '^version:' pubspec.yaml
+          echo "Verifying Dart version constant:"
+          cat lib/app_version.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Disable inappwebview Linux plugin (uses external browser fallback)
+        if: matrix.platform == 'linux'
+        run: |
+          echo "" >> pubspec.yaml
+          echo "dependency_overrides:" >> pubspec.yaml
+          echo "  flutter_inappwebview_linux:" >> pubspec.yaml
+          echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
+          flutter pub get
+
+      - name: Build Application
+        run: flutter build ${{ matrix.platform }} --release
+
+      - name: Bundle TTS Engines (Kokoro + Piper as standalone binaries)
+        shell: bash
+        run: |
+          DEST="${{ matrix.build_path }}/piper"
+          mkdir -p "$DEST"
+
+          # Install TTS dependencies + PyInstaller
+          pip install --upgrade pip
+          pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate
+
+          # Build Kokoro TTS as a standalone directory bundle
+          echo "Building Kokoro TTS binary..."
+          pyinstaller kokoro_tts.py \
+            --onedir \
+            --name kokoro_tts \
+            --collect-all kokoro_onnx \
+            --collect-all soundfile \
+            --collect-all language_tags \
+            --collect-all csvw \
+            --collect-all segments \
+            --collect-all phonemizer \
+            --collect-all espeakng_loader \
+            --hidden-import kokoro_onnx \
+            --hidden-import soundfile \
+            --hidden-import numpy \
+            --hidden-import onnxruntime \
+            --distpath "$DEST" \
+            --workpath ./build_tmp/kokoro \
+            --specpath ./build_tmp/kokoro \
+            --clean \
+            --noconfirm
+          echo "Kokoro built at: $DEST/kokoro_tts/"
+
+          # Build Piper TTS as a standalone directory bundle
+          echo "Building Piper TTS binary..."
+          pyinstaller piper_entry.py \
+            --onedir \
+            --name piper \
+            --collect-all piper \
+            --hidden-import piper \
+            --hidden-import pathvalidate \
+            --hidden-import piper_phonemize \
+            --hidden-import onnxruntime \
+            --distpath "$DEST" \
+            --workpath ./build_tmp/piper \
+            --specpath ./build_tmp/piper \
+            --clean \
+            --noconfirm
+          echo "Piper built at: $DEST/piper/"
+
+          # For macOS, copy into the app bundle Resources
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app 2>/dev/null | head -1)
+            if [ -n "$APP_NAME" ]; then
+              RESOURCES="$APP_NAME/Contents/Resources/piper"
+              mkdir -p "$RESOURCES"
+              cp -R "$DEST/kokoro_tts" "$RESOURCES/kokoro_tts"
+              cp -R "$DEST/piper" "$RESOURCES/piper"
+              chmod +x "$RESOURCES/kokoro_tts/kokoro_tts"
+              chmod +x "$RESOURCES/piper/piper"
+            fi
+          fi
+
+          echo "TTS engines bundled at: $DEST"
+          ls -la "$DEST"
+
+      # ── Standalone packaging only — no installers, no DMG, no deb/rpm ──
+
+      - name: Package Windows (zip)
+        if: matrix.platform == 'windows'
+        run: |
+          cd ${{ matrix.build_path }}
+          Compress-Archive -Path * -DestinationPath ../../../../../${{ matrix.asset_name }}
+        shell: pwsh
+
+      - name: Package MacOS (zip)
+        if: matrix.platform == 'macos'
+        run: |
+          cd build/macos/Build/Products/Release
+          APP_NAME=$(ls -d *.app | head -1)
+          echo "Found app bundle: $APP_NAME"
+          zip -r ../../../../../${{ matrix.asset_name }} "$APP_NAME"
+
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=$(echo ${GITHUB_REF_NAME} | sed 's/^[vV]//')" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Package Linux (AppImage + tar.gz only)
+        if: matrix.platform == 'linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          echo "Building beta packages for version $VERSION"
+          
+          # 1. Prepare AppImage
+          mkdir -p AppDir/usr/bin
+          cp -r ${{ matrix.build_path }}/* AppDir/usr/bin/
+          
+          # Create Desktop file
+          cat <<EOF > AppDir/front_porch_ai.desktop
+          [Desktop Entry]
+          Name=Front Porch AI
+          Exec=front_porch_ai
+          Icon=front_porch_ai
+          Type=Application
+          Categories=Utility;
+          EOF
+          
+          # Icon management
+          if [ -f "assets/images/front_porch_ai_icon.png" ]; then
+            cp assets/images/front_porch_ai_icon.png AppDir/front_porch_ai.png
+            cp assets/images/front_porch_ai_icon.png AppDir/.DirIcon
+          else
+            touch AppDir/front_porch_ai.png
+            touch AppDir/.DirIcon
+          fi
+          
+          # AppRun - symlink to the binary in usr/bin
+          ln -s usr/bin/front_porch_ai AppDir/AppRun
+          
+          # Create AppImage
+          curl -L https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o appimagetool
+          chmod +x appimagetool
+          ./appimagetool AppDir Front_Porch_AI-Linux.AppImage
+          
+          # 2. Standard tar.gz (no deb, no rpm)
+          cd ${{ matrix.build_path }}
+          tar -czvf ../../../../../${{ matrix.asset_name }} .
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}
+          path: |
+            ${{ matrix.asset_name }}
+            Front_Porch_AI-Linux.AppImage
+          if-no-files-found: ignore
+
+      - name: Create or Update Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.asset_name }}
+            Front_Porch_AI-Linux.AppImage
+          generate_release_notes: true
+          prerelease: true
+          name: "${{ github.ref_name }} (Beta)"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

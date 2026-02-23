@@ -20,6 +20,8 @@ class MockKoboldService extends Fake implements KoboldService {
     double minP = 0.0,
     int repPenTokens = 64,
     double? dynatempRange,
+    double xtcThreshold = 0.1,
+    double xtcProbability = 0.5,
     List<String>? stopSequences,
   }) async {
     return "Mock Response";
@@ -47,6 +49,10 @@ class MockStorageService extends Fake implements StorageService {
   bool get dynamicTempEnabled => false;
   @override
   double get dynamicTempRange => 0.7;
+  @override
+  double get xtcThreshold => 0.1;
+  @override
+  double get xtcProbability => 0.5;
 }
 
 class MockUserPersonaService extends Fake implements UserPersonaService {

@@ -1228,6 +1228,8 @@ class ChatService extends ChangeNotifier {
         repeatPenalty: _storageService.repeatPenalty,
         repPenTokens: _storageService.repeatPenaltyTokens,
         dynatempRange: _storageService.dynamicTempEnabled ? _storageService.dynamicTempRange : null,
+        xtcThreshold: _storageService.xtcThreshold,
+        xtcProbability: _storageService.xtcProbability,
         stopSequences: stopSequences.toList(),
         // Always disable reasoning for impersonate — we only want plain text
         reasoningEnabled: false,
@@ -1476,6 +1478,8 @@ class ChatService extends ChangeNotifier {
         repeatPenalty: _storageService.repeatPenalty,
         repPenTokens: _storageService.repeatPenaltyTokens,
         dynatempRange: _storageService.dynamicTempEnabled ? _storageService.dynamicTempRange : null,
+        xtcThreshold: _storageService.xtcThreshold,
+        xtcProbability: _storageService.xtcProbability,
         stopSequences: stopList,
         reasoningEnabled: _storageService.reasoningEnabled,
         reasoningEffort: _storageService.reasoningEffort,

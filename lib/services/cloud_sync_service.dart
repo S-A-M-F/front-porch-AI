@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/folder_service.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
 
 /// Information about a remote file.
 class RemoteFileInfo {
@@ -67,7 +68,7 @@ class CloudSyncService extends ChangeNotifier {
   String? get providerName => _provider?.displayName;
 
   /// Progress from 0.0 to 1.0 during sync.
-  double get progress => _totalFiles > 0 ? _processedFiles / _totalFiles : 0.0;
+  double get progress => _totalFiles > 0 ? (_processedFiles / _totalFiles).clamp(0.0, 1.0) : 0.0;
   int get totalFiles => _totalFiles;
   int get processedFiles => _processedFiles;
 
@@ -94,6 +95,7 @@ class CloudSyncService extends ChangeNotifier {
     Set<String>? validCharIds,
     Set<String>? validGroupIds,
     FolderService? folderService,
+    UserPersonaService? personaService,
   }) async {
     if (_provider == null || !_provider!.isConnected) return;
 
@@ -154,6 +156,11 @@ class CloudSyncService extends ChangeNotifier {
         await _syncFolderMetadata(folderService);
       }
 
+      // Sync user personas
+      if (personaService != null) {
+        await _syncPersonaMetadata(personaService, charactersDir);
+      }
+
       _status = SyncStatus.success;
       _lastSyncTime = DateTime.now();
     } catch (e) {
@@ -206,6 +213,48 @@ class CloudSyncService extends ChangeNotifier {
       debugPrint('AG_DEBUG: Downloaded folder metadata from cloud (new device)');
     }
     // else: neither exists — nothing to sync
+  }
+
+  /// Sync user personas (user_personas.json).
+  /// Personas live in SharedPreferences, so we export to a temp file for sync.
+  Future<void> _syncPersonaMetadata(UserPersonaService personaService, String charactersDir) async {
+    if (_provider == null || !_provider!.isConnected) return;
+
+    const remotePath = '/FrontPorchAI/user_personas.json';
+    // Store the export file next to the characters dir
+    final localPath = path.join(path.dirname(charactersDir), 'user_personas.json');
+    final localFile = File(localPath);
+
+    // Always export current personas to the local file first
+    await personaService.exportToFile(localPath);
+    final localExists = await localFile.exists();
+    final localHasData = localExists && (await localFile.length()) > 10;
+
+    // Check if remote version exists
+    RemoteFileInfo? remoteInfo;
+    try {
+      final remoteFiles = await _provider!.listFiles('/FrontPorchAI');
+      remoteInfo = remoteFiles.where((f) => path.basename(f.remotePath) == 'user_personas.json').firstOrNull;
+    } catch (_) {}
+
+    if (localHasData && remoteInfo != null) {
+      // Both exist — local wins (upload)
+      await _provider!.uploadFile(localPath, remotePath);
+      _syncedFiles++;
+      debugPrint('AG_DEBUG: Uploaded user personas to cloud');
+    } else if (localHasData && remoteInfo == null) {
+      // Only local — upload
+      await _provider!.uploadFile(localPath, remotePath);
+      _syncedFiles++;
+      debugPrint('AG_DEBUG: Uploaded user personas (first sync)');
+    } else if (!localHasData && remoteInfo != null) {
+      // Only remote — download (new device)
+      await localFile.parent.create(recursive: true);
+      await _provider!.downloadFile(remotePath, localPath);
+      await personaService.importFromFile(localPath);
+      _syncedFiles++;
+      debugPrint('AG_DEBUG: Downloaded user personas from cloud (new device)');
+    }
   }
 
   /// Upload local files to remote (no downloading). Used for characters

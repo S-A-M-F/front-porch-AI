@@ -296,14 +296,18 @@ class _MyAppState extends State<MyApp> with WindowListener {
       final validGroupIds = groupRepo.groups.map((g) => g.id).toSet();
 
       final folderSvc = Provider.of<FolderService>(context, listen: false);
+      final personaSvc = Provider.of<UserPersonaService>(context, listen: false);
 
       await syncService.fullSync(chatsPath, charactersPath,
         validCharIds: validCharIds,
         validGroupIds: validGroupIds,
         folderService: folderSvc,
+        personaService: personaSvc,
       );
       if (syncService.status == SyncStatus.success) {
         await storage.setCloudSyncLastTime(DateTime.now().toIso8601String());
+        // Reload characters so newly downloaded PNGs appear in the UI
+        await charRepo.loadCharacters();
       }
     } catch (e) {
       debugPrint('Cloud sync startup error: \$e');

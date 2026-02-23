@@ -170,6 +170,8 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     double minP = 0.0,
     int repPenTokens = 64,
     double? dynatempRange,
+    double xtcThreshold = 0.1,
+    double xtcProbability = 0.5,
     List<String>? stopSequences,
   }) async* {
     final uri = Uri.parse('$_baseUrl/api/extra/generate/stream');
@@ -189,6 +191,11 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
 
     if (dynatempRange != null && dynatempRange > 0) {
       payload['dynatemp_range'] = dynatempRange;
+    }
+
+    if (xtcThreshold > 0 && xtcProbability > 0) {
+      payload['xtc_threshold'] = xtcThreshold;
+      payload['xtc_probability'] = xtcProbability;
     }
 
     if (stopSequences != null && stopSequences.isNotEmpty) {
@@ -241,6 +248,8 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
       minP: params.minP,
       repPenTokens: params.repPenTokens,
       dynatempRange: params.dynatempRange,
+      xtcThreshold: params.xtcThreshold,
+      xtcProbability: params.xtcProbability,
       stopSequences: params.stopSequences,
     );
   }
@@ -254,6 +263,8 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     double minP = 0.0,
     int repPenTokens = 64,
     double? dynatempRange,
+    double xtcThreshold = 0.1,
+    double xtcProbability = 0.5,
     List<String>? stopSequences,
   }) async {
     if (!_isRunning && !Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -281,6 +292,11 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
 
         if (dynatempRange != null && dynatempRange > 0) {
            payload['dynatemp_range'] = dynatempRange;
+        }
+
+        if (xtcThreshold > 0 && xtcProbability > 0) {
+          payload['xtc_threshold'] = xtcThreshold;
+          payload['xtc_probability'] = xtcProbability;
         }
 
         if (stopSequences != null && stopSequences.isNotEmpty) {

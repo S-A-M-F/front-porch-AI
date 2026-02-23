@@ -3,6 +3,7 @@
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 ![Flutter](https://img.shields.io/badge/Made%20with-Flutter-02569B?logo=flutter)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![Pre-Release](https://img.shields.io/badge/Status-Pre--Release%20Beta-orange)
 
 ## 🔓 Why Open Source?
 
@@ -10,29 +11,31 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
+> **⚠️ Pre-Release Notice:** V0.8.0-beta is a standalone pre-release build. It will not auto-update existing stable installations. Download the standalone `.zip`, `.AppImage`, or `.app` from the [Releases](https://github.com/linux4life1/front-porch-ai/releases) page.
+
 ## 🆕 What's New in V0.8.0-beta
 
-- ☁️ **Cloud Sync (Alpha)**: Sync your characters and chat sessions across devices. An alpha-stage warning now appears when enabling the feature.
+- ☁️ **Cloud Sync (Alpha)**: Sync your characters, chat sessions, folder layouts, and user personas across devices. An alpha-stage warning now appears when enabling the feature.
   - **Google Drive** — OAuth 2.0 with your personal Google account.
   - **Nextcloud / WebDAV** — Connect to any self-hosted or third-party WebDAV server.
-  - **Browse Cloud Characters** — New button to browse all characters stored in the cloud, see which ones are already on your device, and selectively download new ones with avatar previews.
+  - **Browse Cloud Characters** — Browse all characters stored in the cloud, see which ones are already on your device, and selectively download new ones with avatar previews.
   - **Upload-Only Character Sync** — Characters are uploaded automatically; downloads are user-initiated so you stay in control of your local library.
+  - **User Persona Sync** — Your custom personas (names, descriptions, avatars) are now included in cloud sync for seamless multi-device continuity.
+  - **Auto-Download on New Device** — Characters, folders, and personas automatically download when syncing to a fresh install.
 - 🎬 **Director Mode**: A complete overhaul of Group Chat turn management. Take control of multi-character conversations:
   - Manually choose which character speaks next.
   - Guide the flow of group conversations instead of relying solely on automated turn orders.
 - 👥 **Group Chat Improvements**: Overhauled group chat experience with better stability, improved turn handling, and responsive card layouts that adapt to all UI scale sizes.
+- 🎛️ **XTC Sampler**: New Exclude Top Choices sampler for more creative, less predictable text generation. Two new controls:
+  - **XTC Threshold** (0–0.5) — Removes the most obvious word choices to encourage creativity.
+  - **XTC Probability** (0–1.0) — How often XTC activates per generation step.
+- 💡 **Setting Tooltips**: Every generation setting slider (Temperature, Min-P, Repeat Penalty, XTC, Context Size, and more) now has an ℹ️ tooltip explaining what it does in plain language — perfect for newcomers.
 - 🎨 **Responsive UI**: Group chat cards now scale gracefully at all grid sizes — no more overflow at small card sizes.
 - 🔒 **Privacy Policy**: PRIVACY.md documenting data handling — no telemetry, no analytics, cloud sync is opt-in and connects only to accounts you own.
 - 🏷️ **Beta Prerelease Support**: Beta versions are flagged as prereleases on GitHub so they won't trigger auto-updates for stable users.
 
 <details>
 <summary><strong>📦 Previous Releases</strong></summary>
-
-### What's New in V0.8.0-beta
-
-- ☁️ **Cloud Sync**: Bi-directional sync of your characters and chat sessions across devices via Google Drive or Nextcloud/WebDAV.
-- 🔄 **Full Bi-Directional Sync**: Characters (PNG cards) and chat sessions sync both ways — newer files always win.
-- 🧹 **Orphan Cleanup**: Deleted characters/groups are cleaned up remotely on next sync.
 
 ### What's New in V0.7.1
 
@@ -100,6 +103,18 @@ Have questions, feedback, or just want to hang out? Connect with us:
 
 - **Discord**: [Join our server](https://discord.gg/EqJrJPjdT)
 - **Matrix**: [matrix.dreamersai.art](https://matrix.dreamersai.art)
+
+## 🙏 Thank You
+
+Front Porch AI stands on the shoulders of incredible open-source projects. This app wouldn't be possible without them:
+
+| Project | What It Does | Link |
+|---|---|---|
+| **KoboldCpp** | The local LLM backend that powers all text generation. A single-file, high-performance inference engine supporting GGUF models with GPU acceleration. | [GitHub](https://github.com/LostRuins/koboldcpp) |
+| **Kokoro** | Our default text-to-speech engine. Beautiful, natural-sounding voices that run entirely offline using ONNX. | [GitHub](https://github.com/hexgrad/kokoro) |
+| **Piper** | Fallback TTS engine. Fast, lightweight, and privacy-respecting local speech synthesis. | [GitHub](https://github.com/rhasspy/piper) |
+
+If you find Front Porch AI useful, please consider starring these projects too — they're the foundation everything is built on.
 
 ## 🌟 Contributors
 
@@ -174,7 +189,7 @@ Create detailed character cards (V2 spec compatible) with a user-friendly form U
 - **Process Management**: Robustly handles the lifecycle of the AI backend, ensuring clean shutdowns.
 
 ### ☁️ Cloud Sync (Alpha)
-- **Cross-Device Sync**: Sync characters and chat sessions via Google Drive or Nextcloud/WebDAV.
+- **Cross-Device Sync**: Sync characters, chat sessions, folder layouts, and user personas via Google Drive or Nextcloud/WebDAV.
 - **Browse Cloud Characters**: View all characters stored in the cloud, see which are already on your device, and selectively download new ones with avatar previews.
 - **Upload-Only Characters**: Characters upload automatically; downloads are user-initiated to keep you in control.
 - **Conflict Resolution**: Newer files always win — never lose edits.
@@ -188,11 +203,10 @@ Create detailed character cards (V2 spec compatible) with a user-friendly form U
 ## 🚀 Getting Started
 
 ### 📦 For Regular Users
-If you just want to use the app, simply head over to the **[Releases](https://github.com/linux4life1/front-porch-ai/releases)** page and download the installer for your platform:
+If you just want to use the app, simply head over to the **[Releases](https://github.com/linux4life1/front-porch-ai/releases)** page and download for your platform:
 
-- **Windows**: `.exe` installer
-- **Linux**: `.AppImage` (universal), `.deb` (Debian/Ubuntu), or `.rpm` (Fedora/RHEL)
-- **macOS**: `.dmg` disk image
+- **Stable releases**: `.exe` installer (Windows), `.dmg` (macOS), `.AppImage` / `.deb` / `.rpm` (Linux)
+- **Beta releases**: Standalone `.zip` (Windows/macOS), `.AppImage` / `.tar.gz` (Linux) — no installer required, just extract and run
 
 No setup required!
 

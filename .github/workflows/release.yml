@@ -13,6 +13,7 @@ permissions:
 jobs:
   release:
     name: Build and Release
+    if: ${{ !contains(github.ref_name, 'beta') }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

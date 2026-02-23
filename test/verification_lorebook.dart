@@ -24,6 +24,8 @@ class MockKoboldService extends ChangeNotifier implements KoboldService {
     double minP = 0.0,
     int repPenTokens = 64,
     double? dynatempRange,
+    double xtcThreshold = 0.1,
+    double xtcProbability = 0.5,
     List<String>? stopSequences,
   }) async {
     return 'Response mentioning magic key';
@@ -70,6 +72,12 @@ class MockUserPersonaService extends ChangeNotifier implements UserPersonaServic
   Future<void> deletePersona(String id) async {}
   @override
   Future<void> setActivePersona(String id) async {}
+  @override
+  Future<void> exportToFile(String filePath) async {}
+  @override
+  Future<void> importFromFile(String filePath) async {}
+  @override
+  Future<void> reload() async {}
 }
 
 class MockStorageService extends ChangeNotifier implements StorageService {
@@ -135,6 +143,11 @@ class MockStorageService extends ChangeNotifier implements StorageService {
   @override String get reasoningEffort => 'medium';
   @override Future<void> setReasoningEnabled(bool value) async {}
   @override Future<void> setReasoningEffort(String value) async {}
+
+  @override double get xtcThreshold => 0.1;
+  @override double get xtcProbability => 0.5;
+  @override Future<void> setXtcThreshold(double value) async {}
+  @override Future<void> setXtcProbability(double value) async {}
 
   @override String? get rootPath => null;
   @override Directory get binDir => Directory('');

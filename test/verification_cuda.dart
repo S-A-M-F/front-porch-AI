@@ -174,7 +174,7 @@ class MockKoboldService extends ChangeNotifier implements KoboldService {
   @override
   Future<void> stopKobold() async {}
   @override
-  Future<String> generate(String prompt, {int maxLength = 80, int minLength = 0, double temp = 0.7, double repPenalty = 1.1, double topP = 0.9, double minP = 0.0, int repPenTokens = 64, double? dynatempRange, List<String>? stopSequences}) async => '';
+  Future<String> generate(String prompt, {int maxLength = 80, int minLength = 0, double temp = 0.7, double repPenalty = 1.1, double topP = 0.9, double minP = 0.0, int repPenTokens = 64, double? dynatempRange, double xtcThreshold = 0.1, double xtcProbability = 0.5, List<String>? stopSequences}) async => '';
   @override
   bool get isProcessAlive => false;
   @override

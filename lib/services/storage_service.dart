@@ -30,6 +30,8 @@ class StorageService extends ChangeNotifier {
   int _repeatPenaltyTokens = 64;
   bool _dynamicTempEnabled = false;
   double _dynamicTempRange = 0.7;
+  double _xtcThreshold = 0.1;
+  double _xtcProbability = 0.5;
   bool? _useCublas;
   bool? _useVulkan;
   bool? _useMetal;
@@ -91,6 +93,8 @@ class StorageService extends ChangeNotifier {
   int get repeatPenaltyTokens => _repeatPenaltyTokens;
   bool get dynamicTempEnabled => _dynamicTempEnabled;
   double get dynamicTempRange => _dynamicTempRange;
+  double get xtcThreshold => _xtcThreshold;
+  double get xtcProbability => _xtcProbability;
   bool? get useCublas => _useCublas;
   bool? get useVulkan => _useVulkan;
   bool? get useMetal => _useMetal;
@@ -155,6 +159,8 @@ class StorageService extends ChangeNotifier {
     _dynamicTempEnabled = _prefs?.getBool('dynamic_temp_enabled') ?? _dynamicTempEnabled;
     _dynamicTempEnabled = _prefs?.getBool('dynamic_temp_enabled') ?? _dynamicTempEnabled;
     _dynamicTempRange = _prefs?.getDouble('dynamic_temp_range') ?? _dynamicTempRange;
+    _xtcThreshold = _prefs?.getDouble('xtc_threshold') ?? _xtcThreshold;
+    _xtcProbability = _prefs?.getDouble('xtc_probability') ?? _xtcProbability;
     _useCublas = _prefs?.getBool('use_cublas');
     _useVulkan = _prefs?.getBool('use_vulkan');
     _useMetal = _prefs?.getBool('use_metal');
@@ -280,6 +286,18 @@ class StorageService extends ChangeNotifier {
   Future<void> setRepeatPenaltyTokens(int value) async {
     _repeatPenaltyTokens = value;
     await _prefs?.setInt('repeat_penalty_tokens', value);
+    notifyListeners();
+  }
+
+  Future<void> setXtcThreshold(double value) async {
+    _xtcThreshold = value;
+    await _prefs?.setDouble('xtc_threshold', value);
+    notifyListeners();
+  }
+
+  Future<void> setXtcProbability(double value) async {
+    _xtcProbability = value;
+    await _prefs?.setDouble('xtc_probability', value);
     notifyListeners();
   }
 

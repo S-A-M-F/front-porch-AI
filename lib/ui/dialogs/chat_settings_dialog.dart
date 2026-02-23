@@ -119,18 +119,27 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                        // Generation
                        const Text('Generation', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                        const SizedBox(height: 8),
-                       _buildSlider('Temperature', storageService.temperature, 0.0, 2.0, (val) => storageService.setTemperature(val), divisions: 20),
-                       _buildSlider('Min-P', storageService.minP, 0.0, 1.0, (val) => storageService.setMinP(val), divisions: 100),
-                       _buildSlider('Repeat Penalty', storageService.repeatPenalty, 1.0, 3.0, (val) => storageService.setRepeatPenalty(val), divisions: 200),
-                       _buildSlider('Rep Pen Tokens', storageService.repeatPenaltyTokens.toDouble(), 0, 512, (val) => storageService.setRepeatPenaltyTokens(val.toInt()), divisions: 512),
-                       _buildSlider('Max Output Tokens', storageService.maxLength.toDouble(), 16, 2048, (val) => storageService.setMaxLength(val.toInt()), divisions: 2048 - 16),
-                       _buildSlider('Min Output Tokens', storageService.minLength.toDouble(), 0, 512, (val) => storageService.setMinLength(val.toInt()), divisions: 512),
+                       _buildSlider('Temperature', storageService.temperature, 0.0, 2.0, (val) => storageService.setTemperature(val), divisions: 20, tooltip: 'Controls randomness. Low = predictable and focused. High = creative and surprising. 0.7 is a good default.'),
+                       _buildSlider('Min-P', storageService.minP, 0.0, 1.0, (val) => storageService.setMinP(val), divisions: 100, tooltip: 'Filters out unlikely words. Higher = only the most probable words are kept. Start around 0.05–0.1.'),
+                       _buildSlider('Repeat Penalty', storageService.repeatPenalty, 1.0, 3.0, (val) => storageService.setRepeatPenalty(val), divisions: 200, tooltip: 'Discourages the AI from repeating the same words. Higher = less repetition. 1.1 is a safe default.'),
+                       _buildSlider('Rep Pen Tokens', storageService.repeatPenaltyTokens.toDouble(), 0, 512, (val) => storageService.setRepeatPenaltyTokens(val.toInt()), divisions: 512, tooltip: 'How far back the AI checks for repetition (in tokens). Higher = checks more of the conversation history.'),
+                       _buildSlider('XTC Threshold', storageService.xtcThreshold, 0.0, 0.5, (val) => storageService.setXtcThreshold(val), divisions: 50, tooltip: 'Exclude Top Choices — removes the most obvious/cliché word choices. Lower = stronger effect. Try 0.1 for more creative writing.'),
+                       _buildSlider('XTC Probability', storageService.xtcProbability, 0.0, 1.0, (val) => storageService.setXtcProbability(val), divisions: 20, tooltip: 'How often XTC activates. 0 = never, 1 = always. Try 0.5 for a balance between creativity and coherence.'),
+                       _buildSlider('Max Output Tokens', storageService.maxLength.toDouble(), 16, 2048, (val) => storageService.setMaxLength(val.toInt()), divisions: 2048 - 16, tooltip: 'Maximum number of tokens (roughly words) the AI can write in one response.'),
+                       _buildSlider('Min Output Tokens', storageService.minLength.toDouble(), 0, 512, (val) => storageService.setMinLength(val.toInt()), divisions: 512, tooltip: 'Minimum tokens the AI must write before it can stop. Increase for longer responses.'),
                        _buildIntSlider('Context Size', storageService.contextSize.toDouble().clamp(512, isRemote ? 500000 : 15000), 512, isRemote ? 500000.0 : 15000.0, (val) => storageService.setContextSize(val.toInt()), step: 512),
 
                        const SizedBox(height: 16),
                        Row(
                          children: [
                            const Text('Dynamic Temperature', style: TextStyle(color: Colors.white)),
+                           Tooltip(
+                             message: 'Varies temperature randomly within a range each generation for more varied outputs.',
+                             child: const Padding(
+                               padding: EdgeInsets.only(left: 4),
+                               child: Icon(Icons.info_outline, size: 16, color: Colors.white38),
+                             ),
+                           ),
                            const Spacer(),
                            Switch(
                              value: storageService.dynamicTempEnabled,
@@ -140,12 +149,12 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                          ],
                        ),
                        if (storageService.dynamicTempEnabled)
-                         _buildSlider('Dynatemp Range', storageService.dynamicTempRange, 0.0, 2.0, (val) => storageService.setDynamicTempRange(val), divisions: 20),
+                         _buildSlider('Dynatemp Range', storageService.dynamicTempRange, 0.0, 2.0, (val) => storageService.setDynamicTempRange(val), divisions: 20, tooltip: 'How much the temperature can vary around the base temperature.'),
 
                         const SizedBox(height: 24),
                         const Text('Display Output', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                         const SizedBox(height: 8),
-                        _buildSlider('Chat Text Size', storageService.textScale, 0.5, 2.0, (val) => storageService.setTextScale(val), divisions: 30),
+                        _buildSlider('Chat Text Size', storageService.textScale, 0.5, 2.0, (val) => storageService.setTextScale(val), divisions: 30, tooltip: 'Scale the chat text size up or down.'),
                         const SizedBox(height: 16),
                         const Text('Chat Background', style: TextStyle(color: Colors.white70, fontSize: 13)),
                         const SizedBox(height: 8),
@@ -274,14 +283,27 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
     );
   }
 
-  Widget _buildSlider(String label, double value, double min, double max, Function(double) onChanged, {int? divisions}) {
+  Widget _buildSlider(String label, double value, double min, double max, Function(double) onChanged, {int? divisions, String? tooltip}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(color: Colors.white70)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: const TextStyle(color: Colors.white70)),
+                if (tooltip != null)
+                  Tooltip(
+                    message: tooltip,
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 4),
+                      child: Icon(Icons.info_outline, size: 16, color: Colors.white38),
+                    ),
+                  ),
+              ],
+            ),
             Text(value.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
           ],
         ),

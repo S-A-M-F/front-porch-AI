@@ -19,6 +19,7 @@ import 'package:front_porch_ai/services/cloud_sync_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/services/folder_service.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
@@ -1071,12 +1072,14 @@ class _SettingsPageState extends State<SettingsPage> {
            _buildSectionHeader('Generation Settings', context),
            const SizedBox(height: 16),
            
-           _buildSlider('Min-P', storageService.minP, 0.0, 1.0, (val) => storageService.setMinP(val), context),
-           _buildSlider('Temperature', storageService.temperature, 0.0, 2.0, (val) => storageService.setTemperature(val), context, divisions: 20),
-           _buildSlider('Repeat Penalty', storageService.repeatPenalty, 1.0, 3.0, (val) => storageService.setRepeatPenalty(val), context),
-           _buildSlider('Rep Pen Tokens', storageService.repeatPenaltyTokens.toDouble(), 0, 512, (val) => storageService.setRepeatPenaltyTokens(val.toInt()), context, divisions: 512),
-           _buildSlider('Max Output Tokens', storageService.maxLength.toDouble(), 16, 2048, (val) => storageService.setMaxLength(val.toInt()), context, divisions: 2048 - 16),
-           _buildSlider('Min Output Tokens', storageService.minLength.toDouble(), 0, 512, (val) => storageService.setMinLength(val.toInt()), context, divisions: 512),
+           _buildSlider('Min-P', storageService.minP, 0.0, 1.0, (val) => storageService.setMinP(val), context, tooltip: 'Filters out unlikely words. Higher = only the most probable words are kept. Start around 0.05–0.1.'),
+           _buildSlider('Temperature', storageService.temperature, 0.0, 2.0, (val) => storageService.setTemperature(val), context, divisions: 20, tooltip: 'Controls randomness. Low = predictable and focused. High = creative and surprising. 0.7 is a good default.'),
+           _buildSlider('Repeat Penalty', storageService.repeatPenalty, 1.0, 3.0, (val) => storageService.setRepeatPenalty(val), context, tooltip: 'Discourages the AI from repeating the same words. Higher = less repetition. 1.1 is a safe default.'),
+           _buildSlider('Rep Pen Tokens', storageService.repeatPenaltyTokens.toDouble(), 0, 512, (val) => storageService.setRepeatPenaltyTokens(val.toInt()), context, divisions: 512, tooltip: 'How far back the AI checks for repetition (in tokens). Higher = checks more of the conversation history.'),
+           _buildSlider('XTC Threshold', storageService.xtcThreshold, 0.0, 0.5, (val) => storageService.setXtcThreshold(val), context, divisions: 50, tooltip: 'Exclude Top Choices — removes the most obvious/cliché word choices. Lower = stronger effect. Try 0.1 for more creative writing.'),
+           _buildSlider('XTC Probability', storageService.xtcProbability, 0.0, 1.0, (val) => storageService.setXtcProbability(val), context, divisions: 20, tooltip: 'How often XTC activates. 0 = never, 1 = always. Try 0.5 for a balance between creativity and coherence.'),
+           _buildSlider('Max Output Tokens', storageService.maxLength.toDouble(), 16, 2048, (val) => storageService.setMaxLength(val.toInt()), context, divisions: 2048 - 16, tooltip: 'Maximum number of tokens (roughly words) the AI can write in one response.'),
+           _buildSlider('Min Output Tokens', storageService.minLength.toDouble(), 0, 512, (val) => storageService.setMinLength(val.toInt()), context, divisions: 512, tooltip: 'Minimum tokens the AI must write before it can stop. Increase for longer responses.'),
             Builder(builder: (context) {
               final isApi = !Provider.of<LLMProvider>(context, listen: false).isLocal;
               final maxCtx = isApi ? 500000.0 : 15000.0;
@@ -1086,12 +1089,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   _contextSizeController.text = val.toInt().toString();
                 });
                 storageService.setContextSize(val.toInt());
-              }, context, divisions: (maxCtx - 4098).toInt());
+              }, context, divisions: (maxCtx - 4098).toInt(), tooltip: 'How much conversation history the AI can remember. More = better memory but slower and uses more RAM/VRAM.');
             }),
            
            Row(
              children: [
                Text('Dynamic Temperature', style: theme.textTheme.bodyMedium),
+               Tooltip(
+                 message: 'Varies temperature randomly within a range each generation for more varied outputs.',
+                 child: const Padding(
+                   padding: EdgeInsets.only(left: 4),
+                   child: Icon(Icons.info_outline, size: 16, color: Colors.white38),
+                 ),
+               ),
                Switch(
                  value: storageService.dynamicTempEnabled, 
                  onChanged: (val) => storageService.setDynamicTempEnabled(val)
@@ -1099,7 +1109,7 @@ class _SettingsPageState extends State<SettingsPage> {
              ],
            ),
            if (storageService.dynamicTempEnabled)
-             _buildSlider('Dynatemp Range', storageService.dynamicTempRange, 0.0, 2.0, (val) => storageService.setDynamicTempRange(val), context),
+             _buildSlider('Dynatemp Range', storageService.dynamicTempRange, 0.0, 2.0, (val) => storageService.setDynamicTempRange(val), context, tooltip: 'How much the temperature can vary. The actual temperature will be randomly chosen within this range around the base temperature.'),
 
            const SizedBox(height: 24),
            Row(
@@ -1219,7 +1229,7 @@ class _SettingsPageState extends State<SettingsPage> {
      );
   }
 
-  Widget _buildSlider(String label, double value, double min, double max, Function(double) onChanged, BuildContext context, {int? divisions}) {
+  Widget _buildSlider(String label, double value, double min, double max, Function(double) onChanged, BuildContext context, {int? divisions, String? tooltip}) {
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1227,7 +1237,20 @@ class _SettingsPageState extends State<SettingsPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color)),
+                if (tooltip != null)
+                  Tooltip(
+                    message: tooltip,
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 4),
+                      child: Icon(Icons.info_outline, size: 16, color: Colors.white38),
+                    ),
+                  ),
+              ],
+            ),
             Text(value.toStringAsFixed(2), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
           ],
         ),
@@ -1918,28 +1941,24 @@ class _SettingsPageState extends State<SettingsPage> {
                             final validGroupIds = groupRepo.groups.map((g) => g.id).toSet();
 
                             final folderSvc = Provider.of<FolderService>(context, listen: false);
+                            final personaSvc = Provider.of<UserPersonaService>(context, listen: false);
 
                             await syncService.fullSync(chatsPath, charactersPath,
                               validCharIds: validCharIds,
                               validGroupIds: validGroupIds,
                               folderService: folderSvc,
+                              personaService: personaSvc,
                             );
                             if (syncService.status == SyncStatus.success) {
                               await storageService.setCloudSyncLastTime(DateTime.now().toIso8601String());
+
+                              // Reload characters so newly downloaded PNGs appear in the UI
+                              await charRepo.loadCharacters();
+
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text('✅ Synced ${syncService.syncedFiles} files!')),
                                 );
-                              }
-
-                              // Check for remote-only characters and offer to download
-                              if (mounted) {
-                                final remoteOnly = await syncService.listRemoteOnlyCharacters(charactersPath);
-                                if (remoteOnly.isNotEmpty && mounted) {
-                                  await _showCharacterPullDialog(
-                                    context, syncService, charRepo, charactersPath, remoteOnly,
-                                  );
-                                }
                               }
                             } else if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(

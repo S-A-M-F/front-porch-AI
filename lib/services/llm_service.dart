@@ -11,6 +11,8 @@ class GenerationParams {
   final double minP;
   final int repPenTokens;
   final double? dynatempRange;
+  final double xtcThreshold;
+  final double xtcProbability;
   final List<String>? stopSequences;
   final bool reasoningEnabled;
   final String reasoningEffort;
@@ -25,6 +27,8 @@ class GenerationParams {
     this.minP = 0.0,
     this.repPenTokens = 64,
     this.dynatempRange,
+    this.xtcThreshold = 0.1,
+    this.xtcProbability = 0.5,
     this.stopSequences,
     this.reasoningEnabled = false,
     this.reasoningEffort = 'medium',
