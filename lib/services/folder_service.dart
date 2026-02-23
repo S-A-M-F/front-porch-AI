@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 class CharacterFolder {
   final String id;
@@ -94,12 +95,19 @@ class FolderService extends ChangeNotifier {
 
   Future<void> addToFolder(String folderId, String characterPath) async {
     final folder = _folders.firstWhere((f) => f.id == folderId);
-    if (!folder.characterPaths.contains(characterPath)) {
-      folder.characterPaths.add(characterPath);
+    // Store just the basename for portability
+    final baseName = p.basename(characterPath);
+    final alreadyContains = folder.characterPaths.any(
+      (existing) => p.basename(existing).toLowerCase() == baseName.toLowerCase(),
+    );
+    if (!alreadyContains) {
+      folder.characterPaths.add(baseName);
       // Remove from any other folder
       for (final other in _folders) {
         if (other.id != folderId) {
-          other.characterPaths.remove(characterPath);
+          other.characterPaths.removeWhere(
+            (existing) => p.basename(existing).toLowerCase() == baseName.toLowerCase(),
+          );
         }
       }
       await _save();
@@ -109,15 +117,21 @@ class FolderService extends ChangeNotifier {
 
   Future<void> removeFromFolder(String folderId, String characterPath) async {
     final folder = _folders.firstWhere((f) => f.id == folderId);
-    folder.characterPaths.remove(characterPath);
+    final baseName = p.basename(characterPath).toLowerCase();
+    folder.characterPaths.removeWhere(
+      (existing) => p.basename(existing).toLowerCase() == baseName,
+    );
     await _save();
     notifyListeners();
   }
 
   /// Get the folder a character belongs to (if any)
   CharacterFolder? getFolderForCharacter(String characterPath) {
+    final baseName = p.basename(characterPath).toLowerCase();
     for (final folder in _folders) {
-      if (folder.characterPaths.contains(characterPath)) {
+      if (folder.characterPaths.any(
+        (existing) => p.basename(existing).toLowerCase() == baseName,
+      )) {
         return folder;
       }
     }
