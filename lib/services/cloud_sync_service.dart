@@ -170,11 +170,50 @@ class CloudSyncService extends ChangeNotifier {
 
     final localStat = await localFile.stat();
 
+    // Check if local DB is essentially empty (freshly created)
+    // This prevents a new install from uploading an empty DB over good remote data
+    int localCharCount = 0;
+    try {
+      final rows = await db.customSelect('SELECT COUNT(*) AS c FROM characters').get();
+      localCharCount = rows.first.read<int>('c');
+    } catch (_) {}
+
     if (remoteInfo == null) {
-      // First sync — upload
-      await _provider!.uploadFile(localPath, remotePath);
+      // First sync — upload only if we have data, otherwise skip
+      if (localCharCount > 0) {
+        await _provider!.uploadFile(localPath, remotePath);
+        _syncedFiles++;
+        debugPrint('[CloudSync] Uploaded database (first sync)');
+      } else {
+        debugPrint('[CloudSync] Skipped upload — local DB is empty and no remote exists');
+      }
+    } else if (localCharCount == 0 && (remoteInfo.size ?? 0) > 0) {
+      // Local DB is empty but remote has data — always download
+      final tempPath = '$localPath.synctmp';
+      await _provider!.downloadFile(remotePath, tempPath);
       _syncedFiles++;
-      debugPrint('[CloudSync] Uploaded database (first sync)');
+
+      try {
+        final escapedPath = tempPath.replaceAll("'", "''");
+        await db.customStatement("ATTACH DATABASE '$escapedPath' AS synced");
+
+        const tables = ['characters', 'sessions', 'messages', 'groups', 'folders', 'personas', 'worlds'];
+        for (final table in tables) {
+          await db.customStatement('DELETE FROM main.$table');
+          await db.customStatement('INSERT INTO main.$table SELECT * FROM synced.$table');
+        }
+
+        await db.customStatement('DETACH DATABASE synced');
+        _dbWasDownloaded = true;
+        debugPrint('[CloudSync] Downloaded database (local empty, remote has data)');
+      } catch (e) {
+        debugPrint('[CloudSync] ATTACH import failed: $e');
+        try { await db.customStatement('DETACH DATABASE synced'); } catch (_) {}
+      } finally {
+        try { await File(tempPath).delete(); } catch (_) {}
+        try { await File('$tempPath-wal').delete(); } catch (_) {}
+        try { await File('$tempPath-shm').delete(); } catch (_) {}
+      }
     } else if (remoteInfo.lastModified != null) {
       if (localStat.modified.isAfter(remoteInfo.lastModified!)) {
         // Local is newer — upload

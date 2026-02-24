@@ -51,7 +51,8 @@ class CharacterRepository extends ChangeNotifier {
 
         // Rebase imagePath if it doesn't exist locally (synced from another OS)
         if (card.imagePath != null && !File(card.imagePath!).existsSync()) {
-          final filename = p.basename(card.imagePath!);
+          // Use regex split to handle both / and \ (p.basename fails with Windows paths on Linux)
+          final filename = card.imagePath!.split(RegExp(r'[/\\]')).last;
           final rebasedPath = '$localCharDir/$filename';
           if (File(rebasedPath).existsSync()) {
             card.imagePath = rebasedPath;
