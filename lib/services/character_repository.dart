@@ -42,8 +42,31 @@ class CharacterRepository extends ChangeNotifier {
       final dbChars = await _db.getAllCharacters();
       _characters.clear();
       
+      // Get local characters directory for path rebasing (cross-platform sync)
+      final directory = await getApplicationDocumentsDirectory();
+      final localCharDir = '${directory.path}/KoboldManager/Characters';
+
       for (final c in dbChars) {
-        _characters.add(_characterFromRow(c));
+        final card = _characterFromRow(c);
+
+        // Rebase imagePath if it doesn't exist locally (synced from another OS)
+        if (card.imagePath != null && !File(card.imagePath!).existsSync()) {
+          final filename = p.basename(card.imagePath!);
+          final rebasedPath = '$localCharDir/$filename';
+          if (File(rebasedPath).existsSync()) {
+            card.imagePath = rebasedPath;
+            // Update the DB so future loads don't need rebasing
+            if (card.dbId != null) {
+              await _db.updateCharacter(CharactersCompanion(
+                id: Value(card.dbId!),
+                name: Value(card.name),
+                imagePath: Value(rebasedPath),
+              ));
+            }
+          }
+        }
+
+        _characters.add(card);
       }
     } catch (e) {
       print('Error loading characters from DB: $e');
