@@ -1003,55 +1003,76 @@ class _HomePageState extends State<HomePage> {
                     : null,
               ),
             ),
-          // Action buttons (hide during selection mode)
+          // Right-click context menu for actions (replaces overlay buttons)
           if (!_isSelecting && !_isOrganizing)
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Material(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(20),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () => _editCharacter(context, character),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(Icons.edit, color: Colors.white, size: 20),
-                      ),
-                    ),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () => _exportCharacter(context, character),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(Icons.upload, color: Colors.white, size: 20),
-                      ),
-                    ),
-                    // Remove from folder button (only when inside a folder)
-                    if (_activeFolderId != null)
-                      InkWell(
-                        borderRadius: BorderRadius.circular(20),
-                        onTap: () async {
-                          await folderService.removeFromFolder(_activeFolderId!, character.imagePath!);
-                        },
-                        child: const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: Icon(Icons.folder_off, color: Colors.amber, size: 20),
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onSecondaryTapUp: (details) {
+                  final position = details.globalPosition;
+                  showMenu<String>(
+                    context: context,
+                    position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy),
+                    color: const Color(0xFF2A2A2A),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    items: [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: Icon(Icons.edit, color: Colors.white70, size: 20),
+                          title: Text('Edit Character', style: TextStyle(color: Colors.white)),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
                         ),
                       ),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () => _confirmDeleteCharacter(context, character),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                      const PopupMenuItem(
+                        value: 'export',
+                        child: ListTile(
+                          leading: Icon(Icons.upload, color: Colors.white70, size: 20),
+                          title: Text('Export PNG', style: TextStyle(color: Colors.white)),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                      if (_activeFolderId != null)
+                        const PopupMenuItem(
+                          value: 'remove_folder',
+                          child: ListTile(
+                            leading: Icon(Icons.folder_off, color: Colors.amber, size: 20),
+                            title: Text('Remove from Folder', style: TextStyle(color: Colors.amber)),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          leading: Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                          title: Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
+                  ).then((value) {
+                    if (value == null) return;
+                    switch (value) {
+                      case 'edit':
+                        _editCharacter(context, character);
+                        break;
+                      case 'export':
+                        _exportCharacter(context, character);
+                        break;
+                      case 'remove_folder':
+                        folderService.removeFromFolder(_activeFolderId!, character.imagePath!);
+                        break;
+                      case 'delete':
+                        _confirmDeleteCharacter(context, character);
+                        break;
+                    }
+                  });
+                },
+                child: const SizedBox.shrink(),
               ),
             ),
         ],
