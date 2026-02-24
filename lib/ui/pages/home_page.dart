@@ -908,14 +908,32 @@ class _HomePageState extends State<HomePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              character.name,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                fontSize: isCompact ? 12 : null,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    character.name,
+                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: isCompact ? 12 : null,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (msgCount > 0)
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.chat_bubble_outline, size: 11, color: Colors.white38),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        '$msgCount',
+                                        style: TextStyle(color: Colors.white38, fontSize: isCompact ? 10 : 11),
+                                      ),
+                                    ],
+                                  ),
+                              ],
                             ),
                             if (!isCompact) ...[
                               const SizedBox(height: 4),
@@ -948,21 +966,6 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                 ),
                             ],
-                            // Message count text
-                            if (msgCount > 0)
-                              Padding(
-                                padding: EdgeInsets.only(top: isCompact ? 2 : 4),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.chat_bubble_outline, size: 12, color: Colors.white38),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '$msgCount messages',
-                                      style: TextStyle(color: Colors.white38, fontSize: isCompact ? 10 : 11),
-                                    ),
-                                  ],
-                                ),
-                              ),
                           ],
                         ),
                       ),
