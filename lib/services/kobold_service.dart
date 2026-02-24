@@ -18,6 +18,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
   List<String> get logs => List.unmodifiable(_logs);
   String _baseUrl = 'http://127.0.0.1:5001';
   String get baseUrl => _baseUrl;
+  http.Client? _activeClient;
 
   // LLMService interface
   @override
@@ -207,6 +208,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     request.body = jsonEncode(payload);
 
     final client = http.Client();
+    _activeClient = client;
     try {
       final response = await client.send(request).timeout(const Duration(seconds: 60));
 
@@ -231,6 +233,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
         }
       }
     } finally {
+      _activeClient = null;
       client.close();
     }
   }
@@ -252,6 +255,12 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
       xtcProbability: params.xtcProbability,
       stopSequences: params.stopSequences,
     );
+  }
+
+  @override
+  void abortGeneration() {
+    _activeClient?.close();
+    _activeClient = null;
   }
 
   Future<String> generate(String prompt, {

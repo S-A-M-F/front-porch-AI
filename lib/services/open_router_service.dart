@@ -43,6 +43,7 @@ class OpenRouterService extends LLMService {
   String _apiKey;
   String _modelName;
   bool _isReady = false;
+  http.Client? _activeClient;
 
   String get apiUrl => _apiUrl;
   String get apiKey => _apiKey;
@@ -219,6 +220,7 @@ class OpenRouterService extends LLMService {
     request.body = jsonEncode(payload);
 
     final client = http.Client();
+    _activeClient = client;
     bool hasYieldedReasoningStart = false;
     bool hasYieldedReasoningEnd = false;
 
@@ -294,7 +296,14 @@ class OpenRouterService extends LLMService {
         yield '</think>\n';
       }
     } finally {
+      _activeClient = null;
       client.close();
     }
+  }
+
+  @override
+  void abortGeneration() {
+    _activeClient?.close();
+    _activeClient = null;
   }
 }

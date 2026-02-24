@@ -527,40 +527,24 @@ class ChatService extends ChangeNotifier {
       characterDbId = _activeCharacter!.dbId;
     }
 
-    // Upsert session
-    final existingSession = await _db.getSessionById(_currentSessionId!);
-    if (existingSession == null) {
-      final timestamp = int.tryParse(_currentSessionId!) ?? 0;
-      final createdAt = timestamp > 0
-          ? DateTime.fromMillisecondsSinceEpoch(timestamp)
-          : DateTime.now();
-      await _db.insertSession(SessionsCompanion.insert(
-        id: _currentSessionId!,
-        characterId: drift.Value(characterDbId),
-        groupId: drift.Value(groupDbId),
-        name: drift.Value(_sessionName),
-        description: drift.Value(_sessionDescription),
-        authorNote: drift.Value(_authorNote),
-        authorNoteDepth: drift.Value(_authorNoteDepth),
-        parentSession: drift.Value(_parentSessionId),
-        forkIndex: drift.Value(_forkIndex),
-        createdAt: drift.Value(createdAt),
-        updatedAt: drift.Value(DateTime.now()),
-      ));
-    } else {
-      await _db.updateSession(SessionsCompanion(
-        id: drift.Value(_currentSessionId!),
-        characterId: drift.Value(characterDbId),
-        groupId: drift.Value(groupDbId),
-        name: drift.Value(_sessionName),
-        description: drift.Value(_sessionDescription),
-        authorNote: drift.Value(_authorNote),
-        authorNoteDepth: drift.Value(_authorNoteDepth),
-        parentSession: drift.Value(_parentSessionId),
-        forkIndex: drift.Value(_forkIndex),
-        updatedAt: drift.Value(DateTime.now()),
-      ));
-    }
+    // Upsert session (INSERT OR REPLACE to avoid UNIQUE constraint errors)
+    final timestamp = int.tryParse(_currentSessionId!) ?? 0;
+    final createdAt = timestamp > 0
+        ? DateTime.fromMillisecondsSinceEpoch(timestamp)
+        : DateTime.now();
+    await _db.upsertSession(SessionsCompanion.insert(
+      id: _currentSessionId!,
+      characterId: drift.Value(characterDbId),
+      groupId: drift.Value(groupDbId),
+      name: drift.Value(_sessionName),
+      description: drift.Value(_sessionDescription),
+      authorNote: drift.Value(_authorNote),
+      authorNoteDepth: drift.Value(_authorNoteDepth),
+      parentSession: drift.Value(_parentSessionId),
+      forkIndex: drift.Value(_forkIndex),
+      createdAt: drift.Value(createdAt),
+      updatedAt: drift.Value(DateTime.now()),
+    ));
 
     // Replace all messages for this session
     await _db.deleteMessagesForSession(_currentSessionId!);
@@ -1855,6 +1839,8 @@ class ChatService extends ChangeNotifier {
   void stopGeneration() {
     if (_isGenerating) {
       _cancelRequested = true;
+      // Abort the in-flight HTTP request so we don't have to wait for the next token
+      _llmProvider?.activeService.abortGeneration();
     }
   }
 

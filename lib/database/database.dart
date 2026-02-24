@@ -196,6 +196,9 @@ class AppDatabase extends _$AppDatabase {
   Future<int> insertSession(SessionsCompanion session) =>
       into(sessions).insert(session);
 
+  Future<int> upsertSession(SessionsCompanion session) =>
+      into(sessions).insertOnConflictUpdate(session);
+
   Future<bool> updateSession(SessionsCompanion session) =>
       update(sessions).replace(session);
 

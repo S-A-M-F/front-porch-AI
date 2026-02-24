@@ -168,6 +168,154 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     }
   }
 
+  Future<void> _showModelPicker() async {
+    // Ensure the service has the latest config before fetching
+    final openRouter = Provider.of<OpenRouterService>(context, listen: false);
+    openRouter.configure(
+      apiUrl: _apiUrlController.text.trim(),
+      apiKey: _apiKeyController.text.trim(),
+      modelName: _modelNameController.text.trim(),
+    );
+
+    // Show loading dialog
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    List<RemoteModelInfo> models;
+    try {
+      models = await openRouter.fetchAvailableModels();
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // dismiss loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to fetch models: $e')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.pop(context); // dismiss loading
+
+    if (models.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No models available. Check your API URL and key.')),
+      );
+      return;
+    }
+
+    // Show the model picker dialog
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        String searchQuery = '';
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final filtered = searchQuery.isEmpty
+                ? models
+                : models.where((m) => m.id.toLowerCase().contains(searchQuery.toLowerCase())).toList();
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Select Model', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Search models...',
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                      prefixIcon: const Icon(Icons.search, color: Colors.white38, size: 18),
+                      filled: true,
+                      fillColor: const Color(0xFF374151),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      isDense: true,
+                    ),
+                    onChanged: (val) => setDialogState(() => searchQuery = val),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 480,
+                height: 400,
+                child: filtered.isEmpty
+                    ? Center(child: Text('No models match "$searchQuery"', style: const TextStyle(color: Colors.white38)))
+                    : ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (ctx, index) {
+                          final model = filtered[index];
+                          final isSelected = model.id == _modelNameController.text;
+                          return ListTile(
+                            dense: true,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            title: Text(
+                              model.id,
+                              style: TextStyle(
+                                color: isSelected ? Colors.blueAccent : Colors.white,
+                                fontSize: 13,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Row(
+                              children: [
+                                if (model.isFree)
+                                  Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text('FREE', style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                                  ),
+                                Flexible(
+                                  child: Text(
+                                    model.pricingLabel,
+                                    style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: isSelected
+                                ? const Icon(Icons.check_circle, color: Colors.blueAccent, size: 18)
+                                : null,
+                            onTap: () => Navigator.pop(ctx, model.id),
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (selected != null && mounted) {
+      setState(() {
+        _modelNameController.text = selected;
+      });
+      _saveRemoteSettings();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final llmProvider = Provider.of<LLMProvider>(context);
@@ -445,11 +593,43 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         const SizedBox(height: 12),
         _buildTextField(label: 'API Key', controller: _apiKeyController, isObscured: true),
         const SizedBox(height: 12),
-        _buildTextField(label: 'Model Name', controller: _apiUrlController.text.isEmpty ? _modelNameController : _modelNameController),
-        const SizedBox(height: 8),
-        Text(
-          'e.g. deepseek/deepseek-r1, openai/gpt-4o',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11),
+        // Model selector — tappable chip that opens a model picker dialog
+        InkWell(
+          onTap: () => _showModelPicker(),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Model',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _modelNameController.text.isEmpty ? 'Tap to select a model...' : _modelNameController.text,
+                        style: TextStyle(
+                          color: _modelNameController.text.isEmpty ? Colors.white38 : Colors.white,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_drop_down, color: Colors.white54),
+              ],
+            ),
+          ),
         ),
         const SizedBox(height: 16),
 

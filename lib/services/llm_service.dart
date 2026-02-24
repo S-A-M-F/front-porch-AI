@@ -40,6 +40,9 @@ abstract class LLMService extends ChangeNotifier {
   /// Stream tokens one at a time for real-time display.
   Stream<String> generateStream(GenerationParams params);
 
+  /// Abort the current in-flight generation request (closes the HTTP client).
+  void abortGeneration() {}
+
   /// Whether the backend is ready to accept requests.
   bool get isReady;
 
