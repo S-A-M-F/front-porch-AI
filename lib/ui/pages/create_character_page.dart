@@ -122,11 +122,13 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         await service.saveCardAsPng(card, outputPath, _imagePath);
 
         if (mounted) {
+          // Import the saved PNG into the SQL database
+          final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+          await charRepo.importCharacter(File(outputPath));
+
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Character saved to $outputPath')),
+            SnackBar(content: Text('Character "${card.name}" created!')),
           );
-          // Refresh repository
-          Provider.of<CharacterRepository>(context, listen: false).loadCharacters();
           // Go to home
           Provider.of<AppState>(context, listen: false).setIndex(0);
         }

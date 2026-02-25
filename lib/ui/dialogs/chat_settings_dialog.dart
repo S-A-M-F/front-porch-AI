@@ -218,6 +218,16 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                            (val) => storageService.setTargetDisplayTps(val),
                            divisions: 55,
                          ),
+                       if (storageService.displayBufferEnabled)
+                         _buildSlider(
+                           'Buffer Duration (seconds)',
+                           storageService.bufferDurationSeconds,
+                           1.0,
+                           10.0,
+                           (val) => storageService.setBufferDurationSeconds(val),
+                           divisions: 9,
+                           tooltip: 'How many seconds of tokens to accumulate before the display starts. Higher = smoother output but longer delay before text appears.',
+                         ),
                         const SizedBox(height: 24),
                         const Text('Stop Sequences', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                         const SizedBox(height: 8),

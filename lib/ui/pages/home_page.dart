@@ -13,6 +13,10 @@ import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/services/cloud_sync_service.dart';
+import 'package:front_porch_ai/services/kobold_service.dart';
+import 'package:front_porch_ai/services/byaf_service.dart';
+import 'package:front_porch_ai/ui/dialogs/byaf_import_dialog.dart';
+import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/ui/pages/chat_page.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
@@ -65,6 +69,43 @@ class _HomePageState extends State<HomePage> {
     _sortMode = storage.sortMode;
     _gridScale = storage.gridScale;
     _refreshLastActivityCache();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Listen for model-ready events from KoboldService
+    try {
+      final kobold = Provider.of<KoboldService>(context, listen: false);
+      kobold.removeListener(_onKoboldUpdate);
+      kobold.addListener(_onKoboldUpdate);
+    } catch (_) {
+      // KoboldService might not be in the provider tree
+    }
+  }
+
+  void _onKoboldUpdate() {
+    if (!mounted) return;
+    try {
+      final kobold = Provider.of<KoboldService>(context, listen: false);
+      if (kobold.consumeModelReady()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                const SizedBox(width: 8),
+                const Text('Model loaded and ready!'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF2A2A2A),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      setState(() {}); // Rebuild to update status bar
+    } catch (_) {}
   }
 
   /// Query the DB to build caches for last activity time and message count per character.
@@ -215,7 +256,7 @@ class _HomePageState extends State<HomePage> {
         // Filter characters based on search and active folder
         final filteredCharacters = _getFilteredCharacters(repo, folderService);
 
-        return Stack(
+        return _wrapWithStatusBar(context, Stack(
           children: [
             Column(
               children: [
@@ -352,10 +393,12 @@ class _HomePageState extends State<HomePage> {
                           onSelected: (value) {
                             if (value == 'cards') _importCharacter(context);
                             if (value == 'folder') _folderImportCharacters(context);
+                            if (value == 'byaf') _importByaf(context);
                           },
                           itemBuilder: (_) => [
                             const PopupMenuItem(value: 'cards', child: ListTile(leading: Icon(Icons.download), title: Text('Import Cards'), dense: true)),
                             const PopupMenuItem(value: 'folder', child: ListTile(leading: Icon(Icons.library_add), title: Text('Import Folder'), dense: true)),
+                            const PopupMenuItem(value: 'byaf', child: ListTile(leading: Icon(Icons.archive_outlined), title: Text('Import Backyard AI (.byaf)'), dense: true)),
                           ],
                         ),
                         const SizedBox(width: 8),
@@ -537,7 +580,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
           ],
-        );
+        ));
       },
     );
   }
@@ -768,6 +811,50 @@ class _HomePageState extends State<HomePage> {
           ),
         );
       },
+    );
+  }
+
+  /// Wraps content with an optional model-loading status bar at the bottom.
+  Widget _wrapWithStatusBar(BuildContext context, Widget content) {
+    String status = '';
+    try {
+      final kobold = Provider.of<KoboldService>(context, listen: false);
+      status = kobold.modelLoadingStatus;
+    } catch (_) {}
+
+    if (status.isEmpty) return content;
+
+    return Column(
+      children: [
+        Expanded(child: content),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            border: Border(top: BorderSide(color: Colors.white12)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                status,
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: const LinearProgressIndicator(
+                  minHeight: 4,
+                  backgroundColor: Color(0xFF333333),
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -2362,6 +2449,74 @@ class _HomePageState extends State<HomePage> {
 
     // Multiple files: use bulk import with progress dialog
     _runBulkImport(context, files);
+  }
+
+  Future<void> _importByaf(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['byaf'],
+      allowMultiple: false,
+    );
+
+    if (result == null || result.files.isEmpty || result.files.first.path == null) return;
+    if (!context.mounted) return;
+
+    final filePath = result.files.first.path!;
+    final byafService = ByafService();
+
+    try {
+      // Parse the .byaf archive
+      final preview = await byafService.parseByaf(filePath);
+
+      if (!context.mounted) return;
+
+      // Show preview dialog
+      final result2 = await showDialog<ByafImportResult>(
+        context: context,
+        builder: (context) => ByafImportDialog(preview: preview),
+      );
+
+      if (result2 == null || !result2.confirmed || !context.mounted) return;
+
+      // Convert to CharacterCard
+      final card = byafService.toCharacterCard(preview);
+
+      // Save as PNG (with image if available)
+      final pngPath = await byafService.saveCharacterPng(card);
+
+      // Now use V2CardService to embed character data into the PNG
+      final v2Service = V2CardService();
+      await v2Service.saveCardAsPng(card, pngPath, preview.extractedImagePath);
+
+      // Import via CharacterRepository (reads PNG metadata + inserts into DB)
+      final repo = Provider.of<CharacterRepository>(context, listen: false);
+      final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+      final importedCard = await repo.importCharacter(File(pngPath), worldRepo: worldRepo);
+
+      // Import chat history if requested
+      if (result2.importChatHistory && preview.messages.isNotEmpty && importedCard != null) {
+        final db = await AppDatabase.instance();
+        await byafService.importChatHistory(db, preview, importedCard);
+      }
+
+      if (context.mounted && importedCard != null) {
+        final chatNote = result2.importChatHistory && preview.messages.isNotEmpty
+            ? ' with ${preview.messages.length} chat messages'
+            : '';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Imported "${importedCard.name}" from Backyard AI$chatNote!'),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import .byaf: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _folderImportCharacters(BuildContext context) async {

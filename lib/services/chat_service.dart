@@ -1587,15 +1587,13 @@ class ChatService extends ChangeNotifier {
 
           if (_drainTimer == null && _tokensGenerated >= 10) {
             // Not yet draining — calculate when to start
+            // Buffer target = how many tokens fill the configured duration
+            final bufferDuration = _storageService.bufferDurationSeconds;
             int bufferTarget;
-            if (currentTps >= targetTps) {
-              bufferTarget = (targetTps * 2).round().clamp(30, 120);
-            } else if (currentTps > 0) {
-              final ratio = currentTps / targetTps;
-              bufferTarget = (_maxTokens * (1.0 - ratio)).ceil();
-              bufferTarget = (bufferTarget * 1.05).ceil().clamp(10, _maxTokens);
+            if (currentTps > 0) {
+              bufferTarget = (currentTps * bufferDuration).round().clamp(5, _maxTokens);
             } else {
-              bufferTarget = _maxTokens; // Can't estimate, wait for all
+              bufferTarget = 30; // Fallback if TPS unknown
             }
 
             if (_tokenBuffer.length >= bufferTarget) {

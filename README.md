@@ -11,19 +11,36 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
-> **⚠️ Pre-Release Notice:** V0.8.0-beta2 is a standalone pre-release build. It will not auto-update existing stable installations. Download the standalone `.zip`, `.AppImage`, or `.app` from the [Releases](https://github.com/linux4life1/front-porch-ai/releases) page.
+> **⚠️ Pre-Release Notice:** V0.8.0-beta3 is a standalone pre-release build. It will not auto-update existing stable installations. Download the standalone `.zip`, `.AppImage`, or `.app` from the [Releases](https://github.com/linux4life1/front-porch-ai/releases) page.
 >
 > **Looking for the stable release?** See the [V0.7.1 branch](https://github.com/linux4life1/front-porch-ai/tree/V0.7.1) for the latest stable version with installers.
 
-## 🆕 What's New in V0.8.0-beta2
+## 🆕 What's New in V0.8.0-beta3
+
+- 📦 **Backyard AI (.byaf) Importer**: Import characters directly from Backyard AI archive files. Full preview dialog shows persona, lore items, first message, and avatar before import. Optionally import chat history. Automatically converts `{user}` / `{character}` placeholders to V2 spec `{{user}}` / `{{char}}`.
+- 📡 **Model Loading Status Bar**: Real-time status bar at the bottom of the home screen shows what KoboldCPP is doing while loading a model (loading, mapping to memory, warming up). A snackbar notification appears when the model is ready to chat.
+- 🖱️ **Right-Click Context Menu**: Character card actions (edit, chat, delete, move to folder) are now accessed via a right-click context menu for a cleaner card layout.
+- ☁️ **Cloud Sync Reliability**: Rewrote the database sync strategy (close → download → reopen) for better cross-platform reliability. Fixed data loss during path rebasing and improved empty-DB download priority.
+- ⏱️ **Buffer Duration Setting**: New slider in Chat Settings to control how many seconds of tokens to buffer before the display starts draining (1–10s). Higher values give smoother output; lower values reduce the initial delay.
+- 🛑 **Smarter Stop Sequences**: Added `</END>`, `[END]`, and `<|end|>` as essential stop sequences. Existing users receive them automatically via migration — no manual setup needed.
+- 🐛 **Bug Fixes**:
+  - Fixed stop generation not always halting the backend
+  - Fixed model picker in chat view not updating correctly
+  - Fixed session upsert causing duplicate entries
+  - Fixed cross-platform character loading after cloud sync
+  - Character creation now properly imports into the SQL database
+  - Fixed `{{user}}` resolving to "User" instead of the active persona name in the sidebar
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.8.0-beta2
 
 - 🗄️ **SQLite Database Backend**: All data storage has been migrated from scattered JSON files to a fast, reliable SQLite database powered by **Drift ORM**. Characters, chat sessions, messages, groups, folders, personas, and worlds — all in one `front_porch.db` file.
 - 📊 **Migration Progress Dialog**: First-time launch after the update shows a polished full-screen overlay with step names, progress bar, and step counter while your existing JSON data is imported into the database.
 - ☁️ **Simplified Cloud Sync**: Cloud sync now uploads/downloads a single `.db` file instead of hundreds of individual JSON files. Faster, more reliable, and no more out-of-sync data.
 - 🧹 **Cleaner Codebase**: Removed ~200 lines of orphan cleanup, per-file JSON sync, and dual-write code. The database is now the single source of truth.
 
-<details>
-<summary><strong>📦 Previous Releases</strong></summary>
 
 ### What's New in V0.8.0-beta
 
@@ -121,6 +138,7 @@ Front Porch AI stands on the shoulders of incredible open-source projects. This 
 | **KoboldCpp** | The local LLM backend that powers all text generation. A single-file, high-performance inference engine supporting GGUF models with GPU acceleration. | [GitHub](https://github.com/LostRuins/koboldcpp) |
 | **Kokoro** | Our default text-to-speech engine. Beautiful, natural-sounding voices that run entirely offline using ONNX. | [GitHub](https://github.com/hexgrad/kokoro) |
 | **Piper** | Fallback TTS engine. Fast, lightweight, and privacy-respecting local speech synthesis. | [GitHub](https://github.com/rhasspy/piper) |
+| **Backyard AI** | Open-sourced the `.byaf` archive format, so your characters aren't locked into a proprietary app. | [GitHub](https://github.com/ahoylabs/byaf) |
 
 If you find Front Porch AI useful, please consider starring these projects too — they're the foundation everything is built on.
 

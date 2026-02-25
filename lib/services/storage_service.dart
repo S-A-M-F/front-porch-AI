@@ -45,12 +45,13 @@ class StorageService extends ChangeNotifier {
   String? _lastUsedModelPath;
   int _gpuLayers = 0;
   int _contextSize = 8192;
-  List<String> _stopSequences = ["\nUser:", "\n###", "\nScenario:", "<END>", "\nSystem:", "\n(Note:", "\n[Note:", "\n{Note:"];
+  List<String> _stopSequences = ["\nUser:", "\n###", "\nScenario:", "<END>", "</END>", "[END]", "<|end|>", "\nSystem:", "\n(Note:", "\n[Note:", "\n{Note:"];
   double _textScale = 1.0;
   String _chatBackground = 'none';
   List<Map<String, String>> _savedPrompts = [];
   bool _displayBufferEnabled = true;
   double _targetDisplayTps = 6.0; // ~250 WPM average human reading speed
+  double _bufferDurationSeconds = 3.0; // How many seconds of tokens to buffer before draining
 
   // External API settings
   String _backendType = 'kobold'; // 'kobold' or 'openRouter'
@@ -114,6 +115,7 @@ class StorageService extends ChangeNotifier {
   List<Map<String, String>> get savedPrompts => List.unmodifiable(_savedPrompts);
   bool get displayBufferEnabled => _displayBufferEnabled;
   double get targetDisplayTps => _targetDisplayTps;
+  double get bufferDurationSeconds => _bufferDurationSeconds;
   String get backendType => _backendType;
   String get remoteApiKey => _remoteApiKey;
   String get remoteApiUrl => _remoteApiUrl;
@@ -175,10 +177,23 @@ class StorageService extends ChangeNotifier {
     _gpuLayers = _prefs?.getInt('gpu_layers') ?? _gpuLayers;
     _contextSize = _prefs?.getInt('context_size') ?? _contextSize;
     _stopSequences = _prefs?.getStringList('stop_sequences') ?? _stopSequences;
+    // Ensure essential stop sequences are always present (migration for existing users)
+    const essentialStops = ['</END>', '[END]', '<|end|>'];
+    bool added = false;
+    for (final s in essentialStops) {
+      if (!_stopSequences.contains(s)) {
+        _stopSequences.add(s);
+        added = true;
+      }
+    }
+    if (added) {
+      _prefs?.setStringList('stop_sequences', _stopSequences);
+    }
     _textScale = _prefs?.getDouble('text_scale') ?? 1.0;
     _chatBackground = _prefs?.getString('chat_background') ?? 'none';
     _displayBufferEnabled = _prefs?.getBool('display_buffer_enabled') ?? true;
     _targetDisplayTps = _prefs?.getDouble('target_display_tps') ?? 30.0;
+    _bufferDurationSeconds = _prefs?.getDouble('buffer_duration_seconds') ?? 3.0;
 
     // External API settings
     _backendType = _prefs?.getString('backend_type') ?? 'kobold';
@@ -420,6 +435,12 @@ class StorageService extends ChangeNotifier {
   Future<void> setTargetDisplayTps(double value) async {
     _targetDisplayTps = value;
     await _prefs?.setDouble('target_display_tps', value);
+    notifyListeners();
+  }
+
+  Future<void> setBufferDurationSeconds(double value) async {
+    _bufferDurationSeconds = value;
+    await _prefs?.setDouble('buffer_duration_seconds', value);
     notifyListeners();
   }
 

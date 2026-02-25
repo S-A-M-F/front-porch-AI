@@ -882,8 +882,9 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildRightSidebar(CharacterCard character, ChatService chatService) {
+    final userName = Provider.of<UserPersonaService>(context, listen: false).persona.name;
     String replace(String text) {
-      return text.replaceAll('{{char}}', character.name).replaceAll('{{user}}', 'User');
+      return text.replaceAll('{{char}}', character.name).replaceAll('{{user}}', userName);
     }
 
     return Container(

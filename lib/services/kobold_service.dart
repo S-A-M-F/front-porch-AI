@@ -13,9 +13,21 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
   Process? _process;
   bool _isRunning = false;
   final List<String> _logs = [];
+  String _modelLoadingStatus = '';
+  bool _modelReady = false;
 
   bool get isRunning => _isRunning;
   List<String> get logs => List.unmodifiable(_logs);
+  String get modelLoadingStatus => _modelLoadingStatus;
+  bool get modelReady => _modelReady;
+  /// Consume the modelReady flag (resets to false after reading).
+  bool consumeModelReady() {
+    if (_modelReady) {
+      _modelReady = false;
+      return true;
+    }
+    return false;
+  }
   String _baseUrl = 'http://127.0.0.1:5001';
   String get baseUrl => _baseUrl;
   http.Client? _activeClient;
@@ -125,12 +137,15 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
       );
       print('AG_DEBUG: Process started successfully! PID: ${_process!.pid}');
       _isRunning = true;
+      _modelLoadingStatus = 'Initializing model...';
+      _modelReady = false;
       _addLog('Starting Koboldcpp...');
       _addLog('Command: $executablePath ${args.join(' ')}');
       notifyListeners();
 
       _process!.stdout.transform(const Utf8Decoder(allowMalformed: true)).listen((data) {
         _addLog(data.trim());
+        _parseLoadingStatus(data);
       });
 
       _process!.stderr.transform(const Utf8Decoder(allowMalformed: true)).listen((data) {
@@ -141,6 +156,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
            cleanData = cleanData.replaceAll('ERR: ', '').replaceAll('ERR:', '');
            if (cleanData != '.' && cleanData != '..' && cleanData != '...') {
              _addLog(cleanData);
+             _parseLoadingStatus(cleanData);
            }
         }
       });
@@ -371,6 +387,36 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     throw Exception('Failed to generate after retries');
   }
 
+  /// Parse KoboldCPP process output to determine model loading status.
+  void _parseLoadingStatus(String data) {
+    final lower = data.toLowerCase();
+
+    // Model is ready when server starts listening
+    if (lower.contains('please connect to') ||
+        lower.contains('server listening') ||
+        lower.contains('starting server')) {
+      _modelLoadingStatus = '';
+      _modelReady = true;
+      notifyListeners();
+      return;
+    }
+
+    // Track loading phases from KoboldCPP output
+    if (lower.contains('loading model')) {
+      _modelLoadingStatus = 'Loading model into device memory...';
+      notifyListeners();
+    } else if (lower.contains('loading hf model') || lower.contains('loading gguf')) {
+      _modelLoadingStatus = 'Loading model file...';
+      notifyListeners();
+    } else if (lower.contains('mapping model') || lower.contains('ggml_backend')) {
+      _modelLoadingStatus = 'Mapping model to memory...';
+      notifyListeners();
+    } else if (lower.contains('warming up')) {
+      _modelLoadingStatus = 'Warming up model...';
+      notifyListeners();
+    }
+  }
+
   void _addLog(String data) {
     if (data.trim().isEmpty) return;
     _logs.add(data);
@@ -401,6 +447,8 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
       
       _process = null;
       _isRunning = false;
+      _modelLoadingStatus = '';
+      _modelReady = false;
       notifyListeners();
     }
   }
