@@ -5,6 +5,19 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![Pre-Release](https://img.shields.io/badge/Status-Pre--Release%20Beta-orange)
 
+## 📝 Note from the Dev
+
+To the growing community of users who have shown up with kind words, encouragement, and genuine enthusiasm — you've turned what started as a passion project into something worth building every day. Your bug reports, feature ideas, and willingness to test rough edges have made Front Porch AI better in ways no single developer could. Thank you for believing in what this project can become.
+
+— **SosukeAizen** on Discord
+
+## 💬 Join the Community
+
+Have questions, feedback, or just want to hang out? Connect with us:
+
+- **Discord**: [Join our server](https://discord.gg/e4tET6rpdv)
+- **Matrix**: [matrix.dreamersai.art](https://matrix.dreamersai.art)
+
 ## 🔓 Why Open Source?
 
 Proprietary software lives and dies at the discretion of its creators. When a company moves on, shuts down, or simply loses interest, the tools you depend on become frozen in time — no updates, no fixes, no future.
@@ -122,12 +135,6 @@ Front Porch AI is proudly licensed under the **GPL v3** because we believe your 
 
 </details>
 
-## 💬 Join the Community
-
-Have questions, feedback, or just want to hang out? Connect with us:
-
-- **Discord**: [Join our server](https://discord.gg/EqJrJPjdT)
-- **Matrix**: [matrix.dreamersai.art](https://matrix.dreamersai.art)
 
 ## 🙏 Thank You
 
@@ -153,7 +160,6 @@ A huge thank you to the people who have helped shape Front Porch AI through thei
 | **PacmanIncarnate** | Bug Testing, UI/Feature Suggestions |
 | **SunTzucious** | Beta Testing |
 
-And to the growing community of users who have shown up with kind words, encouragement, and genuine enthusiasm — you've turned what started as a solo project into something worth building every day. Your bug reports, feature ideas, and willingness to test rough edges have made Front Porch AI better in ways no single developer could. Thank you for believing in what this project can become.
 
 <p align="center">
   <img src="docs/screenshots/home.png" width="800" alt="Home Page - Character Grid with Folders">
