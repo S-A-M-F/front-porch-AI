@@ -149,7 +149,8 @@ A huge thank you to the people who have helped shape Front Porch AI through thei
 | Contributor | Role |
 |---|---|
 | **Hakko504** | Bug Testing, UI/Feature Suggestions |
-| **PacmanIncarnate** | Bug Testing, Feature Suggestions |
+| **PacmanIncarnate** | Bug Testing, UI/Feature Suggestions |
+| **SunTzucious** | Beta Testing |
 
 And to the growing community of users who have shown up with kind words, encouragement, and genuine enthusiasm — you've turned what started as a solo project into something worth building every day. Your bug reports, feature ideas, and willingness to test rough edges have made Front Porch AI better in ways no single developer could. Thank you for believing in what this project can become.
 
