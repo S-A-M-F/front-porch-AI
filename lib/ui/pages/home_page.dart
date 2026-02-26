@@ -118,7 +118,7 @@ class _HomePageState extends State<HomePage> {
       final msgCounts = await db.getMessageCountsPerCharacter();
       final lastActivity = await db.getLastActivityPerCharacter();
 
-      // Map from character DB id (int) → character card string id
+      // Map from character DB id (UUID) → character card string id
       final newCache = <String, DateTime>{};
       final newMsgCount = <String, int>{};
       for (final card in charRepo.characters) {
@@ -2698,7 +2698,7 @@ class _HomePageState extends State<HomePage> {
        }
 
        try {
-         final v2Service = Provider.of<V2CardService>(context, listen: false);
+         final v2Service = V2CardService();
          await v2Service.saveCardAsPng(character, outputFile, character.imagePath);
 
          if (context.mounted) {

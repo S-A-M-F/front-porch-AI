@@ -72,8 +72,8 @@ class WorldRepository extends ChangeNotifier {
         linkedCharacterName: Value(world.linkedCharacterName),
       ));
     } else {
-      await _db.insertWorld(WorldsCompanion.insert(
-        name: world.name,
+      await _db.insertWorld(WorldsCompanion(
+        name: Value(world.name),
         description: Value(world.description),
         lorebook: Value(jsonEncode(world.lorebook.toJson())),
         linkedCharacterName: Value(world.linkedCharacterName),

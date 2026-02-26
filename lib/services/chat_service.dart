@@ -522,7 +522,7 @@ class ChatService extends ChangeNotifier {
     final charId = _getCharacterId();
 
     // Look up character DB id if in 1:1 mode
-    int? characterDbId;
+    String? characterDbId;
     String? groupDbId;
     if (_activeGroup != null) {
       groupDbId = _activeGroup!.id;
@@ -554,11 +554,11 @@ class ChatService extends ChangeNotifier {
     final messageBatch = <MessagesCompanion>[];
     for (int i = 0; i < _messages.length; i++) {
       final m = _messages[i];
-      messageBatch.add(MessagesCompanion.insert(
-        sessionId: _currentSessionId!,
-        position: i,
-        sender: m.sender,
-        isUser: m.isUser,
+      messageBatch.add(MessagesCompanion(
+        sessionId: drift.Value(_currentSessionId!),
+        position: drift.Value(i),
+        sender: drift.Value(m.sender),
+        isUser: drift.Value(m.isUser),
         characterId: drift.Value(m.characterId),
         swipes: drift.Value(jsonEncode(m.swipes)),
         swipeIndex: drift.Value(m.swipeIndex),

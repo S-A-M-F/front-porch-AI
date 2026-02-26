@@ -31,6 +31,7 @@ import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/database/data_migration_service.dart';
+import 'package:front_porch_ai/services/backup_service.dart';
 
 import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
@@ -42,6 +43,9 @@ void main(List<String> args) async {
   // Initialize database
   final db = await AppDatabase.instance();
   final needsMigration = !await DataMigrationService.isMigrated();
+
+  // Purge rows that were soft-deleted more than 30 days ago
+  try { await db.purgeSoftDeletes(); } catch (_) {}
   
   WindowOptions windowOptions = const WindowOptions(
     size: Size(1280, 720),
@@ -420,7 +424,125 @@ class _MyAppState extends State<MyApp> with WindowListener {
       final rootPath = storage.rootPath ?? chatsPath;
       final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
 
+      // Safety net: backup DB before every cloud sync
+      await BackupService.createBackup();
+      await BackupService.pruneBackups();
+
       await syncService.fullSync(chatsPath, charactersPath);
+
+      // Check for schema version mismatch (e.g. newer UUID schema on another device)
+      if (syncService.schemaMismatch) {
+        // Disable cloud sync so it doesn't keep failing
+        await storage.setCloudSyncEnabled(false);
+
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 28),
+                  SizedBox(width: 12),
+                  Text('Database Version Mismatch', style: TextStyle(color: Colors.white)),
+                ],
+              ),
+              content: Text(
+                'The cloud database was created by a newer version of Front Porch AI '
+                '(schema v${syncService.remoteSchemaVersion}) and is incompatible with '
+                'this version (schema v${syncService.localSchemaVersion}).\n\n'
+                'Cloud sync has been disabled to prevent data corruption.\n\n'
+                'Please update this app to the latest version, then re-enable cloud sync in Settings.',
+                style: const TextStyle(color: Colors.white70, height: 1.5),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('OK', style: TextStyle(color: Colors.blueAccent)),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      // Check for pending schema upgrade (old cloud DB downloaded and migrated locally)
+      if (syncService.pendingSchemaUpgrade) {
+        // The DB was downloaded and migrated — reload all repositories
+        if (syncService.dbWasDownloaded) {
+          debugPrint('[CloudSync] Schema upgrade: reloading all repositories after migration');
+          final newDb = await AppDatabase.instance();
+          final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+          final folderService = Provider.of<FolderService>(context, listen: false);
+          final personaService = Provider.of<UserPersonaService>(context, listen: false);
+          final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+          final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+          charRepo.updateDatabase(newDb);
+          folderService.updateDatabase(newDb);
+          personaService.updateDatabase(newDb);
+          groupRepo.updateDatabase(newDb);
+          worldRepo.updateDatabase(newDb);
+          chatService.updateDatabase(newDb);
+          await charRepo.loadCharacters();
+          await folderService.reload();
+          await personaService.reload();
+          await groupRepo.reload();
+          await worldRepo.loadWorlds();
+          chatService.clearChat();
+        }
+
+        // Show confirmation dialog before uploading v3 DB to cloud
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              title: const Row(
+                children: [
+                  Icon(Icons.upgrade_rounded, color: Colors.amberAccent, size: 28),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('Database Upgrade', style: TextStyle(color: Colors.white))),
+                ],
+              ),
+              content: Text(
+                'Your cloud database has been migrated from schema v${syncService.remoteSchemaVersion} '
+                'to v${syncService.localSchemaVersion} on this device.\n\n'
+                'If you upload the upgraded database to the cloud, any other devices running '
+                'an older version of this app will no longer be able to sync until they are updated.\n\n'
+                'Would you like to upload now?',
+                style: const TextStyle(color: Colors.white70, height: 1.5),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Later', style: TextStyle(color: Colors.white54)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    try {
+                      await syncService.forceUploadDatabase();
+                      await storage.setCloudSyncLastTime(DateTime.now().toIso8601String());
+                    } catch (e) {
+                      debugPrint('Schema upgrade upload failed: $e');
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amberAccent,
+                    foregroundColor: Colors.black87,
+                  ),
+                  child: const Text('Upload Now'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
       if (syncService.status == SyncStatus.success) {
         await storage.setCloudSyncLastTime(DateTime.now().toIso8601String());
         // Reload characters so newly downloaded PNGs appear in the UI

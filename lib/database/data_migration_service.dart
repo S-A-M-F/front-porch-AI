@@ -80,8 +80,8 @@ class DataMigrationService {
         final card = await v2Service.readCard(entity.path);
         if (card == null) continue;
 
-        await _db.insertCharacter(CharactersCompanion.insert(
-          name: card.name,
+        await _db.insertCharacter(CharactersCompanion(
+          name: Value(card.name),
           description: Value(card.description),
           personality: Value(card.personality),
           scenario: Value(card.scenario),
@@ -132,8 +132,8 @@ class DataMigrationService {
         charId,
       );
 
-      // Look up character ID from the database
-      int? dbCharacterId;
+      // Look up character ID from the database (now String UUID)
+      String? dbCharacterId;
       if (character != null) {
         dbCharacterId = character.id;
       } else {
@@ -218,11 +218,11 @@ class DataMigrationService {
             final swipes = m['swipes'] as List<dynamic>?;
             final swipeDurations = m['swipe_durations'] as List<dynamic>?;
 
-            messageBatch.add(MessagesCompanion.insert(
-              sessionId: sessionId,
-              position: i,
-              sender: m['sender'] ?? '',
-              isUser: m['is_user'] ?? false,
+            messageBatch.add(MessagesCompanion(
+              sessionId: Value(sessionId),
+              position: Value(i),
+              sender: Value(m['sender'] ?? ''),
+              isUser: Value(m['is_user'] ?? false),
               characterId: Value(m['character_id']),
               swipes: Value(jsonEncode(swipes ?? [m['text'] ?? ''])),
               swipeIndex: Value(m['swipe_index'] ?? 0),
@@ -295,8 +295,8 @@ class DataMigrationService {
 
       try {
         final json = jsonDecode(await entity.readAsString());
-        await _db.insertWorld(WorldsCompanion.insert(
-          name: json['name'] ?? 'New World',
+        await _db.insertWorld(WorldsCompanion(
+          name: Value(json['name'] ?? 'New World'),
           description: Value(json['description'] ?? ''),
           lorebook: Value(json['lorebook'] != null ? jsonEncode(json['lorebook']) : null),
           linkedCharacterName: Value(json['linked_character_name']),
@@ -319,14 +319,14 @@ class DataMigrationService {
       final json = jsonDecode(await foldersFile.readAsString());
       final foldersList = json['folders'] as List? ?? [];
 
-      // Map old string IDs to new integer IDs
-      final idMap = <String, int>{};
+      // Map old string IDs to new UUID IDs
+      final idMap = <String, String>{};
 
       // First pass: insert top-level folders (no parentId)
       for (final f in foldersList) {
         if (f['parentId'] != null) continue;
-        final newId = await _db.insertFolder(FoldersCompanion.insert(
-          name: f['name'] ?? '',
+        final newId = await _db.insertFolder(FoldersCompanion(
+          name: Value(f['name'] ?? ''),
         ));
         idMap[f['id']] = newId;
       }
@@ -334,10 +334,10 @@ class DataMigrationService {
       // Second pass: insert child folders
       for (final f in foldersList) {
         if (f['parentId'] == null) continue;
-        final parentIntId = idMap[f['parentId']];
-        final newId = await _db.insertFolder(FoldersCompanion.insert(
-          name: f['name'] ?? '',
-          parentId: Value(parentIntId),
+        final parentId = idMap[f['parentId']];
+        final newId = await _db.insertFolder(FoldersCompanion(
+          name: Value(f['name'] ?? ''),
+          parentId: Value(parentId),
         ));
         idMap[f['id']] = newId;
       }

@@ -213,8 +213,8 @@ class CharacterRepository extends ChangeNotifier {
       card.imagePath = destPath;
 
       // Insert into database
-      final dbId = await _db.insertCharacter(CharactersCompanion.insert(
-        name: card.name,
+      final dbId = await _db.insertCharacterReturningId(CharactersCompanion(
+        name: Value(card.name),
         description: Value(card.description),
         personality: Value(card.personality),
         scenario: Value(card.scenario),

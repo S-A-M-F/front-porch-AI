@@ -24,11 +24,24 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
-> **⚠️ Pre-Release Notice:** V0.8.0-beta3 is a standalone pre-release build. It will not auto-update existing stable installations. Download the standalone `.zip`, `.AppImage`, or `.app` from the [Releases](https://github.com/linux4life1/front-porch-ai/releases) page.
+> **⚠️ Pre-Release Notice:** V0.8.0-beta4 is a standalone pre-release build. It will not auto-update existing stable installations. Download the standalone `.zip`, `.AppImage`, or `.app` from the [Releases](https://github.com/linux4life1/front-porch-ai/releases) page.
 >
 > **Looking for the stable release?** See the [V0.7.1 branch](https://github.com/linux4life1/front-porch-ai/tree/V0.7.1) for the latest stable version with installers.
 
-## 🆕 What's New in V0.8.0-beta3
+## 🆕 What's New in V0.8.0-beta4
+
+- 🔄 **Row-Level Merge Engine**: Cloud sync now performs intelligent per-row merging instead of whole-database replacement. Conflicts are resolved using `updatedAt` timestamps, preserving the most recent changes from either device.
+- 🆔 **UUID Primary Keys**: All tables (Characters, Folders, Messages, Sessions, Worlds) now use UUID primary keys instead of auto-increment integers. This eliminates ID collisions when merging data from multiple devices.
+- 💾 **Backup Management**: Full backup system with manual and automatic backups before each cloud sync. Restore any backup with one click, or delete individual backups you no longer need. Up to 5 recent backups are kept automatically.
+- ☁️ **Dedicated Cloud Sync Page**: Cloud sync settings have been moved from the Settings page to their own dedicated sidebar page for easier access. Includes sync controls, provider configuration, cloud character browser, and backup management.
+- 🔼 **Force Upload Database**: New disaster recovery option to overwrite the cloud database with your local copy — useful after restoring a backup.
+- 🗑️ **Purge Cloud Data**: Nuclear option to wipe all cloud data (database + character PNGs) when recovery isn't possible. Local data is never affected.
+- 🛡️ **Smarter Initial Sync**: First sync after migration now uploads local data as source of truth instead of merging, preventing duplicate entries caused by independent UUID migrations on different devices.
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.8.0-beta3
 
 - 📦 **Backyard AI (.byaf) Importer**: Import characters directly from Backyard AI archive files. Full preview dialog shows persona, lore items, first message, and avatar before import. Optionally import chat history. Automatically converts `{user}` / `{character}` placeholders to V2 spec `{{user}}` / `{{char}}`.
 - 📡 **Model Loading Status Bar**: Real-time status bar at the bottom of the home screen shows what KoboldCPP is doing while loading a model (loading, mapping to memory, warming up). A snackbar notification appears when the model is ready to chat.
@@ -43,9 +56,6 @@ Front Porch AI is proudly licensed under the **GPL v3** because we believe your 
   - Fixed cross-platform character loading after cloud sync
   - Character creation now properly imports into the SQL database
   - Fixed `{{user}}` resolving to "User" instead of the active persona name in the sidebar
-
-<details>
-<summary><strong>📦 Previous Releases</strong></summary>
 
 ### What's New in V0.8.0-beta2
 

@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
 import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/services/database_merge_service.dart';
 
 /// Information about a remote file.
 class RemoteFileInfo {
@@ -114,14 +117,22 @@ class CloudSyncService extends ChangeNotifier {
       notifyListeners();
 
       // Sync the database file (replaces per-file chat/folder/persona sync)
+      debugPrint('[CloudSync] Starting database sync...');
       await _syncDatabase();
+      debugPrint('[CloudSync] Database sync complete.');
 
       // Sync characters (bi-directional for PNGs)
-      await _syncDirectory(
-        localDir: charactersDir,
-        remoteDir: '/FrontPorchAI/characters',
-        extensions: ['.png'],
-      );
+      debugPrint('[CloudSync] Starting character file sync...');
+      try {
+        await _syncDirectory(
+          localDir: charactersDir,
+          remoteDir: '/FrontPorchAI/characters',
+          extensions: ['.png'],
+        );
+        debugPrint('[CloudSync] Character file sync complete.');
+      } catch (e) {
+        debugPrint('[CloudSync] Character file sync error (non-fatal): $e');
+      }
 
       _status = SyncStatus.success;
       _lastSyncTime = DateTime.now();
@@ -140,6 +151,63 @@ class CloudSyncService extends ChangeNotifier {
   /// Whether the last sync downloaded a new database file.
   /// Callers should check this and reload repositories if true.
   bool get dbWasDownloaded => _dbWasDownloaded;
+
+  /// Set when the remote DB has a NEWER schema version than local.
+  /// Callers should show a dialog telling user to update and disable sync.
+  bool _schemaMismatch = false;
+  bool get schemaMismatch => _schemaMismatch;
+
+  /// Set when a v2 DB was downloaded from the cloud and migrated to v3 locally.
+  /// Callers should show a warning before uploading the upgraded DB back to cloud.
+  bool _pendingSchemaUpgrade = false;
+  bool get pendingSchemaUpgrade => _pendingSchemaUpgrade;
+
+  int _remoteSchemaVersion = 0;
+  int get remoteSchemaVersion => _remoteSchemaVersion;
+  int _localSchemaVersion = 0;
+  int get localSchemaVersion => _localSchemaVersion;
+
+  /// Force-upload the local database to cloud, overwriting the remote copy.
+  Future<void> forceUploadDatabase() async {
+    if (_provider == null || !_provider!.isConnected) {
+      debugPrint('[CloudSync] Force upload aborted — provider not connected');
+      throw StateError('Cloud provider not connected. Connect first in Settings.');
+    }
+    final localPath = AppDatabase.dbFilePath;
+    if (localPath == null) {
+      debugPrint('[CloudSync] Force upload aborted — no local DB path');
+      throw StateError('Database path not available');
+    }
+
+    // Bump sync version and checkpoint before upload
+    final db = await AppDatabase.instance();
+    await db.bumpSyncVersion();
+    await db.checkpoint();
+
+    const remotePath = '/FrontPorchAI/front_porch.db';
+    await _provider!.uploadFile(localPath, remotePath);
+    _pendingSchemaUpgrade = false;
+    debugPrint('[CloudSync] Force-uploaded local database to cloud');
+    notifyListeners();
+  }
+
+  /// Delete ALL data from the cloud (DB + characters).
+  /// Used for disaster recovery when the cloud data is corrupted.
+  Future<void> purgeCloudData() async {
+    if (_provider == null || !_provider!.isConnected) {
+      debugPrint('[CloudSync] Purge aborted — provider not connected');
+      throw StateError('Cloud provider not connected. Connect first in Settings.');
+    }
+
+    try {
+      await _provider!.deleteDirectory('/FrontPorchAI');
+      debugPrint('[CloudSync] Purged all cloud data (/FrontPorchAI deleted)');
+    } catch (e) {
+      debugPrint('[CloudSync] Purge error: $e');
+      rethrow;
+    }
+    notifyListeners();
+  }
 
   Future<void> _syncDatabase() async {
     if (_provider == null || !_provider!.isConnected) return;
@@ -169,51 +237,172 @@ class CloudSyncService extends ChangeNotifier {
       ).firstOrNull;
     } catch (_) {}
 
-    // Check if local DB is essentially empty (freshly created)
-    int localCharCount = 0;
+    // Read local sync version
+    int localVersion = 0;
+    final db = await AppDatabase.instance();
     try {
-      final db = await AppDatabase.instance();
-      final rows = await db.customSelect('SELECT COUNT(*) AS c FROM characters').get();
-      localCharCount = rows.first.read<int>('c');
+      localVersion = await db.getSyncVersion();
     } catch (_) {}
 
-    final shouldDownload = remoteInfo != null && (
-      localCharCount == 0 ||  // Local is empty — always download
-      (remoteInfo.lastModified != null && await localFile.exists() &&
-       remoteInfo.lastModified!.isAfter((await localFile.stat()).modified))
-    );
+    // Read remote sync/schema version (downloads to temp, reads, cleans up)
+    int remoteVersion = 0;
+    int remoteSchema = 0;
+    if (remoteInfo != null) {
+      final versions = await _getRemoteVersions(remotePath);
+      remoteVersion = versions.$1;
+      remoteSchema = versions.$2;
+    }
 
-    final shouldUpload = !shouldDownload && localCharCount > 0;
+    // Check schema version compatibility
+    final localSchema = db.schemaVersion;
+    _localSchemaVersion = localSchema;
+    _remoteSchemaVersion = remoteSchema;
 
-    if (shouldDownload) {
-      // Close the live DB connection, download new file, reopen
-      await AppDatabase.closeAndReset();
+    if (remoteSchema > 0 && remoteSchema > localSchema) {
+      // Remote is NEWER → this app is outdated, block sync
+      _schemaMismatch = true;
+      _status = SyncStatus.error;
+      _lastError = 'Schema version mismatch: local v$localSchema, remote v$remoteSchema. '
+          'Please update the app on this device to continue cloud sync.';
+      debugPrint('[CloudSync] SCHEMA MISMATCH (remote newer) — local: v$localSchema, remote: v$remoteSchema. Aborting sync.');
+      notifyListeners();
+      return;
+    }
 
-      await _provider!.downloadFile(remotePath, localPath);
-      // Also remove stale WAL/SHM from the old connection
-      try { await File('$localPath-wal').delete(); } catch (_) {}
-      try { await File('$localPath-shm').delete(); } catch (_) {}
+    if (remoteSchema > 0 && remoteSchema < localSchema) {
+      // Remote is OLDER → this device has a newer app version.
+      // Allow downloading (Drift migration will upgrade it), but don't
+      // auto-upload the upgraded DB. The caller must confirm first.
+      debugPrint('[CloudSync] Remote schema v$remoteSchema < local v$localSchema — will download and migrate.');
 
-      // Reopen — this creates a fresh connection to the downloaded file
-      await AppDatabase.instance();
+      if (localVersion == 0 && remoteInfo != null) {
+        // Fresh install: download the old schema DB so we get the user's data
+        await AppDatabase.closeAndReset();
+        await _provider!.downloadFile(remotePath, localPath);
+        try { await File('$localPath-wal').delete(); } catch (_) {}
+        try { await File('$localPath-shm').delete(); } catch (_) {}
 
-      _syncedFiles++;
-      _dbWasDownloaded = true;
-      debugPrint('[CloudSync] Downloaded database (close → download → reopen)');
-    } else if (shouldUpload && remoteInfo == null) {
+        // Reopen — Drift migration will automatically upgrade v2→v3
+        await AppDatabase.instance();
+
+        _syncedFiles++;
+        _dbWasDownloaded = true;
+        debugPrint('[CloudSync] Downloaded v$remoteSchema DB and migrated to v$localSchema');
+      }
+
+      // Flag so caller can show a warning dialog before uploading
+      _pendingSchemaUpgrade = true;
+      _processedFiles++;
+      notifyListeners();
+      return; // Do NOT upload yet — wait for user confirmation
+    }
+
+    debugPrint('[CloudSync] DB versions — local: $localVersion, remote: $remoteVersion (schema v$localSchema)');
+
+    if (remoteInfo == null) {
+      // No remote DB yet → bump version and upload
+      if (localVersion == 0) await db.bumpSyncVersion();
+      await db.checkpoint();
       await _provider!.uploadFile(localPath, remotePath);
       _syncedFiles++;
       debugPrint('[CloudSync] Uploaded database (first sync)');
-    } else if (shouldUpload) {
+    } else if (localVersion == 0 && remoteVersion == 0) {
+      // Both versions 0 → first sync after migration on both sides.
+      // Upload local as source of truth (merging would cause duplicates
+      // because independent migrations generated different UUIDs).
+      await db.bumpSyncVersion();
+      await db.checkpoint();
       await _provider!.uploadFile(localPath, remotePath);
       _syncedFiles++;
-      debugPrint('[CloudSync] Uploaded database (local newer)');
+      debugPrint('[CloudSync] First sync after migration — uploaded local DB as source of truth');
+    } else if (localVersion == 0 && remoteVersion > 0) {
+      // Fresh install with existing remote → download and replace
+      await AppDatabase.closeAndReset();
+      await _provider!.downloadFile(remotePath, localPath);
+      try { await File('$localPath-wal').delete(); } catch (_) {}
+      try { await File('$localPath-shm').delete(); } catch (_) {}
+      await AppDatabase.instance();
+      _syncedFiles++;
+      _dbWasDownloaded = true;
+      debugPrint('[CloudSync] Fresh install — downloaded remote DB (version $remoteVersion)');
+    } else if (localVersion == remoteVersion && localVersion > 0) {
+      // Versions match → nothing to do
+      debugPrint('[CloudSync] Skipped DB sync — versions match ($localVersion)');
     } else {
-      debugPrint('[CloudSync] Skipped DB sync — local empty, no remote');
+      // Versions differ → download remote to temp, merge, then upload
+      final tempDir = await Directory.systemTemp.createTemp('fp_merge_');
+      final tempPath = path.join(tempDir.path, 'remote.db');
+      try {
+        await _provider!.downloadFile(remotePath, tempPath);
+
+        // Run row-level merge
+        final merged = await DatabaseMergeService.mergeRemoteIntoLocal(db, tempPath);
+
+        if (merged) {
+          _dbWasDownloaded = true; // signal callers to reload repos
+        }
+
+        // Always upload after merge so both sides converge
+        await db.checkpoint();
+        await _provider!.uploadFile(localPath, remotePath);
+        _syncedFiles++;
+        debugPrint('[CloudSync] Merged and uploaded database');
+      } catch (e) {
+        debugPrint('[CloudSync] Merge failed: $e');
+        rethrow;
+      } finally {
+        try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+      }
     }
 
     _processedFiles++;
     notifyListeners();
+  }
+
+  /// Read the sync version AND schema version from a remote database.
+  /// Downloads to a temp directory, opens with raw SQL, reads, and cleans up.
+  /// Returns (syncVersion, schemaVersion).
+  Future<(int, int)> _getRemoteVersions(String remotePath) async {
+    final tempDir = await Directory.systemTemp.createTemp('fp_sync_version_');
+    final tempPath = path.join(tempDir.path, 'remote_check.db');
+    try {
+      await _provider!.downloadFile(remotePath, tempPath);
+      final tempFile = File(tempPath);
+      if (!await tempFile.exists()) return (0, 0);
+
+      // Open a raw sqlite3 connection via Drift's NativeDatabase
+      final tempDb = NativeDatabase(tempFile);
+      final executor = tempDb;
+      await executor.ensureOpen(_SyncVersionUser());
+
+      // Read sync version from sync_meta table
+      int syncVersion = 0;
+      try {
+        final result = await executor.runSelect(
+          'SELECT version FROM sync_meta WHERE id = 1', [],
+        );
+        syncVersion = result.isNotEmpty ? result.first['version'] as int : 0;
+      } catch (_) {}
+
+      // Read schema version via PRAGMA user_version (Drift uses this)
+      int schemaVersion = 0;
+      try {
+        final pragmaResult = await executor.runSelect(
+          'PRAGMA user_version', [],
+        );
+        schemaVersion = pragmaResult.isNotEmpty
+            ? pragmaResult.first['user_version'] as int
+            : 0;
+      } catch (_) {}
+
+      await executor.close();
+      return (syncVersion, schemaVersion);
+    } catch (e) {
+      debugPrint('[CloudSync] Could not read remote versions: $e');
+      return (0, 0);
+    } finally {
+      try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+    }
   }
 
 
@@ -596,4 +785,16 @@ class CloudSyncService extends ChangeNotifier {
     return allKeys.length;
   }
 
+}
+
+/// Minimal QueryExecutorUser for opening a raw NativeDatabase to read sync_meta.
+/// This avoids going through AppDatabase (which would run migrations on the temp file).
+class _SyncVersionUser extends QueryExecutorUser {
+  @override
+  int get schemaVersion => 3; // Match current schema so Drift doesn't try to migrate
+
+  @override
+  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) async {
+    // No-op: we just want to read one row, no migrations needed
+  }
 }

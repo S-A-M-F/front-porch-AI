@@ -277,11 +277,11 @@ class ByafService {
       final isUser = msg.type == 'human';
       final sender = isUser ? 'User' : importedCard.name;
 
-      msgs.add(MessagesCompanion.insert(
-        sessionId: sessionId,
-        position: i,
-        sender: sender,
-        isUser: isUser,
+      msgs.add(MessagesCompanion(
+        sessionId: Value(sessionId),
+        position: Value(i),
+        sender: Value(sender),
+        isUser: Value(isUser),
         swipes: Value(jsonEncode([_convertPlaceholders(msg.text)])),
         swipeIndex: Value(0),
       ));

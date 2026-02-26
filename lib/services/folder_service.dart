@@ -65,9 +65,9 @@ class FolderService extends ChangeNotifier {
             .toList();
 
         _folders.add(CharacterFolder(
-          id: f.id.toString(),
+          id: f.id,
           name: f.name,
-          parentId: f.parentId?.toString(),
+          parentId: f.parentId,
           characterPaths: charPaths,
         ));
       }
@@ -82,13 +82,13 @@ class FolderService extends ChangeNotifier {
   String? get storagePath => null;
 
   Future<CharacterFolder> createFolder(String name, {String? parentId}) async {
-    final newId = await _db.insertFolder(FoldersCompanion.insert(
-      name: name,
-      parentId: Value(parentId != null ? int.tryParse(parentId) : null),
+    final newId = await _db.insertFolder(FoldersCompanion(
+      name: Value(name),
+      parentId: Value(parentId),
     ));
     
     final folder = CharacterFolder(
-      id: newId.toString(),
+      id: newId,
       name: name,
       parentId: parentId,
     );
@@ -98,23 +98,18 @@ class FolderService extends ChangeNotifier {
   }
 
   Future<void> renameFolder(String folderId, String newName) async {
-    final id = int.tryParse(folderId);
-    if (id == null) return;
-
     final folder = _folders.firstWhere((f) => f.id == folderId);
     folder.name = newName;
     
     await _db.updateFolder(FoldersCompanion(
-      id: Value(id),
+      id: Value(folderId),
       name: Value(newName),
+      updatedAt: Value(DateTime.now()),
     ));
     notifyListeners();
   }
 
   Future<void> deleteFolder(String folderId) async {
-    final id = int.tryParse(folderId);
-    if (id == null) return;
-
     // Also delete child folders recursively
     final childIds = _folders.where((f) => f.parentId == folderId).map((f) => f.id).toList();
     for (final childId in childIds) {
@@ -124,7 +119,7 @@ class FolderService extends ChangeNotifier {
     // Unassign characters from this folder
     final chars = await _db.getAllCharacters();
     for (final c in chars) {
-      if (c.folderId == id) {
+      if (c.folderId == folderId) {
         await _db.updateCharacter(CharactersCompanion(
           id: Value(c.id),
           name: Value(c.name),
@@ -133,15 +128,12 @@ class FolderService extends ChangeNotifier {
       }
     }
 
-    await _db.deleteFolderById(id);
+    await _db.deleteFolderById(folderId);
     _folders.removeWhere((f) => f.id == folderId);
     notifyListeners();
   }
 
   Future<void> addToFolder(String folderId, String characterPath) async {
-    final id = int.tryParse(folderId);
-    if (id == null) return;
-
     final filename = _normalize(characterPath);
     
     // Find the character in the DB by matching imagePath
@@ -151,7 +143,7 @@ class FolderService extends ChangeNotifier {
         await _db.updateCharacter(CharactersCompanion(
           id: Value(c.id),
           name: Value(c.name),
-          folderId: Value(id),
+          folderId: Value(folderId),
           updatedAt: Value(DateTime.now()),
         ));
         break;
@@ -163,15 +155,12 @@ class FolderService extends ChangeNotifier {
   }
 
   Future<void> removeFromFolder(String folderId, String characterPath) async {
-    final id = int.tryParse(folderId);
-    if (id == null) return;
-
     final filename = _normalize(characterPath);
     
     // Find the character and clear its folderId
     final chars = await _db.getAllCharacters();
     for (final c in chars) {
-      if (c.imagePath != null && _normalize(c.imagePath!) == filename && c.folderId == id) {
+      if (c.imagePath != null && _normalize(c.imagePath!) == filename && c.folderId == folderId) {
         await _db.updateCharacter(CharactersCompanion(
           id: Value(c.id),
           name: Value(c.name),
@@ -198,20 +187,15 @@ class FolderService extends ChangeNotifier {
 
   /// Get character filenames in a specific folder
   List<String> getCharactersInFolder(String folderId) {
-    final id = int.tryParse(folderId);
-    if (id == null) return [];
     final folder = _folders.firstWhere(
       (f) => f.id == folderId,
-      orElse: () => CharacterFolder(id: '0', name: ''),
+      orElse: () => CharacterFolder(id: '', name: ''),
     );
     return folder.characterPaths;
   }
 
   /// Get character filenames in a folder AND all its subfolders recursively
   List<String> getCharactersInFolderRecursive(String folderId) {
-    final id = int.tryParse(folderId);
-    if (id == null) return [];
-
     final paths = <String>[];
     // Add direct characters
     paths.addAll(getCharactersInFolder(folderId));

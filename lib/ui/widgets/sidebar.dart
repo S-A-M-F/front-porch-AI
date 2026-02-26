@@ -77,6 +77,12 @@ class Sidebar extends StatelessWidget {
             isSelected: appState.selectedIndex == 5,
             onTap: () => appState.setIndex(5),
           ),
+          _SidebarItem(
+            icon: Icons.cloud_sync_outlined,
+            label: 'Cloud Sync',
+            isSelected: appState.selectedIndex == 6,
+            onTap: () => appState.setIndex(6),
+          ),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.all(16.0),
