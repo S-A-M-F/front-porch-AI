@@ -115,7 +115,20 @@ class GoogleDriveProvider extends CloudStorageProvider {
   @override
   Future<List<RemoteFileInfo>> listFiles(String remotePath) async {
     if (_driveApi == null) throw Exception('Not connected to Google Drive');
+    try {
+      return await _listFilesInternal(remotePath);
+    } on drive.DetailedApiRequestError catch (e) {
+      if (e.status == 404) {
+        // Stale folder ID cached — invalidate and retry once
+        debugPrint('[GDrive] 404 in listFiles for $remotePath, clearing cache and retrying');
+        _invalidateCacheForPath(remotePath);
+        return await _listFilesInternal(remotePath);
+      }
+      rethrow;
+    }
+  }
 
+  Future<List<RemoteFileInfo>> _listFilesInternal(String remotePath) async {
     final result = <RemoteFileInfo>[];
     final folderId = await _getOrCreateFolderId(remotePath);
     if (folderId == null) return result;
@@ -155,7 +168,22 @@ class GoogleDriveProvider extends CloudStorageProvider {
   @override
   Future<void> uploadFile(String localPath, String remotePath) async {
     if (_driveApi == null) throw Exception('Not connected to Google Drive');
+    try {
+      await _uploadFileInternal(localPath, remotePath);
+    } on drive.DetailedApiRequestError catch (e) {
+      if (e.status == 404) {
+        // Stale folder ID cached — invalidate and retry once
+        final parentPath = remotePath.substring(0, remotePath.lastIndexOf('/'));
+        debugPrint('[GDrive] 404 in uploadFile for $remotePath, clearing cache and retrying');
+        _invalidateCacheForPath(parentPath);
+        await _uploadFileInternal(localPath, remotePath);
+      } else {
+        rethrow;
+      }
+    }
+  }
 
+  Future<void> _uploadFileInternal(String localPath, String remotePath) async {
     final fileName = remotePath.split('/').last;
     final parentPath = remotePath.substring(0, remotePath.lastIndexOf('/'));
     final parentId = await _getOrCreateFolderId(parentPath);
@@ -259,6 +287,12 @@ class GoogleDriveProvider extends CloudStorageProvider {
     } catch (e) {
       debugPrint('Google Drive deleteDirectory error: $e');
     }
+  }
+
+  /// Invalidate all cached folder IDs at or below the given path.
+  /// This forces a fresh lookup on the next call to _getOrCreateFolderId.
+  void _invalidateCacheForPath(String remotePath) {
+    _folderIdCache.removeWhere((key, _) => key == remotePath || key.startsWith('$remotePath/'));
   }
 
   /// Get or create a folder hierarchy and return the leaf folder's ID.

@@ -360,6 +360,7 @@ class _SettingsPageState extends State<SettingsPage> {
         useVulkan: _useVulkan,
         useCublas: _useCublas,
         useMetal: _useMetal,
+        useRocm: _useRocm,
       );
     }
   }

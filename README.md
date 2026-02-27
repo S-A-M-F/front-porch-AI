@@ -3,7 +3,7 @@
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 ![Flutter](https://img.shields.io/badge/Made%20with-Flutter-02569B?logo=flutter)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![Pre-Release](https://img.shields.io/badge/Status-Pre--Release%20Beta-orange)
+![Stable](https://img.shields.io/badge/Status-Stable-brightgreen)
 
 ## 📝 Note from the Dev
 
@@ -24,11 +24,8 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
-> **⚠️ Pre-Release Notice:** V0.8.0-beta4 is a standalone pre-release build. It will not auto-update existing stable installations. Download the standalone `.zip`, `.AppImage`, or `.app` from the [Releases](https://github.com/linux4life1/front-porch-ai/releases) page.
->
-> **Looking for the stable release?** See the [V0.7.1 branch](https://github.com/linux4life1/front-porch-ai/tree/V0.7.1) for the latest stable version with installers.
 
-## 🆕 What's New in V0.8.0-beta4
+## 🆕 What's New in V0.8.0
 
 - 🔄 **Row-Level Merge Engine**: Cloud sync now performs intelligent per-row merging instead of whole-database replacement. Conflicts are resolved using `updatedAt` timestamps, preserving the most recent changes from either device.
 - 🆔 **UUID Primary Keys**: All tables (Characters, Folders, Messages, Sessions, Worlds) now use UUID primary keys instead of auto-increment integers. This eliminates ID collisions when merging data from multiple devices.
@@ -37,9 +34,25 @@ Front Porch AI is proudly licensed under the **GPL v3** because we believe your 
 - 🔼 **Force Upload Database**: New disaster recovery option to overwrite the cloud database with your local copy — useful after restoring a backup.
 - 🗑️ **Purge Cloud Data**: Nuclear option to wipe all cloud data (database + character PNGs) when recovery isn't possible. Local data is never affected.
 - 🛡️ **Smarter Initial Sync**: First sync after migration now uploads local data as source of truth instead of merging, preventing duplicate entries caused by independent UUID migrations on different devices.
+- 🐛 **Bug Fixes**:
+  - Fixed KoboldCPP child processes not being killed on app close (Linux) — orphaned processes no longer consume GPU memory after exit
+  - Fixed Google Drive cloud sync failing to upload character PNGs due to stale folder ID cache — all characters now sync reliably
+  - Individual character upload failures no longer abort the entire sync batch
+  - Orphaned character PNGs (from deleted characters or DB sync) are now automatically cleaned up after cloud sync
+  - Re-importing a character no longer creates duplicate PNG files on disk
 
 <details>
 <summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.8.0-beta4
+
+- 🔄 **Row-Level Merge Engine**: Cloud sync now performs intelligent per-row merging instead of whole-database replacement.
+- 🆔 **UUID Primary Keys**: All tables now use UUID primary keys to eliminate ID collisions.
+- 💾 **Backup Management**: Full backup system with manual and automatic backups before each cloud sync.
+- ☁️ **Dedicated Cloud Sync Page**: Cloud sync settings moved to a dedicated sidebar page.
+- 🔼 **Force Upload Database**: Disaster recovery option to overwrite cloud database with local copy.
+- 🗑️ **Purge Cloud Data**: Nuclear option to wipe all cloud data when recovery isn't possible.
+- 🛡️ **Smarter Initial Sync**: First sync after migration uploads local data as source of truth.
 
 ### What's New in V0.8.0-beta3
 

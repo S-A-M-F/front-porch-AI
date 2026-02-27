@@ -508,6 +508,7 @@ class AppDatabase extends _$AppDatabase {
       'SELECT s.character_id, COUNT(m.id) AS cnt '
       'FROM sessions s JOIN messages m ON m.session_id = s.id '
       'WHERE s.character_id IS NOT NULL AND s.deleted_at IS NULL AND m.deleted_at IS NULL '
+      'AND m.is_user = 1 '
       'GROUP BY s.character_id',
     ).get();
     final map = <String, int>{};

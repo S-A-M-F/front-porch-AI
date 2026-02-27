@@ -74,6 +74,7 @@ class SetupService extends ChangeNotifier {
           useVulkan: _storageService.useVulkan ?? false,
           useCublas: _storageService.useCublas ?? false,
           useMetal: _storageService.useMetal ?? false,
+          useRocm: _storageService.useRocm ?? false,
         );
       }
 

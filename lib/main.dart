@@ -497,6 +497,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
           worldRepo.updateDatabase(newDb);
           chatService.updateDatabase(newDb);
           await charRepo.loadCharacters();
+          await charRepo.cleanOrphanedPngs();
           await folderService.reload();
           await personaService.reload();
           await groupRepo.reload();
@@ -559,6 +560,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
         // Reload characters so newly downloaded PNGs appear in the UI
         final charRepo = Provider.of<CharacterRepository>(context, listen: false);
         await charRepo.loadCharacters();
+        await charRepo.cleanOrphanedPngs();
 
         // If a new database was downloaded, update all repo DB references and reload
         if (syncService.dbWasDownloaded) {
@@ -579,6 +581,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
           // Now reload all data from the new DB
           await charRepo.loadCharacters();
+          await charRepo.cleanOrphanedPngs();
           await folderService.reload();
           await personaService.reload();
           await groupRepo.reload();

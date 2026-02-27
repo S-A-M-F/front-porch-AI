@@ -147,6 +147,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         useVulkan: _useVulkan,
         useCublas: _useCublas,
         useMetal: _useMetal,
+        useRocm: _useRocm,
       );
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Restarting backend with new settings...')));

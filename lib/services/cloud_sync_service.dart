@@ -715,20 +715,24 @@ class CloudSyncService extends ChangeNotifier {
       final localFile = entry.value;
       final remotePath = '$remoteDir/${relativePath.replaceAll('\\', '/')}';
 
-      if (!remoteMap.containsKey(relativePath.replaceAll('\\', '/'))) {
-        final remoteParent = path.dirname(remotePath).replaceAll('\\', '/');
-        await _provider!.ensureDir(remoteParent);
-        await _provider!.uploadFile(localFile.path, remotePath);
-        _syncedFiles++;
-      } else {
-        final remoteInfo = remoteMap[relativePath.replaceAll('\\', '/')]!;
-        if (remoteInfo.lastModified != null) {
-          final localStat = await localFile.stat();
-          if (localStat.modified.isAfter(remoteInfo.lastModified!)) {
-            await _provider!.uploadFile(localFile.path, remotePath);
-            _syncedFiles++;
+      try {
+        if (!remoteMap.containsKey(relativePath.replaceAll('\\', '/'))) {
+          final remoteParent = path.dirname(remotePath).replaceAll('\\', '/');
+          await _provider!.ensureDir(remoteParent);
+          await _provider!.uploadFile(localFile.path, remotePath);
+          _syncedFiles++;
+        } else {
+          final remoteInfo = remoteMap[relativePath.replaceAll('\\', '/')]!;
+          if (remoteInfo.lastModified != null) {
+            final localStat = await localFile.stat();
+            if (localStat.modified.isAfter(remoteInfo.lastModified!)) {
+              await _provider!.uploadFile(localFile.path, remotePath);
+              _syncedFiles++;
+            }
           }
         }
+      } catch (e) {
+        debugPrint('[CloudSync] Failed to upload ${path.basename(relativePath)}: $e');
       }
       _processedFiles++;
       notifyListeners();

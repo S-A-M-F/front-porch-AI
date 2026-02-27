@@ -170,7 +170,7 @@ class MockKoboldService extends ChangeNotifier implements KoboldService {
   @override
   List<String> get logs => [];
   @override
-  Future<void> startKobold(String executablePath, String modelPath, {int port = 5001, int gpuLayers = 0, int contextSize = 4096, bool useVulkan = false, bool useCLBlast = false, bool useCublas = false, bool useMetal = false}) async {}
+  Future<void> startKobold(String executablePath, String modelPath, {int port = 5001, int gpuLayers = 0, int contextSize = 4096, bool useVulkan = false, bool useCLBlast = false, bool useCublas = false, bool useMetal = false, bool useRocm = false}) async {}
   @override
   Future<void> stopKobold() async {}
   @override

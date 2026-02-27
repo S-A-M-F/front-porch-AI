@@ -15,6 +15,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
   final List<String> _logs = [];
   String _modelLoadingStatus = '';
   bool _modelReady = false;
+  String? _executablePath;
 
   bool get isRunning => _isRunning;
   List<String> get logs => List.unmodifiable(_logs);
@@ -63,7 +64,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
   void onWindowClose() async {
     bool isPreventClose = await windowManager.isPreventClose();
     if (isPreventClose) {
-      stopKobold();
+      await stopKobold();
       await windowManager.destroy();
     }
   }
@@ -108,8 +109,12 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     bool useVulkan = false,
     bool useCublas = false,
     bool useMetal = false,
+    bool useRocm = false,
   }) async {
     if (_isRunning) return;
+
+    // Store the executable path for cleanup
+    _executablePath = executablePath;
 
     final args = [
       '--model', modelPath,
@@ -119,7 +124,11 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     ];
 
     if (useVulkan) args.add('--usevulkan');
-    if (useCublas) args.add('--usecuda');
+    if (useCublas) args.add('--usecublas');
+    if (useRocm) {
+      args.add('--usehipblas');
+      args.add('--noflashattention');  // Flash attention kernel crashes on many AMD GPUs
+    }
     // Note: Metal is used automatically on macOS Apple Silicon, no flag needed
 
     try {
@@ -442,18 +451,23 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
           _process!.kill();
         }
       } else {
-        // Linux/macOS: kill entire process group so child processes don't orphan
+        // Linux/macOS: Dart's Process.start() does NOT create a new process group,
+        // so the child inherits our PGID. We can't use kill(-pid) reliably.
+        // Instead: kill all child processes first, then the parent.
         try {
-          // Send SIGTERM to the process group (negative PID = group)
-          await Process.run('kill', ['--', '-$pid']);
-          _addLog('Sent SIGTERM to process group.');
+          // Step 1: Kill all child processes of the koboldcpp parent
+          _addLog('Killing child processes of PID $pid...');
+          await Process.run('pkill', ['-TERM', '-P', pid.toString()]);
+
+          // Step 2: Kill the parent process itself
+          _process?.kill(ProcessSignal.sigterm);
+          _addLog('Sent SIGTERM to parent and children.');
           
           // Wait up to 3 seconds for graceful shutdown
           bool exited = false;
           for (int i = 0; i < 6; i++) {
             await Future.delayed(const Duration(milliseconds: 500));
             try {
-              // Check if process is still alive (signal 0 = probe)
               final check = await Process.run('kill', ['-0', pid.toString()]);
               if (check.exitCode != 0) {
                 exited = true;
@@ -466,18 +480,30 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
           }
           
           if (!exited) {
-            // Force kill the process group with SIGKILL
+            // Force kill with SIGKILL — children first, then parent
             _addLog('Process did not exit gracefully, sending SIGKILL...');
-            try {
-              await Process.run('kill', ['-9', '--', '-$pid']);
-            } catch (_) {
-              // Fallback: kill just the parent process
-              _process?.kill(ProcessSignal.sigkill);
-            }
+            await Process.run('pkill', ['-KILL', '-P', pid.toString()]);
+            _process?.kill(ProcessSignal.sigkill);
+          }
+
+          // Step 3: Final safety net — kill any remaining processes matching the
+          // executable name. This catches deeply nested children or processes
+          // that reparented to init (PID 1) after their parent was killed.
+          if (_executablePath != null) {
+            final exeName = path.basename(_executablePath!);
+            _addLog('Cleaning up any remaining $exeName processes...');
+            await Process.run('pkill', ['-KILL', '-f', exeName]);
           }
         } catch (e) {
-          _addLog('Process group kill failed, using fallback: $e');
+          _addLog('Process cleanup failed, using fallback: $e');
           _process?.kill(ProcessSignal.sigkill);
+          // Still try the executable-name fallback
+          if (_executablePath != null) {
+            final exeName = path.basename(_executablePath!);
+            try {
+              await Process.run('pkill', ['-KILL', '-f', exeName]);
+            } catch (_) {}
+          }
         }
       }
       

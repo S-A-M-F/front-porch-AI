@@ -76,6 +76,45 @@ class CharacterRepository extends ChangeNotifier {
     }
   }
 
+  /// Delete PNG files in the Characters directory that are not referenced
+  /// by any character in the database. This cleans up orphans left behind
+  /// when the DB is replaced via cloud sync or characters are deleted
+  /// without their file being removed.
+  Future<int> cleanOrphanedPngs() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final charDir = Directory('${directory.path}/KoboldManager/Characters');
+      if (!await charDir.exists()) return 0;
+
+      // Collect all imagePaths currently referenced by loaded characters
+      final referencedPaths = <String>{};
+      for (final c in _characters) {
+        if (c.imagePath != null) {
+          referencedPaths.add(c.imagePath!);
+        }
+      }
+
+      int deletedCount = 0;
+      await for (final entity in charDir.list()) {
+        if (entity is File && entity.path.toLowerCase().endsWith('.png')) {
+          if (!referencedPaths.contains(entity.path)) {
+            debugPrint('[Cleanup] Deleting orphaned PNG: ${p.basename(entity.path)}');
+            await entity.delete();
+            deletedCount++;
+          }
+        }
+      }
+
+      if (deletedCount > 0) {
+        debugPrint('[Cleanup] Deleted $deletedCount orphaned character PNG(s)');
+      }
+      return deletedCount;
+    } catch (e) {
+      debugPrint('[Cleanup] Error cleaning orphaned PNGs: $e');
+      return 0;
+    }
+  }
+
   /// Convert a DB row into a CharacterCard model.
   CharacterCard _characterFromRow(Character c) {
     List<String> altGreetings = [];
@@ -206,6 +245,24 @@ class CharacterRepository extends ChangeNotifier {
       
       // Use the character name for the filename, sanitized
       final safeName = card.name.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
+
+      // Remove old PNG for same-named character to prevent duplicates
+      final cardName = card.name;
+      final existing = _characters.where((c) => c.name == cardName).toList();
+      for (final oldChar in existing) {
+        if (oldChar.imagePath != null) {
+          try {
+            final oldFile = File(oldChar.imagePath!);
+            if (await oldFile.exists()) {
+              await oldFile.delete();
+              debugPrint('[Import] Deleted old PNG for ${card.name}: ${p.basename(oldChar.imagePath!)}');
+            }
+          } catch (e) {
+            debugPrint('[Import] Could not delete old PNG: $e');
+          }
+        }
+      }
+
       final destPath = '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
       await file.copy(destPath);
       
