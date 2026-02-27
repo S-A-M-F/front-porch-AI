@@ -61,14 +61,22 @@ class DataMigrationService {
     await _migratePersonas();
 
     await _markComplete();
+
+    // Clean up old JSON files now that data lives in the DB
+    onProgress?.call('Cleaning up old files...', totalSteps, totalSteps);
+    await cleanupLegacyFiles();
+
     debugPrint('DB_MIGRATION: Migration complete!');
   }
 
   // ── Characters ────────────────────────────────────────────────────────
 
   Future<void> _migrateCharacters() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rootPath = prefs.getString('root_path');
     final directory = await getApplicationDocumentsDirectory();
-    final charDir = Directory('${directory.path}/KoboldManager/Characters');
+    final basePath = rootPath ?? directory.path;
+    final charDir = Directory('$basePath/KoboldManager/Characters');
     if (!await charDir.exists()) return;
 
     final v2Service = V2CardService();
@@ -311,8 +319,11 @@ class DataMigrationService {
   // ── Folders ───────────────────────────────────────────────────────────
 
   Future<void> _migrateFolders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rootPath = prefs.getString('root_path');
     final directory = await getApplicationDocumentsDirectory();
-    final foldersFile = File('${directory.path}/KoboldManager/character_folders.json');
+    final basePath = rootPath ?? directory.path;
+    final foldersFile = File('$basePath/KoboldManager/character_folders.json');
     if (!await foldersFile.exists()) return;
 
     try {
@@ -407,6 +418,95 @@ class DataMigrationService {
       } catch (e) {
         debugPrint('DB_MIGRATION: Failed to import persona: $e');
       }
+    }
+  }
+
+  /// Delete legacy JSON files that are no longer needed after migration.
+  /// Safe to call multiple times — skips files that don't exist.
+  /// Preserves character PNGs (still needed for images).
+  static Future<void> cleanupLegacyFiles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rootPath = prefs.getString('root_path');
+    final docsDir = await getApplicationDocumentsDirectory();
+    final basePath = rootPath ?? docsDir.path;
+
+    int deleted = 0;
+
+    // 1. Delete chat session JSONs: {root}/chats/{charId}/*.json
+    final chatsDir = Directory('$basePath/chats');
+    if (await chatsDir.exists()) {
+      await for (final charDir in chatsDir.list()) {
+        if (charDir is! Directory) continue;
+        // Skip the 'groups' subdirectory — handled below
+        if (charDir.path.endsWith('groups')) continue;
+        await for (final entity in charDir.list()) {
+          if (entity is File && entity.path.endsWith('.json')) {
+            try {
+              await entity.delete();
+              deleted++;
+            } catch (e) {
+              debugPrint('Cleanup: failed to delete ${entity.path}: $e');
+            }
+          }
+        }
+        // Remove the character chat directory if now empty
+        try {
+          if (await charDir.list().isEmpty) {
+            await charDir.delete();
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 2. Delete group chat JSONs: {root}/chats/groups/*.json
+    final groupsDir = Directory('$basePath/chats/groups');
+    if (await groupsDir.exists()) {
+      await for (final entity in groupsDir.list()) {
+        if (entity is File && entity.path.endsWith('.json')) {
+          try {
+            await entity.delete();
+            deleted++;
+          } catch (e) {
+            debugPrint('Cleanup: failed to delete ${entity.path}: $e');
+          }
+        }
+      }
+      // Remove groups dir if now empty
+      try {
+        if (await groupsDir.list().isEmpty) {
+          await groupsDir.delete();
+        }
+      } catch (_) {}
+    }
+
+    // 3. Delete world JSONs: {root}/worlds/*.json
+    final worldsDir = Directory('$basePath/worlds');
+    if (await worldsDir.exists()) {
+      await for (final entity in worldsDir.list()) {
+        if (entity is File && entity.path.endsWith('.json')) {
+          try {
+            await entity.delete();
+            deleted++;
+          } catch (e) {
+            debugPrint('Cleanup: failed to delete ${entity.path}: $e');
+          }
+        }
+      }
+    }
+
+    // 4. Delete character_folders.json
+    final foldersFile = File('$basePath/KoboldManager/character_folders.json');
+    if (await foldersFile.exists()) {
+      try {
+        await foldersFile.delete();
+        deleted++;
+      } catch (e) {
+        debugPrint('Cleanup: failed to delete character_folders.json: $e');
+      }
+    }
+
+    if (deleted > 0) {
+      debugPrint('Cleanup: deleted $deleted legacy JSON file(s)');
     }
   }
 }

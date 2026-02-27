@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 
@@ -87,8 +87,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   Future<void> _saveCharacter() async {
     if (_formKey.currentState!.validate()) {
       try {
-        final directory = await getApplicationDocumentsDirectory();
-        final charDir = Directory('${directory.path}/KoboldManager/Characters');
+        final storageService = Provider.of<StorageService>(context, listen: false);
+        final charDir = storageService.charactersDir;
         if (!await charDir.exists()) {
           await charDir.create(recursive: true);
         }

@@ -46,6 +46,9 @@ void main(List<String> args) async {
 
   // Purge rows that were soft-deleted more than 30 days ago
   try { await db.purgeSoftDeletes(); } catch (_) {}
+
+  // Clean up legacy JSON files from pre-0.8.0 (idempotent, safe to run every startup)
+  try { await DataMigrationService.cleanupLegacyFiles(); } catch (_) {}
   
   WindowOptions windowOptions = const WindowOptions(
     size: Size(1280, 720),
@@ -72,7 +75,10 @@ void main(List<String> args) async {
           update: (context, storage, previous) => previous ?? KoboldService(storage),
         ),
         ChangeNotifierProvider(create: (_) => HardwareService()),
-        ChangeNotifierProvider(create: (context) => CharacterRepository(db)),
+        ChangeNotifierProxyProvider<StorageService, CharacterRepository>(
+          create: (context) => CharacterRepository(db, Provider.of<StorageService>(context, listen: false)),
+          update: (context, storage, previous) => previous ?? CharacterRepository(db, storage),
+        ),
         ChangeNotifierProvider(create: (context) => UserPersonaService(db)),
         ChangeNotifierProvider(create: (context) => FolderService(db)),
         ChangeNotifierProxyProvider<StorageService, WorldRepository>(

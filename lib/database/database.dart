@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -157,8 +158,10 @@ class AppDatabase extends _$AppDatabase {
   /// Singleton access. Call [AppDatabase.instance()] to get the shared database.
   static Future<AppDatabase> instance() async {
     if (_instance != null) return _instance!;
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'KoboldManager', 'front_porch.db'));
+    final prefs = await SharedPreferences.getInstance();
+    final rootPath = prefs.getString('root_path');
+    final basePath = rootPath ?? (await getApplicationDocumentsDirectory()).path;
+    final file = File(p.join(basePath, 'KoboldManager', 'front_porch.db'));
     await file.parent.create(recursive: true);
     _dbPath = file.path;
     _instance = AppDatabase._internal(NativeDatabase.createInBackground(file));

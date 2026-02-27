@@ -25,7 +25,18 @@ Proprietary software lives and dies at the discretion of its creators. When a co
 Front Porch AI is proudly licensed under the **GPL v3** because we believe your tools should belong to the community that uses them. If this project is ever abandoned, anyone can fork it, improve it, and keep it alive. Open source isn't just a license — it's a promise that the software will always have a future.
 
 
-## 🆕 What's New in V0.8.0
+## 🆕 What's New in V0.8.1
+
+- 🐛 **Bug Fixes**:
+  - Fixed custom installation directory breaking the 0.8.0 database — the DB, character PNGs, and all data files now correctly follow the user-configured install path
+  - Changing install directory in Settings now properly relocates all data (database, characters, chats, worlds, models) to the new location and cleans up the old directory
+  - Fixed data migration from 0.7.2 JSON format failing when a custom install directory was set — character and folder migrations now respect the custom path
+  - Legacy JSON files from pre-0.8.0 (chat sessions, group chats, worlds, folder config) are now automatically cleaned up after migration
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.8.0
 
 - 🔄 **Row-Level Merge Engine**: Cloud sync now performs intelligent per-row merging instead of whole-database replacement. Conflicts are resolved using `updatedAt` timestamps, preserving the most recent changes from either device.
 - 🆔 **UUID Primary Keys**: All tables (Characters, Folders, Messages, Sessions, Worlds) now use UUID primary keys instead of auto-increment integers. This eliminates ID collisions when merging data from multiple devices.
@@ -41,8 +52,6 @@ Front Porch AI is proudly licensed under the **GPL v3** because we believe your 
   - Orphaned character PNGs (from deleted characters or DB sync) are now automatically cleaned up after cloud sync
   - Re-importing a character no longer creates duplicate PNG files on disk
 
-<details>
-<summary><strong>📦 Previous Releases</strong></summary>
 
 ### What's New in V0.8.0-beta4
 

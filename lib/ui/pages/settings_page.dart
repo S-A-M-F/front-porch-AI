@@ -201,7 +201,14 @@ class _SettingsPageState extends State<SettingsPage> {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
     if (selectedDirectory != null) {
       if (mounted) {
+        // Close the current database so the file can be moved
+        await AppDatabase.closeAndReset();
         await Provider.of<StorageService>(context, listen: false).setRootPath(selectedDirectory);
+        // Reopen the database from the new location
+        final newDb = await AppDatabase.instance();
+        // Update downstream services that hold a DB reference
+        Provider.of<CharacterRepository>(context, listen: false).updateDatabase(newDb);
+        await Provider.of<CharacterRepository>(context, listen: false).loadCharacters();
         // Refresh backend/models after path change
          Provider.of<BackendManager>(context, listen: false).checkBackendAvailability();
          Provider.of<ModelManager>(context, listen: false).refreshModels();

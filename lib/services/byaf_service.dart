@@ -231,9 +231,16 @@ class ByafService {
 
   /// Save the character card as a PNG with embedded V2 metadata.
   /// Returns the saved file path.
-  Future<String> saveCharacterPng(CharacterCard card) async {
-    final directory = await getApplicationDocumentsDirectory();
-    final charDir = Directory('${directory.path}/KoboldManager/Characters');
+  /// [charactersDirPath] is the absolute path to the Characters directory.
+  Future<String> saveCharacterPng(CharacterCard card, {String? charactersDirPath}) async {
+    final String charDirPath;
+    if (charactersDirPath != null) {
+      charDirPath = charactersDirPath;
+    } else {
+      final directory = await getApplicationDocumentsDirectory();
+      charDirPath = '${directory.path}/KoboldManager/Characters';
+    }
+    final charDir = Directory(charDirPath);
     if (!await charDir.exists()) {
       await charDir.create(recursive: true);
     }

@@ -2482,7 +2482,8 @@ class _HomePageState extends State<HomePage> {
       final card = byafService.toCharacterCard(preview);
 
       // Save as PNG (with image if available)
-      final pngPath = await byafService.saveCharacterPng(card);
+      final storageService = Provider.of<StorageService>(context, listen: false);
+      final pngPath = await byafService.saveCharacterPng(card, charactersDirPath: storageService.charactersDir.path);
 
       // Now use V2CardService to embed character data into the PNG
       final v2Service = V2CardService();
@@ -2741,8 +2742,8 @@ class _HomePageState extends State<HomePage> {
           
           httpClient.close();
           
-          final directory = await getApplicationDocumentsDirectory();
-          final charDir = Directory('${directory.path}/KoboldManager/Characters');
+          final storageService = Provider.of<StorageService>(context, listen: false);
+          final charDir = storageService.charactersDir;
           if (!await charDir.exists()) {
             await charDir.create(recursive: true);
           }
@@ -2831,8 +2832,8 @@ class _HomePageState extends State<HomePage> {
           
           httpClient.close();
           
-          final directory = await getApplicationDocumentsDirectory();
-          final charDir = Directory('${directory.path}/KoboldManager/Characters');
+          final storageService = Provider.of<StorageService>(context, listen: false);
+          final charDir = storageService.charactersDir;
           if (!await charDir.exists()) {
             await charDir.create(recursive: true);
           }

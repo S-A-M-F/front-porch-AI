@@ -23,6 +23,7 @@ class StorageService extends ChangeNotifier {
       : Directory(path.join(_rootPath ?? '', 'models'));
   Directory get chatsDir => Directory(path.join(_rootPath ?? '', 'chats'));
   Directory get worldsDir => Directory(path.join(_rootPath ?? '', 'worlds'));
+  Directory get charactersDir => Directory(path.join(_rootPath ?? '', 'KoboldManager', 'Characters'));
 
   // Settings
   static const String defaultSystemPrompt = "You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns. You may also roleplay as any side characters introduced.\n\nEngage with {{user}} by depicting {{char}}'s actions, emotions, and dialogue. Develop the plot slowly and organically while driving the scenario forward. Never write {{user}}'s speech, actions, or decisions — allow them full control of their character.\n\nWrite in a vivid, creative, varied, and descriptive style. Use rich sensory detail for the environment, people, and events. Make each reply unique and end with an action or dialogue to keep momentum.\n\nMaintain consistency with established details — clothing, time of day, location, and prior events. Stay in character at all times.";
@@ -156,6 +157,7 @@ class StorageService extends ChangeNotifier {
     await chatsDir.create(recursive: true);
     await modelsDir.create(recursive: true);
     await worldsDir.create(recursive: true);
+    await charactersDir.create(recursive: true);
     
     // Load settings
     _systemPrompt = _prefs?.getString('system_prompt') ?? _systemPrompt;
@@ -246,11 +248,65 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Change the root installation directory and relocate all data files.
+  /// Moves KoboldManager/ (DB + characters), chats/, worlds/, and models/
+  /// from the old root to the new one. Closes and reopens the database.
   Future<void> setRootPath(String pathStr) async {
+    final oldRoot = _rootPath;
+    if (oldRoot == pathStr) return; // No-op if same path
+
+    // Directories to move from old root to new root
+    final dirsToMove = ['KoboldManager', 'chats', 'worlds', 'models', 'koboldcpp_bin'];
+
+    for (final dirName in dirsToMove) {
+      final oldDir = Directory(path.join(oldRoot ?? '', dirName));
+      final newDir = Directory(path.join(pathStr, dirName));
+      if (await oldDir.exists() && !await newDir.exists()) {
+        try {
+          await newDir.create(recursive: true);
+          await for (final entity in oldDir.list(recursive: false)) {
+            final baseName = path.basename(entity.path);
+            final newPath = path.join(newDir.path, baseName);
+            if (entity is File) {
+              await entity.copy(newPath);
+            } else if (entity is Directory) {
+              await _copyDirectory(entity, Directory(newPath));
+            }
+          }
+          // Clean up old directory after successful copy
+          await oldDir.delete(recursive: true);
+          debugPrint('Relocated $dirName to $pathStr (old deleted)');
+        } catch (e) {
+          debugPrint('Error relocating $dirName: $e');
+        }
+      }
+    }
+
     _rootPath = pathStr;
     _binDir = Directory(path.join(_rootPath!, 'koboldcpp_bin'));
     await _prefs?.setString('root_path', pathStr);
+
+    // Ensure directories exist at the new location
+    await chatsDir.create(recursive: true);
+    await modelsDir.create(recursive: true);
+    await worldsDir.create(recursive: true);
+    await charactersDir.create(recursive: true);
+
     notifyListeners();
+  }
+
+  /// Recursively copy a directory and its contents.
+  Future<void> _copyDirectory(Directory source, Directory destination) async {
+    await destination.create(recursive: true);
+    await for (final entity in source.list(recursive: false)) {
+      final baseName = path.basename(entity.path);
+      final newPath = path.join(destination.path, baseName);
+      if (entity is File) {
+        await entity.copy(newPath);
+      } else if (entity is Directory) {
+        await _copyDirectory(entity, Directory(newPath));
+      }
+    }
   }
 
   Future<void> setSystemPrompt(String value) async {

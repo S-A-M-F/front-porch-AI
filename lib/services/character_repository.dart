@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:drift/drift.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
@@ -10,10 +9,12 @@ import 'package:front_porch_ai/models/world.dart' as world_model;
 import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/cloud_sync_service.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/database/database.dart';
 
 class CharacterRepository extends ChangeNotifier {
   AppDatabase _db;
+  final StorageService _storage;
   final List<CharacterCard> _characters = [];
   bool _isLoading = false;
 
@@ -30,7 +31,7 @@ class CharacterRepository extends ChangeNotifier {
     return sorted;
   }
 
-  CharacterRepository(this._db) {
+  CharacterRepository(this._db, this._storage) {
     loadCharacters();
   }
 
@@ -46,8 +47,7 @@ class CharacterRepository extends ChangeNotifier {
       _characters.clear();
       
       // Get local characters directory for path rebasing (cross-platform sync)
-      final directory = await getApplicationDocumentsDirectory();
-      final localCharDir = '${directory.path}/KoboldManager/Characters';
+      final localCharDir = _storage.charactersDir.path;
 
       for (final c in dbChars) {
         final card = _characterFromRow(c);
@@ -82,8 +82,7 @@ class CharacterRepository extends ChangeNotifier {
   /// without their file being removed.
   Future<int> cleanOrphanedPngs() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final charDir = Directory('${directory.path}/KoboldManager/Characters');
+      final charDir = _storage.charactersDir;
       if (!await charDir.exists()) return 0;
 
       // Collect all imagePaths currently referenced by loaded characters
@@ -237,8 +236,7 @@ class CharacterRepository extends ChangeNotifier {
       }
       
       // Copy the file to the app's characters directory
-      final directory = await getApplicationDocumentsDirectory();
-      final charDir = Directory('${directory.path}/KoboldManager/Characters');
+      final charDir = _storage.charactersDir;
       if (!await charDir.exists()) {
         await charDir.create(recursive: true);
       }
