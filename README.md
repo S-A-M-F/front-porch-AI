@@ -238,7 +238,27 @@ Create detailed character cards (V2 spec compatible) with a user-friendly form U
 - **System Prompt Library**: Save and switch between multiple system prompts. Includes a specialized "Immersive Roleplay" default.
 - **User Personas**: Define your own persona name and description to influence how characters interact with you.
 
+### 👥 Group Chat & Director Mode
+<img src="docs/screenshots/group_chat.png" width="800" alt="Group Chat with Director Mode">
+
+- **Multi-Character Conversations**: Create group chats with 2+ characters and watch them interact with each other and with you.
+- **Director Mode**: Take control of who speaks next — tap any character to direct the conversation flow.
+- **Turn Orders**: Choose between Round Robin and Random turn orders, or go fully manual with Director Mode.
+- **AI-Generated Scenarios**: One-tap ✨ Generate buttons for scenarios and first messages.
+
+<img src="docs/screenshots/group_chat_creator.png" width="400" alt="Group Chat Creator">
+
+### 🔊 Text-to-Speech
+<img src="docs/screenshots/tts_settings.png" width="400" alt="TTS Settings">
+
+- **Three TTS Engines**: Kokoro (local, high quality), OpenAI (cloud, premium), and Piper (lightweight fallback).
+- **50+ Voices**: Kokoro ships with 50+ voices across 9 languages — all running offline.
+- **Parallel Generation**: Sentences are generated concurrently for dramatically faster audio output.
+- **Per-Character Voices**: Assign unique voices to each character in group chats.
+
 ### ⚙️ KoboldCPP Integration
+<img src="docs/screenshots/model_hub.png" width="800" alt="Model Hub - HuggingFace Search">
+
 - **Automated Management**: The app can automatically download and update the KoboldCPP backend for you.
 - **Hardware Detection**: Automatically detects GPU and VRAM. Prefers **Vulkan** on PC and **Metal** on Apple Silicon. Now supports **Intel ARC** and shared memory GPUs.
 - **macOS Stability**: Native quarantine management and sandbox-free execution for seamless backend launches.
@@ -246,9 +266,12 @@ Create detailed character cards (V2 spec compatible) with a user-friendly form U
 - **Process Management**: Robustly handles the lifecycle of the AI backend, ensuring clean shutdowns.
 
 ### ☁️ Cloud Sync
+<img src="docs/screenshots/cloud_sync.png" width="800" alt="Cloud Sync Page">
+
 - **Cross-Device Sync**: Sync your entire database and character PNGs via Google Drive or Nextcloud/WebDAV.
 - **Single-File Sync**: All data (chats, folders, personas, groups, worlds) syncs as one database file — no more hundreds of scattered JSON files.
 - **Browse Cloud Characters**: View all characters stored in the cloud, see which are already on your device, and selectively download new ones with avatar previews.
+- **Backup Management**: Automatic backups before every cloud sync, with one-click restore and manual backup creation.
 - **Upload-Only Characters**: Character PNGs upload automatically; downloads are user-initiated to keep you in control.
 - **Privacy-First**: Syncs only to accounts you own. No data ever passes through our servers.
 
