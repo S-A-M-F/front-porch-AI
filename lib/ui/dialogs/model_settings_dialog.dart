@@ -24,6 +24,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   bool _useVulkan = false;
   bool _useCublas = false;
   bool _useMetal = false;
+  bool _useRocm = false;
   String? _selectedModelPath;
 
   // Remote API fields
@@ -41,6 +42,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     _useCublas = storage.useCublas == true;
     _useVulkan = storage.useVulkan == true;
     _useMetal = storage.useMetal == true;
+    _useRocm = storage.useRocm == true;
     _selectedModelPath = storage.lastUsedModelPath;
     _gpuLayersController.text = storage.gpuLayers.toString();
     _contextSizeController.text = storage.contextSize.toString();
@@ -89,14 +91,22 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         _useMetal = true;
         _useVulkan = false;
         _useCublas = false;
+        _useRocm = false;
       } else if (hardware.vendor == 'Nvidia') {
         _useCublas = true;
         _useVulkan = false;
+        _useMetal = false;
+        _useRocm = false;
+      } else if (hardware.vendor == 'AMD' && Platform.isLinux && hardware.hasRocm) {
+        _useRocm = true;
+        _useVulkan = false;
+        _useCublas = false;
         _useMetal = false;
       } else {
         _useVulkan = suggestion.useVulkan;
         _useCublas = false;
         _useMetal = false;
+        _useRocm = false;
       }
     });
 
@@ -123,6 +133,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     storage.setUseCublas(_useCublas);
     storage.setUseVulkan(_useVulkan);
     storage.setUseMetal(_useMetal);
+    storage.setUseRocm(_useRocm);
 
     koboldService.stopKobold();
     
@@ -516,6 +527,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
          
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
             FilterChip(
               label: const Text('Use Vulkan'),
@@ -523,9 +535,27 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               onSelected: (val) {
                 setState(() {
                   _useVulkan = val;
-                  if (val) { _useCublas = false; _useMetal = false; }
+                  if (val) { _useCublas = false; _useRocm = false; _useMetal = false; }
                 });
               },
+            ),
+            Tooltip(
+              message: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasRocm == true ? 'Use ROCm for native AMD GPU acceleration' : 'Requires ROCm installation (AMD GPU)',
+              child: FilterChip(
+                label: const Text('Use ROCm (AMD)'),
+                selected: _useRocm,
+                onSelected: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasRocm == true
+                  ? (val) {
+                      setState(() {
+                        _useRocm = val;
+                        if (val) { _useVulkan = false; _useCublas = false; _useMetal = false; }
+                      });
+                    }
+                  : null,
+                avatar: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasRocm == true
+                  ? null
+                  : const Icon(Icons.block, size: 16),
+              ),
             ),
             Tooltip(
               message: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.vendor == 'Nvidia' ? 'Use CUDA (NVIDIA only)' : 'Requires NVIDIA GPU',
@@ -536,7 +566,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                   ? (val) {
                       setState(() {
                         _useCublas = val;
-                        if (val) { _useVulkan = false; _useMetal = false; }
+                        if (val) { _useVulkan = false; _useRocm = false; _useMetal = false; }
                       });
                     }
                   : null, 
@@ -554,7 +584,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                   ? (val) {
                       setState(() {
                         _useMetal = val;
-                        if (val) { _useVulkan = false; _useCublas = false; }
+                        if (val) { _useVulkan = false; _useCublas = false; _useRocm = false; }
                       });
                     }
                   : null, 

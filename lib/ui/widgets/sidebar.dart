@@ -83,6 +83,33 @@ class Sidebar extends StatelessWidget {
             isSelected: appState.selectedIndex == 6,
             onTap: () => appState.setIndex(6),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+            child: InkWell(
+              onTap: () => launchUrl(Uri.parse('https://ko-fi.com/sosukeaizen37411')),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.coffee_outlined,
+                      color: Color(0xFFFF5E5B), // Ko-fi brand coral
+                      size: 22,
+                    ),
+                    SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        'Buy Me a Coffee ☕',
+                        style: TextStyle(color: Colors.white70),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.all(16.0),

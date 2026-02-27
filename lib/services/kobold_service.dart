@@ -442,7 +442,50 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
           _process!.kill();
         }
       } else {
-        _process!.kill();
+        // Linux/macOS: kill entire process group so child processes don't orphan
+        try {
+          // Send SIGTERM to the process group (negative PID = group)
+          await Process.run('kill', ['--', '-$pid']);
+          _addLog('Sent SIGTERM to process group.');
+          
+          // Wait up to 3 seconds for graceful shutdown
+          bool exited = false;
+          for (int i = 0; i < 6; i++) {
+            await Future.delayed(const Duration(milliseconds: 500));
+            try {
+              // Check if process is still alive (signal 0 = probe)
+              final check = await Process.run('kill', ['-0', pid.toString()]);
+              if (check.exitCode != 0) {
+                exited = true;
+                break;
+              }
+            } catch (_) {
+              exited = true;
+              break;
+            }
+          }
+          
+          if (!exited) {
+            // Force kill the process group with SIGKILL
+            _addLog('Process did not exit gracefully, sending SIGKILL...');
+            try {
+              await Process.run('kill', ['-9', '--', '-$pid']);
+            } catch (_) {
+              // Fallback: kill just the parent process
+              _process?.kill(ProcessSignal.sigkill);
+            }
+          }
+        } catch (e) {
+          _addLog('Process group kill failed, using fallback: $e');
+          _process?.kill(ProcessSignal.sigkill);
+        }
+      }
+      
+      // Wait briefly for process to fully exit before clearing state
+      try {
+        await _process?.exitCode.timeout(const Duration(seconds: 2));
+      } catch (_) {
+        // Timeout is fine — we've already sent kill signals
       }
       
       _process = null;

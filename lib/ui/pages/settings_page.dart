@@ -44,6 +44,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _useVulkan = false;
   bool _useCublas = false;
   bool _useMetal = false;
+  bool _useRocm = false;
   String? _selectedModelPath;
   late final TextEditingController _systemPromptController;
 
@@ -126,22 +127,38 @@ class _SettingsPageState extends State<SettingsPage> {
         _useMetal = storage.useMetal!;
         if (storage.useVulkan != null) _useVulkan = storage.useVulkan!;
         if (storage.useCublas != null) _useCublas = storage.useCublas!;
+        if (storage.useRocm != null) _useRocm = storage.useRocm!;
       }
     }
-    // Non-NVIDIA/Non-Mac Logic: Default to Vulkan if not set
+    // Non-NVIDIA/Non-Mac Logic: Default to ROCm if available, else Vulkan
     else {
-      if (storage.useVulkan == null) {
-        storage.setUseVulkan(true);
-        storage.setUseCublas(false);
-        storage.setUseMetal(false);
-        _useVulkan = true;
-        _useCublas = false;
-        _useMetal = false;
+      if (storage.useVulkan == null && storage.useRocm == null) {
+        // First run: auto-detect best GPU backend
+        if (hw.vendor == 'AMD' && Platform.isLinux && hw.hasRocm) {
+          storage.setUseRocm(true);
+          storage.setUseVulkan(false);
+          storage.setUseCublas(false);
+          storage.setUseMetal(false);
+          _useRocm = true;
+          _useVulkan = false;
+          _useCublas = false;
+          _useMetal = false;
+        } else {
+          storage.setUseVulkan(true);
+          storage.setUseCublas(false);
+          storage.setUseMetal(false);
+          storage.setUseRocm(false);
+          _useVulkan = true;
+          _useCublas = false;
+          _useMetal = false;
+          _useRocm = false;
+        }
         changed = true;
       } else {
-        _useVulkan = storage.useVulkan!;
+        _useVulkan = storage.useVulkan ?? false;
         if (storage.useCublas != null) _useCublas = storage.useCublas!;
         if (storage.useMetal != null) _useMetal = storage.useMetal!;
+        if (storage.useRocm != null) _useRocm = storage.useRocm!;
       }
     }
 
@@ -152,6 +169,8 @@ class _SettingsPageState extends State<SettingsPage> {
         msg = 'NVIDIA GPU detected: CuBLAS enabled.';
       } else if (Platform.isMacOS) {
         msg = 'Apple Silicon detected: Metal enabled.';
+      } else if (hw.vendor == 'AMD' && Platform.isLinux && hw.hasRocm) {
+        msg = 'AMD GPU detected: ROCm enabled for native GPU acceleration.';
       } else if (hw.vendor == 'AMD' && Platform.isLinux && hw.hasRocm == false) {
         msg = 'AMD GPU detected: Vulkan enabled. Install ROCm for better performance.';
         showRocmGuidanceDialog(context, hw.linuxDistro);
@@ -1158,7 +1177,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 16),
-             Row(
+             Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                  FilterChip(
                   label: const Text('Use Vulkan'),
@@ -1166,13 +1187,34 @@ class _SettingsPageState extends State<SettingsPage> {
                   onSelected: (val) {
                      setState(() {
                        _useVulkan = val;
-                       if (val) _useCublas = false; // Mutually exclusive usually
+                       if (val) { _useCublas = false; _useRocm = false; _useMetal = false; }
                      });
-                     Provider.of<StorageService>(context, listen: false).setUseVulkan(val);
-                     if (val) Provider.of<StorageService>(context, listen: false).setUseCublas(false);
+                     final ss = Provider.of<StorageService>(context, listen: false);
+                     ss.setUseVulkan(val);
+                     if (val) { ss.setUseCublas(false); ss.setUseRocm(false); ss.setUseMetal(false); }
                   },
                 ),
-                const SizedBox(width: 8),
+                 Tooltip(
+                   message: hardwareService.hardwareInfo?.hasRocm == true ? 'Use ROCm for native AMD GPU acceleration' : 'Requires ROCm installation (AMD GPU)',
+                   child: FilterChip(
+                    label: const Text('Use ROCm (AMD)'),
+                    selected: _useRocm,
+                    onSelected: hardwareService.hardwareInfo?.hasRocm == true 
+                      ? (val) {
+                          setState(() {
+                            _useRocm = val;
+                            if (val) { _useVulkan = false; _useCublas = false; _useMetal = false; }
+                          });
+                          final ss = Provider.of<StorageService>(context, listen: false);
+                          ss.setUseRocm(val);
+                          if (val) { ss.setUseVulkan(false); ss.setUseCublas(false); ss.setUseMetal(false); }
+                        }
+                      : null, // Disabled if ROCm not installed
+                    avatar: hardwareService.hardwareInfo?.hasRocm == true 
+                      ? null 
+                      : const Icon(Icons.block, size: 16),
+                  ),
+                 ),
                  Tooltip(
                    message: hardwareService.hardwareInfo?.vendor == 'Nvidia' ? 'Use CUDA (NVIDIA only)' : 'Requires NVIDIA GPU',
                    child: FilterChip(
@@ -1182,10 +1224,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       ? (val) {
                           setState(() {
                             _useCublas = val;
-                            if (val) _useVulkan = false;
+                            if (val) { _useVulkan = false; _useRocm = false; _useMetal = false; }
                           });
-                          // Persist change
-                          Provider.of<StorageService>(context, listen: false).setUseCublas(val);
+                          final ss = Provider.of<StorageService>(context, listen: false);
+                          ss.setUseCublas(val);
+                          if (val) { ss.setUseVulkan(false); ss.setUseRocm(false); ss.setUseMetal(false); }
                         }
                       : null, // Disabled if not Nvidia
                     avatar: hardwareService.hardwareInfo?.vendor == 'Nvidia' 
@@ -1193,7 +1236,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       : const Icon(Icons.block, size: 16),
                   ),
                  ),
-                 const SizedBox(width: 8),
                  Tooltip(
                    message: hardwareService.hardwareInfo?.hasMetal == true ? 'Use Metal (Apple Silicon/Mac)' : 'Requires MacOS with Metal support',
                    child: FilterChip(
@@ -1203,17 +1245,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       ? (val) {
                           setState(() {
                             _useMetal = val;
-                            if (val) {
-                              _useVulkan = false;
-                              _useCublas = false;
-                            }
+                            if (val) { _useVulkan = false; _useCublas = false; _useRocm = false; }
                           });
-                          // Persist change
-                          Provider.of<StorageService>(context, listen: false).setUseMetal(val);
-                          if (val) {
-                            Provider.of<StorageService>(context, listen: false).setUseVulkan(false);
-                            Provider.of<StorageService>(context, listen: false).setUseCublas(false);
-                          }
+                          final ss = Provider.of<StorageService>(context, listen: false);
+                          ss.setUseMetal(val);
+                          if (val) { ss.setUseVulkan(false); ss.setUseCublas(false); ss.setUseRocm(false); }
                         }
                       : null, // Disabled if not MacOS/Metal
                     avatar: hardwareService.hardwareInfo?.hasMetal == true 

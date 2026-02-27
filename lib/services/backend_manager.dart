@@ -55,14 +55,20 @@ class BackendManager extends ChangeNotifier {
         _hasCuda = false;
         print('AG_DEBUG: CUDA not found (nvidia-smi not available)');
       }
-      // Check for AMD/ROCm
-      try {
-        final res = await Process.run('rocminfo', []);
-        _useRocm = res.exitCode == 0;
-        print('AG_DEBUG: ROCm detected: $_useRocm');
-      } catch (_) {
-        _useRocm = false;
-        print('AG_DEBUG: ROCm not found (rocminfo not available)');
+      // Check for AMD/ROCm — user preference overrides auto-detection
+      final userRocmPref = _storageService.useRocm;
+      if (userRocmPref != null) {
+        _useRocm = userRocmPref;
+        print('AG_DEBUG: ROCm set by user preference: $_useRocm');
+      } else {
+        try {
+          final res = await Process.run('rocminfo', []);
+          _useRocm = res.exitCode == 0;
+          print('AG_DEBUG: ROCm auto-detected: $_useRocm');
+        } catch (_) {
+          _useRocm = false;
+          print('AG_DEBUG: ROCm not found (rocminfo not available)');
+        }
       }
     }
     await checkBackendAvailability();

@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 
 /// Dialog shown when a new version is available.
@@ -67,6 +68,32 @@ class UpdateDialog extends StatelessWidget {
           const Text(
             'Would you like to download the update?',
             style: TextStyle(color: Colors.white, fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          const Divider(color: Colors.white12),
+          const SizedBox(height: 12),
+          const Text(
+            '☕ Enjoying Front Porch AI?',
+            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'This project is free, open source, and built with love. If you enjoy this program please consider buying me a coffee. It helps keep development going!',
+            style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => launchUrl(Uri.parse('https://ko-fi.com/sosukeaizen37411')),
+              icon: const Icon(Icons.coffee_outlined, size: 18),
+              label: const Text('Support on Ko-fi'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFFF5E5B),
+                side: const BorderSide(color: Color(0xFFFF5E5B), width: 1),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+            ),
           ),
         ],
       ),

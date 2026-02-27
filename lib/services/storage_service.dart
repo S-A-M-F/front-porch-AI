@@ -39,6 +39,7 @@ class StorageService extends ChangeNotifier {
   bool? _useCublas;
   bool? _useVulkan;
   bool? _useMetal;
+  bool? _useRocm;
   int _maxLength = 200;
   int _minLength = 0;
   bool _autostartBackend = true;
@@ -103,6 +104,7 @@ class StorageService extends ChangeNotifier {
   bool? get useCublas => _useCublas;
   bool? get useVulkan => _useVulkan;
   bool? get useMetal => _useMetal;
+  bool? get useRocm => _useRocm;
   int get maxLength => _maxLength;
   int get minLength => _minLength;
   bool get autostartBackend => _autostartBackend;
@@ -170,6 +172,7 @@ class StorageService extends ChangeNotifier {
     _useCublas = _prefs?.getBool('use_cublas');
     _useVulkan = _prefs?.getBool('use_vulkan');
     _useMetal = _prefs?.getBool('use_metal');
+    _useRocm = _prefs?.getBool('use_rocm');
     _maxLength = _prefs?.getInt('max_length') ?? _maxLength;
     _minLength = _prefs?.getInt('min_length') ?? _minLength;
     _autostartBackend = _prefs?.getBool('autostart_backend') ?? _autostartBackend;
@@ -350,6 +353,12 @@ class StorageService extends ChangeNotifier {
   Future<void> setUseMetal(bool value) async {
     _useMetal = value;
     await _prefs?.setBool('use_metal', value);
+    notifyListeners();
+  }
+
+  Future<void> setUseRocm(bool value) async {
+    _useRocm = value;
+    await _prefs?.setBool('use_rocm', value);
     notifyListeners();
   }
 

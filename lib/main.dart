@@ -189,6 +189,17 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
   @override
   void onWindowClose() async {
+    // Stop KoboldCPP backend BEFORE destroying the window.
+    // This prevents orphaned processes when the app closes.
+    try {
+      final koboldService = Provider.of<KoboldService>(context, listen: false);
+      if (koboldService.isRunning) {
+        await koboldService.stopKobold();
+      }
+    } catch (e) {
+      debugPrint('AG_DEBUG: Error stopping Kobold on window close: $e');
+    }
+
     // Run pending installer if user deferred the update
     if (UpdateService.isSupported) {
       final updateService = Provider.of<UpdateService>(context, listen: false);
