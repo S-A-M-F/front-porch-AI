@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:front_porch_ai/app_version.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
