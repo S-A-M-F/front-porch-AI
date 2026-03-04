@@ -231,7 +231,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
 
     // Anti-slop phrase banning (KoboldCpp-specific)
     if (bannedPhrases != null && bannedPhrases.isNotEmpty) {
-      payload['banned_tokens'] = bannedPhrases.join('||\$||');
+      payload['banned_tokens'] = bannedPhrases;
     }
 
     final request = http.Request('POST', uri);
@@ -347,7 +347,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
 
         // Anti-slop phrase banning (KoboldCpp-specific)
         if (bannedPhrases != null && bannedPhrases.isNotEmpty) {
-          payload['banned_tokens'] = bannedPhrases.join('||\$||');
+          payload['banned_tokens'] = bannedPhrases;
         }
         
         final body = jsonEncode(payload);
