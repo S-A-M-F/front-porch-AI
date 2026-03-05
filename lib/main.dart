@@ -15,6 +15,7 @@ import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/services/image_model_manager.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/hardware_service.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
@@ -98,6 +99,10 @@ void main(List<String> args) async {
           create: (context) => ModelManager(Provider.of<StorageService>(context, listen: false)),
           update: (context, storage, previous) => previous ?? ModelManager(storage),
         ),
+        ChangeNotifierProxyProvider<StorageService, ImageModelManager>(
+          create: (context) => ImageModelManager(Provider.of<StorageService>(context, listen: false)),
+          update: (context, storage, previous) => previous ?? ImageModelManager(storage),
+        ),
         ChangeNotifierProvider(create: (_) => OpenRouterService()),
         ChangeNotifierProxyProvider3<KoboldService, OpenRouterService, StorageService, LLMProvider>(
           create: (context) => LLMProvider(
@@ -174,8 +179,20 @@ void main(List<String> args) async {
         ),
         ChangeNotifierProvider(create: (_) => CloudSyncService()),
         ChangeNotifierProxyProvider<StorageService, ImageGenService>(
-          create: (context) => ImageGenService(Provider.of<StorageService>(context, listen: false)),
-          update: (context, storage, previous) => previous ?? ImageGenService(storage),
+          create: (context) {
+            final svc = ImageGenService(Provider.of<StorageService>(context, listen: false));
+            try {
+              svc.setKoboldService(Provider.of<KoboldService>(context, listen: false));
+            } catch (_) {} // KoboldService may not be available yet
+            return svc;
+          },
+          update: (context, storage, previous) {
+            final svc = previous ?? ImageGenService(storage);
+            try {
+              svc.setKoboldService(Provider.of<KoboldService>(context, listen: false));
+            } catch (_) {}
+            return svc;
+          },
         ),
         ChangeNotifierProxyProvider<StorageService, WebServerService>(
           create: (context) {

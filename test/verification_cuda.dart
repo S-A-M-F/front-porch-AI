@@ -170,7 +170,8 @@ class MockKoboldService extends ChangeNotifier implements KoboldService {
   @override
   List<String> get logs => [];
   @override
-  Future<void> startKobold(String executablePath, String modelPath, {int port = 5001, int gpuLayers = 0, int contextSize = 4096, bool useVulkan = false, bool useCLBlast = false, bool useCublas = false, bool useMetal = false, bool useRocm = false}) async {}
+  @override
+  Future<void> startKobold(String executablePath, String modelPath, {int port = 5001, int gpuLayers = 0, int contextSize = 4096, bool useVulkan = false, bool useCublas = false, bool useMetal = false, bool useRocm = false, String? sdModelPath}) async {}
   @override
   Future<void> stopKobold() async {}
   @override
@@ -187,6 +188,17 @@ class MockKoboldService extends ChangeNotifier implements KoboldService {
   String get backendName => 'MockKobold';
   @override
   Future<int> countTokens(String text) async => (text.length / 4).ceil();
+  @override
+  @override
+  Future<Map<String, String>> generateImage({required String prompt, String negativePrompt = 'blurry, low quality, watermark, text', int width = 512, int height = 512, int steps = 20, double cfgScale = 7.0}) async => {'status': 'error'};
+  @override
+  Future<bool> isImageGenAvailable() async => false;
+  @override
+  Future<bool> unloadModel() async => false;
+  @override
+  Future<bool> reloadModel({Duration timeout = const Duration(seconds: 60)}) async => true;
+  @override
+  Future<Map<String, String>> safeGenerateImage({required String prompt, required String vramMode, String negativePrompt = 'blurry, low quality, watermark, text', int width = 512, int height = 512, int steps = 20, double cfgScale = 7.0}) async => {'status': 'error'};
 }
 
 class MockBackendManager extends ChangeNotifier implements BackendManager {

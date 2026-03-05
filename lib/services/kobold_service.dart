@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -110,6 +111,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
     bool useCublas = false,
     bool useMetal = false,
     bool useRocm = false,
+    String? sdModelPath,
   }) async {
     if (_isRunning) return;
 
@@ -130,6 +132,11 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
       args.add('--noflashattention');  // Flash attention kernel crashes on many AMD GPUs
     }
     // Note: Metal is used automatically on macOS Apple Silicon, no flag needed
+
+    // Stable Diffusion image model
+    if (sdModelPath != null && sdModelPath.isNotEmpty && File(sdModelPath).existsSync()) {
+      args.addAll(['--sdmodel', sdModelPath]);
+    }
 
     try {
       print('AG_DEBUG: === STARTING KOBOLDCPP ===');
@@ -473,6 +480,241 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
       // Endpoint unavailable — fall back to estimate
     }
     return (text.length / 4).ceil();
+  }
+
+  /// Unload the LLM model from VRAM to free memory for image generation.
+  Future<bool> unloadModel() async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/extra/unload');
+      final client = http.Client();
+      try {
+        final response = await client.post(uri).timeout(const Duration(seconds: 15));
+        if (response.statusCode == 200) {
+          debugPrint('AG_DEBUG: LLM model unloaded from VRAM');
+          return true;
+        }
+        debugPrint('AG_DEBUG: Unload returned status ${response.statusCode}');
+        return false;
+      } finally {
+        client.close();
+      }
+    } catch (e) {
+      debugPrint('AG_DEBUG: Failed to unload model: $e');
+      return false;
+    }
+  }
+
+  /// Reload the LLM model back into VRAM after image generation.
+  /// This pings the /api/v1/model endpoint until the model responds,
+  /// triggering KoboldCpp's automatic reload.
+  Future<bool> reloadModel({Duration timeout = const Duration(seconds: 60)}) async {
+    final stopwatch = Stopwatch()..start();
+    while (stopwatch.elapsed < timeout) {
+      try {
+        final uri = Uri.parse('$_baseUrl/api/v1/model');
+        final client = http.Client();
+        try {
+          final response = await client.get(uri).timeout(const Duration(seconds: 5));
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            final result = data['result'] ?? '';
+            if (result.toString().isNotEmpty && result.toString() != 'inactive') {
+              debugPrint('AG_DEBUG: LLM model reloaded: $result');
+              return true;
+            }
+          }
+        } finally {
+          client.close();
+        }
+      } catch (_) {}
+      await Future.delayed(const Duration(seconds: 2));
+    }
+    debugPrint('AG_DEBUG: LLM reload timed out after ${timeout.inSeconds}s');
+    return false;
+  }
+
+  /// Result class for image generation with detailed status.
+  static const String genSuccess = 'success';
+  static const String genFailedOom = 'oom';
+  static const String genFailedTimeout = 'timeout';
+  static const String genFailedNoSd = 'no_sd';
+  static const String genFailedUnknown = 'error';
+
+  /// Generate an image using KoboldCpp's built-in Stable Diffusion.
+  /// Returns a result map with 'status' and optionally 'image' (base64) or 'error' (message).
+  Future<Map<String, String>> generateImage({
+    required String prompt,
+    String negativePrompt = 'blurry, low quality, watermark, text',
+    int width = 512,
+    int height = 512,
+    int steps = 20,
+    double cfgScale = 7.0,
+  }) async {
+    // 1. Check if SD API is even available
+    final sdAvailable = await isImageGenAvailable();
+    if (!sdAvailable) {
+      return {'status': genFailedNoSd, 'error': 'No Stable Diffusion model is loaded. Please select an image model in Settings and restart the backend.'};
+    }
+
+    // 2. Attempt generation
+    try {
+      final uri = Uri.parse('$_baseUrl/sdapi/v1/txt2img');
+      final payload = {
+        'prompt': prompt,
+        'negative_prompt': negativePrompt,
+        'width': width,
+        'height': height,
+        'steps': steps,
+        'cfg_scale': cfgScale,
+      };
+
+      final client = http.Client();
+      try {
+        final response = await client.post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        ).timeout(const Duration(minutes: 10)); // Generous timeout for large models
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final images = data['images'] as List<dynamic>?;
+          if (images != null && images.isNotEmpty) {
+            return {'status': genSuccess, 'image': images.first as String};
+          }
+          return {'status': genFailedUnknown, 'error': 'Server returned 200 but no images were generated.'};
+        }
+
+        // Classify error by status code and response body
+        final body = response.body.toLowerCase();
+        if (response.statusCode == 500 || response.statusCode == 507) {
+          if (body.contains('memory') || body.contains('oom') || body.contains('alloc') || body.contains('vram') || body.contains('out of')) {
+            return {'status': genFailedOom, 'error': 'Out of VRAM! The image model is too large for your GPU. Try:\n• Switch to Quality mode (unloads LLM first)\n• Use a smaller model (SD 1.5 instead of SDXL)\n• Reduce image resolution'};
+          }
+        }
+
+        return {'status': genFailedUnknown, 'error': 'Image generation failed (HTTP ${response.statusCode}): ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}'};
+      } finally {
+        client.close();
+      }
+    } on TimeoutException {
+      return {'status': genFailedTimeout, 'error': 'Image generation timed out after 10 minutes. The model may be too large for your hardware, or try reducing steps/resolution.'};
+    } catch (e) {
+      // Check if error message suggests OOM
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('memory') || errStr.contains('alloc') || errStr.contains('oom')) {
+        return {'status': genFailedOom, 'error': 'Out of memory during image generation. Try a smaller model or reduce resolution.'};
+      }
+      return {'status': genFailedUnknown, 'error': 'Image generation error: $e'};
+    }
+  }
+
+  /// High-level image generation that handles VRAM mode orchestration.
+  /// In 'quality' mode: unloads LLM → generates image → reloads LLM.
+  /// In 'quick' mode: generates directly (both models coexist).
+  /// Always ensures LLM is restored on failure in quality mode.
+  Future<Map<String, String>> safeGenerateImage({
+    required String prompt,
+    required String vramMode, // 'quick' or 'quality'
+    String negativePrompt = 'blurry, low quality, watermark, text',
+    int width = 512,
+    int height = 512,
+    int steps = 20,
+    double cfgScale = 7.0,
+  }) async {
+    if (vramMode == 'quality') {
+      // Quality mode: unload LLM first for maximum VRAM
+      debugPrint('AG_DEBUG: Quality mode — unloading LLM for image generation');
+      final unloaded = await unloadModel();
+      if (!unloaded) {
+        return {'status': genFailedUnknown, 'error': 'Failed to unload the LLM model. Cannot free VRAM for image generation.'};
+      }
+
+      // Wait a moment for VRAM to be freed
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Generate the image
+      Map<String, String> result;
+      try {
+        result = await generateImage(
+          prompt: prompt,
+          negativePrompt: negativePrompt,
+          width: width,
+          height: height,
+          steps: steps,
+          cfgScale: cfgScale,
+        );
+      } catch (e) {
+        result = {'status': genFailedUnknown, 'error': 'Unexpected error: $e'};
+      }
+
+      // ALWAYS reload the LLM — this is the critical recovery step
+      debugPrint('AG_DEBUG: Quality mode — reloading LLM after image generation');
+      final reloaded = await reloadModel();
+      if (!reloaded) {
+        // Append a warning to the result
+        final existingError = result['error'] ?? '';
+        result['error'] = '${existingError}\n⚠️ Warning: The LLM model failed to reload automatically. You may need to restart the backend from Settings.'.trim();
+      }
+
+      return result;
+    } else {
+      // Quick mode: generate directly, both models in VRAM
+      return await generateImage(
+        prompt: prompt,
+        negativePrompt: negativePrompt,
+        width: width,
+        height: height,
+        steps: steps,
+        cfgScale: cfgScale,
+      );
+    }
+  }
+
+  /// Estimate whether the current VRAM can handle an SD model of the given file size.
+  /// Returns a warning message if VRAM may be insufficient, or null if OK.
+  static String? estimateVramWarning({
+    required int modelFileSizeMb,
+    required int totalVramMb,
+    required String vramMode,
+    int llmVramEstimateMb = 2048, // Rough estimate of LLM VRAM usage
+  }) {
+    if (totalVramMb <= 0) return null; // Can't estimate without VRAM info
+
+    // SD models need roughly 1.5x–2x their file size in VRAM when loaded
+    final sdVramEstimate = (modelFileSizeMb * 1.8).round();
+
+    if (vramMode == 'quick') {
+      // Both models must fit
+      final totalNeeded = sdVramEstimate + llmVramEstimateMb;
+      if (totalNeeded > totalVramMb) {
+        return 'This image model (~${sdVramEstimate}MB) may not fit alongside your LLM (~${llmVramEstimateMb}MB) in ${totalVramMb}MB VRAM.\n'
+               'Consider switching to Quality mode, which unloads the LLM during generation.';
+      }
+    } else {
+      // Quality mode: only SD model needs to fit
+      if (sdVramEstimate > totalVramMb) {
+        return 'This image model (~${sdVramEstimate}MB) may exceed your ${totalVramMb}MB VRAM even with the LLM unloaded.\n'
+               'Try a smaller model (e.g. SD 1.5 at ~2GB) or reduce resolution.';
+      }
+    }
+    return null;
+  }
+
+  /// Check if the SD image model is loaded and available.
+  Future<bool> isImageGenAvailable() async {
+    try {
+      final uri = Uri.parse('$_baseUrl/sdapi/v1/options');
+      final client = http.Client();
+      try {
+        final response = await client.get(uri).timeout(const Duration(seconds: 3));
+        return response.statusCode == 200;
+      } finally {
+        client.close();
+      }
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> stopKobold() async {

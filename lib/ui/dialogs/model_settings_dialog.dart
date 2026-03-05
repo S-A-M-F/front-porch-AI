@@ -148,6 +148,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         useCublas: _useCublas,
         useMetal: _useMetal,
         useRocm: _useRocm,
+        sdModelPath: storage.imageGenEnabled ? storage.imageGenModel : null,
       );
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Restarting backend with new settings...')));

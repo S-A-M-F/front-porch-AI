@@ -31,6 +31,8 @@ import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/image_gen_settings_dialog.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/services/image_model_manager.dart';
+import 'package:front_porch_ai/services/sd_model_profile.dart';
 import 'package:front_porch_ai/services/web_server_service.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -396,6 +398,7 @@ class _SettingsPageState extends State<SettingsPage> {
         useCublas: _useCublas,
         useMetal: _useMetal,
         useRocm: _useRocm,
+        sdModelPath: Provider.of<StorageService>(context, listen: false).imageGenEnabled ? Provider.of<StorageService>(context, listen: false).imageGenModel : null,
       );
     }
   }
@@ -797,110 +800,171 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  // Voice call model selector
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Voice Call Model', style: theme.textTheme.bodySmall),
-                      const SizedBox(height: 4),
-                      if (_availableModels.isNotEmpty)
-                        DropdownButtonFormField<String>(
-                          value: storageService.callModelName.isEmpty
-                              ? ''
-                              : (_availableModels.any((m) => m.id == storageService.callModelName)
-                                  ? storageService.callModelName
-                                  : ''),
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: theme.scaffoldBackgroundColor,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                          items: [
-                            const DropdownMenuItem<String>(
-                              value: '',
-                              child: Text('Same as main model', style: TextStyle(color: Colors.white38, fontSize: 13)),
-                            ),
-                            ..._availableModels.map((m) => DropdownMenuItem<String>(
-                              value: m.id,
-                              child: Text(
-                                m.name.length > 45 ? '${m.name.substring(0, 42)}...' : m.name,
-                                style: const TextStyle(fontSize: 13),
-                                overflow: TextOverflow.ellipsis,
+                  // Voice call model selector — backend-aware
+                  Builder(builder: (context) {
+                    final isLocal = llmProvider.activeBackend == BackendType.kobold;
+                    // Build a unified list of model entries: {id, name}
+                    final List<Map<String, String>> callModels;
+                    if (isLocal) {
+                      // Use local GGUF models from ModelManager
+                      callModels = modelManager.models.map((f) {
+                        final basename = f.path.split('/').last.split('\\').last;
+                        final displayName = basename.replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '');
+                        return {'id': f.path, 'name': displayName};
+                      }).toList();
+                    } else {
+                      // Use remote API models
+                      callModels = _availableModels.map((m) => {'id': m.id, 'name': m.name}).toList();
+                    }
+
+                    // Recommend small/fast models for voice calls
+                    final recommended = callModels.where((m) {
+                      final lower = m['name']!.toLowerCase();
+                      return lower.contains('mini') ||
+                          lower.contains('tiny') ||
+                          lower.contains('1b') ||
+                          lower.contains('3b') ||
+                          lower.contains('4b') ||
+                          lower.contains('flash') ||
+                          lower.contains('haiku') ||
+                          lower.contains('nano') ||
+                          lower.contains('small');
+                    }).take(8).toList();
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text('Voice Call Model', style: theme.textTheme.bodySmall),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isLocal
+                                    ? Colors.orangeAccent.withValues(alpha: 0.15)
+                                    : Colors.blueAccent.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
                               ),
-                            )),
+                              child: Text(
+                                isLocal ? 'Local' : 'API',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: isLocal ? Colors.orangeAccent : Colors.blueAccent,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                           ],
-                          onChanged: (val) {
-                            if (val != null) storageService.setCallModelName(val);
-                          },
-                        )
-                      else
-                        // Fallback text field if no models fetched yet
-                        TextFormField(
-                          initialValue: storageService.callModelName,
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: theme.scaffoldBackgroundColor,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            hintText: 'Enter model ID or configure API first',
-                            hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
-                          ),
-                          style: const TextStyle(fontSize: 13),
-                          onChanged: (val) => storageService.setCallModelName(val.trim()),
                         ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '💡 Use a smaller, faster model for voice calls.\n'
-                        'Reasoning/thinking models add latency — not recommended.',
-                        style: TextStyle(fontSize: 11, color: Colors.white38),
-                      ),
-                      // Quick-pick chips for recommended fast models
-                      if (_availableModels.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text('Recommended:', style: TextStyle(fontSize: 10, color: Colors.white24)),
                         const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: _availableModels
-                              .where((m) {
-                                final id = m.id.toLowerCase();
-                                return id.contains('mini') ||
-                                    id.contains('3b') ||
-                                    id.contains('4b') ||
-                                    id.contains('1b') ||
-                                    id.contains('flash') ||
-                                    id.contains('haiku') ||
-                                    id.contains('nano');
-                              })
-                              .take(8)
-                              .map((m) => ActionChip(
+                        if (callModels.isNotEmpty)
+                          DropdownButtonFormField<String>(
+                            value: storageService.callModelName.isEmpty
+                                ? ''
+                                : (callModels.any((m) => m['id'] == storageService.callModelName)
+                                    ? storageService.callModelName
+                                    : ''),
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: theme.scaffoldBackgroundColor,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            ),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: '',
+                                child: Text('Same as main model', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                              ),
+                              ...callModels.map((m) {
+                                final name = m['name']!;
+                                final isRec = recommended.any((r) => r['id'] == m['id']);
+                                return DropdownMenuItem<String>(
+                                  value: m['id'],
+                                  child: Row(
+                                    children: [
+                                      if (isRec) ...[
+                                        const Icon(Icons.star, size: 12, color: Colors.amber),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          name.length > 45 ? '${name.substring(0, 42)}...' : name,
+                                          style: const TextStyle(fontSize: 13),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) storageService.setCallModelName(val);
+                            },
+                          )
+                        else
+                          // Fallback text field if no models available
+                          TextFormField(
+                            initialValue: storageService.callModelName,
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: theme.scaffoldBackgroundColor,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              hintText: isLocal
+                                  ? 'No local models found — add models in Model Manager'
+                                  : 'Enter model ID or configure API first',
+                              hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                            onChanged: (val) => storageService.setCallModelName(val.trim()),
+                          ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '💡 Use a smaller, faster model for voice calls.\n'
+                          'Reasoning/thinking models add latency — not recommended.',
+                          style: TextStyle(fontSize: 11, color: Colors.white38),
+                        ),
+                        // Quick-pick chips for recommended fast models
+                        if (recommended.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text('⭐ Recommended for voice calls:', style: TextStyle(fontSize: 10, color: Colors.white24)),
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: recommended
+                                .map((m) {
+                                  final name = m['name']!;
+                                  final id = m['id']!;
+                                  final isSelected = storageService.callModelName == id;
+                                  return ActionChip(
                                     label: Text(
-                                      m.name.length > 30 ? '${m.name.substring(0, 27)}...' : m.name,
+                                      name.length > 30 ? '${name.substring(0, 27)}...' : name,
                                       style: TextStyle(
                                         fontSize: 10,
-                                        color: storageService.callModelName == m.id
-                                            ? Colors.greenAccent
-                                            : Colors.white54,
+                                        color: isSelected ? Colors.greenAccent : Colors.white54,
                                       ),
                                     ),
-                                    backgroundColor: storageService.callModelName == m.id
+                                    backgroundColor: isSelected
                                         ? Colors.greenAccent.withValues(alpha: 0.15)
                                         : Colors.white.withValues(alpha: 0.05),
                                     side: BorderSide(
-                                      color: storageService.callModelName == m.id
+                                      color: isSelected
                                           ? Colors.greenAccent.withValues(alpha: 0.4)
                                           : Colors.white12,
                                     ),
-                                    onPressed: () => storageService.setCallModelName(m.id),
-                                  ))
-                              .toList(),
-                        ),
+                                    onPressed: () => storageService.setCallModelName(id),
+                                  );
+                                })
+                                .toList(),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
+                    );
+                  }),
                   const SizedBox(height: 12),
                   // Voice buffer size slider
                   Column(
@@ -1014,43 +1078,264 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 8),
           Consumer<StorageService>(
             builder: (context, storage, _) {
+              final llmProvider = Provider.of<LLMProvider>(context);
+              final isLocal = llmProvider.isLocal;
+              final imageModelManager = Provider.of<ImageModelManager>(context);
+
               return Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: theme.cardColor,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.auto_awesome, color: Colors.purpleAccent, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('AI Image Generation', style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text(
-                            storage.imageGenEnabled
-                                ? 'Enabled — Model: ${storage.imageGenModel.isEmpty ? "Not set" : storage.imageGenModel}'
-                                : 'Disabled',
-                            style: const TextStyle(fontSize: 12, color: Colors.white54),
+                    // Header row with enable toggle
+                    Row(
+                      children: [
+                        Icon(
+                          storage.imageGenEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
+                          color: storage.imageGenEnabled ? Colors.tealAccent : Colors.white38,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isLocal ? 'Local Image Generation (KoboldCpp SD)' : 'AI Image Generation',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                storage.imageGenEnabled
+                                    ? isLocal
+                                        ? 'Enabled — ${storage.imageGenModel.isEmpty ? "No model selected" : storage.imageGenModel.split(Platform.pathSeparator).last}'
+                                        : 'Enabled — Model: ${storage.imageGenModel.isEmpty ? "Not set" : storage.imageGenModel}'
+                                    : 'Disabled',
+                                style: const TextStyle(fontSize: 12, color: Colors.white54),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        Switch(
+                          value: storage.imageGenEnabled,
+                          onChanged: (val) => storage.setImageGenEnabled(val),
+                          activeTrackColor: Colors.tealAccent,
+                        ),
+                      ],
                     ),
-                    ElevatedButton.icon(
-                      onPressed: () => showDialog(
-                        context: context,
-                        builder: (_) => const ImageGenSettingsDialog(),
-                      ),
-                      icon: const Icon(Icons.settings, size: 16),
-                      label: const Text('Configure'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.purpleAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
+
+                    if (storage.imageGenEnabled) ...[
+                      const Divider(color: Colors.white10),
+                      const SizedBox(height: 8),
+
+                      if (isLocal) ...[
+                        // Local SD Model selector
+                        const Text('Image Model', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF374151),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: imageModelManager.models.isEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.info_outline, size: 16, color: Colors.white38),
+                                      const SizedBox(width: 8),
+                                      const Expanded(
+                                        child: Text('No image models found. Go to Model Manager → Image Models to download one.',
+                                            style: TextStyle(color: Colors.white38, fontSize: 12)),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: imageModelManager.models.any((m) => m.path == storage.imageGenModel)
+                                        ? storage.imageGenModel
+                                        : null,
+                                    isExpanded: true,
+                                    dropdownColor: const Color(0xFF374151),
+                                    style: const TextStyle(color: Colors.white),
+                                    hint: const Text('Select an image model...', style: TextStyle(color: Colors.white38)),
+                                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
+                                    items: imageModelManager.models.map((file) {
+                                      final name = file.path.split(Platform.pathSeparator).last;
+                                      return DropdownMenuItem(
+                                        value: file.path,
+                                        child: Text(name, overflow: TextOverflow.ellipsis),
+                                      );
+                                    }).toList(),
+                                    onChanged: (val) {
+                                      if (val != null) storage.setImageGenModel(val);
+                                    },
+                                  ),
+                                ),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Architecture detection badge
+                        Builder(
+                          builder: (context) {
+                            if (storage.imageGenModel.isEmpty) return const SizedBox.shrink();
+                          final profile = SdModelProfile.fromPath(storage.imageGenModel);
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.blueAccent.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.blueAccent.withOpacity(0.2)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blueAccent.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      profile.label,
+                                      style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${profile.nativeWidth}×${profile.nativeHeight} • ${profile.defaultSteps} steps • ${profile.promptTip}',
+                                      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10),
+                                      maxLines: 2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        const Text('VRAM Mode', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildModeChip(
+                                label: '⚡ Quick',
+                                subtitle: 'SD 1.5 — Both models in VRAM',
+                                isSelected: storage.imageGenMode == 'quick',
+                                onTap: () => storage.setImageGenMode('quick'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildModeChip(
+                                label: '✨ Quality',
+                                subtitle: 'SDXL/Flux — VRAM swap',
+                                isSelected: storage.imageGenMode == 'quality',
+                                onTap: () => storage.setImageGenMode('quality'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          storage.imageGenMode == 'quality'
+                              ? 'Quality mode unloads the LLM during image gen for maximum VRAM. Chat model will briefly reload after.'
+                              : 'Quick mode keeps both models in VRAM. Best for small image models (SD 1.5).',
+                          style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // VRAM Warning Banner
+                        Builder(
+                          builder: (context) {
+                            if (storage.imageGenModel.isEmpty) return const SizedBox.shrink();
+                            final hwService = Provider.of<HardwareService>(context);
+                            final hw = hwService.hardwareInfo;
+                            if (hw == null || hw.vramMb <= 0) return const SizedBox.shrink();
+                            
+                            // Get model file size
+                            int modelSizeMb = 0;
+                            try {
+                              final file = File(storage.imageGenModel);
+                              if (file.existsSync()) {
+                                modelSizeMb = (file.lengthSync() / (1024 * 1024)).round();
+                              }
+                            } catch (_) {}
+                            if (modelSizeMb <= 0) return const SizedBox.shrink();
+
+                            final warning = KoboldService.estimateVramWarning(
+                              modelFileSizeMb: modelSizeMb,
+                              totalVramMb: hw.vramMb,
+                              vramMode: storage.imageGenMode,
+                            );
+                            if (warning == null) return const SizedBox.shrink();
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.amberAccent.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.amberAccent.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 18),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      warning,
+                                      style: const TextStyle(color: Colors.amberAccent, fontSize: 11, height: 1.4),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+
+                        // Negative prompt
+                        const Text('Default Negative Prompt', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        TextFormField(
+                          key: ValueKey(storage.imageGenNegativePrompt.hashCode),
+                          initialValue: storage.imageGenNegativePrompt,
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: const Color(0xFF374151),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          onChanged: (val) => storage.setImageGenNegativePrompt(val),
+                        ),
+                      ] else ...[
+                        // Remote API image gen — keep existing behavior
+                        Center(
+                          child: ElevatedButton.icon(
+                            onPressed: () => showDialog(
+                              context: context,
+                              builder: (_) => const ImageGenSettingsDialog(),
+                            ),
+                            icon: const Icon(Icons.settings, size: 16),
+                            label: const Text('Configure API Image Gen'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.purpleAccent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ],
                 ),
               );
@@ -1953,7 +2238,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 24),
             _buildStopSequencesSection(context),
-            if (llmProvider.isLocal) ...[
+            if (Provider.of<LLMProvider>(context).isLocal) ...[
             const SizedBox(height: 24),
             _buildBannedPhrasesSection(context),
             ],
@@ -2010,6 +2295,48 @@ class _SettingsPageState extends State<SettingsPage> {
         fontSize: 18,
         fontWeight: FontWeight.bold,
         color: Colors.blueAccent,
+      ),
+    );
+  }
+
+  Widget _buildModeChip({
+    required String label,
+    required String subtitle,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.tealAccent.withOpacity(0.12) : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? Colors.tealAccent : Colors.white12,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.tealAccent : Colors.white70,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                color: isSelected ? Colors.tealAccent.withOpacity(0.6) : Colors.white30,
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

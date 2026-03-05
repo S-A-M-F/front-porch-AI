@@ -23,6 +23,7 @@ class StorageService extends ChangeNotifier {
       : Directory(path.join(_rootPath ?? '', 'models'));
   Directory get chatsDir => Directory(path.join(_rootPath ?? '', 'chats'));
   Directory get worldsDir => Directory(path.join(_rootPath ?? '', 'worlds'));
+  Directory get imageModelsDir => Directory(path.join(_rootPath ?? '', 'image_models'));
   Directory get charactersDir => Directory(path.join(_rootPath ?? '', 'KoboldManager', 'Characters'));
 
   // Settings
@@ -108,6 +109,8 @@ class StorageService extends ChangeNotifier {
   String _imageGenSize = '1024x1024';
   String _imageGenNegativePrompt = 'blurry, low quality, watermark, text';
   String _imageGenStyle = 'photorealistic';
+  String _imageGenMode = 'quick'; // 'quick' (coexist) or 'quality' (VRAM swap)
+  String _civitaiApiKey = ''; // CivitAI API key for model downloads
 
   // Web server settings
   bool _webServerEnabled = false;
@@ -191,6 +194,8 @@ class StorageService extends ChangeNotifier {
   String get imageGenSize => _imageGenSize;
   String get imageGenNegativePrompt => _imageGenNegativePrompt;
   String get imageGenStyle => _imageGenStyle;
+  String get imageGenMode => _imageGenMode;
+  String get civitaiApiKey => _civitaiApiKey;
   bool get webServerEnabled => _webServerEnabled;
   int get webServerPort => _webServerPort;
   String get webServerPin => _webServerPin;
@@ -303,6 +308,8 @@ class StorageService extends ChangeNotifier {
     _imageGenSize = _prefs?.getString('image_gen_size') ?? '1024x1024';
     _imageGenNegativePrompt = _prefs?.getString('image_gen_negative_prompt') ?? 'blurry, low quality, watermark, text';
     _imageGenStyle = _prefs?.getString('image_gen_style') ?? 'photorealistic';
+    _imageGenMode = _prefs?.getString('image_gen_mode') ?? 'quick';
+    _civitaiApiKey = _prefs?.getString('civitai_api_key') ?? '';
 
     // Web server settings
     _webServerEnabled = _prefs?.getBool('web_server_enabled') ?? false;
@@ -831,6 +838,18 @@ class StorageService extends ChangeNotifier {
   Future<void> setImageGenStyle(String value) async {
     _imageGenStyle = value;
     await _prefs?.setString('image_gen_style', value);
+    notifyListeners();
+  }
+
+  Future<void> setImageGenMode(String value) async {
+    _imageGenMode = value;
+    await _prefs?.setString('image_gen_mode', value);
+    notifyListeners();
+  }
+
+  Future<void> setCivitaiApiKey(String value) async {
+    _civitaiApiKey = value;
+    await _prefs?.setString('civitai_api_key', value);
     notifyListeners();
   }
 
