@@ -23,6 +23,7 @@ import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/backup_service.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
@@ -236,12 +237,21 @@ class _SettingsPageState extends State<SettingsPage> {
         await Provider.of<StorageService>(context, listen: false).setRootPath(selectedDirectory);
         // Reopen the database from the new location
         final newDb = await AppDatabase.instance();
-        // Update downstream services that hold a DB reference
-        Provider.of<CharacterRepository>(context, listen: false).updateDatabase(newDb);
-        await Provider.of<CharacterRepository>(context, listen: false).loadCharacters();
-        // Refresh backend/models after path change
-         Provider.of<BackendManager>(context, listen: false).checkBackendAvailability();
-         Provider.of<ModelManager>(context, listen: false).refreshModels();
+        // Update ALL downstream services that hold a DB reference
+        if (mounted) {
+          Provider.of<CharacterRepository>(context, listen: false).updateDatabase(newDb);
+          Provider.of<FolderService>(context, listen: false).updateDatabase(newDb);
+          Provider.of<UserPersonaService>(context, listen: false).updateDatabase(newDb);
+          Provider.of<GroupChatRepository>(context, listen: false).updateDatabase(newDb);
+          Provider.of<WorldRepository>(context, listen: false).updateDatabase(newDb);
+          Provider.of<ChatService>(context, listen: false).updateDatabase(newDb);
+          // Reload data from the new DB location
+          await Provider.of<CharacterRepository>(context, listen: false).loadCharacters();
+          await Provider.of<FolderService>(context, listen: false).reload();
+          // Refresh backend/models after path change
+          Provider.of<BackendManager>(context, listen: false).checkBackendAvailability();
+          Provider.of<ModelManager>(context, listen: false).refreshModels();
+        }
       }
     }
   }

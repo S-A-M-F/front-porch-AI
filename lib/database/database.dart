@@ -511,9 +511,14 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<bool> updateCharacter(CharactersCompanion character) async {
-    final result = await update(characters).replace(character);
+    // IMPORTANT: Use .write() not .replace() — .replace() overwrites the entire
+    // row, wiping any fields not explicitly set (Value.absent → null/default).
+    // .write() only updates fields where Value.present is true.
+    final rows = await (update(characters)
+      ..where((c) => c.id.equals(character.id.value)))
+      .write(character);
     await bumpSyncVersion();
-    return result;
+    return rows > 0;
   }
 
   /// Update ONLY the imagePath for a character (preserves all other data).
