@@ -39,6 +39,21 @@ import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+
+  // Intercept SIGINT (Ctrl+C) and SIGTERM on Linux/macOS to prevent
+  // the Flutter engine from doing an unclean teardown that triggers:
+  //   "FlutterEngineRemoveView returned kInvalidArguments"
+  //   "Segmentation fault (core dumped)"
+  if (!Platform.isWindows) {
+    ProcessSignal.sigint.watch().listen((_) {
+      debugPrint('Caught SIGINT — exiting immediately.');
+      exit(0);
+    });
+    ProcessSignal.sigterm.watch().listen((_) {
+      debugPrint('Caught SIGTERM — exiting immediately.');
+      exit(0);
+    });
+  }
   
   // Initialize database
   final db = await AppDatabase.instance();
@@ -213,7 +228,15 @@ class _MyAppState extends State<MyApp> with WindowListener {
         await updateService.installOnClose();
       }
     }
-    await windowManager.destroy();
+    // On Linux, windowManager.destroy() triggers a Flutter engine bug:
+    //   "FlutterEngineRemoveView returned kInvalidArguments"
+    //   "Segmentation fault (core dumped)"
+    // Workaround: exit(0) after cleanup to bypass the buggy view teardown.
+    if (Platform.isLinux) {
+      exit(0);
+    } else {
+      await windowManager.destroy();
+    }
   }
 
   @override

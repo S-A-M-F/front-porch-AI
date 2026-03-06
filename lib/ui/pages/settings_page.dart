@@ -609,7 +609,7 @@ class _SettingsPageState extends State<SettingsPage> {
                      child: Column(
                        crossAxisAlignment: CrossAxisAlignment.start,
                        children: [
-                         Text('Installation Directory', style: theme.textTheme.bodySmall),
+                         Text('Data Directory', style: theme.textTheme.bodySmall),
                          Text(
                            storageService.rootPath ?? 'Not set',
                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -620,7 +620,7 @@ class _SettingsPageState extends State<SettingsPage> {
                    IconButton(
                      icon: Icon(Icons.edit, color: theme.iconTheme.color),
                      onPressed: _pickStoragePath,
-                     tooltip: 'Change Install Location',
+                     tooltip: 'Change Data Directory',
                    ),
                  ],
                ),

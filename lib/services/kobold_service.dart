@@ -62,10 +62,12 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver, WindowLi
 
   @override
   void onWindowClose() async {
+    // Only stop the backend — window destruction is handled by _MyAppState.
+    // Calling windowManager.destroy() here caused a double-destroy race that
+    // triggered "FlutterEngineRemoveView kInvalidArguments" and a segfault.
     bool isPreventClose = await windowManager.isPreventClose();
     if (isPreventClose) {
       await stopKobold();
-      await windowManager.destroy();
     }
   }
 
