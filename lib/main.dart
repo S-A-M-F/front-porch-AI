@@ -50,14 +50,12 @@ void main(List<String> args) async {
   //   "FlutterEngineRemoveView returned kInvalidArguments"
   //   "Segmentation fault (core dumped)"
   if (!Platform.isWindows) {
-    ProcessSignal.sigint.watch().listen((_) async {
-      debugPrint('Caught SIGINT — shutting down gracefully...');
-      await windowManager.destroy();
+    ProcessSignal.sigint.watch().listen((_) {
+      debugPrint('Caught SIGINT — exiting immediately.');
       exit(0);
     });
-    ProcessSignal.sigterm.watch().listen((_) async {
-      debugPrint('Caught SIGTERM — shutting down gracefully...');
-      await windowManager.destroy();
+    ProcessSignal.sigterm.watch().listen((_) {
+      debugPrint('Caught SIGTERM — exiting immediately.');
       exit(0);
     });
   }
@@ -309,7 +307,15 @@ class _MyAppState extends State<MyApp> with WindowListener {
       debugPrint('AG_DEBUG: Error stopping web server on close: $e');
     }
 
-    await windowManager.destroy();
+    // On Linux, windowManager.destroy() triggers a Flutter engine bug:
+    //   "FlutterEngineRemoveView returned kInvalidArguments"
+    //   "Segmentation fault (core dumped)"
+    // Workaround: exit(0) after cleanup to bypass the buggy view teardown.
+    if (Platform.isLinux) {
+      exit(0);
+    } else {
+      await windowManager.destroy();
+    }
   }
 
   @override
