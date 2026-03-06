@@ -6,8 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
-import 'package:front_porch_ai/services/kobold_service.dart';
-import 'package:front_porch_ai/services/sd_model_profile.dart';
 
 /// Available image generation modes.
 enum ImageGenMode {
@@ -38,7 +36,6 @@ class ImageModelInfo {
 /// (OpenRouter, Nano-GPT, or any OpenAI-compatible endpoint).
 class ImageGenService extends ChangeNotifier {
   final StorageService _storage;
-  KoboldService? _koboldService;
 
   bool _isGenerating = false;
   String _statusMessage = '';
@@ -51,33 +48,13 @@ class ImageGenService extends ChangeNotifier {
   String? get lastSavedPath => _lastSavedPath;
 
   /// Whether image gen is configured and ready to use.
-  /// For local backends: needs imageGenEnabled + a local SD model.
-  /// For remote backends: needs imageGenEnabled + API key + model.
+  /// Needs imageGenEnabled + API key + remote image model.
   bool get isConfigured {
     if (!_storage.imageGenEnabled) return false;
-    if (_isLocalSdAvailable) return true;
     return _storage.remoteApiKey.isNotEmpty && _storage.imageGenModel.isNotEmpty;
   }
 
-  /// Whether local KoboldCpp SD is available.
-  bool get _isLocalSdAvailable =>
-      _koboldService != null &&
-      _koboldService!.isRunning &&
-      _storage.imageGenModel.isNotEmpty &&
-      _storage.imageGenModel.contains(Platform.pathSeparator); // Local paths have separators
-
-  /// Get the auto-detected profile for the current local SD model.
-  SdModelProfile? get localModelProfile {
-    if (!_isLocalSdAvailable) return null;
-    return SdModelProfile.fromPath(_storage.imageGenModel);
-  }
-
   ImageGenService(this._storage);
-
-  /// Wire KoboldService for local image generation routing.
-  void setKoboldService(KoboldService service) {
-    _koboldService = service;
-  }
 
   /// Build the images directory path.
   Directory get _imagesDir => Directory(
@@ -85,9 +62,7 @@ class ImageGenService extends ChangeNotifier {
 
   /// Generate an image from a prompt.
   ///
-  /// Automatically routes to local KoboldCpp SD or remote API based on config.
-  /// For local generation, uses SdModelProfile to apply architecture-aware
-  /// defaults (resolution, steps, CFG scale, prompt style).
+  /// Routes to the configured remote API (OpenRouter, Nano-GPT, etc.).
   ///
   /// Returns the image bytes on success, or null on failure.
   Future<Uint8List?> generateImage({
@@ -106,53 +81,42 @@ class ImageGenService extends ChangeNotifier {
     try {
       Uint8List imageBytes;
 
-      // ── Route 1: Local KoboldCpp SD ──
-      if (_isLocalSdAvailable) {
-        imageBytes = await _generateViaLocalKobold(
+      if (_storage.remoteApiKey.isEmpty) {
+        _statusMessage = 'No API key configured.';
+        _isGenerating = false;
+        notifyListeners();
+        return null;
+      }
+
+      final imageModel = model ?? _storage.imageGenModel;
+      if (imageModel.isEmpty) {
+        _statusMessage = 'No image model selected.';
+        _isGenerating = false;
+        notifyListeners();
+        return null;
+      }
+
+      final imageSize = size ?? _storage.imageGenSize;
+      final apiUrl = _storage.remoteApiUrl;
+      final apiKey = _storage.remoteApiKey;
+
+      if (_isOpenRouterStyle(apiUrl)) {
+        imageBytes = await _generateViaOpenRouter(
+          apiUrl: apiUrl,
+          apiKey: apiKey,
+          model: imageModel,
+          prompt: prompt,
+          size: imageSize,
+        );
+      } else {
+        imageBytes = await _generateViaOpenAICompat(
+          apiUrl: apiUrl,
+          apiKey: apiKey,
+          model: imageModel,
           prompt: prompt,
           negativePrompt: negativePrompt,
-          isPortrait: isPortrait,
+          size: imageSize,
         );
-      }
-      // ── Route 2: Remote API ──
-      else {
-        if (_storage.remoteApiKey.isEmpty) {
-          _statusMessage = 'No API key configured.';
-          _isGenerating = false;
-          notifyListeners();
-          return null;
-        }
-
-        final imageModel = model ?? _storage.imageGenModel;
-        if (imageModel.isEmpty) {
-          _statusMessage = 'No image model selected.';
-          _isGenerating = false;
-          notifyListeners();
-          return null;
-        }
-
-        final imageSize = size ?? _storage.imageGenSize;
-        final apiUrl = _storage.remoteApiUrl;
-        final apiKey = _storage.remoteApiKey;
-
-        if (_isOpenRouterStyle(apiUrl)) {
-          imageBytes = await _generateViaOpenRouter(
-            apiUrl: apiUrl,
-            apiKey: apiKey,
-            model: imageModel,
-            prompt: prompt,
-            size: imageSize,
-          );
-        } else {
-          imageBytes = await _generateViaOpenAICompat(
-            apiUrl: apiUrl,
-            apiKey: apiKey,
-            model: imageModel,
-            prompt: prompt,
-            negativePrompt: negativePrompt,
-            size: imageSize,
-          );
-        }
       }
 
       _lastGeneratedImage = imageBytes;
@@ -169,54 +133,6 @@ class ImageGenService extends ChangeNotifier {
     }
   }
 
-  /// Generate an image via local KoboldCpp Stable Diffusion.
-  /// Uses SdModelProfile to apply architecture-aware defaults.
-  Future<Uint8List> _generateViaLocalKobold({
-    required String prompt,
-    String negativePrompt = '',
-    bool isPortrait = false,
-  }) async {
-    final kobold = _koboldService!;
-    final profile = SdModelProfile.fromPath(_storage.imageGenModel);
-
-    debugPrint('ImageGen: Local KoboldCpp SD — detected ${profile.label} (${profile.architecture})');
-
-    // Adapt prompt for this model architecture
-    final adaptedPrompt = profile.adaptPrompt(prompt);
-
-    // Choose resolution based on model + portrait mode
-    final (:width, :height) = isPortrait ? profile.portraitSize : profile.squareSize;
-
-    // Use architecture-specific defaults
-    final negPrompt = negativePrompt.isNotEmpty
-        ? negativePrompt
-        : _storage.imageGenNegativePrompt.isNotEmpty
-            ? _storage.imageGenNegativePrompt
-            : 'blurry, low quality, watermark, text';
-
-    _statusMessage = 'Generating with ${profile.label} (${width}×$height)...';
-    notifyListeners();
-
-    final result = await kobold.safeGenerateImage(
-      prompt: adaptedPrompt,
-      vramMode: _storage.imageGenMode,
-      negativePrompt: negPrompt,
-      width: width,
-      height: height,
-      steps: profile.defaultSteps,
-      cfgScale: profile.defaultCfgScale,
-    );
-
-    if (result['status'] == KoboldService.genSuccess && result['image'] != null) {
-      return base64Decode(result['image']!);
-    }
-
-    // Generation failed — throw with the detailed error message
-    final error = result['error'] ?? 'Unknown error';
-    _statusMessage = error;
-    notifyListeners();
-    throw Exception(error);
-  }
 
   /// Save the last generated image to disk.
   ///

@@ -75,7 +75,6 @@ class SetupService extends ChangeNotifier {
           useCublas: _storageService.useCublas ?? false,
           useMetal: _storageService.useMetal ?? false,
           useRocm: _storageService.useRocm ?? false,
-          sdModelPath: _storageService.imageGenEnabled ? _storageService.imageGenModel : null,
         );
       }
 

@@ -315,7 +315,6 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         useCublas: storage.useCublas ?? false,
         useMetal: storage.useMetal ?? false,
         useRocm: storage.useRocm ?? false,
-        sdModelPath: storage.imageGenEnabled ? storage.imageGenModel : null,
       );
 
       // Save as last used model

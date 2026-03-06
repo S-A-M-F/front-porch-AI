@@ -289,7 +289,7 @@ class CharacterRepository extends ChangeNotifier {
       // Auto-create a linked world if the card has a lorebook
       if (card.lorebook != null && card.lorebook!.entries.isNotEmpty && worldRepo != null) {
         final world = world_model.World(
-          name: "${card.name}'s Lorebook",
+          name: "${card.name}'s world lore",
           description: 'Auto-imported from character card: ${card.name}',
           lorebook: Lorebook(entries: List.from(card.lorebook!.entries)),
           linkedCharacterName: card.name,

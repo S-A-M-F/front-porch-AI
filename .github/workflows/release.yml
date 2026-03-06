@@ -269,6 +269,7 @@ jobs:
           Icon=front_porch_ai
           Type=Application
           Categories=Utility;
+          Comment=A chilled out frontend for KoboldCPP
           EOF
           
           # Icon management
@@ -299,10 +300,18 @@ jobs:
           # Symlink to /usr/bin
           ln -s /opt/front-porch-ai/front_porch_ai deb/usr/bin/front-porch-ai
           
-          # Copy desktop file and icon
-          cp AppDir/front_porch_ai.desktop deb/usr/share/applications/
+          # Create a .desktop file for the deb that uses the correct symlink name
+          cat <<EOF > deb/usr/share/applications/front-porch-ai.desktop
+          [Desktop Entry]
+          Name=Front Porch AI
+          Exec=front-porch-ai
+          Icon=front-porch-ai
+          Type=Application
+          Categories=Utility;
+          Comment=A chilled out frontend for KoboldCPP
+          EOF
           mkdir -p deb/usr/share/pixmaps
-          cp AppDir/front_porch_ai.png deb/usr/share/pixmaps/
+          cp AppDir/front_porch_ai.png deb/usr/share/pixmaps/front-porch-ai.png
           
           cat <<EOF > deb/DEBIAN/control
           Package: front-porch-ai
@@ -313,6 +322,18 @@ jobs:
           Maintainer: Front Porch AI Team
           Description: A chilled out frontend for KoboldCPP.
           EOF
+          
+          # Post-install script: refresh desktop database so shortcut appears
+          cat <<'EOF' > deb/DEBIAN/postinst
+          #!/bin/sh
+          if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database /usr/share/applications 2>/dev/null || true
+          fi
+          if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache /usr/share/pixmaps 2>/dev/null || true
+          fi
+          EOF
+          chmod 755 deb/DEBIAN/postinst
           dpkg-deb --build deb Front_Porch_AI-Linux.deb
           
           # 3. Prepare .rpm

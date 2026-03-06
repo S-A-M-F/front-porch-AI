@@ -27,14 +27,9 @@ import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
-
-import 'package:front_porch_ai/services/v2_card_service.dart';
+import 'package:front_porch_ai/services/web_server_service.dart';
 import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/image_gen_settings_dialog.dart';
-import 'package:front_porch_ai/services/image_gen_service.dart';
-import 'package:front_porch_ai/services/image_model_manager.dart';
-import 'package:front_porch_ai/services/sd_model_profile.dart';
-import 'package:front_porch_ai/services/web_server_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -408,7 +403,6 @@ class _SettingsPageState extends State<SettingsPage> {
         useCublas: _useCublas,
         useMetal: _useMetal,
         useRocm: _useRocm,
-        sdModelPath: Provider.of<StorageService>(context, listen: false).imageGenEnabled ? Provider.of<StorageService>(context, listen: false).imageGenModel : null,
       );
     }
   }
@@ -609,7 +603,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ElevatedButton.icon(
                   onPressed: () => showDialog(
                     context: context,
-                    builder: (_) => const TtsSettingsDialog(),
+                    builder: (_) => TtsSettingsDialog(),
                   ),
                   icon: const Icon(Icons.settings, size: 16),
                   label: const Text('Configure'),
@@ -1088,10 +1082,6 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 8),
           Consumer<StorageService>(
             builder: (context, storage, _) {
-              final llmProvider = Provider.of<LLMProvider>(context);
-              final isLocal = llmProvider.isLocal;
-              final imageModelManager = Provider.of<ImageModelManager>(context);
-
               return Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -1114,15 +1104,13 @@ class _SettingsPageState extends State<SettingsPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                isLocal ? 'Local Image Generation (KoboldCpp SD)' : 'AI Image Generation',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              const Text(
+                                'AI Image Generation',
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                               Text(
                                 storage.imageGenEnabled
-                                    ? isLocal
-                                        ? 'Enabled — ${storage.imageGenModel.isEmpty ? "No model selected" : storage.imageGenModel.split(Platform.pathSeparator).last}'
-                                        : 'Enabled — Model: ${storage.imageGenModel.isEmpty ? "Not set" : storage.imageGenModel}'
+                                    ? 'Enabled — Model: ${storage.imageGenModel.isEmpty ? "Not set" : storage.imageGenModel}'
                                     : 'Disabled',
                                 style: const TextStyle(fontSize: 12, color: Colors.white54),
                               ),
@@ -1140,211 +1128,21 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (storage.imageGenEnabled) ...[
                       const Divider(color: Colors.white10),
                       const SizedBox(height: 8),
-
-                      if (isLocal) ...[
-                        // Local SD Model selector
-                        const Text('Image Model', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF374151),
-                            borderRadius: BorderRadius.circular(8),
+                      Center(
+                        child: ElevatedButton.icon(
+                          onPressed: () => showDialog(
+                            context: context,
+                            builder: (_) => ImageGenSettingsDialog(),
                           ),
-                          child: imageModelManager.models.isEmpty
-                              ? Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.info_outline, size: 16, color: Colors.white38),
-                                      const SizedBox(width: 8),
-                                      const Expanded(
-                                        child: Text('No image models found. Go to Model Manager → Image Models to download one.',
-                                            style: TextStyle(color: Colors.white38, fontSize: 12)),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: imageModelManager.models.any((m) => m.path == storage.imageGenModel)
-                                        ? storage.imageGenModel
-                                        : null,
-                                    isExpanded: true,
-                                    dropdownColor: const Color(0xFF374151),
-                                    style: const TextStyle(color: Colors.white),
-                                    hint: const Text('Select an image model...', style: TextStyle(color: Colors.white38)),
-                                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-                                    items: imageModelManager.models.map((file) {
-                                      final name = file.path.split(Platform.pathSeparator).last;
-                                      return DropdownMenuItem(
-                                        value: file.path,
-                                        child: Text(name, overflow: TextOverflow.ellipsis),
-                                      );
-                                    }).toList(),
-                                    onChanged: (val) {
-                                      if (val != null) storage.setImageGenModel(val);
-                                    },
-                                  ),
-                                ),
-                        ),
-                        const SizedBox(height: 6),
-
-                        // Architecture detection badge
-                        Builder(
-                          builder: (context) {
-                            if (storage.imageGenModel.isEmpty) return const SizedBox.shrink();
-                          final profile = SdModelProfile.fromPath(storage.imageGenModel);
-                            return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.blueAccent.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.blueAccent.withOpacity(0.2)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blueAccent.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      profile.label,
-                                      style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      '${profile.nativeWidth}×${profile.nativeHeight} • ${profile.defaultSteps} steps • ${profile.promptTip}',
-                                      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10),
-                                      maxLines: 2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        const Text('VRAM Mode', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildModeChip(
-                                label: '⚡ Quick',
-                                subtitle: 'SD 1.5 — Both models in VRAM',
-                                isSelected: storage.imageGenMode == 'quick',
-                                onTap: () => storage.setImageGenMode('quick'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildModeChip(
-                                label: '✨ Quality',
-                                subtitle: 'SDXL/Flux — VRAM swap',
-                                isSelected: storage.imageGenMode == 'quality',
-                                onTap: () => storage.setImageGenMode('quality'),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          storage.imageGenMode == 'quality'
-                              ? 'Quality mode unloads the LLM during image gen for maximum VRAM. Chat model will briefly reload after.'
-                              : 'Quick mode keeps both models in VRAM. Best for small image models (SD 1.5).',
-                          style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // VRAM Warning Banner
-                        Builder(
-                          builder: (context) {
-                            if (storage.imageGenModel.isEmpty) return const SizedBox.shrink();
-                            final hwService = Provider.of<HardwareService>(context);
-                            final hw = hwService.hardwareInfo;
-                            if (hw == null || hw.vramMb <= 0) return const SizedBox.shrink();
-                            
-                            // Get model file size
-                            int modelSizeMb = 0;
-                            try {
-                              final file = File(storage.imageGenModel);
-                              if (file.existsSync()) {
-                                modelSizeMb = (file.lengthSync() / (1024 * 1024)).round();
-                              }
-                            } catch (_) {}
-                            if (modelSizeMb <= 0) return const SizedBox.shrink();
-
-                            final warning = KoboldService.estimateVramWarning(
-                              modelFileSizeMb: modelSizeMb,
-                              totalVramMb: hw.vramMb,
-                              vramMode: storage.imageGenMode,
-                            );
-                            if (warning == null) return const SizedBox.shrink();
-
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.amberAccent.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.amberAccent.withOpacity(0.3)),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 18),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      warning,
-                                      style: const TextStyle(color: Colors.amberAccent, fontSize: 11, height: 1.4),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-
-                        // Negative prompt
-                        const Text('Default Negative Prompt', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        TextFormField(
-                          key: ValueKey(storage.imageGenNegativePrompt.hashCode),
-                          initialValue: storage.imageGenNegativePrompt,
-                          style: const TextStyle(color: Colors.white, fontSize: 13),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: const Color(0xFF374151),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                          onChanged: (val) => storage.setImageGenNegativePrompt(val),
-                        ),
-                      ] else ...[
-                        // Remote API image gen — keep existing behavior
-                        Center(
-                          child: ElevatedButton.icon(
-                            onPressed: () => showDialog(
-                              context: context,
-                              builder: (_) => const ImageGenSettingsDialog(),
-                            ),
-                            icon: const Icon(Icons.settings, size: 16),
-                            label: const Text('Configure API Image Gen'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.purpleAccent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            ),
+                          icon: const Icon(Icons.settings, size: 16),
+                          label: const Text('Configure Image Gen'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.purpleAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           ),
                         ),
-                      ],
+                      ),
                     ],
                   ],
                 ),
@@ -1579,7 +1377,7 @@ class _SettingsPageState extends State<SettingsPage> {
                      child: Column(
                        crossAxisAlignment: CrossAxisAlignment.start,
                        children: [
-                         Text('Installation Directory', style: theme.textTheme.bodySmall),
+                         Text('Data Directory', style: theme.textTheme.bodySmall),
                          Text(
                            storageService.rootPath ?? 'Not set',
                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -1590,7 +1388,7 @@ class _SettingsPageState extends State<SettingsPage> {
                    IconButton(
                      icon: Icon(Icons.edit, color: theme.iconTheme.color),
                      onPressed: _pickStoragePath,
-                     tooltip: 'Change Install Location',
+                     tooltip: 'Change Data Directory',
                    ),
                  ],
                ),
