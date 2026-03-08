@@ -88,3 +88,11 @@ front_porch_ai.png
 .antigravity/
 .agent/
 .gemini/
+aur/src/
+aur/pkg/
+aur/*.pkg.tar*
+aur-beta/src/
+aur-beta/pkg/
+aur-beta/*.pkg.tar*
+aur-beta/Front_Porch_AI-Linux.AppImage
+aur/front-porch-ai-bin-*.tar.gz
