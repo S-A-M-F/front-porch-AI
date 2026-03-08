@@ -4,9 +4,13 @@ on:
   push:
     tags:
       - '*alpha*'
+      - '*Alpha*'
       - '*beta*'
+      - '*Beta*'
       - '*rc*'
+      - '*RC*'
       - '*dev*'
+      - '*Dev*'
   workflow_dispatch:
 
 permissions:
