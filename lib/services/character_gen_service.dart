@@ -43,6 +43,7 @@ class CharacterGenService {
     String backstory = '',
     String characterContext = '',
     String userPersonaContext = '',
+    bool generateDescription = false,
     void Function(String accumulated)? onProgress,
     void Function(String error)? onError,
     void Function(String status)? onStatus,
@@ -62,6 +63,7 @@ class CharacterGenService {
       relationship: relationship,
       descriptionDetail: descriptionDetail,
       backstory: backstory,
+      generateDescription: generateDescription,
     );
 
     debugPrint('CharacterGen: Starting generation for "$name"');
@@ -82,13 +84,19 @@ class CharacterGenService {
       return null;
     }
 
-    // ── Step 1b: Truncation recovery ────────────────────────────
+    // ── Step 1b: Inject user's system prompt directly ─────────────
+    // Bypass AI generation to preserve {{char}}/{{user}} placeholders exactly.
+    if (apiSystemPrompt.isNotEmpty) {
+      card.systemPrompt = apiSystemPrompt;
+    }
+
+    // ── Step 1c: Truncation recovery ────────────────────────────
     // If critical fields are empty, the JSON was likely truncated.
     // Make a focused retry asking only for the missing fields.
     final missingFields = <String>[];
     if (card.personality.trim().isEmpty) missingFields.add('personality');
     if (card.scenario.trim().isEmpty) missingFields.add('scenario');
-    if (card.systemPrompt.trim().isEmpty) missingFields.add('system_prompt');
+    if (card.systemPrompt.trim().isEmpty && apiSystemPrompt.isEmpty) missingFields.add('system_prompt');
     if (card.mesExample.trim().isEmpty) missingFields.add('example_dialogue');
 
     if (missingFields.isNotEmpty) {
@@ -217,19 +225,32 @@ class CharacterGenService {
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       String accumulated = '';
       int tokenCount = 0;
+      bool repetitionDetected = false;
       try {
         await for (final token in _llmService.generateStream(GenerationParams(
           prompt: prompt,
           maxLength: maxLen,
           minLength: minLen,
           temperature: 0.8,
-          repeatPenalty: 1.15,
+          repeatPenalty: 1.2,
           minP: 0.05,
           reasoningEnabled: false,
           stopSequences: ['<END>', '</END>'],
         ))) {
           accumulated += token;
           tokenCount++;
+
+          // Repetition detection — every 200 tokens, check for looping
+          if (tokenCount > 200 && tokenCount % 200 == 0 && accumulated.length > 600) {
+            final tail = accumulated.substring(accumulated.length - 300);
+            final earlier = accumulated.substring(0, accumulated.length - 300);
+            if (earlier.contains(tail)) {
+              debugPrint('CharacterGen: Repetition loop detected at token $tokenCount — aborting generation');
+              repetitionDetected = true;
+              break;
+            }
+          }
+
           // Strip <think> blocks from preview so reasoning isn't shown
           if (onProgress != null) {
             String preview = accumulated;
@@ -242,7 +263,7 @@ class CharacterGenService {
         }
 
         debugPrint('CharacterGen: Stream done. Tokens: $tokenCount, '
-            'Raw: ${accumulated.length} chars');
+            'Raw: ${accumulated.length} chars${repetitionDetected ? ' (truncated due to repetition)' : ''}');
 
         if (accumulated.isNotEmpty) return accumulated;
 
@@ -367,9 +388,12 @@ Use {{char}} for character name and {{user}} for user name. Respond with ONLY th
     final prompt = '''Generate world-building lorebook entries for a roleplay character. Output ONLY a JSON object with a single key "lorebook" containing an array of $countRange entry objects.$categoryHint
 
 Character: $name
-Description: ${concept.length > 300 ? '${concept.substring(0, 300)}...' : concept}
-Personality: ${card.personality.length > 200 ? '${card.personality.substring(0, 200)}...' : card.personality}
+Concept: ${concept.length > 500 ? '${concept.substring(0, 500)}...' : concept}
+${card.description.trim().isNotEmpty ? 'Description: ${card.description.length > 300 ? '${card.description.substring(0, 300)}...' : card.description}' : ''}
+Personality: ${card.personality.length > 300 ? '${card.personality.substring(0, 300)}...' : card.personality}
+${card.scenario.trim().isNotEmpty ? 'Scenario: ${card.scenario}' : ''}
 
+Entries MUST be relevant to this specific character and their world. Do NOT generate generic fantasy/sci-fi lore unrelated to the character.
 Each entry format: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of lore"}
 
 Output ONLY the JSON:''';
@@ -432,6 +456,7 @@ Output ONLY the JSON:''';
     String relationship = '',
     String descriptionDetail = '2-3 paragraphs',
     String backstory = '',
+    bool generateDescription = false,
   }) {
     final keywordsLine = personalityKeywords.isNotEmpty
         ? 'Personality keywords: $personalityKeywords\n'
@@ -465,28 +490,49 @@ Output ONLY the JSON:''';
       lorebookSpec = '- "lorebook": (array of $countRange objects) world-building entries$categoryHint, each: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of lore"}\n';
     }
 
-    String sysSpec = '- "system_prompt": (string) brief instruction for how to portray this character';
-    if (apiSystemPrompt.isNotEmpty) {
-      sysSpec += '. Incorporate this existing prompt: "$apiSystemPrompt"';
+    // System prompt spec — if user already has one, skip AI generation entirely
+    // (we'll inject it directly post-generation to preserve {{char}}/{{user}} placeholders)
+    String sysSpec;
+    final skipSysPromptGeneration = apiSystemPrompt.isNotEmpty;
+    if (skipSysPromptGeneration) {
+      sysSpec = ''; // Will be injected directly into card after generation
+    } else {
+      sysSpec = '- "system_prompt": (string) brief instruction for how to portray this character (2-3 sentences max)';
     }
+
+    // Description spec — only included for guided mode
+    final descriptionSpec = generateDescription
+        ? '- "description": (string) $descriptionDetail, third person. Physical appearance ONLY: body type, height, skin tone, hair, eyes, clothing, distinguishing marks. Do NOT put these in description: personality/motives (those go in "personality"), scenario/setting (goes in "scenario"), NSFW/sexual details, backstory, or speech patterns. STRICTLY obey the word limit\n'
+        : '';
+
+    // Description exclusion note — only when NOT generating description
+    final descriptionNote = generateDescription
+        ? ''
+        : 'Do NOT generate a "description" key — the description is handled separately. ';
 
     // Key order: critical small fields FIRST so they survive output truncation.
     // Lorebook (the largest field) goes LAST so it gets clipped first if the
     // model runs out of output tokens — we can regenerate it separately.
-    return '''Create a roleplay character card as a single JSON object. Do NOT analyze, plan, or explain. Output ONLY the JSON object starting with { and ending with }. No markdown. No lists. Just raw JSON.
+    return '''Create a roleplay character card as a single JSON object following the Tavern V2 card format. Do NOT analyze, plan, or explain. Output ONLY the JSON object starting with { and ending with }. No markdown. No lists. Just raw JSON.
 
 Character name: $name
 Concept: $concept
 $ageLine$sexLine$relationshipLine$backstoryLine$keywordsLine
 Required JSON keys (generate them IN THIS ORDER):
-- "personality": (string) 1-2 paragraphs, third person, core traits + motivations + quirks
-- "scenario": (string) 1 paragraph, the default conversation setting
+${descriptionSpec}- "personality": (string) 1-2 paragraphs, third person. ONLY inner traits, social style, motives, quirks, and behavioral tics. Do NOT repeat physical appearance or scenario/setting info here — those belong in other fields
+- "scenario": (string) 2-4 sentences MAX. Where/when/why {{user}} and {{char}} meet. ONLY the situation that frames the roleplay. No personality traits, no backstory, no system instructions — just the setting and circumstance. Keep it SHORT
 $sysSpec
 - "tags": (array of strings) 3-5 relevant tags
-- "image_prompt": (string) flat comma-separated visual tags for an image generator. NO prose, NO sentences, NO character names. Format: "skin tone + gender, hair, eyes, body type, outfit pieces, pose, setting, expression". Under 80 words total
-- "example_dialogue": (string) format: <START>\\n{{user}}: message\\n{{char}}: response\\n<START>\\n{{user}}: message\\n{{char}}: response
+- "image_prompt": (string) flat comma-separated visual tags ONLY for an image generator. NO prose, NO sentences, NO names. ONLY tags in this format: "skin tone, gender, hair color + style, eye color, body type, outfit pieces, pose, setting, expression". Keep under 60 words
+- "example_dialogue": (string) 2-3 exchanges that model {{char}}'s unique voice, speech patterns, and pacing. Format: <START>\\n{{user}}: message\\n{{char}}: in-character response (show personality through word choice, mannerisms, and actions)\\n<START>\\n{{user}}: message\\n{{char}}: response. Each {{char}} response should be 2-4 sentences with action and dialogue
 $lorebookSpec
-IMPORTANT: Do NOT generate a "description" key — the description is handled separately. Do NOT include first_message or alternate_greetings. Use {{char}} for character name and {{user}} for user name. Respond with ONLY the JSON:''';
+FIELD RULES:
+- Keep each field focused — do NOT leak content between fields (e.g. personality in description, backstory in scenario)
+- Balance token length across fields — no single field should dominate. Aim for ~500-2200 tokens total across description, personality, scenario, and example_dialogue
+- ${descriptionNote}Do NOT include first_message or alternate_greetings — those are generated separately
+- Use {{char}} for character name and {{user}} for user name throughout
+
+Respond with ONLY the JSON:''';
   }
 
   /// Build prompt for a single greeting message.
@@ -594,7 +640,8 @@ $toneSpec
 == NARRATIVE STRUCTURE (follow this order) ==
 1. SCENE — Open with the environment. Where are we? What time of day? What's the atmosphere? Paint the world with sensory detail (sights, sounds, smells, textures). Minimum 1 full paragraph of scene-setting.
 2. CHARACTER — Describe $name's physical appearance through action. Show race/species features, body, clothing, hair, distinguishing marks AS $name moves through the scene. The reader should be able to picture $name vividly. Minimum 1 full paragraph focused on $name's appearance and mannerisms.
-3. ENCOUNTER — The moment $name notices or interacts with {{user}}. Include inner thoughts, emotional reactions, and end with spoken dialogue that invites {{user}} to respond.
+3. CONTEXT — Through inner monologue, establish HOW $name and {{user}} know each other and WHY they are meeting. Weave in relevant backstory: How did they meet? How long have they known each other? What is their relationship? What does $name expect from this encounter? The reader should fully understand the situation WITHOUT having read any other character card fields. This section is CRITICAL — do NOT skip it.
+4. ENCOUNTER — The moment $name notices or interacts with {{user}}. Include inner thoughts, emotional reactions, and end with spoken dialogue that invites {{user}} to respond. The dialogue MUST be consistent with the Scenario and the context established above — reference shared history, inside jokes, or established dynamics.
 
 == RULES ==
 - First person ONLY ("I", "my", "me") — never third person, never use "$name" to refer to yourself
@@ -602,6 +649,7 @@ $toneSpec
 - Use {{user}} (with curly braces) when mentioning the other person — never vague references like "the stranger"
 - NEVER write actions, thoughts, feelings, appearance, or dialogue for {{user}} — {{user}} is a blank slate
 - Do NOT start the message by addressing {{user}} — start with scene description
+- ALL dialogue and actions MUST be consistent with the Scenario. Do NOT contradict established facts
 
 == LENGTH ==
 $lengthEnforcement
@@ -1144,19 +1192,39 @@ $greeting''';
   }
 
   /// Extract the image prompt from the generated JSON (if present).
-  String? extractImagePrompt(String rawOutput) {
+  /// Optionally strip [characterName] since image models don't know character names.
+  String? extractImagePrompt(String rawOutput, {String characterName = ''}) {
     final cleaned = _stripContent(rawOutput);
+    String? prompt;
     try {
       final data = json.decode(cleaned) as Map<String, dynamic>;
-      return _getString(data, 'image_prompt');
+      prompt = _getString(data, 'image_prompt');
     } catch (_) {
       // Try regex extraction as fallback
       try {
         final data = _regexExtract(cleaned);
-        return data['image_prompt'] as String?;
+        prompt = data['image_prompt'] as String?;
       } catch (_) {
         return null;
       }
     }
+
+    // Strip character name from image prompt — image models don't know who "Kara Darkshadow" is
+    if (prompt != null && characterName.isNotEmpty) {
+      // Remove full name
+      prompt = prompt.replaceAll(RegExp(RegExp.escape(characterName), caseSensitive: false), '').trim();
+      // Also remove individual name parts (e.g. "Kara" or "Darkshadow")
+      for (final part in characterName.split(RegExp(r'\s+'))) {
+        if (part.length > 2) { // Skip very short parts like "of", "de"
+          prompt = prompt!.replaceAll(RegExp('\\b${RegExp.escape(part)}\\b', caseSensitive: false), '').trim();
+        }
+      }
+      // Clean up any double commas/spaces left behind
+      prompt = prompt!.replaceAll(RegExp(r',\s*,'), ',').replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+      if (prompt.startsWith(',')) prompt = prompt.substring(1).trim();
+      if (prompt.endsWith(',')) prompt = prompt.substring(0, prompt.length - 1).trim();
+    }
+
+    return prompt;
   }
 }
