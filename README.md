@@ -124,17 +124,27 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
 
 ## 🆕 What's New in V0.9.1
 
-- 🔊 **WebUI: ElevenLabs TTS**: The Settings page now includes ElevenLabs as a premium TTS engine with API key, model selection (Flash v2.5, Multilingual v2, v3), and Stability / Similarity / Style sliders.
-- 🖼️ **WebUI: Inline Image Viewing**: Chat messages containing `![alt](url)` markdown now render images inline with a security consent dialog.
-  - Images are served through a server-side proxy — the browser never contacts external servers directly.
-  - Uses the same cache directory as the Flutter desktop app, so images cached by either are immediately available to both.
-  - Consent is remembered per-character and automatically skipped for already-cached images.
+- 🔊 **ElevenLabs TTS Engine**: Premium cloud TTS with configurable Stability, Similarity, and Style sliders. Supports Flash v2.5 (~75ms latency), Multilingual v2 (29 languages), and v3 (best quality). Available in both the desktop app and WebUI Settings page.
+  - **Narration Filters**: SillyTavern-style filters — narrate quoted dialogue only, or ignore asterisked actions. Configurable per-character.
+  - **Graceful Error Handling**: Friendly error messages for ElevenLabs quota exhaustion and authentication failures.
+- 🖼️ **Inline Image Viewing**: Chat messages containing `![alt](url)` markdown now render images inline in both the Flutter app and WebUI.
+  - **Security Consent Dialog**: Warns about IP exposure and potential risks before loading external images. Consent is saved per-character.
+  - **Server-Side Proxy**: Images are served through the server's image cache proxy — the WebUI browser never contacts external servers directly.
+  - **Shared Cache**: Flutter app and WebUI share the same image cache directory, so images cached by either are immediately available to both. Already-cached images skip the consent dialog automatically.
+- 🌐 **WebUI Mobile UX**: Compact character cards, message count badges, overflow menu, and model switcher for a responsive mobile experience.
+- ✍️ **Guided Creator Enhancement**: Increased word count targets in the guided character creator for richer, more detailed character field expansions.
 - 🎛️ **KoboldCpp Auto-Start Toggle**: New setting to enable/disable automatic model loading on app start, for users with memory constraints.
+- 🏗️ **Infrastructure**:
+  - Added AGPL-3.0-or-later copyright headers to all source files
+  - Fixed 90 dart analyzer warnings (deprecated APIs, unused imports)
 - 🐛 **Bug Fixes**:
   - Fixed WebUI avatar face cropping — character cards, chat appbar, and message avatars now anchor to the top of the image
   - Fixed `{{char}}` showing literally in WebUI character card descriptions, chat appbar subtitle, and right panel
   - Fixed banned phrases text field losing focus after every keystroke in WebUI settings
   - Added `<START>` to default stop sequences to prevent models from outputting it at the end of responses
+  - Fixed ElevenLabs TTS sending split sentences instead of full text, causing fragmented audio
+  - Fixed ElevenLabs hitting 429 rate limit errors by capping concurrency at 3
+  - Switched ElevenLabs to MP3 output format to fix audio playback issues with WAV concatenation
 
 ## 🆕 What's New in V0.9.0
 
