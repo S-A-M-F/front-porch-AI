@@ -1585,6 +1585,26 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
 
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SwitchListTile(
+              title: const Text('Auto-start model on launch', style: TextStyle(fontSize: 14)),
+              subtitle: Text(
+                'Automatically load the last used model when the app starts',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+              ),
+              value: storageService.autostartBackend,
+              activeTrackColor: Colors.blueAccent,
+              onChanged: (val) {
+                storageService.setAutostartBackend(val);
+              },
+            ),
+          ),
+
           const SizedBox(height: 24),
           _buildSectionHeader('Model Selection', context),
            const SizedBox(height: 16),
