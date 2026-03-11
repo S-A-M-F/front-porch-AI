@@ -207,7 +207,11 @@ class TtsService extends ChangeNotifier {
       // Phase 1: Generate sentence WAV files in parallel batches
       // Piper uses a shared process handle, so it stays sequential.
       // Kokoro/OpenAI spawn independent subprocesses — parallelise them.
-      final maxConcurrency = _storageService.ttsConcurrency;
+      // ElevenLabs has a 4-request concurrent limit; cap at 3 to be safe.
+      var maxConcurrency = _storageService.ttsConcurrency;
+      if (_storageService.ttsEngine == 'elevenlabs') {
+        maxConcurrency = maxConcurrency.clamp(1, 3);
+      }
 
       if (_isPiperEngine) {
         // Sequential for Piper (legacy)
@@ -337,7 +341,8 @@ class TtsService extends ChangeNotifier {
     int bufferTarget = _storageService.callBufferSentences.clamp(1, 10);
 
     try {
-      final maxConcurrency = _isPiperEngine ? 1 : _storageService.ttsConcurrency.clamp(1, 16);
+      var maxConcurrency = _isPiperEngine ? 1 : _storageService.ttsConcurrency.clamp(1, 16);
+      if (_storageService.ttsEngine == 'elevenlabs') maxConcurrency = maxConcurrency.clamp(1, 3);
 
       // ── Producer: fire off concurrent generation futures ──
       final orderedFutures = <Future<File?>>[];
@@ -481,7 +486,8 @@ class TtsService extends ChangeNotifier {
       } else {
         final engine = activeEngine;
         final speed = _storageService.ttsSpeechRate;
-        final maxConcurrency = _storageService.ttsConcurrency;
+        var maxConcurrency = _storageService.ttsConcurrency;
+        if (_storageService.ttsEngine == 'elevenlabs') maxConcurrency = maxConcurrency.clamp(1, 3);
 
         for (int batchStart = 0; batchStart < sentences.length; batchStart += maxConcurrency) {
           final batchEnd = (batchStart + maxConcurrency).clamp(0, sentences.length);
