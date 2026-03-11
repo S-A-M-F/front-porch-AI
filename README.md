@@ -122,6 +122,20 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
 > **Note:** Versions **0.8.x and earlier** remain licensed under **GPLv3**. The license change applies only to v0.9.0 and all future releases.
 
 
+## 🆕 What's New in V0.9.1
+
+- 🔊 **WebUI: ElevenLabs TTS**: The Settings page now includes ElevenLabs as a premium TTS engine with API key, model selection (Flash v2.5, Multilingual v2, v3), and Stability / Similarity / Style sliders.
+- 🖼️ **WebUI: Inline Image Viewing**: Chat messages containing `![alt](url)` markdown now render images inline with a security consent dialog.
+  - Images are served through a server-side proxy — the browser never contacts external servers directly.
+  - Uses the same cache directory as the Flutter desktop app, so images cached by either are immediately available to both.
+  - Consent is remembered per-character and automatically skipped for already-cached images.
+- 🎛️ **KoboldCpp Auto-Start Toggle**: New setting to enable/disable automatic model loading on app start, for users with memory constraints.
+- 🐛 **Bug Fixes**:
+  - Fixed WebUI avatar face cropping — character cards, chat appbar, and message avatars now anchor to the top of the image
+  - Fixed `{{char}}` showing literally in WebUI character card descriptions, chat appbar subtitle, and right panel
+  - Fixed banned phrases text field losing focus after every keystroke in WebUI settings
+  - Added `<START>` to default stop sequences to prevent models from outputting it at the end of responses
+
 ## 🆕 What's New in V0.9.0
 
 - 💾 **Database Optimization**: Converted all delete operations from soft-delete to hard-delete, eliminating massive DB bloat from accumulated "ghost" rows. Existing bloat is automatically purged on upgrade (e.g. 334MB → 2MB).
@@ -412,10 +426,12 @@ A powerful, cross-platform desktop application designed to streamline the manage
 ### 🔊 Text-to-Speech
 <img src="docs/screenshots/tts_settings.png" width="400" alt="TTS Settings">
 
-- **Three TTS Engines**: Kokoro (local, high quality), OpenAI (cloud, premium), and Piper (lightweight fallback).
+- **Four TTS Engines**: Kokoro (local, high quality), OpenAI (cloud, premium), ElevenLabs (cloud, premium with expressive controls), and Piper (lightweight fallback).
+- **ElevenLabs**: Configurable Stability, Similarity, and Style sliders for fine-tuned voice control. Supports Flash v2.5 (~75ms latency), Multilingual v2 (29 languages), and v3 (best quality).
 - **50+ Voices**: Kokoro ships with 50+ voices across 9 languages — all running offline.
 - **Parallel Generation**: Sentences are generated concurrently for dramatically faster audio output.
 - **Per-Character Voices**: Assign unique voices to each character in group chats.
+- **Narration Filters**: SillyTavern-style filters — narrate quoted dialogue only, ignore asterisked actions.
 
 ### ⚙️ KoboldCPP Integration
 <img src="docs/screenshots/model_hub.png" width="800" alt="Model Hub - HuggingFace Search">
