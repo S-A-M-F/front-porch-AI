@@ -108,31 +108,35 @@
 
     function formatText(text) {
         if (!text) return '';
-        let html = esc(text);
-        // Detect ![alt](url) image markdown BEFORE quote/action formatting
-        // We work on the escaped text, so brackets/parens are literal
-        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+        // Extract ![alt](url) image markdown BEFORE escaping, replace with placeholders
+        const imagePlaceholders = [];
+        let processed = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+            const idx = imagePlaceholders.length;
             const charId = currentCharacterId || '';
             const consented = hasImageConsent(charId);
             const cached = _cachedImageUrls.has(url);
+            let imgHtml;
             if (consented || cached) {
-                // Consent given or image already cached — render inline
-                if (!consented && cached) setImageConsent(charId); // auto-consent for cached
+                if (!consented && cached) setImageConsent(charId);
                 const proxyUrl = `/api/image-cache/serve?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token || '')}`;
-                return `<div class="chat-inline-img-wrap"><img class="chat-inline-img" src="${proxyUrl}" alt="${alt}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=\\'img-error\\'>⚠️ Failed to load image</span>'"></div>`;
+                imgHtml = `<div class="chat-inline-img-wrap"><img class="chat-inline-img" src="${proxyUrl}" alt="${esc(alt)}" loading="lazy"></div>`;
+            } else {
+                imgHtml = `<div class="chat-img-consent"><div class="img-consent-icon">\u{1F5BC}\u{FE0F}</div><div class="img-consent-text">External image detected</div><button class="btn btn-sm img-consent-btn" onclick="window._showImageConsentDialog('${url.replace(/'/g, "\\'")}')">View Image</button></div>`;
             }
-            // No consent — show placeholder with load button
-            return `<div class="chat-img-consent" data-url="${esc(url)}" data-alt="${esc(alt)}">
-                <div class="img-consent-icon">🖼️</div>
-                <div class="img-consent-text">External image detected</div>
-                <button class="btn btn-sm img-consent-btn" onclick="window._showImageConsentDialog('${esc(url)}')">View Image</button>
-            </div>`;
+            imagePlaceholders.push(imgHtml);
+            return `%%IMG_${idx}%%`;
         });
+        // Now escape and format text
+        let html = esc(processed);
         // Quotes: "text" → amber
         html = html.replace(/&quot;([^&]*?)&quot;/g, '<span class="quote">"$1"</span>');
         html = html.replace(/"([^"]*?)"/g, '<span class="quote">"$1"</span>');
         // Actions: *text* → blue italic
         html = html.replace(/\*([^*]+?)\*/g, '<span class="action">*$1*</span>');
+        // Restore image placeholders
+        for (let i = 0; i < imagePlaceholders.length; i++) {
+            html = html.replace(`%%IMG_${i}%%`, imagePlaceholders[i]);
+        }
         return html;
     }
 
@@ -141,8 +145,8 @@
         const charId = currentCharacterId || '';
 
         // First check if already cached on server — skip consent if so
-        api(`/api/image-cache/check?url=${encodeURIComponent(url)}`).then(res => {
-            if (res && res.cached) {
+        apiJson(`/api/image-cache/check?url=${encodeURIComponent(url)}`).then(data => {
+            if (data && data.cached) {
                 _cachedImageUrls.add(url);
                 setImageConsent(charId);
                 pollChatState(); // Re-render to show the image
