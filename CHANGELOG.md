@@ -2,6 +2,44 @@
 
 All notable changes to Front Porch AI will be documented in this file.
 
+## [V0.9.1] - 2026-03-11
+
+### ✨ New Features
+- **WebUI: ElevenLabs TTS**: Added ElevenLabs (Premium) engine option to the Settings page TTS section with API key, model selection (Flash v2.5, Multilingual v2, v3), and Stability/Similarity/Style sliders.
+- **WebUI: Inline Image Viewing**: Chat messages containing `![alt](url)` markdown now render images inline.
+  - Security consent dialog warns about IP exposure and potential risks before loading external images.
+  - Images are served through a server-side proxy (`/api/image-cache/serve`) — browser never contacts external servers directly.
+  - Shares the same image cache directory as the Flutter desktop app, so images cached by either app are available to both.
+  - Consent is remembered per-character in localStorage and automatically skipped for already-cached images.
+- **KoboldCpp Auto-Start Toggle**: New setting to enable/disable automatic model loading when the app starts, for users with memory constraints.
+
+### 🐛 Bug Fixes
+- **WebUI: Avatar Face Cropping**: Added `object-position: top` to character card avatars, chat appbar avatar, and message sender avatars to prevent faces from being cut off.
+- **WebUI: `{{char}}` Placeholder**: Fixed `{{char}}` showing literally in character card descriptions, chat appbar subtitle, and right panel scenario/description fields.
+- **WebUI: Banned Phrases Input**: Fixed the textarea losing focus after every keystroke in the Advanced settings tab.
+- **`<START>` Token Leakage**: Added `<START>` to default stop sequences to prevent models from outputting it at the end of responses.
+
+---
+
+## [V0.9.0] - 2026-03-08
+
+### ✨ New Features
+- **AI Character Creator**: Full-featured wizard with Automated and Guided modes for creating characters with AI assistance.
+  - 5-step wizard: Setup → Mode → Configure → Generate → Review.
+  - Guided mode expands 20+ character fields individually for fine-tuned control.
+  - AI-generated character descriptions, greetings, scenarios, and personality traits.
+  - Integrated into both the desktop app and WebUI.
+- **ElevenLabs TTS Engine**: Premium cloud TTS with configurable stability, similarity, and style parameters; SillyTavern-style narration filters (narrate quoted-only, ignore asterisks).
+- **WebUI Mobile UX**: Compact character cards, message badges, overflow menu, model switcher, and responsive layout improvements.
+- **Linux Distribution**: Self-hosted APT (Debian/Ubuntu) and RPM (Fedora/RHEL) repositories with Caddy serving, plus AUR package for Arch Linux. CI/CD automation via GitHub Actions.
+- **Context Slider & Auto-Configure**: Exposed context size control and fixed auto-configuration for GPU offloading and context capacity.
+
+### 🏗️ Infrastructure
+- **AGPL-3.0 Copyright Headers**: Added license headers to all source files.
+- **Dart Analyzer Cleanup**: Fixed 90+ deprecated API warnings and unused imports.
+
+---
+
 ## [V0.8.0-beta] - 2026-02-20
 
 ### ✨ New Features
