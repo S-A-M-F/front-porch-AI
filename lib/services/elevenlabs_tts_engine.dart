@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/services/tts_engine.dart';
@@ -52,7 +51,7 @@ class ElevenLabsTtsEngine implements TtsEngine {
     try {
       final response = await http.post(
         Uri.parse(
-          'https://api.elevenlabs.io/v1/text-to-speech/$voice?output_format=pcm_22050',
+          'https://api.elevenlabs.io/v1/text-to-speech/$voice?output_format=mp3_44100_128',
         ),
         headers: {
           'xi-api-key': apiKey,
@@ -75,62 +74,18 @@ class ElevenLabsTtsEngine implements TtsEngine {
         return null;
       }
 
-      // ElevenLabs returns raw PCM (16-bit signed, mono, 22050 Hz).
-      // Wrap in a WAV header for compatibility with the TTS pipeline.
-      final pcmBytes = response.bodyBytes;
-      final wavBytes = _wrapPcmInWav(pcmBytes, sampleRate: 22050, channels: 1, bitsPerSample: 16);
-
+      // ElevenLabs returns MP3 audio directly — no conversion needed.
       final tempDir = Directory.systemTemp;
       _fileCounter++;
       final outputFile = File(p.join(tempDir.path,
-          'elevenlabs_tts_${DateTime.now().millisecondsSinceEpoch}_$_fileCounter.wav'));
-      await outputFile.writeAsBytes(wavBytes);
+          'elevenlabs_tts_${DateTime.now().millisecondsSinceEpoch}_$_fileCounter.mp3'));
+      await outputFile.writeAsBytes(response.bodyBytes);
 
       return outputFile;
     } catch (e) {
       print('ElevenLabs TTS error: $e');
       return null;
     }
-  }
-
-  /// Wrap raw PCM data in a standard WAV header.
-  Uint8List _wrapPcmInWav(Uint8List pcmData, {
-    required int sampleRate,
-    required int channels,
-    required int bitsPerSample,
-  }) {
-    final byteRate = sampleRate * channels * (bitsPerSample ~/ 8);
-    final blockAlign = channels * (bitsPerSample ~/ 8);
-    final dataSize = pcmData.length;
-    final fileSize = 36 + dataSize;
-
-    final header = ByteData(44);
-    // RIFF
-    header.setUint8(0, 0x52); header.setUint8(1, 0x49);
-    header.setUint8(2, 0x46); header.setUint8(3, 0x46);
-    header.setUint32(4, fileSize, Endian.little);
-    // WAVE
-    header.setUint8(8, 0x57); header.setUint8(9, 0x41);
-    header.setUint8(10, 0x56); header.setUint8(11, 0x45);
-    // fmt
-    header.setUint8(12, 0x66); header.setUint8(13, 0x6D);
-    header.setUint8(14, 0x74); header.setUint8(15, 0x20);
-    header.setUint32(16, 16, Endian.little); // chunk size
-    header.setUint16(20, 1, Endian.little); // PCM format
-    header.setUint16(22, channels, Endian.little);
-    header.setUint32(24, sampleRate, Endian.little);
-    header.setUint32(28, byteRate, Endian.little);
-    header.setUint16(32, blockAlign, Endian.little);
-    header.setUint16(34, bitsPerSample, Endian.little);
-    // data
-    header.setUint8(36, 0x64); header.setUint8(37, 0x61);
-    header.setUint8(38, 0x74); header.setUint8(39, 0x61);
-    header.setUint32(40, dataSize, Endian.little);
-
-    final result = Uint8List(44 + dataSize);
-    result.setAll(0, header.buffer.asUint8List());
-    result.setAll(44, pcmData);
-    return result;
   }
 
   /// Fetch available voices from ElevenLabs API.

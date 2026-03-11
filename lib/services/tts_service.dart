@@ -271,17 +271,23 @@ class TtsService extends ChangeNotifier {
       _isGenerating = false;
       notifyListeners();
 
-      final combinedWav = await _concatenateWavFiles(validWavFiles);
-      _cleanupFiles(validWavFiles);
+      File? audioFile;
+      if (_storageService.ttsEngine == 'elevenlabs' && validWavFiles.length == 1) {
+        // ElevenLabs returns a single MP3 — play directly, no WAV concat needed.
+        audioFile = validWavFiles.first;
+      } else {
+        audioFile = await _concatenateWavFiles(validWavFiles);
+        _cleanupFiles(validWavFiles);
+      }
 
-      if (combinedWav != null && _isSpeaking) {
-        // Cache the combined WAV for instant replay
-        _cachedWav = combinedWav;
+      if (audioFile != null && _isSpeaking) {
+        // Cache the audio for instant replay
+        _cachedWav = audioFile;
         _cachedMessageId = messageId;
         _cachedTextHash = sanitized.hashCode;
         _cachedVoice = voice;
         _cachedEngine = _storageService.ttsEngine;
-        await _playWavFile(combinedWav);
+        await _playWavFile(audioFile);
         // Don't delete — it's cached now
       }
     } catch (e) {
@@ -518,6 +524,11 @@ class TtsService extends ChangeNotifier {
       }
 
       if (wavFiles.isEmpty) return null;
+
+      // ElevenLabs returns a single MP3 — skip WAV concatenation.
+      if (_storageService.ttsEngine == 'elevenlabs' && wavFiles.length == 1) {
+        return wavFiles.first;
+      }
 
       final combinedWav = await _concatenateWavFiles(wavFiles);
       _cleanupFiles(wavFiles);
