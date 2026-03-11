@@ -204,16 +204,21 @@ class TtsService extends ChangeNotifier {
       final sentences = _splitSentences(sanitized);
       final wavFiles = List<File?>.filled(sentences.length, null);
 
-      // Phase 1: Generate sentence WAV files in parallel batches
-      // Piper uses a shared process handle, so it stays sequential.
-      // Kokoro/OpenAI spawn independent subprocesses — parallelise them.
-      // ElevenLabs has a 4-request concurrent limit; cap at 3 to be safe.
-      var maxConcurrency = _storageService.ttsConcurrency;
+      // Phase 1: Generate audio
+      // ElevenLabs is fast enough to process full text in one request —
+      // skip sentence splitting for better intonation and fewer API calls.
       if (_storageService.ttsEngine == 'elevenlabs') {
-        maxConcurrency = maxConcurrency.clamp(1, 3);
-      }
-
-      if (_isPiperEngine) {
+        final engine = activeEngine;
+        final speed = _storageService.ttsSpeechRate;
+        _generationProgress = 0.5;
+        notifyListeners();
+        final wav = await engine.generateAudio(sanitized, voice, speed);
+        if (wav != null && _isSpeaking) {
+          wavFiles[0] = wav;
+        }
+        _generationProgress = 1.0;
+        notifyListeners();
+      } else if (_isPiperEngine) {
         // Sequential for Piper (legacy)
         for (int i = 0; i < sentences.length; i++) {
           if (!_isSpeaking) break;
@@ -227,6 +232,7 @@ class TtsService extends ChangeNotifier {
         // Parallel for Kokoro / OpenAI
         final engine = activeEngine;
         final speed = _storageService.ttsSpeechRate;
+        final maxConcurrency = _storageService.ttsConcurrency;
 
         for (int batchStart = 0; batchStart < sentences.length; batchStart += maxConcurrency) {
           if (!_isSpeaking) break;
@@ -342,7 +348,8 @@ class TtsService extends ChangeNotifier {
 
     try {
       var maxConcurrency = _isPiperEngine ? 1 : _storageService.ttsConcurrency.clamp(1, 16);
-      if (_storageService.ttsEngine == 'elevenlabs') maxConcurrency = maxConcurrency.clamp(1, 3);
+      // ElevenLabs: one at a time from the stream (already fast enough)
+      if (_storageService.ttsEngine == 'elevenlabs') maxConcurrency = 1;
 
       // ── Producer: fire off concurrent generation futures ──
       final orderedFutures = <Future<File?>>[];
@@ -476,7 +483,13 @@ class TtsService extends ChangeNotifier {
       final sentences = _splitSentences(sanitized);
       final wavFiles = <File>[];
 
-      if (_isPiperEngine) {
+      if (_storageService.ttsEngine == 'elevenlabs') {
+        // ElevenLabs: send full text as one request for natural intonation
+        final engine = activeEngine;
+        final speed = _storageService.ttsSpeechRate;
+        final wav = await engine.generateAudio(sanitized, voice, speed);
+        if (wav != null) wavFiles.add(wav);
+      } else if (_isPiperEngine) {
         for (int i = 0; i < sentences.length; i++) {
           final modelPath = await _voiceManager.getVoiceModelPath(voice);
           final wav = await _generatePiperWav(sentences[i], modelPath, i);
@@ -486,8 +499,7 @@ class TtsService extends ChangeNotifier {
       } else {
         final engine = activeEngine;
         final speed = _storageService.ttsSpeechRate;
-        var maxConcurrency = _storageService.ttsConcurrency;
-        if (_storageService.ttsEngine == 'elevenlabs') maxConcurrency = maxConcurrency.clamp(1, 3);
+        final maxConcurrency = _storageService.ttsConcurrency;
 
         for (int batchStart = 0; batchStart < sentences.length; batchStart += maxConcurrency) {
           final batchEnd = (batchStart + maxConcurrency).clamp(0, sentences.length);
