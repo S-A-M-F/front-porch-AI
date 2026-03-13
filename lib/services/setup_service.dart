@@ -46,6 +46,13 @@ class SetupService extends ChangeNotifier {
   Future<void> runAutoSetup() async {
     if (_currentStep != SetupStep.idle && _currentStep != SetupStep.error) return;
 
+    // Intel Macs cannot run KoboldCpp — skip download and autostart entirely
+    if (_backendManager.isIntelMac) {
+      _currentStep = SetupStep.complete;
+      notifyListeners();
+      return;
+    }
+
     _errorMessage = null;
     _currentStep = SetupStep.checkingBackend;
     notifyListeners();

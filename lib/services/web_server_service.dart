@@ -58,6 +58,20 @@ import 'package:drift/drift.dart' show Value;
 /// When a remote client connects (any authenticated API request),
 /// [hasActiveClient] is set to `true`, which causes the Flutter desktop
 /// app to display a lock overlay.
+
+/// Cached Intel Mac detection (matches BackendManager logic).
+bool? _isIntelMacCached;
+bool _checkIsIntelMac() {
+  if (_isIntelMacCached != null) return _isIntelMacCached!;
+  if (!Platform.isMacOS) { _isIntelMacCached = false; return false; }
+  try {
+    final result = Process.runSync('uname', ['-m']);
+    _isIntelMacCached = result.exitCode == 0 && result.stdout.toString().trim() != 'arm64';
+  } catch (_) {
+    _isIntelMacCached = false;
+  }
+  return _isIntelMacCached!;
+}
 class WebServerService extends ChangeNotifier {
   final StorageService _storageService;
   ChatService? _chatService;
@@ -1313,6 +1327,7 @@ class WebServerService extends ChangeNotifier {
           // Backend runtime state
           'koboldRunning': _llmProvider?.koboldService.isRunning ?? false,
           'koboldReady': _llmProvider?.koboldService.isReady ?? false,
+          'isIntelMac': _checkIsIntelMac(),
           // RAG / Memory
           'ragEnabled': s.ragEnabled,
           'ragRetrievalCount': s.ragRetrievalCount,

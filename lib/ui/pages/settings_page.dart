@@ -1179,6 +1179,30 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 24),
           _buildSectionHeader('Backend Mode', context),
           const SizedBox(height: 8),
+          // Intel Mac warning banner
+          if (backendManager.isIntelMac) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, size: 20, color: Colors.orange),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Local inference is not supported on Intel Macs. Only Remote API mode is available.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange[200]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -1196,14 +1220,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         contentPadding: EdgeInsets.zero,
                         title: Row(
                           children: [
-                            Icon(Icons.computer, size: 18, color: theme.iconTheme.color),
+                            Icon(Icons.computer, size: 18, color: backendManager.isIntelMac ? Colors.grey : theme.iconTheme.color),
                             const SizedBox(width: 6),
-                            const Text('Local (KoboldCPP)', style: TextStyle(fontSize: 13)),
+                            Text('Local (KoboldCPP)', style: TextStyle(fontSize: 13, color: backendManager.isIntelMac ? Colors.grey : null)),
                           ],
                         ),
                         value: BackendType.kobold,
                         groupValue: llmProvider.activeBackend,
-                        onChanged: (val) async {
+                        onChanged: backendManager.isIntelMac ? null : (val) async {
                           if (val != null) {
                             await llmProvider.setActiveBackend(val);
                             if (mounted) {
@@ -1531,8 +1555,8 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
 
-          // ── Local KoboldCPP sections (only when local mode) ──
-          if (llmProvider.isLocal) ...[
+          // ── Local KoboldCPP sections (only when local mode and not Intel Mac) ──
+          if (llmProvider.isLocal && !backendManager.isIntelMac) ...[
           const SizedBox(height: 24),
           _buildSectionHeader('Koboldcpp Backend', context),
            // ... (Existing Backend Logic adapted) ...

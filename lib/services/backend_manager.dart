@@ -41,6 +41,7 @@ class BackendManager extends ChangeNotifier {
   String? get backendPath => _backendPath;
   String? get error => _error;
   String get statusMessage => _statusMessage;
+  bool get isIntelMac => Platform.isMacOS && _arch != 'arm64';
 
   BackendManager(this._storageService) {
     _init();
@@ -142,6 +143,14 @@ class BackendManager extends ChangeNotifier {
   Future<void> downloadBackend() async {
     if (_isDownloading) return;
     if (_storageService.rootPath == null) return;
+
+    // Intel Macs cannot run KoboldCpp (no Metal GPU acceleration)
+    if (isIntelMac) {
+      _error = 'Local inference is not supported on Intel Macs. Please use Remote API mode.';
+      _statusMessage = 'Unsupported';
+      notifyListeners();
+      return;
+    }
 
     _isDownloading = true;
     _error = null;

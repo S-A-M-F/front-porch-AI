@@ -319,6 +319,7 @@
   let _backendType = 'openRouter'; // 'kobold' or 'openRouter'
   let _contextSize = 8192;
   let _koboldRunning = false;
+  let _isIntelMac = false;
 
   async function fetchBackendState() {
     const data = await apiJson('/api/settings');
@@ -326,6 +327,11 @@
       _backendType = data.activeBackend === 'kobold' ? 'kobold' : 'openRouter';
       _contextSize = data.contextSize || 8192;
       _koboldRunning = data.koboldRunning === true;
+      _isIntelMac = data.isIntelMac === true;
+      // Force API mode on Intel Macs
+      if (_isIntelMac && _backendType === 'kobold') {
+        _backendType = 'openRouter';
+      }
     }
   }
 
@@ -356,16 +362,18 @@
     const backendRow = el('div', {style:'display:flex;gap:12px;margin-bottom:16px'});
 
     const koboldChip = el('div', {
-      className: 'cw-backend-chip' + (_backendType === 'kobold' ? ' selected' : ''),
-      style: 'flex:1;padding:14px 16px;border-radius:10px;text-align:center;cursor:pointer;border:' + (_backendType === 'kobold' ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.12)') + ';background:' + (_backendType === 'kobold' ? 'rgba(59,130,246,0.15)' : '#1e293b') + ';color:' + (_backendType === 'kobold' ? '#3b82f6' : 'rgba(255,255,255,0.5)') + ';font-size:13px;font-weight:' + (_backendType === 'kobold' ? '700' : '400'),
+      className: 'cw-backend-chip' + (_backendType === 'kobold' && !_isIntelMac ? ' selected' : ''),
+      style: 'flex:1;padding:14px 16px;border-radius:10px;text-align:center;' + (_isIntelMac ? 'opacity:0.4;cursor:not-allowed;' : 'cursor:pointer;') + 'border:' + (_backendType === 'kobold' && !_isIntelMac ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.12)') + ';background:' + (_backendType === 'kobold' && !_isIntelMac ? 'rgba(59,130,246,0.15)' : '#1e293b') + ';color:' + (_backendType === 'kobold' && !_isIntelMac ? '#3b82f6' : 'rgba(255,255,255,0.5)') + ';font-size:13px;font-weight:' + (_backendType === 'kobold' && !_isIntelMac ? '700' : '400'),
     }, '🖥️ KoboldCpp (Local)');
-    koboldChip.addEventListener('click', async () => {
-      if (_backendType !== 'kobold') {
-        _backendType = 'kobold';
-        await apiJson('/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({activeBackend:'kobold'}) });
-        renderStep0();
-      }
-    });
+    if (!_isIntelMac) {
+      koboldChip.addEventListener('click', async () => {
+        if (_backendType !== 'kobold') {
+          _backendType = 'kobold';
+          await apiJson('/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({activeBackend:'kobold'}) });
+          renderStep0();
+        }
+      });
+    }
 
     const apiChip = el('div', {
       className: 'cw-backend-chip' + (_backendType !== 'kobold' ? ' selected' : ''),
@@ -382,6 +390,14 @@
     backendRow.appendChild(koboldChip);
     backendRow.appendChild(apiChip);
     backendSec.appendChild(backendRow);
+
+    // Intel Mac warning
+    if (_isIntelMac) {
+      const warn = el('div', {style:'background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.4);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px'});
+      warn.innerHTML = '<span style="font-size:16px">⚠️</span><span style="font-size:12px;color:#ffb74d">Local inference is not supported on Intel Macs. Only Remote API mode is available.</span>';
+      backendSec.appendChild(warn);
+    }
+
     c.appendChild(backendSec);
 
     if (_backendType === 'kobold') {

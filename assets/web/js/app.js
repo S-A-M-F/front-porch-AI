@@ -1978,9 +1978,10 @@
                 <div class="modal-title">🧠 Model / API Config</div>
                 <div style="overflow-y:auto;flex:1;padding:12px 0;">
                     <div class="radio-group" style="margin-bottom:12px">
-                        <label class="radio-option"><input type="radio" name="m-backend" value="kobold" ${data.activeBackend === 'kobold' ? 'checked' : ''}><span>🖥️ Local</span></label>
-                        <label class="radio-option"><input type="radio" name="m-backend" value="openRouter" ${data.activeBackend !== 'kobold' ? 'checked' : ''}><span>☁️ Remote API</span></label>
+                        <label class="radio-option" ${data.isIntelMac ? 'style="opacity:0.4;pointer-events:none"' : ''}><input type="radio" name="m-backend" value="kobold" ${data.activeBackend === 'kobold' && !data.isIntelMac ? 'checked' : ''} ${data.isIntelMac ? 'disabled' : ''}><span>🖥️ Local</span></label>
+                        <label class="radio-option"><input type="radio" name="m-backend" value="openRouter" ${data.activeBackend !== 'kobold' || data.isIntelMac ? 'checked' : ''}><span>☁️ Remote API</span></label>
                     </div>
+                    ${data.isIntelMac ? '<div style="background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.4);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">⚠️</span><span style="font-size:12px;color:#ffb74d">Local inference is not supported on Intel Macs. Only Remote API mode is available.</span></div>' : ''}
                     <div class="settings-field"><label class="field-label">API URL</label>
                         <input type="text" id="m-api-url" class="settings-input" value="${esc(data.apiUrl || '')}"></div>
                     <div class="settings-field"><label class="field-label">API Key</label>
@@ -2819,6 +2820,28 @@
         // Backend mode
         const backendRadio = document.querySelector(`input[name="backendMode"][value="${data.activeBackend || 'openRouter'}"]`);
         if (backendRadio) backendRadio.checked = true;
+
+        // Intel Mac: disable Local radio and show warning
+        if (data.isIntelMac) {
+            const localRadio = document.querySelector('input[name="backendMode"][value="kobold"]');
+            if (localRadio) {
+                localRadio.disabled = true;
+                localRadio.closest('label').style.opacity = '0.4';
+                localRadio.closest('label').style.pointerEvents = 'none';
+            }
+            // Force Remote API selection
+            const remoteRadio = document.querySelector('input[name="backendMode"][value="openRouter"]');
+            if (remoteRadio) remoteRadio.checked = true;
+            // Add warning banner if not already present
+            const group = document.getElementById('backend-mode-group');
+            if (group && !group.querySelector('.intel-mac-warning')) {
+                const warn = document.createElement('div');
+                warn.className = 'intel-mac-warning';
+                warn.style.cssText = 'background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.4);border-radius:8px;padding:10px 12px;margin-top:8px;display:flex;align-items:center;gap:8px';
+                warn.innerHTML = '<span style="font-size:16px">⚠️</span><span style="font-size:12px;color:#ffb74d">Local inference is not supported on Intel Macs. Only Remote API mode is available.</span>';
+                group.appendChild(warn);
+            }
+        }
 
         // API Config
         const apiUrl = $('#setting-api-url');
