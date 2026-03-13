@@ -37,6 +37,19 @@ class CharacterGenService {
   /// The raw LLM output from the last base card generation, for image prompt extraction.
   String? lastRawOutput;
 
+  /// Per-category descriptions for lorebook generation prompts.
+  static const _loreCategoryDescriptions = {
+    'Locations': 'Notable places in the world: cities, provinces, landmarks, dungeons, taverns, wilderness areas. Describe geography, atmosphere, reputation, and who frequents them',
+    'NPCs/Allies': 'Supporting characters who exist in the world: shopkeepers, rulers, rivals, mysterious figures, recurring contacts. Name, role, personality, and relationship to the setting',
+    'Factions/Organizations': 'Guilds, governments, criminal syndicates, cults, religious orders, military groups. Structure, goals, reputation, territory, and influence',
+    'Culture/Customs': 'Social norms, traditions, holidays, taboos, greetings, food, clothing, entertainment, laws. How people in this world live day-to-day',
+    'Abilities/Magic': 'Magic systems, combat arts, supernatural phenomena, technology rules. How powers work, costs, limitations, who can use them, societal attitudes toward them',
+    'Flora/Fauna': 'Creatures, monsters, beasts, plants, and materials unique to this world. Appearance, behavior, ecological role, uses, and dangers',
+    'History/Events': 'World-level historical events: wars, cataclysms, discoveries, founding of nations, political upheavals. NOT the character\'s personal biography',
+    'Items/Equipment': 'Notable weapons, artifacts, potions, tools, currencies, trade goods. Origin, properties, rarity, cultural significance',
+    'Secrets/Hidden Lore': 'Forbidden knowledge, hidden locations, conspiracies, prophecies, sealed powers, forgotten truths that most people in the world don\'t know about',
+  };
+
   CharacterGenService(this._llmService);
 
   /// Generate a complete character card from user-provided creative inputs.
@@ -403,16 +416,35 @@ Use {{char}} for character name and {{user}} for user name. Respond with ONLY th
         ? ' Focus on: ${loreCategories.join(", ")}.'
         : '';
 
-    final prompt = '''Generate world-building lorebook entries for a roleplay character. Output ONLY a JSON object with a single key "lorebook" containing an array of $countRange entry objects.$categoryHint
+    // Build per-category descriptions when categories are selected
+    String categoryGuidance = '';
+    if (loreCategories.isNotEmpty) {
+      final guides = <String>[];
+      for (final cat in loreCategories) {
+        final desc = _loreCategoryDescriptions[cat];
+        if (desc != null) guides.add('- $cat: $desc');
+      }
+      if (guides.isNotEmpty) {
+        categoryGuidance = '\n\nCATEGORY GUIDE (generate entries matching these types):\n${guides.join('\n')}';
+      }
+    }
 
-Character: $name
+    final prompt = '''Generate WORLD-BUILDING lorebook entries for a roleplay setting. Output ONLY a JSON object with a single key "lorebook" containing an array of $countRange entry objects.$categoryHint
+
+The character who lives in this world:
+Name: $name
 Concept: ${concept.length > 500 ? '${concept.substring(0, 500)}...' : concept}
 ${card.description.trim().isNotEmpty ? 'Description: ${card.description.length > 300 ? '${card.description.substring(0, 300)}...' : card.description}' : ''}
-Personality: ${card.personality.length > 300 ? '${card.personality.substring(0, 300)}...' : card.personality}
-${card.scenario.trim().isNotEmpty ? 'Scenario: ${card.scenario}' : ''}
+${card.scenario.trim().isNotEmpty ? 'Scenario: ${card.scenario}' : ''}$categoryGuidance
 
-Entries MUST be relevant to this specific character and their world. Do NOT generate generic fantasy/sci-fi lore unrelated to the character.
-Each entry format: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of lore"}
+CRITICAL RULES:
+1. Entries MUST describe the WORLD — places, factions, customs, magic systems, creatures, world events, items, NPCs
+2. Do NOT create entries about the character's personal history, backstory, childhood, relationships, or biography
+3. Each entry should be something that EXISTS IN THE WORLD independently of the character
+4. Keys should be common words/phrases a user would naturally type during roleplay (e.g. "tavern, inn, drink" not "The Gilded Chalice Tavern")
+5. Content should be 1-2 paragraphs of rich, descriptive world lore
+
+Each entry format: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of world lore"}
 
 Output ONLY the JSON:''';
 
@@ -505,7 +537,7 @@ Output ONLY the JSON:''';
       final categoryHint = loreCategories.isNotEmpty
           ? ' focusing on: ${loreCategories.join(", ")}'
           : '';
-      lorebookSpec = '- "lorebook": (array of $countRange objects) world-building entries$categoryHint, each: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of lore"}\n';
+      lorebookSpec = '- "lorebook": (array of $countRange objects) WORLD-BUILDING entries$categoryHint. Each entry describes the WORLD (places, factions, customs, magic, creatures, events) — NOT the character\'s personal history or biography. Each: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of world lore"}\n';
     }
 
     // System prompt spec — if user already has one, skip AI generation entirely

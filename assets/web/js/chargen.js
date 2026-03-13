@@ -47,7 +47,7 @@
   const ART_STYLES = ['Anime', 'Realistic', 'Painterly', 'Pixel Art', 'Comic Book', 'Watercolor', 'Fantasy Illustration'];
   const GREETING_LENGTHS = ['Short (1-2 paragraphs)', 'Medium (2-4 paragraphs)', 'Long (4-6 paragraphs)'];
   const GREETING_TONES = ['Neutral','Romantic','Spicy/NSFW','Flirty/Playful','Wholesome','Slice of Life','Story/Narrative','Adventure','Combat/Action','Comedy/Humor','Suspense/Thriller','Dark/Mystery','Melancholy'];
-  const LORE_CATEGORIES = ['Locations','NPCs/Allies','Items/Equipment','History/Lore','Factions/Organizations','Abilities/Magic','Culture/Customs','Secrets/Hidden Lore'];
+  const LORE_CATEGORIES = ['Locations','NPCs/Allies','Factions/Organizations','Culture/Customs','Abilities/Magic','Flora/Fauna','Items/Equipment','History/Events','Secrets/Hidden Lore'];
   const LORE_DEPTHS = ['Light', 'Standard', 'Deep'];
   const RELATIONSHIPS = ['Stranger','Childhood Friend','Rival','Best Friend','Mentor','Student','Roommate','Co-worker','Sparring Partner','Sibling','Love Interest','Secret Admirer','Forbidden Romance','FWB','Ex-lover','Arranged Marriage','Fake Dating','Bodyguard'];
   const NSFW_RELATIONSHIPS = new Set(['Love Interest','Secret Admirer','Forbidden Romance','FWB','Ex-lover','Arranged Marriage','Fake Dating','Bodyguard']);

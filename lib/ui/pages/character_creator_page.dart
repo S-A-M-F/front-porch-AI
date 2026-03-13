@@ -321,11 +321,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   static const _loreCategoryOptions = [
     'Locations',
     'NPCs/Allies',
-    'Items/Equipment',
-    'History/Lore',
     'Factions/Organizations',
-    'Abilities/Magic',
     'Culture/Customs',
+    'Abilities/Magic',
+    'Flora/Fauna',
+    'Items/Equipment',
+    'History/Events',
     'Secrets/Hidden Lore',
   ];
 
