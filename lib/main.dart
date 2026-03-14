@@ -54,6 +54,7 @@ import 'package:front_porch_ai/database/data_migration_service.dart';
 import 'package:front_porch_ai/services/backup_service.dart';
 import 'package:front_porch_ai/services/db_reunification_service.dart';
 import 'package:front_porch_ai/services/embedding_service.dart';
+import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
 
 
@@ -127,10 +128,10 @@ void main(List<String> args) async {
           create: (context) => WorldRepository(Provider.of<StorageService>(context, listen: false), db),
           update: (context, storage, previous) => previous ?? WorldRepository(storage, db),
         ),
+        ChangeNotifierProvider(create: (_) => EmbeddingSidecar()),
         ChangeNotifierProvider<EmbeddingService>(
           create: (context) => EmbeddingService(
-            Provider.of<KoboldService>(context, listen: false),
-            Provider.of<StorageService>(context, listen: false),
+            Provider.of<EmbeddingSidecar>(context, listen: false),
           ),
         ),
         ChangeNotifierProxyProvider<StorageService, BackendManager>(
@@ -165,10 +166,8 @@ void main(List<String> args) async {
             chatService.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
             // Wire MemoryService for RAG
             try {
-              final embeddingService = EmbeddingService(
-                Provider.of<KoboldService>(context, listen: false),
-                Provider.of<StorageService>(context, listen: false),
-              );
+              final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+              final embeddingService = EmbeddingService(sidecar);
               final memoryService = MemoryService(
                 embeddingService,
                 Provider.of<StorageService>(context, listen: false),
@@ -252,6 +251,7 @@ void main(List<String> args) async {
             ws.setGroupChatRepository(Provider.of<GroupChatRepository>(context, listen: false));
             ws.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
             ws.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
+            ws.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
             return ws;
           },
           update: (context, storage, previous) {
@@ -266,6 +266,7 @@ void main(List<String> args) async {
               previous.setGroupChatRepository(Provider.of<GroupChatRepository>(context, listen: false));
               previous.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
               previous.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
+              previous.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
               return previous;
             }
             final chatService = Provider.of<ChatService>(context, listen: false);
@@ -281,6 +282,7 @@ void main(List<String> args) async {
             ws.setGroupChatRepository(Provider.of<GroupChatRepository>(context, listen: false));
             ws.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
             ws.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
+            ws.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
             return ws;
           },
         ),
@@ -359,6 +361,16 @@ class _MyAppState extends State<MyApp> with WindowListener {
       }
     } catch (e) {
       debugPrint('AG_DEBUG: Error stopping web server on close: $e');
+    }
+
+    // Stop embedding sidecar
+    try {
+      final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+      if (sidecar.isRunning) {
+        await sidecar.stopServer();
+      }
+    } catch (e) {
+      debugPrint('AG_DEBUG: Error stopping embedding sidecar on close: $e');
     }
 
     // On Linux, windowManager.destroy() triggers a Flutter engine bug:

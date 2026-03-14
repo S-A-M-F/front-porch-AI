@@ -46,6 +46,7 @@ import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/ui/dialogs/image_gen_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/data_bank_dialog.dart';
+import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/ui/widgets/call_overlay.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -3506,7 +3507,32 @@ class _MemorySectionState extends State<_MemorySection> {
               child: FittedBox(
                 child: Switch(
                   value: enabled,
-                  onChanged: (val) => storage.setRagEnabled(val),
+                  onChanged: (val) async {
+                    if (!val) {
+                      // Turning OFF — no consent needed
+                      storage.setRagEnabled(false);
+                      return;
+                    }
+                    // Turning ON — check if consent was given before
+                    final prefs = await SharedPreferences.getInstance();
+                    final consented = prefs.getBool('rag_setup_consented') ?? false;
+                    if (consented) {
+                      // Already consented — just enable
+                      storage.setRagEnabled(true);
+                      return;
+                    }
+                    // First time — show consent + setup dialog
+                    if (!context.mounted) return;
+                    final result = await showDialog<bool>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => const _RagSetupDialog(),
+                    );
+                    if (result == true) {
+                      await prefs.setBool('rag_setup_consented', true);
+                      storage.setRagEnabled(true);
+                    }
+                  },
                   activeTrackColor: Colors.purpleAccent,
                 ),
               ),
@@ -3526,21 +3552,32 @@ class _MemorySectionState extends State<_MemorySection> {
         if (enabled) ...[
           const SizedBox(height: 6),
           // Status indicator
-          Row(
-            children: [
-              Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(
-                  color: storage.ragEnabled ? Colors.greenAccent : Colors.redAccent,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Embedding source: ${storage.ragEmbeddingSource}',
-                style: const TextStyle(fontSize: 10, color: Colors.white38),
-              ),
-            ],
+          Builder(
+            builder: (context) {
+              final sidecar = Provider.of<EmbeddingSidecar>(context);
+              final statusColor = sidecar.modelReady ? Colors.greenAccent : Colors.amber;
+              final statusText = sidecar.modelReady
+                  ? 'Embedding engine ready'
+                  : sidecar.isRunning
+                      ? 'Starting...'
+                      : 'Engine not running';
+              return Row(
+                children: [
+                  Container(
+                    width: 8, height: 8,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    statusText,
+                    style: const TextStyle(fontSize: 10, color: Colors.white38),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 6),
           // Controls row
@@ -3678,66 +3715,15 @@ class _MemorySectionState extends State<_MemorySection> {
                       onChanged: (val) => storage.setRagWindowSize(val.round()),
                     ),
                   ),
-                  // Embedding source
-                  Row(
-                    children: [
-                      const Text('Embedding source', style: TextStyle(color: Colors.white54, fontSize: 11)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: storage.ragEmbeddingSource,
-                          dropdownColor: const Color(0xFF1F2937),
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            border: OutlineInputBorder(),
-                          ),
-                          isDense: true,
-                          items: const [
-                            DropdownMenuItem(value: 'auto', child: Text('Auto')),
-                            DropdownMenuItem(value: 'onnx', child: Text('ONNX Local')),
-                            DropdownMenuItem(value: 'kobold', child: Text('KoboldCpp')),
-                            DropdownMenuItem(value: 'api', child: Text('API')),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) storage.setRagEmbeddingSource(val);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  // API model name
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Text('API model', style: TextStyle(color: Colors.white54, fontSize: 11)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextFormField(
-                          initialValue: storage.ragEmbeddingModel,
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            border: OutlineInputBorder(),
-                            hintText: 'text-embedding-3-small',
-                            hintStyle: TextStyle(color: Colors.white24, fontSize: 11),
-                          ),
-                          onChanged: (val) => storage.setRagEmbeddingModel(val),
-                        ),
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 6),
                   const Row(
                     children: [
-                      Icon(Icons.info_outline, size: 12, color: Colors.amber),
+                      Icon(Icons.info_outline, size: 12, color: Colors.purpleAccent),
                       SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          'Embeds messages in the background. API embedding uses tokens.',
-                          style: TextStyle(fontSize: 10, color: Colors.amber),
+                          'Uses local nomic-embed-text model — no data leaves your machine.',
+                          style: TextStyle(fontSize: 10, color: Colors.white38),
                         ),
                       ),
                     ],
@@ -3884,6 +3870,309 @@ class _MemorySectionState extends State<_MemorySection> {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+// ── RAG Setup Consent + Progress Dialog ─────────────────────────────
+
+class _RagSetupDialog extends StatefulWidget {
+  const _RagSetupDialog();
+
+  @override
+  State<_RagSetupDialog> createState() => _RagSetupDialogState();
+}
+
+class _RagSetupDialogState extends State<_RagSetupDialog> {
+  bool _isSettingUp = false;
+  bool _isDone = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final sidecar = Provider.of<EmbeddingSidecar>(context);
+
+    return Dialog(
+      backgroundColor: const Color(0xFF1E293B),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: _isSettingUp ? _buildSetupView(sidecar) : _buildConsentView(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConsentView() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        Row(
+          children: [
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Colors.purpleAccent, Colors.deepPurple],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.psychology, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text('Enable Memory (RAG)',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Explanation
+        const Text(
+          'Memory (RAG) gives your AI the ability to recall past conversations — even ones that have left the context window.',
+          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111827),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _InfoRow(icon: Icons.download, color: Colors.blueAccent,
+                text: 'Downloads a ~270 MB AI embedding model on first setup'),
+              SizedBox(height: 8),
+              _InfoRow(icon: Icons.memory, color: Colors.tealAccent,
+                text: 'Runs locally on your CPU — no data leaves your machine'),
+              SizedBox(height: 8),
+              _InfoRow(icon: Icons.search, color: Colors.purpleAccent,
+                text: 'Searches past messages for relevant context to include in prompts'),
+              SizedBox(height: 8),
+              _InfoRow(icon: Icons.swap_horiz, color: Colors.amberAccent,
+                text: 'You can switch to API-based embeddings later in Settings'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Buttons
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() => _isSettingUp = true);
+                _startSetup();
+              },
+              icon: const Icon(Icons.rocket_launch, size: 16),
+              label: const Text('Set Up & Enable'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purpleAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSetupView(EmbeddingSidecar sidecar) {
+    final hasError = sidecar.error != null;
+    final progress = sidecar.downloadProgress;
+    final showProgress = progress >= 0 && progress <= 1.0;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        Row(
+          children: [
+            if (_isDone)
+              const Icon(Icons.check_circle, color: Colors.greenAccent, size: 28)
+            else if (hasError)
+              const Icon(Icons.error_outline, color: Colors.redAccent, size: 28)
+            else
+              const SizedBox(
+                width: 24, height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.purpleAccent),
+              ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _isDone ? 'Setup Complete' : hasError ? 'Setup Failed' : 'Setting Up Memory...',
+                style: TextStyle(
+                  color: _isDone ? Colors.greenAccent : hasError ? Colors.redAccent : Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Status message
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111827),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: hasError ? Colors.redAccent.withValues(alpha: 0.3) : Colors.white12,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                sidecar.statusMessage,
+                style: TextStyle(
+                  color: hasError ? Colors.redAccent : Colors.white70,
+                  fontSize: 13,
+                ),
+              ),
+              if (showProgress) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: Colors.white12,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.purpleAccent),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${(progress * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+              ],
+              if (!showProgress && !hasError && !_isDone) ...[
+                const SizedBox(height: 10),
+                const ClipRRect(
+                  child: LinearProgressIndicator(
+                    minHeight: 4,
+                    backgroundColor: Colors.white12,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.purpleAccent),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (hasError && sidecar.error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            sidecar.error!,
+            style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        const SizedBox(height: 20),
+
+        // Buttons
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (_isDone)
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.greenAccent.shade700,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Done'),
+              )
+            else if (hasError) ...[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: () {
+                  sidecar.clearError();
+                  _startSetup();
+                },
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Retry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purpleAccent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ] else
+              TextButton(
+                onPressed: () {
+                  // Cancel the setup — stop sidecar
+                  sidecar.stopServer();
+                  Navigator.of(context).pop(false);
+                },
+                child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _startSetup() async {
+    final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+
+    // Start server (will also trigger model download if needed)
+    await sidecar.startServer();
+    if (sidecar.error != null) return; // Error state shown in UI
+
+    // Wait for model to be ready
+    final ready = await sidecar.waitForModelReady();
+    if (!mounted) return;
+
+    if (ready) {
+      setState(() => _isDone = true);
+    }
+    // If not ready, error state is shown via sidecar.error
+  }
+}
+
+/// Small helper widget for the consent dialog info rows.
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String text;
+  const _InfoRow({required this.icon, required this.color, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.4)),
+        ),
+      ],
     );
   }
 }

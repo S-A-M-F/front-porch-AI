@@ -2135,17 +2135,8 @@
                         <div class="slider-row"><label class="slider-label">Window size</label>
                             <input type="range" id="m-rag-window" min="3" max="10" step="1" value="${ragWin}" class="settings-slider">
                             <span class="slider-value" id="m-rag-window-val">${ragWin}</span></div>
-                        <div class="settings-field" style="margin-top:8px"><label class="field-label">Embedding source</label>
-                            <select id="m-rag-source" class="settings-select">
-                                <option value="auto" ${data.ragEmbeddingSource === 'auto' ? 'selected' : ''}>Auto</option>
-                                <option value="onnx" ${data.ragEmbeddingSource === 'onnx' ? 'selected' : ''}>ONNX Local</option>
-                                <option value="kobold" ${data.ragEmbeddingSource === 'kobold' ? 'selected' : ''}>KoboldCpp</option>
-                                <option value="api" ${data.ragEmbeddingSource === 'api' ? 'selected' : ''}>API</option>
-                            </select></div>
-                        <div class="settings-field" style="margin-top:8px"><label class="field-label">API model</label>
-                            <input type="text" id="m-rag-model" class="settings-input" value="${esc(data.ragEmbeddingModel || '')}" placeholder="text-embedding-3-small"></div>
                         <div style="padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;color:rgba(255,255,255,0.4);font-size:11px;margin-top:8px">
-                            ℹ️ Embeds messages in the background. API embedding uses tokens.</div>
+                            🔒 Uses local nomic-embed-text model — no data leaves your machine.</div>
                         <div style="border-top:1px solid rgba(255,255,255,0.08);margin:12px 0"></div>
                         <div class="toggle-row"><span>✨ Auto-update persona</span>
                             <label class="toggle-switch"><input type="checkbox" id="m-auto-persona" ${data.autoPersonaEnabled ? 'checked' : ''}><span class="toggle-slider"></span></label></div>
@@ -2197,8 +2188,6 @@
                     ragEnabled: overlay.querySelector('#m-rag-enabled').checked,
                     ragRetrievalCount: parseInt(overlay.querySelector('#m-rag-retrieval').value),
                     ragWindowSize: parseInt(overlay.querySelector('#m-rag-window').value),
-                    ragEmbeddingSource: overlay.querySelector('#m-rag-source').value,
-                    ragEmbeddingModel: overlay.querySelector('#m-rag-model').value,
                     autoPersonaEnabled: overlay.querySelector('#m-auto-persona').checked,
                     autoPersonaInterval: parseInt(overlay.querySelector('#m-persona-interval').value),
                 };
@@ -2945,10 +2934,6 @@
             const wv = $('#rag-window-value');
             if (wv) wv.textContent = data.ragWindowSize ?? 5;
         }
-        const ragSource = $('#setting-rag-source');
-        if (ragSource) ragSource.value = data.ragEmbeddingSource || 'auto';
-        const ragModel = $('#setting-rag-model');
-        if (ragModel) ragModel.value = data.ragEmbeddingModel || '';
         // Auto-persona
         const apCb = $('#setting-auto-persona');
         if (apCb) apCb.checked = data.autoPersonaEnabled ?? false;
@@ -3496,8 +3481,6 @@
                     ragEnabled: $('#setting-rag-enabled')?.checked || false,
                     ragRetrievalCount: parseInt($('#setting-rag-retrieval')?.value) || 10,
                     ragWindowSize: parseInt($('#setting-rag-window')?.value) || 5,
-                    ragEmbeddingSource: $('#setting-rag-source')?.value || 'auto',
-                    ragEmbeddingModel: $('#setting-rag-model')?.value || '',
                     autoPersonaEnabled: $('#setting-auto-persona')?.checked || false,
                     autoPersonaInterval: parseInt($('#setting-persona-interval')?.value) || 5,
                 }),

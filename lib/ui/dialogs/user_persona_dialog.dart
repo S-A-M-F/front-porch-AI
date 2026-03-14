@@ -215,6 +215,14 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                     'Learned Facts (${service.persona.learnedFacts.length})',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
                   ),
+                  const Spacer(),
+                  if (service.persona.learnedFacts.length > 10)
+                    TextButton.icon(
+                      onPressed: () => _showClearFactsConfirmation(context, service),
+                      icon: const Icon(Icons.delete_sweep, size: 14, color: Colors.redAccent),
+                      label: const Text('Clear All', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                    ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -223,22 +231,27 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                 style: TextStyle(fontSize: 11, color: Colors.white30),
               ),
               const SizedBox(height: 6),
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: List.generate(service.persona.learnedFacts.length, (i) {
-                  return Chip(
-                    label: Text(
-                      service.persona.learnedFacts[i],
-                      style: const TextStyle(fontSize: 11, color: Colors.white70),
-                    ),
-                    backgroundColor: const Color(0xFF374151),
-                    deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white38),
-                    onDeleted: () => service.removeLearnedFact(i),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  );
-                }),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 120),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: List.generate(service.persona.learnedFacts.length, (i) {
+                      return Chip(
+                        label: Text(
+                          service.persona.learnedFacts[i],
+                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                        ),
+                        backgroundColor: const Color(0xFF374151),
+                        deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white38),
+                        onDeleted: () => service.removeLearnedFact(i),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      );
+                    }),
+                  ),
+                ),
               ),
             ],
             const SizedBox(height: 16),
@@ -398,6 +411,33 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showClearFactsConfirmation(BuildContext context, UserPersonaService service) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        title: const Text('Clear All Facts'),
+        content: Text('Remove all ${service.persona.learnedFacts.length} learned facts? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              while (service.persona.learnedFacts.isNotEmpty) {
+                service.removeLearnedFact(0);
+              }
+              Navigator.of(context).pop();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('Clear All'),
           ),
         ],
       ),

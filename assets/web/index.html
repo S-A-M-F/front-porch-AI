@@ -655,21 +655,8 @@
                   <input type="range" id="setting-rag-window" min="3" max="10" step="1" value="5" class="settings-slider">
                   <span id="rag-window-value" class="slider-value">5</span>
                 </div>
-                <div class="settings-field" style="margin-top:8px">
-                  <label class="field-label">Embedding source</label>
-                  <select id="setting-rag-source" class="settings-select">
-                    <option value="auto">Auto</option>
-                    <option value="onnx">ONNX Local</option>
-                    <option value="kobold">KoboldCpp</option>
-                    <option value="api">API</option>
-                  </select>
-                </div>
-                <div class="settings-field" style="margin-top:8px">
-                  <label class="field-label">API model</label>
-                  <input type="text" id="setting-rag-model" class="settings-input" placeholder="text-embedding-3-small">
-                </div>
                 <div style="padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;color:rgba(255,255,255,0.4);font-size:11px;margin-top:8px">
-                  ℹ️ Embeds messages in the background. API embedding uses tokens.
+                  🔒 Uses local nomic-embed-text model — no data leaves your machine.
                 </div>
                 <div style="border-top:1px solid rgba(255,255,255,0.08);margin:12px 0"></div>
                 <div class="toggle-row">

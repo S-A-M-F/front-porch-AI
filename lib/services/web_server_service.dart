@@ -48,6 +48,7 @@ import 'package:front_porch_ai/services/backup_service.dart';
 import 'package:front_porch_ai/services/character_gen_service.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:front_porch_ai/database/database.dart';
@@ -85,6 +86,7 @@ class WebServerService extends ChangeNotifier {
   GroupChatRepository? _groupChatRepository;
   CloudSyncService? _cloudSyncService;
   ImageGenService? _imageGenService;
+  EmbeddingSidecar? _embeddingSidecar;
 
   // ── Chargen SSE state ──
   final Set<StreamController<List<int>>> _chargenSseClients = {};
@@ -129,6 +131,7 @@ class WebServerService extends ChangeNotifier {
   void setGroupChatRepository(GroupChatRepository gcr) => _groupChatRepository = gcr;
   void setCloudSyncService(CloudSyncService css) => _cloudSyncService = css;
   void setImageGenService(ImageGenService igs) => _imageGenService = igs;
+  void setEmbeddingSidecar(EmbeddingSidecar es) => _embeddingSidecar = es;
 
   // ─────────────────────────────────────────────────────────────────────
   // LAN IP detection
@@ -282,6 +285,10 @@ class WebServerService extends ChangeNotifier {
     router.post('/api/sync/purge', _handleSyncPurge);
     router.get('/api/sync/cloud-characters', _handleListCloudCharacters);
     router.post('/api/sync/download-characters', _handleDownloadCloudCharacters);
+
+    // ── RAG sidecar routes ──
+    router.get('/api/rag/status', _handleRagStatus);
+    router.post('/api/rag/setup', _handleRagSetup);
 
     // ── Backup routes ──
     router.get('/api/backups', _handleGetBackups);
@@ -1332,8 +1339,6 @@ class WebServerService extends ChangeNotifier {
           'ragEnabled': s.ragEnabled,
           'ragRetrievalCount': s.ragRetrievalCount,
           'ragWindowSize': s.ragWindowSize,
-          'ragEmbeddingSource': s.ragEmbeddingSource,
-          'ragEmbeddingModel': s.ragEmbeddingModel,
           // Auto-persona
           'autoPersonaEnabled': s.autoPersonaEnabled,
           'autoPersonaInterval': s.autoPersonaInterval,
@@ -1544,8 +1549,6 @@ class WebServerService extends ChangeNotifier {
       if (body.containsKey('ragEnabled')) await s.setRagEnabled(body['ragEnabled'] as bool);
       if (body.containsKey('ragRetrievalCount')) await s.setRagRetrievalCount((body['ragRetrievalCount'] as num).toInt());
       if (body.containsKey('ragWindowSize')) await s.setRagWindowSize((body['ragWindowSize'] as num).toInt());
-      if (body.containsKey('ragEmbeddingSource')) await s.setRagEmbeddingSource(body['ragEmbeddingSource'].toString());
-      if (body.containsKey('ragEmbeddingModel')) await s.setRagEmbeddingModel(body['ragEmbeddingModel'].toString());
 
       // Auto-persona
       if (body.containsKey('autoPersonaEnabled')) await s.setAutoPersonaEnabled(body['autoPersonaEnabled'] as bool);
@@ -2431,6 +2434,57 @@ class WebServerService extends ChangeNotifier {
       }
     }
     return '$hash$ext';
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // RAG Sidecar
+  // ─────────────────────────────────────────────────────────────────────
+
+  /// GET /api/rag/status — Returns embedding sidecar state.
+  Future<shelf.Response> _handleRagStatus(shelf.Request request) async {
+    final sidecar = _embeddingSidecar;
+    if (sidecar == null) {
+      return shelf.Response.ok(
+        jsonEncode({
+          'available': false,
+          'running': false,
+          'modelReady': false,
+          'error': 'Sidecar not configured',
+        }),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+    return shelf.Response.ok(
+      jsonEncode({
+        'available': sidecar.isUsable,
+        'running': sidecar.isRunning,
+        'modelReady': sidecar.modelReady,
+        'statusMessage': sidecar.statusMessage,
+        'downloadProgress': sidecar.downloadProgress,
+        'error': sidecar.error,
+      }),
+      headers: {'Content-Type': 'application/json'},
+    );
+  }
+
+  /// POST /api/rag/setup — Start the embedding sidecar (consent acknowledged).
+  Future<shelf.Response> _handleRagSetup(shelf.Request request) async {
+    final sidecar = _embeddingSidecar;
+    if (sidecar == null) {
+      return _errorResponse(503, 'Embedding sidecar not available');
+    }
+    if (sidecar.isRunning && sidecar.modelReady) {
+      return shelf.Response.ok(
+        jsonEncode({'status': 'already_ready'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+    // Start asynchronously — client polls /api/rag/status for progress
+    sidecar.ensureRunning();
+    return shelf.Response.ok(
+      jsonEncode({'status': 'starting'}),
+      headers: {'Content-Type': 'application/json'},
+    );
   }
 
   /// GET /api/image-cache/check?url=<encoded_url>

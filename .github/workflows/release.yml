@@ -119,7 +119,7 @@ jobs:
 
           # Install TTS dependencies + PyInstaller
           pip install --upgrade pip
-          pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper
+          pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper sentence-transformers
 
           # Build Kokoro TTS as a standalone directory bundle
           echo "Building Kokoro TTS binary..."
@@ -179,6 +179,25 @@ jobs:
             --noconfirm
           echo "Whisper STT built at: $STT_DEST/whisper_stt/"
 
+          # Build Embedding Server as a standalone directory bundle
+          echo "Building Embedding Server binary..."
+          pyinstaller embed_server.py \
+            --onedir \
+            --name embed_server \
+            --collect-all sentence_transformers \
+            --hidden-import sentence_transformers \
+            --hidden-import transformers \
+            --hidden-import tokenizers \
+            --hidden-import huggingface_hub \
+            --hidden-import onnxruntime \
+            --hidden-import numpy \
+            --distpath "$STT_DEST" \
+            --workpath ./build_tmp/embed \
+            --specpath ./build_tmp/embed \
+            --clean \
+            --noconfirm
+          echo "Embedding server built at: $STT_DEST/embed_server/"
+
           # For macOS, copy into the app bundle Resources
           if [ "${{ matrix.platform }}" = "macos" ]; then
             APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app 2>/dev/null | head -1)
@@ -194,6 +213,11 @@ jobs:
               mkdir -p "$STT_RESOURCES"
               cp -R "$STT_DEST/whisper_stt/"* "$STT_RESOURCES/"
               chmod +x "$STT_RESOURCES/whisper_stt"
+
+              EMBED_RESOURCES="$APP_NAME/Contents/Resources/embed_server"
+              mkdir -p "$EMBED_RESOURCES"
+              cp -R "$STT_DEST/embed_server/"* "$EMBED_RESOURCES/"
+              chmod +x "$EMBED_RESOURCES/embed_server"
             fi
           fi
 
@@ -201,6 +225,8 @@ jobs:
           ls -la "$DEST"
           echo "STT engine bundled at: $STT_DEST/whisper_stt/"
           ls -la "$STT_DEST/whisper_stt/"
+          echo "Embedding server bundled at: $STT_DEST/embed_server/"
+          ls -la "$STT_DEST/embed_server/"
 
 
       - name: Package Windows (zip)

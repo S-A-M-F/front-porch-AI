@@ -55,7 +55,6 @@ class MemoryService extends ChangeNotifier {
   bool _isEmbedding = false;
   int _pendingEmbeddings = 0;
   bool _availabilityChecked = false;
-  String? _lastCheckedSource; // Re-check if user changes embedding source
 
   bool get isEmbedding => _isEmbedding;
   int get pendingEmbeddings => _pendingEmbeddings;
@@ -102,12 +101,10 @@ class MemoryService extends ChangeNotifier {
     required List<String> formattedMessages,
     required int totalMessageCount,
   }) async {
-    // Lazy availability check — run on first use or when source changes
-    final currentSource = _storageService.ragEmbeddingSource;
-    if (!_availabilityChecked || _lastCheckedSource != currentSource) {
+    // Lazy availability check — run once on first use
+    if (!_availabilityChecked) {
       _availabilityChecked = true;
-      _lastCheckedSource = currentSource;
-      debugPrint('[RAG:Memory] Checking embedding availability (source: $currentSource)...');
+      debugPrint('[RAG:Memory] Checking embedding availability...');
       await _embeddingService.checkAvailability();
     }
     if (!isOperational) {
@@ -205,12 +202,10 @@ class MemoryService extends ChangeNotifier {
     int limit = 5,
     double minScore = 0.3,
   }) async {
-    // Lazy availability check — run on first use or when source changes
-    final currentSource = _storageService.ragEmbeddingSource;
-    if (!_availabilityChecked || _lastCheckedSource != currentSource) {
+    // Lazy availability check — run once on first use
+    if (!_availabilityChecked) {
       _availabilityChecked = true;
-      _lastCheckedSource = currentSource;
-      debugPrint('[RAG:Memory] Checking embedding availability (source: $currentSource)...');
+      debugPrint('[RAG:Memory] Checking embedding availability...');
       await _embeddingService.checkAvailability();
     }
     if (!isOperational || queryText.trim().isEmpty) {
