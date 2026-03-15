@@ -396,13 +396,30 @@ class ChatService extends ChangeNotifier {
 
   /// Build the user persona block for the generation prompt.
   /// Layered: user's self-description is ground truth, learned facts are additive.
-  String _buildUserPersonaBlock(String userName) {
+  /// When the embedding service is available, selects only the most relevant facts
+  /// for the current conversation context instead of injecting all facts.
+  Future<String> _buildUserPersonaBlock(String userName) async {
     final persona = _userPersonaService.persona;
     final description = persona.description.trim();
-    final facts = persona.learnedFacts;
+    final allFacts = persona.learnedFacts;
 
     // Nothing to inject
-    if (description.isEmpty && facts.isEmpty) return '';
+    if (description.isEmpty && allFacts.isEmpty) return '';
+
+    // Select relevant facts using embeddings if available
+    List<String> facts;
+    if (allFacts.length > 15 && _memoryService != null) {
+      // Build context from last few messages
+      final recentContext = _messages.reversed.take(3)
+          .map((m) => '${m.sender}: ${m.displayText}').join('\n');
+      facts = await _userPersonaService.getRelevantFacts(
+        conversationContext: recentContext,
+        embedService: _memoryService!.embeddingService,
+        maxFacts: 15,
+      );
+    } else {
+      facts = List<String>.from(allFacts);
+    }
 
     final buf = StringBuffer();
     buf.writeln("$userName's Persona: $description");
@@ -1252,7 +1269,7 @@ class ChatService extends ChangeNotifier {
       }
 
       // User persona — inject user's self-description + learned facts
-      final userPersonaBlock = _buildUserPersonaBlock(userName);
+      final userPersonaBlock = await _buildUserPersonaBlock(userName);
 
       String rawScenario = '';
       if (_activeGroup != null && _activeGroup!.scenario.isNotEmpty) {
@@ -1523,7 +1540,7 @@ class ChatService extends ChangeNotifier {
       }
 
       // User persona — inject user's self-description + learned facts
-      final userPersonaBlock = _buildUserPersonaBlock(userName);
+      final userPersonaBlock = await _buildUserPersonaBlock(userName);
 
       // Scenario — use group scenario override if set, else first character
       final String rawScenario;
@@ -2981,7 +2998,8 @@ class ChatService extends ChangeNotifier {
         debugPrint('[RAG:Persona]   • $fact');
       }
 
-      await _userPersonaService.addLearnedFacts(facts);
+      await _userPersonaService.addLearnedFacts(facts,
+          embedService: _memoryService?.embeddingService);
       debugPrint('[RAG:Persona] Facts saved to persona');
     } catch (e) {
       debugPrint('[RAG:Persona] ✗ Extraction failed: $e');

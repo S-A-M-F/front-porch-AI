@@ -59,6 +59,9 @@ class MemoryService extends ChangeNotifier {
   bool get isEmbedding => _isEmbedding;
   int get pendingEmbeddings => _pendingEmbeddings;
 
+  /// Expose the embedding service for use by other services (e.g. persona fact dedup).
+  EmbeddingService get embeddingService => _embeddingService;
+
   /// Whether RAG memory is fully operational (enabled + embeddings available).
   bool get isOperational =>
       _storageService.ragEnabled && _embeddingService.isAvailable;

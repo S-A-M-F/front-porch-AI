@@ -18,9 +18,11 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/services/embedding_service.dart';
 
 class UserPersona {
   final String id;
@@ -93,6 +95,13 @@ class UserPersonaService extends ChangeNotifier {
   List<UserPersona> _personas = [];
   String _activePersonaId = '';
 
+  /// In-memory cache of fact text → embedding vector.
+  /// Invalidated when facts change. Populated lazily.
+  final Map<String, List<double>> _factEmbeddings = {};
+
+  /// Similarity threshold for considering two facts as duplicates.
+  static const double _dedupThreshold = 0.85;
+
   List<UserPersona> get personas => List.unmodifiable(_personas);
   
   UserPersona get persona {
@@ -141,6 +150,7 @@ class UserPersonaService extends ChangeNotifier {
         _activePersonaId = active?.id ?? _personas.first.id;
       }
 
+      _factEmbeddings.clear(); // Invalidate cache on reload
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading personas from DB: $e');
@@ -208,6 +218,7 @@ class UserPersonaService extends ChangeNotifier {
       await _db.setActivePersona(_activePersonaId);
     }
     
+    _factEmbeddings.clear(); // Invalidate cache
     notifyListeners();
   }
 
@@ -215,6 +226,7 @@ class UserPersonaService extends ChangeNotifier {
     if (_personas.any((p) => p.id == id)) {
       _activePersonaId = id;
       await _db.setActivePersona(id);
+      _factEmbeddings.clear(); // Invalidate cache on persona switch
       notifyListeners();
     }
   }
@@ -258,6 +270,7 @@ class UserPersonaService extends ChangeNotifier {
           isActive: Value(p.id == _activePersonaId),
         ));
       }
+      _factEmbeddings.clear(); // Invalidate cache
       notifyListeners();
     }
   }
@@ -277,6 +290,37 @@ class UserPersonaService extends ChangeNotifier {
     }
   }
 
+  // ── Embedding-Aware Fact Management ─────────────────────────────────
+
+  /// Ensure embeddings are cached for all current facts.
+  /// Only embeds facts that aren't already in the cache.
+  Future<void> _ensureFactEmbeddings(EmbeddingService embedService) async {
+    final facts = persona.learnedFacts;
+    final uncached = facts.where((f) => !_factEmbeddings.containsKey(f)).toList();
+    if (uncached.isEmpty) return;
+
+    debugPrint('[RAG:Persona] Caching embeddings for ${uncached.length} fact(s)...');
+    for (final fact in uncached) {
+      final vec = await embedService.embed(fact);
+      if (vec != null) {
+        _factEmbeddings[fact] = vec;
+      }
+    }
+  }
+
+  /// Cosine similarity between two vectors.
+  static double _cosineSimilarity(List<double> a, List<double> b) {
+    if (a.length != b.length || a.isEmpty) return 0.0;
+    double dot = 0.0, normA = 0.0, normB = 0.0;
+    for (int i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    final denom = sqrt(normA) * sqrt(normB);
+    return denom == 0.0 ? 0.0 : dot / denom;
+  }
+
   /// Add a learned fact to the active persona.
   Future<void> addLearnedFact(String fact) async {
     final current = persona;
@@ -286,20 +330,137 @@ class UserPersonaService extends ChangeNotifier {
     await updatePersona(current.copyWith(learnedFacts: facts));
   }
 
-  /// Add multiple learned facts, deduplicating against existing.
-  Future<void> addLearnedFacts(List<String> newFacts) async {
+  /// Add multiple learned facts with semantic dedup via embeddings.
+  ///
+  /// When [embedService] is provided and available:
+  /// - Each new fact is embedded and compared against existing facts
+  /// - If similarity > [_dedupThreshold], the longer/more detailed version is kept
+  /// - Genuinely unique facts are added normally
+  ///
+  /// Falls back to exact-string dedup when embeddings are unavailable.
+  Future<void> addLearnedFacts(List<String> newFacts, {EmbeddingService? embedService}) async {
     final current = persona;
     final facts = List<String>.from(current.learnedFacts);
-    bool added = false;
-    for (final fact in newFacts) {
-      if (!facts.contains(fact) && fact.trim().isNotEmpty) {
-        facts.add(fact);
-        added = true;
+    bool changed = false;
+
+    // Fast path: no embeddings available — exact-string dedup (original behavior)
+    if (embedService == null || !embedService.isAvailable) {
+      for (final fact in newFacts) {
+        if (!facts.contains(fact) && fact.trim().isNotEmpty) {
+          facts.add(fact);
+          changed = true;
+        }
+      }
+      if (changed) {
+        await updatePersona(current.copyWith(learnedFacts: facts));
+      }
+      return;
+    }
+
+    // Embedding path: semantic dedup
+    debugPrint('[RAG:Persona] Semantic dedup: ${newFacts.length} new fact(s) against ${facts.length} existing');
+
+    // Ensure existing facts are embedded
+    await _ensureFactEmbeddings(embedService);
+
+    for (final newFact in newFacts) {
+      if (newFact.trim().isEmpty) continue;
+      if (facts.contains(newFact)) continue; // exact match skip
+
+      // Embed the new fact
+      final newVec = await embedService.embed(newFact);
+      if (newVec == null) {
+        // Embedding failed — fall back to exact-string dedup (already checked above)
+        facts.add(newFact);
+        changed = true;
+        continue;
+      }
+
+      // Compare against all existing fact embeddings
+      double bestScore = 0.0;
+      int bestIndex = -1;
+
+      for (int i = 0; i < facts.length; i++) {
+        final existingVec = _factEmbeddings[facts[i]];
+        if (existingVec == null) continue;
+
+        final score = _cosineSimilarity(newVec, existingVec);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = i;
+        }
+      }
+
+      if (bestScore >= _dedupThreshold && bestIndex >= 0) {
+        // Semantic duplicate found — keep the more detailed version
+        final existing = facts[bestIndex];
+        if (newFact.length > existing.length) {
+          debugPrint('[RAG:Persona] ↻ Replacing "$existing" with "$newFact" (score: ${bestScore.toStringAsFixed(3)})');
+          // Update cache: remove old, add new
+          _factEmbeddings.remove(existing);
+          _factEmbeddings[newFact] = newVec;
+          facts[bestIndex] = newFact;
+          changed = true;
+        } else {
+          debugPrint('[RAG:Persona] ≡ Skipping "$newFact" — duplicate of "$existing" (score: ${bestScore.toStringAsFixed(3)})');
+        }
+      } else {
+        // Genuinely new fact
+        debugPrint('[RAG:Persona] + Adding new fact: "$newFact" (best existing score: ${bestScore.toStringAsFixed(3)})');
+        _factEmbeddings[newFact] = newVec;
+        facts.add(newFact);
+        changed = true;
       }
     }
-    if (added) {
+
+    if (changed) {
       await updatePersona(current.copyWith(learnedFacts: facts));
     }
+  }
+
+  /// Get the most relevant facts for the current conversation context.
+  ///
+  /// When [embedService] is available, embeds [conversationContext] and returns
+  /// the top [maxFacts] facts ranked by cosine similarity.
+  /// Falls back to returning all facts when embeddings are unavailable.
+  Future<List<String>> getRelevantFacts({
+    required String conversationContext,
+    EmbeddingService? embedService,
+    int maxFacts = 15,
+  }) async {
+    final facts = persona.learnedFacts;
+    if (facts.isEmpty) return [];
+
+    // If no embedding service or few enough facts, return all
+    if (embedService == null || !embedService.isAvailable || facts.length <= maxFacts) {
+      return List<String>.from(facts);
+    }
+
+    // Embed the conversation context
+    final queryVec = await embedService.embed(conversationContext);
+    if (queryVec == null) return List<String>.from(facts); // fallback
+
+    // Ensure all facts are embedded
+    await _ensureFactEmbeddings(embedService);
+
+    // Score each fact against the conversation context
+    final scored = <({String fact, double score})>[];
+    for (final fact in facts) {
+      final factVec = _factEmbeddings[fact];
+      if (factVec == null) {
+        scored.add((fact: fact, score: 0.0)); // include uncached facts with low priority
+        continue;
+      }
+      final score = _cosineSimilarity(queryVec, factVec);
+      scored.add((fact: fact, score: score));
+    }
+
+    // Sort by relevance and take top N
+    scored.sort((a, b) => b.score.compareTo(a.score));
+    final selected = scored.take(maxFacts).map((s) => s.fact).toList();
+
+    debugPrint('[RAG:Persona] Selected ${selected.length}/${facts.length} relevant facts for context');
+    return selected;
   }
 
   /// Remove a learned fact by index.
@@ -307,7 +468,8 @@ class UserPersonaService extends ChangeNotifier {
     final current = persona;
     final facts = List<String>.from(current.learnedFacts);
     if (index >= 0 && index < facts.length) {
-      facts.removeAt(index);
+      final removed = facts.removeAt(index);
+      _factEmbeddings.remove(removed); // Clean up cache
       await updatePersona(current.copyWith(learnedFacts: facts));
     }
   }

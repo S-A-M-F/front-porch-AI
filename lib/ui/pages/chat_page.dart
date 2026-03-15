@@ -107,7 +107,6 @@ class _ChatPageState extends State<ChatPage> {
   bool _autoScroll = true;
   double _sidebarWidth = 300;
   bool _isCallActive = false;
-  bool _wasLoading = false;
   bool? _externalImagesAllowed;
   bool _imageConsentChecked = false;
   TtsService? _ttsService;
@@ -134,8 +133,6 @@ class _ChatPageState extends State<ChatPage> {
         return KeyEventResult.ignored;
       },
     );
-    // Scroll to bottom on initial load
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
     // Listen for TTS errors (e.g. ElevenLabs quota exceeded) and show a snackbar.
     final tts = Provider.of<TtsService>(context, listen: false);
@@ -181,8 +178,9 @@ class _ChatPageState extends State<ChatPage> {
 
   void _scrollToBottom() {
     if (_scrollController.hasClients && _autoScroll) {
+      // ListView is reversed: position 0 = visual bottom (most recent)
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
@@ -201,11 +199,6 @@ class _ChatPageState extends State<ChatPage> {
           return const Center(child: Text('No character selected.'));
         }
         
-        // Scroll to bottom when a session finishes loading
-        if (_wasLoading && !chatService.isLoadingSession) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-        }
-        _wasLoading = chatService.isLoadingSession;
 
         return Stack(
           children: [
@@ -264,10 +257,13 @@ class _ChatPageState extends State<ChatPage> {
                                   ],
                                   ListView.builder(
                                     controller: _scrollController,
+                                    reverse: true,
                                     padding: const EdgeInsets.all(20),
                                     itemCount: messages.length,
                                     itemBuilder: (context, index) {
-                                      final msg = messages[index];
+                                      // Reverse index so newest messages are at the top of the reversed list (visual bottom)
+                                      final reversedIndex = messages.length - 1 - index;
+                                      final msg = messages[reversedIndex];
                                       // In group mode, pass the character's image based on sender
                                       File? senderImage;
                                       Color? senderColor;
@@ -285,7 +281,7 @@ class _ChatPageState extends State<ChatPage> {
                                       return _MessageBubble(
                                         message: msg, 
                                         characterImage: senderImage,
-                                        index: index,
+                                        index: reversedIndex,
                                         senderColor: senderColor,
                                         externalImagesAllowed: _externalImagesAllowed,
                                         onRequestImagePermission: () async {
@@ -1378,14 +1374,6 @@ class _ChatPageState extends State<ChatPage> {
             },
           ),
 
-          // Hamburger Menu (Chat options, Impersonate, Context, RAG, Objective)
-          IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white70),
-            padding: EdgeInsets.zero,
-            tooltip: 'Menu',
-            onPressed: () => _showHamburgerMenu(context, chatService),
-          ),
-
           // Chat Management Menu
           PopupMenuButton<String>(
             icon: const Icon(Icons.folder_open, color: Colors.white70),
@@ -1402,6 +1390,11 @@ class _ChatPageState extends State<ChatPage> {
                 _exportChat();
               } else if (value == 'evolution') {
                 _showEvolutionDialog(context, chatService);
+              } else if (value == 'context') {
+                showDialog(
+                  context: context,
+                  builder: (_) => ContextViewerDialog(chatService: chatService),
+                );
               }
             },
             itemBuilder: (context) => [
@@ -1442,6 +1435,16 @@ class _ChatPageState extends State<ChatPage> {
                     Icon(Icons.file_download, size: 20),
                     SizedBox(width: 12),
                     Text('Export Chat'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'context',
+                child: Row(
+                  children: [
+                    Icon(Icons.analytics_outlined, size: 20, color: Colors.cyanAccent),
+                    SizedBox(width: 12),
+                    Text('Context Budget'),
                   ],
                 ),
               ),
@@ -1566,6 +1569,26 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
           const SizedBox(width: 4),
+          // Impersonate button (magic wand — AI writes your next message)
+          Tooltip(
+            message: 'Impersonate (AI writes your message)',
+            child: IconButton(
+              icon: const Icon(Icons.auto_fix_high, color: Colors.amberAccent),
+              padding: EdgeInsets.zero,
+              onPressed: chatService.isGenerating ? null : () {
+                final prefix = _controller.text;
+                chatService.impersonateUser(
+                  prefix: prefix,
+                  onToken: (accumulated) {
+                    _controller.text = accumulated;
+                    _controller.selection = TextSelection.fromPosition(
+                      TextPosition(offset: accumulated.length),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
           // Mic button (push-to-talk STT)
           Consumer2<SttService, StorageService>(
             builder: (context, sttService, storage, _) {
@@ -1698,94 +1721,6 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   /// Wraps a sidebar widget with a draggable resize handle on its left edge.
-  void _showHamburgerMenu(BuildContext context, ChatService chatService) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1F2937),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      isScrollControlled: true,
-      builder: (sheetCtx) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.85,
-        expand: false,
-        builder: (_, scrollController) => SingleChildScrollView(
-          controller: scrollController,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Drag handle
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-
-              // ── Impersonate ──
-              ListTile(
-                leading: const Icon(Icons.auto_fix_high, color: Colors.amberAccent, size: 20),
-                title: const Text('Impersonate', style: TextStyle(color: Colors.white, fontSize: 14)),
-                subtitle: const Text('AI writes your next message', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                onTap: chatService.isGenerating ? null : () {
-                  Navigator.pop(sheetCtx);
-                  final prefix = _controller.text;
-                  chatService.impersonateUser(
-                    prefix: prefix,
-                    onToken: (accumulated) {
-                      _controller.text = accumulated;
-                      _controller.selection = TextSelection.fromPosition(
-                        TextPosition(offset: accumulated.length),
-                      );
-                    },
-                  );
-                },
-              ),
-              const Divider(color: Colors.white10, height: 1),
-
-              // ── Context Budget ──
-              ListTile(
-                leading: const Icon(Icons.analytics_outlined, color: Colors.cyanAccent, size: 20),
-                title: const Text('Context Budget', style: TextStyle(color: Colors.white, fontSize: 14)),
-                subtitle: const Text('View token budget breakdown', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                onTap: () {
-                  Navigator.pop(sheetCtx);
-                  showDialog(
-                    context: context,
-                    builder: (_) => ContextViewerDialog(chatService: chatService),
-                  );
-                },
-              ),
-              const Divider(color: Colors.white10, height: 1),
-
-              // ── Memory (RAG) — inline ──
-              const SizedBox(height: 8),
-              _MemorySection(chatService: chatService),
-              const SizedBox(height: 8),
-              const Divider(color: Colors.white10, height: 1),
-
-              // ── Objective — inline ──
-              const SizedBox(height: 8),
-              _ObjectiveSection(chatService: chatService),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   void _showNoMicDialog(BuildContext context) {
     showDialog(
@@ -1958,6 +1893,11 @@ class _ChatPageState extends State<ChatPage> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // ── RAG Memory (promoted from hamburger menu) ──
+                _MemorySection(chatService: chatService),
+                const SizedBox(height: 16),
+
+                // ── Lorebook Triggers ──
                 const Text('Lorebook Triggers', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
                 const SizedBox(height: 8),
                 if (character.lorebook != null && character.lorebook!.entries.isNotEmpty)
@@ -2010,14 +1950,15 @@ class _ChatPageState extends State<ChatPage> {
                   const Text('No lorebook entries.', style: TextStyle(color: Colors.white30, fontSize: 12)),
                   
                 const SizedBox(height: 16),
-                // Author's Note — editable
+                // ── Author's Note ──
                 _AuthorNoteSection(chatService: chatService),
                 const SizedBox(height: 16),
-                // Chat Summary
-                _SummarySection(chatService: chatService),
+
+                // ── Objective (promoted from hamburger menu) ──
+                _ObjectiveSection(chatService: chatService),
                 const SizedBox(height: 16),
-                _SidebarSection(title: 'Scenario', content: replace(character.scenario)),
-                // Character Evolution section
+
+                // ── Character Evolution ──
                 Consumer<ChatService>(
                   builder: (context, chat, _) {
                     final storage = Provider.of<StorageService>(context, listen: false);
@@ -2028,7 +1969,6 @@ class _ChatPageState extends State<ChatPage> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 16),
                         Row(
                           children: [
                             const Icon(Icons.psychology_alt, size: 16, color: Colors.tealAccent),
@@ -2108,11 +2048,29 @@ class _ChatPageState extends State<ChatPage> {
                           const SizedBox(height: 4),
                           const Text('Personality & scenario will evolve as you chat, or tap above to evolve now.', style: TextStyle(fontSize: 11, color: Colors.white24)),
                         ],
+                        const SizedBox(height: 16),
                       ],
                     );
                   },
                 ),
+
+                // ── Chat Summary ──
+                _SummarySection(chatService: chatService),
                 const SizedBox(height: 16),
+
+                // ── Scenario (hidden when evolved scenario is active) ──
+                Consumer<ChatService>(
+                  builder: (context, chat, _) {
+                    final storage = Provider.of<StorageService>(context, listen: false);
+                    final evolvedS = chat.getEffectiveScenario;
+                    final hasEvolution = storage.characterEvolutionEnabled &&
+                        evolvedS != null && evolvedS.isNotEmpty;
+                    if (hasEvolution) return const SizedBox.shrink();
+                    return _SidebarSection(title: 'Scenario', content: replace(character.scenario));
+                  },
+                ),
+
+                // ── Description ──
                 _SidebarSection(title: 'Description', content: replace(character.description)),
               ],
             ),
@@ -3127,23 +3085,26 @@ class _StyledChatMessage extends StatelessWidget {
     final dialogueStyle = TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w500, fontSize: scaledSize);
     final actionStyle = TextStyle(color: const Color(0xFF90CAF9), fontSize: scaledSize);
 
-    final asteriskRegex = RegExp(r'\*[^*]+\*', dotAll: true);
     final quoteRegex = RegExp(r'"[^"]*"');
+    final asteriskRegex = RegExp(r'\*[^*]+\*', dotAll: true);
 
     List<TextSpan> spans = [];
 
+    // Pass 1: Split on quotes (outer container — quotes always win)
     int lastEnd = 0;
-    for (final match in asteriskRegex.allMatches(segment)) {
+    for (final match in quoteRegex.allMatches(segment)) {
+      // Non-quoted text before this quote — parse for actions
       if (match.start > lastEnd) {
-        _addColorizedQuotes(spans, segment.substring(lastEnd, match.start), plainStyle, dialogueStyle, quoteRegex);
+        _addColorizedActions(spans, segment.substring(lastEnd, match.start), plainStyle, actionStyle, asteriskRegex);
       }
-      final blockText = match.group(0)!;
-      _addColorizedQuotes(spans, blockText, actionStyle, dialogueStyle, quoteRegex);
+      // Quoted text — all dialogue style (yellow), even if it contains *actions*
+      spans.add(TextSpan(text: match.group(0)!, style: dialogueStyle));
       lastEnd = match.end;
     }
 
+    // Remaining non-quoted text after last quote — parse for actions
     if (lastEnd < segment.length) {
-      _addColorizedQuotes(spans, segment.substring(lastEnd), plainStyle, dialogueStyle, quoteRegex);
+      _addColorizedActions(spans, segment.substring(lastEnd), plainStyle, actionStyle, asteriskRegex);
     }
 
     if (spans.isEmpty) {
@@ -3162,17 +3123,18 @@ class _StyledChatMessage extends StatelessWidget {
     );
   }
 
-  void _addColorizedQuotes(List<TextSpan> spans, String segment, TextStyle baseStyle, TextStyle dialogueStyle, RegExp quoteRegex) {
+  /// Parse *action* blocks within a non-quoted text segment.
+  void _addColorizedActions(List<TextSpan> spans, String segment, TextStyle plainStyle, TextStyle actionStyle, RegExp asteriskRegex) {
     int lastEnd = 0;
-    for (final match in quoteRegex.allMatches(segment)) {
+    for (final match in asteriskRegex.allMatches(segment)) {
       if (match.start > lastEnd) {
-        spans.add(TextSpan(text: segment.substring(lastEnd, match.start), style: baseStyle));
+        spans.add(TextSpan(text: segment.substring(lastEnd, match.start), style: plainStyle));
       }
-      spans.add(TextSpan(text: match.group(0)!, style: dialogueStyle));
+      spans.add(TextSpan(text: match.group(0)!, style: actionStyle));
       lastEnd = match.end;
     }
     if (lastEnd < segment.length) {
-      spans.add(TextSpan(text: segment.substring(lastEnd), style: baseStyle));
+      spans.add(TextSpan(text: segment.substring(lastEnd), style: plainStyle));
     }
   }
 }
