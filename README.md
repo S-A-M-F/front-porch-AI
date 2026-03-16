@@ -122,7 +122,19 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
 > **Note:** Versions **0.8.x and earlier** remain licensed under **GPLv3**. The license change applies only to v0.9.0 and all future releases.
 
 
-## 🆕 What's New in V0.9.2
+## 🆕 What's New in V0.9.3
+
+- ☁️ **Platform-Agnostic Image Paths**: Character avatar paths are now stored as filenames only in the database, resolved to full paths at runtime. Syncing between Linux, macOS, and Windows no longer causes missing avatars or orphaned PNG cleanup.
+- 🍎 **macOS Auto-Update Fix**: Fixed DMG mounting and volume detection that caused self-update to silently fail. The update dialog now shows clear error messages if something goes wrong.
+- 🔄 **Cloud Sync Upgrade Dialog Fix**: Fixed the "database upgrade required" dialog reappearing on every launch after cloud sync by persisting the upload state across app restarts.
+- 🧙 **Character Creator Save Path Fix**: The AI character creator was saving avatar PNGs to the wrong directory (`{root}/characters/` instead of `{root}/KoboldManager/Characters/`), causing them to be invisible to cloud sync and missing on other platforms.
+- 🍎 **macOS Gatekeeper Fix**: Re-sign the macOS app bundle after ML engine bundling to prevent the "app is damaged" error from Gatekeeper.
+- 🏷️ **Version String Fix**: Four-part version numbers (e.g. `0.9.2.1`) now display correctly instead of being truncated to three parts.
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.9.2
 
 - 🧠 **RAG Memory — The AI Remembers**: Local semantic memory powered by a lightweight ONNX embedding engine. Past conversations are automatically indexed and retrieved when relevant — the AI recalls what happened 50 messages ago, in a different session, or even with a different character. Runs entirely on your CPU, no cloud needed, ~25MB footprint.
   - **Data Bank**: Browse, search, and manage your stored memories with a unified UI showing embedding stats and per-character memory.
@@ -144,8 +156,6 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
   - Fixed TTS narration filter not handling multi-line `*action*` blocks
   - Fixed TTS quote filter not matching curly quotes
 
-<details>
-<summary><strong>📦 Previous Releases</strong></summary>
 
 ### What's New in V0.9.1
 
