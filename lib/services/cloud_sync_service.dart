@@ -464,7 +464,7 @@ class CloudSyncService extends ChangeNotifier {
   }
 
   /// Read the sync version AND schema version from a remote database.
-  /// Downloads to a temp directory, opens with raw SQL, reads, and cleans up.
+  /// Downloads to a temp directory, reads versions, and cleans up.
   /// Returns (syncVersion, schemaVersion).
   Future<(int, int)> _getRemoteVersions(String remotePath) async {
     final tempDir = await Directory.systemTemp.createTemp('fp_sync_version_');
@@ -474,32 +474,39 @@ class CloudSyncService extends ChangeNotifier {
       final tempFile = File(tempPath);
       if (!await tempFile.exists()) return (0, 0);
 
-      // Open a raw sqlite3 connection via Drift's NativeDatabase
-      final tempDb = NativeDatabase(tempFile);
-      final executor = tempDb;
-      await executor.ensureOpen(_SyncVersionUser());
+      // Read schema version directly from the SQLite file header.
+      // PRAGMA user_version is stored as a 4-byte big-endian integer at
+      // offset 60 in the header. We MUST read this before opening through
+      // Drift, because Drift's ensureOpen() overwrites PRAGMA user_version
+      // to match the QueryExecutorUser's schemaVersion.
+      int schemaVersion = 0;
+      try {
+        final headerBytes = await tempFile.openRead(60, 64).fold<List<int>>(
+          [], (prev, chunk) => prev..addAll(chunk),
+        );
+        if (headerBytes.length >= 4) {
+          schemaVersion = (headerBytes[0] << 24) |
+                          (headerBytes[1] << 16) |
+                          (headerBytes[2] << 8) |
+                           headerBytes[3];
+        }
+      } catch (e) {
+        debugPrint('[CloudSync] Could not read schema version from header: $e');
+      }
 
-      // Read sync version from sync_meta table
+      // Read sync version from sync_meta table (requires opening the DB)
       int syncVersion = 0;
       try {
-        final result = await executor.runSelect(
+        final tempDb = NativeDatabase(tempFile);
+        await tempDb.ensureOpen(_SyncVersionUser());
+        final result = await tempDb.runSelect(
           'SELECT version FROM sync_meta WHERE id = 1', [],
         );
         syncVersion = result.isNotEmpty ? result.first['version'] as int : 0;
+        await tempDb.close();
       } catch (_) {}
 
-      // Read schema version via PRAGMA user_version (Drift uses this)
-      int schemaVersion = 0;
-      try {
-        final pragmaResult = await executor.runSelect(
-          'PRAGMA user_version', [],
-        );
-        schemaVersion = pragmaResult.isNotEmpty
-            ? pragmaResult.first['user_version'] as int
-            : 0;
-      } catch (_) {}
-
-      await executor.close();
+      debugPrint('[CloudSync] Remote versions — sync: $syncVersion, schema: $schemaVersion');
       return (syncVersion, schemaVersion);
     } catch (e) {
       debugPrint('[CloudSync] Could not read remote versions: $e');
