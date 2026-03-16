@@ -221,7 +221,20 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
     setState(() => _saving = true);
 
     final service = Provider.of<ImageGenService>(context, listen: false);
-    final path = await service.saveImageToDisk(_imageBytes);
+
+    // Use the avatar-specific save for portrait/avatar modes (saves to
+    // charactersDir so cloud sync picks it up). Other modes (backgrounds)
+    // use the generic save.
+    String? path;
+    if (widget.mode == ImageGenMode.characterPortrait ||
+        widget.mode == ImageGenMode.userAvatar) {
+      path = await service.saveAvatarToDisk(
+        _imageBytes,
+        characterName: widget.characterName ?? widget.personaName,
+      );
+    } else {
+      path = await service.saveImageToDisk(_imageBytes);
+    }
 
     if (mounted) {
       setState(() => _saving = false);

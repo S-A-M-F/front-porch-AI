@@ -30,6 +30,7 @@ import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/ui/dialogs/edit_character_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/chat_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/model_settings_dialog.dart';
@@ -1305,10 +1306,33 @@ class _ChatPageState extends State<ChatPage> {
     // Accept callback for avatar/background modes
     void Function(String path)? onAccept;
     if (mode == ImageGenMode.characterPortrait && character != null) {
-      onAccept = (path) {
-        character.imagePath = path;
+      onAccept = (imagePath) async {
+        // Store only the basename for cross-platform sync
+        final basename = p.basename(imagePath);
+        character.imagePath = basename;
         final charRepo = Provider.of<CharacterRepository>(context, listen: false);
-        charRepo.updateCharacter(character);
+        await charRepo.updateCharacter(character);
+
+        // Embed V2 card data into the new avatar PNG
+        try {
+          final v2Service = V2CardService();
+          final card = CharacterCard(
+            name: character.name,
+            description: character.description,
+            personality: character.personality,
+            scenario: character.scenario,
+            firstMessage: character.firstMessage,
+            mesExample: character.mesExample,
+            systemPrompt: character.systemPrompt,
+            postHistoryInstructions: character.postHistoryInstructions,
+            alternateGreetings: character.alternateGreetings,
+            tags: character.tags,
+          );
+          await v2Service.saveCardAsPng(card, imagePath, imagePath);
+          debugPrint('Embedded V2 card data into avatar: $basename');
+        } catch (e) {
+          debugPrint('Failed to embed V2 card data: $e');
+        }
       };
     } else if (mode == ImageGenMode.chatBackground) {
       onAccept = (path) {

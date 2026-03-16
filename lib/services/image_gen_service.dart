@@ -177,6 +177,36 @@ class ImageGenService extends ChangeNotifier {
     }
   }
 
+  /// Save a generated image as a character avatar to the characters directory.
+  ///
+  /// Unlike [saveImageToDisk], this saves to the characters directory
+  /// (`KoboldManager/Characters/`) so cloud sync picks it up.
+  /// Returns the saved file path, or null on failure.
+  Future<String?> saveAvatarToDisk(Uint8List? imageBytes, {String? characterName}) async {
+    final bytes = imageBytes ?? _lastGeneratedImage;
+    if (bytes == null) return null;
+
+    try {
+      final dir = _storage.charactersDir;
+      await dir.create(recursive: true);
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final safeName = (characterName ?? 'avatar')
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .replaceAll(RegExp(r'\s+'), '_');
+      final filename = '${safeName}_$timestamp.png';
+      final file = File(path.join(dir.path, filename));
+      await file.writeAsBytes(bytes);
+
+      _lastSavedPath = file.path;
+      notifyListeners();
+      return file.path;
+    } catch (e) {
+      debugPrint('Failed to save avatar: $e');
+      return null;
+    }
+  }
+
   /// Common image generation models available on popular API providers.
   /// These are always shown so the user can pick one even when the API's
   /// /models endpoint doesn't list image models separately.
