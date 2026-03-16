@@ -339,9 +339,34 @@ class CloudSyncService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final uploadedSchema = prefs.getInt('cloud_schema_uploaded') ?? 0;
       if (uploadedSchema >= localSchema) {
-        // Already uploaded — just overwrite the stale remote copy.
+        // Already uploaded this schema before. The remote DB may be stale
+        // (Drive eventual consistency) or may contain new data from another
+        // device. Download → merge → upload to preserve both sides.
         debugPrint('[CloudSync] Remote schema v$remoteSchema < local v$localSchema, '
-            'but v$uploadedSchema was already uploaded — overwriting remote.');
+            'but v$uploadedSchema was already uploaded — merging then re-uploading.');
+
+        // Merge remote changes into local (if any)
+        final tempDir = await Directory.systemTemp.createTemp('fp_merge_schema_');
+        final tempPath = path.join(tempDir.path, 'remote.db');
+        try {
+          await _provider!.downloadFile(remotePath, tempPath);
+
+          // Open the remote DB with Drift so migrations upgrade it to v10,
+          // THEN merge the migrated data into local.
+          final tempDbFile = File(tempPath);
+          if (await tempDbFile.exists()) {
+            final merged = await DatabaseMergeService.mergeRemoteIntoLocal(db, tempPath);
+            if (merged) {
+              _dbWasDownloaded = true;
+            }
+          }
+        } catch (e) {
+          debugPrint('[CloudSync] Merge during schema bypass failed (non-fatal): $e');
+        } finally {
+          try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+        }
+
+        // Upload the merged result
         await db.bumpSyncVersion();
         await db.checkpoint();
         await _provider!.uploadFile(localPath, remotePath);
