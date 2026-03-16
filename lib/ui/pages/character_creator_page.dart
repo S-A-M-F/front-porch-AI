@@ -4966,8 +4966,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
       // Save avatar image
       if (_generatedAvatar != null) {
-        final rootPath = storage.rootPath ?? '.';
-        final charDir = Directory(p.join(rootPath, 'characters'));
+        final charDir = storage.charactersDir;
         if (!charDir.existsSync()) charDir.createSync(recursive: true);
 
         final epoch = DateTime.now().millisecondsSinceEpoch;
