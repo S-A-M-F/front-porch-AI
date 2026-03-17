@@ -2873,11 +2873,21 @@
     // CHARACTER EVOLUTION (right panel)
     // ═══════════════════════════════════════════════════════════
 
-    function _renderEvolutionSection(char) {
+    async function _renderEvolutionSection(char) {
         const section = document.getElementById('rp-evolution-section');
         const countEl = document.getElementById('rp-evolution-count');
         const contentEl = document.getElementById('rp-evolution-content');
         if (!section || !contentEl) return;
+
+        // Fetch full character detail (list data doesn't include evolved fields)
+        try {
+            const detail = await apiJson(`/api/characters/${char.id}/detail`);
+            if (detail) {
+                char.evolvedPersonality = detail.evolvedPersonality;
+                char.evolvedScenario = detail.evolvedScenario;
+                char.evolutionCount = detail.evolutionCount;
+            }
+        } catch (e) { /* use whatever's on char already */ }
 
         const count = char.evolutionCount || 0;
         const evolvedP = char.evolvedPersonality || '';
