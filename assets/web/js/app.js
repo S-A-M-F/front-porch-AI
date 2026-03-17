@@ -1716,6 +1716,7 @@
         // Chat management menu
         $('#btn-chat-menu').addEventListener('click', showChatHistory);
         $('#btn-impersonate').addEventListener('click', impersonateMe);
+        $('#btn-persona')?.addEventListener('click', () => _showPersonaModal());
 
         // New chat
         $('#btn-new-chat').addEventListener('click', () => {
@@ -2227,9 +2228,6 @@
         });
 
         $('#btn-rp-databank')?.addEventListener('click', () => showDataBankModal());
-
-        // Persona avatar button in input bar — opens persona popup modal
-        $('#btn-persona')?.addEventListener('click', () => _showPersonaModal());
 
         $('#btn-rp-tts').addEventListener('click', async () => {
             // Open TTS settings as modal overlay
