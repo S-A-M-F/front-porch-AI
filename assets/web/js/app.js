@@ -2916,11 +2916,16 @@
             </div>`;
             contentEl.innerHTML = html;
 
-            // Bind review/reset buttons
-            const reviewBtn = document.getElementById('btn-evo-review');
-            if (reviewBtn) reviewBtn.onclick = () => _showEvolutionEditModal(char);
-            const resetBtn = document.getElementById('btn-evo-reset');
-            if (resetBtn) resetBtn.onclick = () => _resetEvolution(char);
+            // Bind review/reset buttons via event delegation on the container
+            contentEl.addEventListener('click', function handler(e) {
+                const btn = e.target.closest('button');
+                if (!btn) return;
+                if (btn.id === 'btn-evo-review') {
+                    _showEvolutionEditModal(char);
+                } else if (btn.id === 'btn-evo-reset') {
+                    _resetEvolution(char);
+                }
+            });
         } else {
             contentEl.innerHTML = `<div style="color:rgba(255,255,255,0.24);font-size:11px">Personality & scenario will evolve as you chat.</div>`;
         }
@@ -2932,6 +2937,7 @@
 
         let overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
         overlay.innerHTML = `
             <div class="modal" style="width:560px;max-height:80vh;overflow-y:auto">
                 <h2 style="margin:0 0 16px;color:#2DD4BF">🧬 Review Character Evolution</h2>
@@ -2995,7 +3001,7 @@
 
         let overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
-        overlay.id = 'persona-modal-overlay';
+        overlay.style.display = 'flex';
 
         function renderList() {
             const active = personas.find(p => p.isActive) || personas[0];
