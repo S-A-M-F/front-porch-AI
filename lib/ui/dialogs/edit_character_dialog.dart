@@ -16,11 +16,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 
 class EditCharacterDialog extends StatefulWidget {
@@ -48,6 +53,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
   List<String> _selectedWorldNames = [];
   List<String> _tags = [];
   final TextEditingController _tagInputController = TextEditingController();
+  String? _newAvatarPath; // full path of newly picked avatar (null = no change)
 
   @override
   void initState() {
@@ -94,7 +100,47 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     super.dispose();
   }
 
+  /// Resolve the current avatar image file for display.
+  File? get _avatarFile {
+    // If user picked a new avatar, show that
+    if (_newAvatarPath != null) return File(_newAvatarPath!);
+    // Otherwise resolve the character's stored path
+    final img = widget.character.imagePath;
+    if (img == null || img.isEmpty) return null;
+    if (p.isAbsolute(img)) return File(img);
+    final storage = Provider.of<StorageService>(context, listen: false);
+    return File(p.join(storage.charactersDir.path, img));
+  }
 
+  Future<void> _pickAvatar() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final pickedPath = result.files.single.path;
+    if (pickedPath == null) return;
+
+    // Copy to charactersDir with a timestamped name
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final charDir = storage.charactersDir;
+    await charDir.create(recursive: true);
+
+    final safeName = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+            .replaceAll(RegExp(r'[^\w\s-]'), '')
+            .replaceAll(RegExp(r'\s+'), '_')
+        : 'avatar';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final destFilename = '${safeName}_$timestamp.png';
+    final destPath = p.join(charDir.path, destFilename);
+
+    await File(pickedPath).copy(destPath);
+
+    setState(() {
+      _newAvatarPath = destPath;
+    });
+  }
 
   void _openExpandedEditor(String title, TextEditingController controller, {String? hintText}) {
     final expandedController = TextEditingController(text: controller.text);
@@ -181,6 +227,30 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
         .toList();
     widget.character.worldNames = _selectedWorldNames;
     widget.character.tags = List<String>.from(_tags);
+
+    // Update avatar if changed
+    if (_newAvatarPath != null) {
+      widget.character.imagePath = p.basename(_newAvatarPath!);
+
+      // Embed V2 card data into the new avatar PNG
+      try {
+        final card = CharacterCard(
+          name: widget.character.name,
+          description: widget.character.description,
+          personality: widget.character.personality,
+          scenario: widget.character.scenario,
+          firstMessage: widget.character.firstMessage,
+          mesExample: widget.character.mesExample,
+          systemPrompt: widget.character.systemPrompt,
+          postHistoryInstructions: widget.character.postHistoryInstructions,
+          alternateGreetings: widget.character.alternateGreetings,
+          tags: widget.character.tags,
+        );
+        await V2CardService().saveCardAsPng(card, _newAvatarPath!, _newAvatarPath!);
+      } catch (e) {
+        debugPrint('Failed to embed V2 card data: $e');
+      }
+    }
 
     // Update Lorebook
     if (widget.character.lorebook == null) {
@@ -410,6 +480,45 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
       padding: const EdgeInsets.all(24.0),
       child: Column(
         children: [
+          // Avatar
+          Center(
+            child: GestureDetector(
+              onTap: _pickAvatar,
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 48,
+                    backgroundColor: const Color(0xFF374151),
+                    backgroundImage: _avatarFile != null && _avatarFile!.existsSync()
+                        ? FileImage(_avatarFile!) as ImageProvider
+                        : null,
+                    child: _avatarFile == null || !_avatarFile!.existsSync()
+                        ? const Icon(Icons.person, size: 48, color: Colors.white24)
+                        : null,
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.blueAccent,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFF1F2937), width: 2),
+                      ),
+                      child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tap to change avatar',
+            style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.3)),
+          ),
+          const SizedBox(height: 16),
           _buildTextField(controller: _nameController, label: 'Name'),
           const SizedBox(height: 16),
           _buildTextField(controller: _descriptionController, label: 'Description', maxLines: 3, expandable: true),
