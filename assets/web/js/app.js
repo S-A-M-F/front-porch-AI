@@ -896,6 +896,12 @@
         $('#rp-scenario').textContent = replaceCharPlaceholders(char.scenario);
         $('#rp-description').textContent = replaceCharPlaceholders(char.description);
 
+        // ── Character Evolution section ──
+        _renderEvolutionSection(char);
+
+        // ── User Persona section ──
+        _renderUserPersonaSection();
+
         // Author's note will be loaded from chat state once SSE connects
 
         // Switch to chat page and show right panel
@@ -2861,6 +2867,158 @@
         }
 
         render();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // CHARACTER EVOLUTION (right panel)
+    // ═══════════════════════════════════════════════════════════
+
+    function _renderEvolutionSection(char) {
+        const section = document.getElementById('rp-evolution-section');
+        const countEl = document.getElementById('rp-evolution-count');
+        const contentEl = document.getElementById('rp-evolution-content');
+        if (!section || !contentEl) return;
+
+        const count = char.evolutionCount || 0;
+        const evolvedP = char.evolvedPersonality || '';
+        const evolvedS = char.evolvedScenario || '';
+
+        // Show section if evolution is enabled (check settings)
+        section.style.display = '';
+        countEl.textContent = count > 0 ? `Evolved ${count}×` : 'Not evolved';
+        countEl.style.color = count > 0 ? '#2DD4BF' : 'rgba(255,255,255,0.3)';
+
+        if (count > 0 && (evolvedP || evolvedS)) {
+            let html = '';
+            if (evolvedP) {
+                html += `<div style="margin-bottom:8px">
+                    <div style="font-size:11px;color:rgba(255,255,255,0.38);margin-bottom:4px">Evolved Personality</div>
+                    <div style="padding:8px;background:#0D1117;border-radius:6px;border:1px solid rgba(45,212,191,0.2);max-height:100px;overflow-y:auto;font-size:11px;color:rgba(255,255,255,0.54)">${esc(evolvedP)}</div>
+                </div>`;
+            }
+            if (evolvedS) {
+                html += `<div style="margin-bottom:8px">
+                    <div style="font-size:11px;color:rgba(255,255,255,0.38);margin-bottom:4px">Evolved Scenario</div>
+                    <div style="padding:8px;background:#0D1117;border-radius:6px;border:1px solid rgba(45,212,191,0.2);max-height:100px;overflow-y:auto;font-size:11px;color:rgba(255,255,255,0.54)">${esc(evolvedS)}</div>
+                </div>`;
+            }
+            html += `<div style="display:flex;gap:8px;margin-top:4px">
+                <button class="btn btn-outlined" id="btn-evo-review" style="font-size:10px;padding:2px 8px;color:#2DD4BF;border-color:rgba(45,212,191,0.3)">✏️ Review & Edit</button>
+                <button class="btn btn-outlined" id="btn-evo-reset" style="font-size:10px;padding:2px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">🔄 Reset</button>
+            </div>`;
+            contentEl.innerHTML = html;
+
+            // Bind review/reset buttons
+            const reviewBtn = document.getElementById('btn-evo-review');
+            if (reviewBtn) reviewBtn.onclick = () => _showEvolutionEditModal(char);
+            const resetBtn = document.getElementById('btn-evo-reset');
+            if (resetBtn) resetBtn.onclick = () => _resetEvolution(char);
+        } else {
+            contentEl.innerHTML = `<div style="color:rgba(255,255,255,0.24);font-size:11px">Personality & scenario will evolve as you chat.</div>`;
+        }
+    }
+
+    function _showEvolutionEditModal(char) {
+        const evolvedP = char.evolvedPersonality || '';
+        const evolvedS = char.evolvedScenario || '';
+
+        let overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+            <div class="modal" style="width:560px;max-height:80vh;overflow-y:auto">
+                <h2 style="margin:0 0 16px;color:#2DD4BF">🧬 Review Character Evolution</h2>
+                <div style="margin-bottom:12px">
+                    <label class="slider-label" style="display:block;margin-bottom:4px">Evolved Personality</label>
+                    <textarea id="evo-edit-personality" class="settings-textarea" rows="6" style="width:100%">${esc(evolvedP)}</textarea>
+                </div>
+                <div style="margin-bottom:16px">
+                    <label class="slider-label" style="display:block;margin-bottom:4px">Evolved Scenario</label>
+                    <textarea id="evo-edit-scenario" class="settings-textarea" rows="6" style="width:100%">${esc(evolvedS)}</textarea>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px">
+                    <button class="btn btn-outlined" id="evo-edit-cancel">Cancel</button>
+                    <button class="btn" id="evo-edit-save" style="background:#2DD4BF;color:#000">Save</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#evo-edit-cancel').onclick = () => overlay.remove();
+        overlay.querySelector('#evo-edit-save').onclick = async () => {
+            const newP = document.getElementById('evo-edit-personality').value;
+            const newS = document.getElementById('evo-edit-scenario').value;
+            try {
+                await fetch(`/api/characters/${currentCharacterId}/evolution`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
+                    body: JSON.stringify({ evolvedPersonality: newP, evolvedScenario: newS }),
+                });
+                char.evolvedPersonality = newP;
+                char.evolvedScenario = newS;
+                _renderEvolutionSection(char);
+            } catch (e) { console.error('Failed to save evolution:', e); }
+            overlay.remove();
+        };
+    }
+
+    async function _resetEvolution(char) {
+        if (!confirm('Reset all evolved personality and scenario data? This cannot be undone.')) return;
+        try {
+            await fetch(`/api/characters/${currentCharacterId}/evolution`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
+                body: JSON.stringify({ evolvedPersonality: '', evolvedScenario: '', evolutionCount: 0 }),
+            });
+            char.evolvedPersonality = '';
+            char.evolvedScenario = '';
+            char.evolutionCount = 0;
+            _renderEvolutionSection(char);
+        } catch (e) { console.error('Failed to reset evolution:', e); }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // USER PERSONA (right panel)
+    // ═══════════════════════════════════════════════════════════
+
+    async function _renderUserPersonaSection() {
+        const contentEl = document.getElementById('rp-persona-content');
+        if (!contentEl) return;
+
+        try {
+            const res = await fetch('/api/personas', {
+                headers: {'Authorization': `Bearer ${token}`}
+            });
+            if (!res.ok) throw new Error('Failed to load personas');
+            const personas = await res.json();
+            const active = personas.find(p => p.isActive) || personas[0];
+
+            if (!active) {
+                contentEl.innerHTML = '<div style="color:rgba(255,255,255,0.3)">No persona configured.</div>';
+                return;
+            }
+
+            const facts = active.learnedFacts || [];
+            let html = `
+                <div style="margin-bottom:8px">
+                    <span style="font-weight:600;color:rgba(255,255,255,0.8)">${esc(active.name || 'Unnamed')}</span>
+                    ${active.title ? `<span style="color:rgba(255,255,255,0.3);margin-left:6px;font-size:11px">(${esc(active.title)})</span>` : ''}
+                </div>`;
+            if (active.description) {
+                html += `<div style="color:rgba(255,255,255,0.5);margin-bottom:8px;font-size:11px">${esc(active.description)}</div>`;
+            }
+            if (facts.length > 0) {
+                html += `<div style="margin-top:8px">
+                    <div style="font-size:11px;color:rgba(255,255,255,0.38);margin-bottom:4px">Learned Facts (${facts.length})</div>
+                    <div style="padding:8px;background:#0D1117;border-radius:6px;border:1px solid rgba(139,92,246,0.2);max-height:120px;overflow-y:auto">
+                        ${facts.map(f => `<div style="font-size:11px;color:rgba(255,255,255,0.54);padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.05)">• ${esc(f)}</div>`).join('')}
+                    </div>
+                </div>`;
+            } else {
+                html += `<div style="color:rgba(255,255,255,0.24);font-size:11px;margin-top:4px">No learned facts yet. They will be discovered as you chat.</div>`;
+            }
+            contentEl.innerHTML = html;
+        } catch (e) {
+            contentEl.innerHTML = '<div style="color:rgba(255,255,255,0.3)">Failed to load persona.</div>';
+            console.error('Persona load error:', e);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════

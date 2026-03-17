@@ -200,6 +200,7 @@ class WebServerService extends ChangeNotifier {
     router.get('/api/characters/<id>/detail', _handleGetCharacterDetail);
     router.post('/api/characters/<id>/edit', _handleEditCharacter);
     router.post('/api/characters/<id>/avatar', _handleUploadAvatar);
+    router.post('/api/characters/<id>/evolution', _handleUpdateEvolution);
     router.post('/api/characters/<id>/delete', _handleDeleteCharacter);
     router.get('/api/characters/<id>/export.png', _handleExportCharacterPng);
     router.post('/api/characters/import', _handleImportCharacter);
@@ -683,6 +684,9 @@ class WebServerService extends ChangeNotifier {
           'lorebook': lorebook,
           'ttsVoice': c.ttsVoice,
           'imagePath': c.imagePath,
+          'evolvedPersonality': c.evolvedPersonality,
+          'evolvedScenario': c.evolvedScenario,
+          'evolutionCount': c.evolutionCount,
         }),
         headers: {'Content-Type': 'application/json'},
       );
@@ -1806,14 +1810,19 @@ class WebServerService extends ChangeNotifier {
 
     try {
       final personas = await _db!.getAllPersonas();
-      final result = personas.map((p) => ({
-        'id': p.id,
-        'title': p.title,
-        'name': p.name,
-        'description': p.description,
-        'persona': p.persona,
-        'isActive': p.isActive,
-      })).toList();
+      final result = personas.map((p) {
+        List<String> facts = [];
+        try { facts = List<String>.from(jsonDecode(p.learnedFacts)); } catch (_) {}
+        return {
+          'id': p.id,
+          'title': p.title,
+          'name': p.name,
+          'description': p.description,
+          'persona': p.persona,
+          'isActive': p.isActive,
+          'learnedFacts': facts,
+        };
+      }).toList();
 
       return shelf.Response.ok(
         jsonEncode(result),
@@ -2059,6 +2068,37 @@ class WebServerService extends ChangeNotifier {
       );
     } catch (e) {
       return _errorResponse(500, 'Failed to create character: $e');
+    }
+  }
+
+  Future<shelf.Response> _handleUpdateEvolution(shelf.Request request, String id) async {
+    if (_db == null) return _errorResponse(503, 'Database not available');
+
+    try {
+      final dbId = int.tryParse(id);
+      if (dbId == null) return _errorResponse(400, 'Invalid character ID');
+
+      final bodyStr = await request.readAsString();
+      final body = jsonDecode(bodyStr) as Map<String, dynamic>;
+
+      final evolvedPersonality = body['evolvedPersonality']?.toString();
+      final evolvedScenario = body['evolvedScenario']?.toString();
+      final evolutionCount = body['evolutionCount'] as int?;
+
+      final companion = CharactersCompanion(
+        id: Value(id),
+        evolvedPersonality: evolvedPersonality != null ? Value(evolvedPersonality) : const Value.absent(),
+        evolvedScenario: evolvedScenario != null ? Value(evolvedScenario) : const Value.absent(),
+        evolutionCount: evolutionCount != null ? Value(evolutionCount) : const Value.absent(),
+      );
+      await _db!.updateCharacter(companion);
+
+      return shelf.Response.ok(
+        jsonEncode({'success': true}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Failed to update evolution: $e');
     }
   }
 
