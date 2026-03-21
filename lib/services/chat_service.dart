@@ -2067,6 +2067,31 @@ class ChatService extends ChangeNotifier {
 
         // (Task completion check now runs pre-generation in sendMessage)
 
+        // TTS auto-play: speak the new character message automatically
+        if (_ttsService != null &&
+            _storageService.ttsEnabled &&
+            _storageService.ttsAutoPlay &&
+            _messages.isNotEmpty &&
+            !_messages.last.isUser) {
+          final lastMsg = _messages.last;
+          final msgId = 'msg_${_messages.length - 1}';
+          // Resolve per-character voice, falling back to global default
+          String? voiceKey;
+          if (_activeGroup != null) {
+            final charMatch = _groupCharacters
+                .where((c) => c.name == lastMsg.sender)
+                .firstOrNull;
+            voiceKey = charMatch?.ttsVoice;
+          } else {
+            voiceKey = _activeCharacter?.ttsVoice;
+          }
+          _ttsService!.speak(
+            lastMsg.displayText,
+            voiceKey: voiceKey,
+            messageId: msgId,
+          );
+        }
+
         // Auto-play: if director mode is active, queue the next character
         if (_autoPlayActive && _observerMode && _activeGroup != null) {
           // If TTS is active, wait for it to finish before starting the delay
