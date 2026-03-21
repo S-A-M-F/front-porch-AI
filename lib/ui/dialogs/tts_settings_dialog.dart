@@ -37,6 +37,8 @@ class TtsSettingsDialog extends StatefulWidget {
 class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
   List<String> _installedPiperVoices = [];
   final _apiKeyController = TextEditingController();
+  final _baseUrlController = TextEditingController();
+  final _modelController = TextEditingController();
   bool _obscureApiKey = true;
 
   @override
@@ -45,11 +47,15 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
     _loadInstalledVoices();
     final storage = Provider.of<StorageService>(context, listen: false);
     _apiKeyController.text = storage.openaiTtsApiKey;
+    _baseUrlController.text = storage.openaiTtsBaseUrl;
+    _modelController.text = storage.openaiTtsModel;
   }
 
   @override
   void dispose() {
     _apiKeyController.dispose();
+    _baseUrlController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
@@ -152,14 +158,24 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                           inactiveColor: Colors.white12,
                           onChanged: (val) => storage.setTtsSpeechRate(val),
                         ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Stack(
                             children: [
-                              Text('0.5x', style: TextStyle(color: Colors.white24, fontSize: 10)),
-                              Text('1.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
-                              Text('2.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('0.5x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              ),
+                              // 1.0 is at (1.0 - 0.5) / (2.0 - 0.5) = 0.333 of the range
+                              // Convert to -1..1 alignment: 0.333 * 2 - 1 = -0.333
+                              const Align(
+                                alignment: Alignment(-0.333, 0),
+                                child: Text('1.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              ),
+                              const Align(
+                                alignment: Alignment.centerRight,
+                                child: Text('2.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              ),
                             ],
                           ),
                         ),
@@ -534,12 +550,16 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
       // Model
       const Text('Model',
           style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      const Text('OpenAI uses tts-1 or tts-1-hd. Other providers may differ.',
+          style: TextStyle(color: Colors.white24, fontSize: 11)),
       const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        initialValue: storage.openaiTtsModel,
-        dropdownColor: const Color(0xFF374151),
-        style: const TextStyle(color: Colors.white),
+      TextField(
+        controller: _modelController,
+        style: const TextStyle(color: Colors.white, fontSize: 13),
         decoration: InputDecoration(
+          hintText: 'tts-1',
+          hintStyle: const TextStyle(color: Colors.white24),
           filled: true,
           fillColor: Colors.black26,
           border: OutlineInputBorder(
@@ -548,15 +568,40 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
-        items: const [
-          DropdownMenuItem(value: 'tts-1',
-              child: Text('TTS Standard — \$15/1M chars')),
-          DropdownMenuItem(value: 'tts-1-hd',
-              child: Text('TTS HD — \$30/1M chars')),
-        ],
-        onChanged: (val) {
-          if (val != null) storage.setOpenaiTtsModel(val);
-        },
+        onChanged: (val) => storage.setOpenaiTtsModel(val.trim()),
+      ),
+      const SizedBox(height: 12),
+
+      // Base URL
+      const Text('API Base URL',
+          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      const Text('Change this to use an OpenAI-compatible TTS provider',
+          style: TextStyle(color: Colors.white24, fontSize: 11)),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _baseUrlController,
+        style: const TextStyle(color: Colors.white, fontSize: 13),
+        decoration: InputDecoration(
+          hintText: 'https://api.openai.com/v1',
+          hintStyle: const TextStyle(color: Colors.white24),
+          filled: true,
+          fillColor: Colors.black26,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.restore, color: Colors.white38, size: 18),
+            tooltip: 'Reset to OpenAI default',
+            onPressed: () {
+              _baseUrlController.text = 'https://api.openai.com/v1';
+              storage.setOpenaiTtsBaseUrl('https://api.openai.com/v1');
+            },
+          ),
+        ),
+        onChanged: (val) => storage.setOpenaiTtsBaseUrl(val.trim()),
       ),
       const SizedBox(height: 12),
 

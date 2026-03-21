@@ -25,6 +25,7 @@ import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 
 class CreateCharacterPage extends StatefulWidget {
   const CreateCharacterPage({super.key});
@@ -96,9 +97,30 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     );
 
     if (result != null && result.files.single.path != null) {
-      setState(() {
-        _imagePath = result.files.single.path;
-      });
+      final pickedPath = result.files.single.path!;
+      final imageBytes = await File(pickedPath).readAsBytes();
+
+      if (!mounted) return;
+
+      // Show the crop dialog
+      final croppedBytes = await ImageCropDialog.show(
+        context,
+        imageBytes: imageBytes,
+      );
+
+      if (croppedBytes != null && mounted) {
+        // Save cropped bytes to a temp file
+        final storage = Provider.of<StorageService>(context, listen: false);
+        final charDir = storage.charactersDir;
+        await charDir.create(recursive: true);
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final tempPath = '${charDir.path}/cropped_avatar_$timestamp.png';
+        await File(tempPath).writeAsBytes(croppedBytes);
+
+        setState(() {
+          _imagePath = tempPath;
+        });
+      }
     }
   }
 

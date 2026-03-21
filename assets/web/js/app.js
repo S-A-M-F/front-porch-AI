@@ -896,6 +896,9 @@
         $('#rp-scenario').textContent = replaceCharPlaceholders(char.scenario);
         $('#rp-description').textContent = replaceCharPlaceholders(char.description);
 
+        // ── Character Evolution section ──
+        _renderEvolutionSection(char);
+
         // Author's note will be loaded from chat state once SSE connects
 
         // Switch to chat page and show right panel
@@ -1713,6 +1716,7 @@
         // Chat management menu
         $('#btn-chat-menu').addEventListener('click', showChatHistory);
         $('#btn-impersonate').addEventListener('click', impersonateMe);
+        $('#btn-persona')?.addEventListener('click', () => _showPersonaModal());
 
         // New chat
         $('#btn-new-chat').addEventListener('click', () => {
@@ -2223,6 +2227,8 @@
             });
         });
 
+        $('#btn-rp-databank')?.addEventListener('click', () => showDataBankModal());
+
         $('#btn-rp-tts').addEventListener('click', async () => {
             // Open TTS settings as modal overlay
             const data = await apiJson('/api/settings');
@@ -2510,6 +2516,7 @@
         let lorebook = data.lorebook && data.lorebook.entries ? { entries: [...data.lorebook.entries] } : { entries: [] };
         let selectedWorlds = Array.isArray(data.worldNames) ? [...data.worldNames] : [];
         let activeTab = 'details';
+        let pendingAvatarBase64 = null; // base64 of new avatar to upload on save
 
         function render() {
             const modal = overlay.querySelector('.modal');
@@ -2563,7 +2570,24 @@
                 <span class="stop-seq-chip">${esc(t)} <button class="ec-remove-tag" data-idx="${i}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;padding:0 2px;">✕</button></span>
             `).join('');
 
+            const avatarSrc = pendingAvatarBase64
+                ? 'data:image/png;base64,' + pendingAvatarBase64
+                : `/api/characters/${currentCharacterId}/avatar?token=${encodeURIComponent(token)}&t=${Date.now()}`;
+
             return `<div style="display:flex;flex-direction:column;gap:14px;padding:8px">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                    <div style="position:relative;cursor:pointer" id="ec-avatar-wrap">
+                        <img id="ec-avatar-img" src="${avatarSrc}" alt="avatar"
+                             style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:2px solid var(--border);background:var(--bg-card)"
+                             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                        <div style="display:none;width:96px;height:96px;border-radius:50%;background:var(--bg-card);border:2px solid var(--border);align-items:center;justify-content:center;font-size:40px;color:var(--text-muted)">👤</div>
+                        <div style="position:absolute;bottom:0;right:0;width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-main)">
+                            <span style="font-size:14px">📷</span>
+                        </div>
+                    </div>
+                    <span style="font-size:11px;color:var(--text-muted)">Click to change avatar</span>
+                    <input type="file" id="ec-avatar-input" accept="image/*" style="display:none">
+                </div>
                 ${field('ec-name', 'Name', data.name, 1)}
                 ${field('ec-desc', 'Description', data.description, 6)}
                 ${field('ec-personality', 'Personality', data.personality, 6)}
@@ -2643,6 +2667,24 @@
         }
 
         function bindDetailsTab(modal) {
+            // Avatar pick
+            const avatarWrap = modal.querySelector('#ec-avatar-wrap');
+            const avatarInput = modal.querySelector('#ec-avatar-input');
+            if (avatarWrap && avatarInput) {
+                avatarWrap.addEventListener('click', () => avatarInput.click());
+                avatarInput.addEventListener('change', () => {
+                    const file = avatarInput.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const b64 = ev.target.result.split(',')[1];
+                        pendingAvatarBase64 = b64;
+                        const img = modal.querySelector('#ec-avatar-img');
+                        if (img) { img.src = ev.target.result; img.style.display = 'block'; img.nextElementSibling.style.display = 'none'; }
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
             // Add alt greeting
             modal.querySelector('#btn-ec-add-alt')?.addEventListener('click', () => {
                 altGreetings.push('');
@@ -2798,6 +2840,16 @@
             });
 
             if (res && res.ok) {
+                // Upload avatar if changed
+                if (pendingAvatarBase64) {
+                    await api('/api/characters/' + currentCharacterId + '/avatar', {
+                        method: 'POST',
+                        body: JSON.stringify({ data: pendingAvatarBase64 }),
+                    });
+                    // Refresh the avatar in the right panel
+                    const rpImg = $('#rp-char-img');
+                    if (rpImg) rpImg.src = `/api/characters/${currentCharacterId}/avatar?t=${Date.now()}`;
+                }
                 currentCharacterName = payload.name;
                 const nameEl = $('#chat-char-name');
                 if (nameEl) nameEl.textContent = payload.name;
@@ -2813,6 +2865,460 @@
         }
 
         render();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // CHARACTER EVOLUTION (right panel)
+    // ═══════════════════════════════════════════════════════════
+
+    async function _renderEvolutionSection(char) {
+        const section = document.getElementById('rp-evolution-section');
+        const countEl = document.getElementById('rp-evolution-count');
+        const contentEl = document.getElementById('rp-evolution-content');
+        if (!section || !contentEl) return;
+
+        // Fetch full character detail (list data doesn't include evolved fields)
+        try {
+            const detail = await apiJson(`/api/characters/${char.id}/detail`);
+            if (detail) {
+                char.evolvedPersonality = detail.evolvedPersonality;
+                char.evolvedScenario = detail.evolvedScenario;
+                char.evolutionCount = detail.evolutionCount;
+            }
+        } catch (e) { /* use whatever's on char already */ }
+
+        const count = char.evolutionCount || 0;
+        const evolvedP = char.evolvedPersonality || '';
+        const evolvedS = char.evolvedScenario || '';
+
+        // Show section if evolution is enabled (check settings)
+        section.style.display = '';
+        countEl.textContent = count > 0 ? `Evolved ${count}×` : 'Not evolved';
+        countEl.style.color = count > 0 ? '#2DD4BF' : 'rgba(255,255,255,0.3)';
+
+        if (count > 0 && (evolvedP || evolvedS)) {
+            let html = '';
+            if (evolvedP) {
+                html += `<div style="margin-bottom:8px">
+                    <div style="font-size:11px;color:rgba(255,255,255,0.38);margin-bottom:4px">Evolved Personality</div>
+                    <div style="padding:8px;background:#0D1117;border-radius:6px;border:1px solid rgba(45,212,191,0.2);max-height:100px;overflow-y:auto;font-size:11px;color:rgba(255,255,255,0.54)">${esc(evolvedP)}</div>
+                </div>`;
+            }
+            if (evolvedS) {
+                html += `<div style="margin-bottom:8px">
+                    <div style="font-size:11px;color:rgba(255,255,255,0.38);margin-bottom:4px">Evolved Scenario</div>
+                    <div style="padding:8px;background:#0D1117;border-radius:6px;border:1px solid rgba(45,212,191,0.2);max-height:100px;overflow-y:auto;font-size:11px;color:rgba(255,255,255,0.54)">${esc(evolvedS)}</div>
+                </div>`;
+            }
+            html += `<div style="display:flex;gap:8px;margin-top:4px">
+                <button class="btn btn-outlined" id="btn-evo-review" style="font-size:10px;padding:2px 8px;color:#2DD4BF;border-color:rgba(45,212,191,0.3)">✏️ Review & Edit</button>
+                <button class="btn btn-outlined" id="btn-evo-reset" style="font-size:10px;padding:2px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">🔄 Reset</button>
+            </div>`;
+            contentEl.innerHTML = html;
+
+            // Bind review/reset buttons via event delegation on the container
+            contentEl.addEventListener('click', function handler(e) {
+                const btn = e.target.closest('button');
+                if (!btn) return;
+                if (btn.id === 'btn-evo-review') {
+                    _showEvolutionEditModal(char);
+                } else if (btn.id === 'btn-evo-reset') {
+                    _resetEvolution(char);
+                }
+            });
+        } else {
+            contentEl.innerHTML = `<div style="color:rgba(255,255,255,0.24);font-size:11px">Personality & scenario will evolve as you chat.</div>`;
+        }
+    }
+
+    function _showEvolutionEditModal(char) {
+        const evolvedP = char.evolvedPersonality || '';
+        const evolvedS = char.evolvedScenario || '';
+
+        let overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
+        overlay.innerHTML = `
+            <div class="modal" style="width:560px;max-height:80vh;overflow-y:auto">
+                <h2 style="margin:0 0 16px;color:#2DD4BF">🧬 Review Character Evolution</h2>
+                <div style="margin-bottom:12px">
+                    <label class="slider-label" style="display:block;margin-bottom:4px">Evolved Personality</label>
+                    <textarea id="evo-edit-personality" class="settings-textarea" rows="6" style="width:100%">${esc(evolvedP)}</textarea>
+                </div>
+                <div style="margin-bottom:16px">
+                    <label class="slider-label" style="display:block;margin-bottom:4px">Evolved Scenario</label>
+                    <textarea id="evo-edit-scenario" class="settings-textarea" rows="6" style="width:100%">${esc(evolvedS)}</textarea>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px">
+                    <button class="btn btn-outlined" id="evo-edit-cancel">Cancel</button>
+                    <button class="btn" id="evo-edit-save" style="background:#2DD4BF;color:#000">Save</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#evo-edit-cancel').onclick = () => overlay.remove();
+        overlay.querySelector('#evo-edit-save').onclick = async () => {
+            const newP = document.getElementById('evo-edit-personality').value;
+            const newS = document.getElementById('evo-edit-scenario').value;
+            try {
+                await fetch(`/api/characters/${currentCharacterId}/evolution`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
+                    body: JSON.stringify({ evolvedPersonality: newP, evolvedScenario: newS }),
+                });
+                char.evolvedPersonality = newP;
+                char.evolvedScenario = newS;
+                _renderEvolutionSection(char);
+            } catch (e) { console.error('Failed to save evolution:', e); }
+            overlay.remove();
+        };
+    }
+
+    async function _resetEvolution(char) {
+        if (!confirm('Reset all evolved personality and scenario data? This cannot be undone.')) return;
+        try {
+            await fetch(`/api/characters/${currentCharacterId}/evolution`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
+                body: JSON.stringify({ evolvedPersonality: '', evolvedScenario: '', evolutionCount: 0 }),
+            });
+            char.evolvedPersonality = '';
+            char.evolvedScenario = '';
+            char.evolutionCount = 0;
+            _renderEvolutionSection(char);
+        } catch (e) { console.error('Failed to reset evolution:', e); }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // USER PERSONA (right panel)
+    // ═══════════════════════════════════════════════════════════
+
+    async function _showPersonaModal() {
+        let personas = [];
+        try {
+            const res = await fetch('/api/personas', { headers: {'Authorization': `Bearer ${token}`} });
+            if (res.ok) personas = await res.json();
+        } catch (e) { console.error('Persona load error:', e); return; }
+
+        let overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
+
+        function renderList() {
+            const active = personas.find(p => p.isActive) || personas[0];
+            const activeFacts = active?.learnedFacts || [];
+
+            let personaItems = personas.map((p, i) => {
+                const isActive = active && p.id === active.id;
+                return `<div style="margin-bottom:8px;padding:10px 12px;background:${isActive ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.05)'};border-radius:8px;${isActive ? 'border:1px solid #3B82F6' : 'border:1px solid transparent'};display:flex;align-items:center;gap:10px;cursor:pointer" data-persona-id="${p.id}" class="persona-item">
+                    <div style="width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;color:rgba(255,255,255,0.7);flex-shrink:0">👤</div>
+                    <div style="flex:1;min-width:0">
+                        <div style="font-weight:600;color:white;font-size:14px">${esc(p.title || p.name || 'Unnamed')}</div>
+                        <div style="font-size:12px;color:rgba(255,255,255,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title ? p.name : (p.description || ''))}</div>
+                    </div>
+                    <div style="display:flex;gap:4px;flex-shrink:0">
+                        ${!isActive ? `<button class="btn btn-outlined persona-select-btn" data-idx="${i}" style="font-size:10px;padding:2px 8px">Select</button>` : ''}
+                        <button class="btn btn-outlined persona-edit-btn" data-idx="${i}" style="font-size:10px;padding:2px 6px">✏️</button>
+                        ${personas.length > 1 ? `<button class="btn btn-outlined persona-delete-btn" data-idx="${i}" style="font-size:10px;padding:2px 6px;color:#f87171;border-color:rgba(248,113,113,0.3)">🗑</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+
+            let factsHtml = '';
+            if (activeFacts.length > 0) {
+                const chips = activeFacts.map((f, i) =>
+                    `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:#374151;border-radius:12px;font-size:11px;color:rgba(255,255,255,0.7);margin:2px">
+                        ${esc(f)}
+                        <button class="fact-delete-btn" data-idx="${i}" style="background:none;border:none;color:rgba(255,255,255,0.38);cursor:pointer;font-size:12px;padding:0 2px;line-height:1">✕</button>
+                    </span>`
+                ).join('');
+
+                factsHtml = `
+                    <div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:12px;padding-top:12px">
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                            <span style="font-size:14px">✨</span>
+                            <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.7)">Learned Facts (${activeFacts.length})</span>
+                            ${activeFacts.length > 10 ? `<button class="btn btn-outlined" id="btn-clear-facts" style="margin-left:auto;font-size:10px;padding:2px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">🗑 Clear All</button>` : ''}
+                        </div>
+                        <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px">Auto-extracted from your conversations:</div>
+                        <div style="max-height:120px;overflow-y:auto">${chips}</div>
+                    </div>`;
+            }
+
+            overlay.innerHTML = `
+                <div class="modal" style="width:600px;max-height:500px;display:flex;flex-direction:column">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                        <h2 style="margin:0;color:white;font-size:24px">User Personas</h2>
+                        <button class="btn btn-outlined" id="persona-close" style="padding:4px 8px;font-size:14px">✕</button>
+                    </div>
+                    <div style="flex:1;overflow-y:auto;margin-bottom:12px">${personaItems}</div>
+                    ${factsHtml}
+                    <button class="btn" id="btn-add-persona" style="width:100%;margin-top:12px;background:#3B82F6;padding:10px">➕ Add New Persona</button>
+                </div>`;
+
+            // Bind events
+            overlay.querySelector('#persona-close').onclick = () => overlay.remove();
+            overlay.querySelector('#btn-add-persona').onclick = () => renderEditForm(null);
+
+            overlay.querySelectorAll('.persona-select-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    await apiJson('/api/personas/active', { method: 'POST', body: JSON.stringify({ id: personas[idx].id }) });
+                    personas.forEach(p => p.isActive = false);
+                    personas[idx].isActive = true;
+                    renderList();
+                };
+            });
+            overlay.querySelectorAll('.persona-edit-btn').forEach(btn => {
+                btn.onclick = () => renderEditForm(personas[parseInt(btn.dataset.idx)]);
+            });
+            overlay.querySelectorAll('.persona-delete-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    if (!confirm(`Delete "${personas[idx].name}"?`)) return;
+                    await apiJson('/api/personas/delete', { method: 'POST', body: JSON.stringify({ id: personas[idx].id }) });
+                    personas.splice(idx, 1);
+                    renderList();
+                };
+            });
+            overlay.querySelectorAll('.fact-delete-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    const factIdx = parseInt(btn.dataset.idx);
+                    const active = personas.find(p => p.isActive) || personas[0];
+                    if (!active) return;
+                    active.learnedFacts.splice(factIdx, 1);
+                    await apiJson('/api/personas/update', {
+                        method: 'POST',
+                        body: JSON.stringify({ id: active.id, learnedFacts: active.learnedFacts }),
+                    });
+                    renderList();
+                };
+            });
+            const clearBtn = overlay.querySelector('#btn-clear-facts');
+            if (clearBtn) {
+                clearBtn.onclick = async () => {
+                    if (!confirm('Remove all learned facts? This cannot be undone.')) return;
+                    const active = personas.find(p => p.isActive) || personas[0];
+                    if (!active) return;
+                    active.learnedFacts = [];
+                    await apiJson('/api/personas/update', {
+                        method: 'POST',
+                        body: JSON.stringify({ id: active.id, learnedFacts: [] }),
+                    });
+                    renderList();
+                };
+            }
+            overlay.querySelectorAll('.persona-item').forEach(item => {
+                item.onclick = async (e) => {
+                    if (e.target.closest('button')) return;
+                    const id = item.dataset.personaId;
+                    await apiJson('/api/personas/active', { method: 'POST', body: JSON.stringify({ id }) });
+                    personas.forEach(p => p.isActive = (p.id === id));
+                    renderList();
+                };
+            });
+        }
+
+        function renderEditForm(persona) {
+            overlay.innerHTML = `
+                <div class="modal" style="width:600px;max-height:500px;display:flex;flex-direction:column">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+                        <h2 style="margin:0;color:white;font-size:24px">${persona ? 'Edit Persona' : 'Create Persona'}</h2>
+                        <button class="btn btn-outlined" id="persona-edit-cancel" style="padding:4px 8px;font-size:14px">✕</button>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:16px;flex:1">
+                        <div>
+                            <label class="slider-label" style="display:block;margin-bottom:4px">Title (optional)</label>
+                            <input type="text" id="pe-title" class="settings-text-input" value="${esc(persona?.title || '')}" placeholder="Label to distinguish this persona">
+                        </div>
+                        <div>
+                            <label class="slider-label" style="display:block;margin-bottom:4px">Name *</label>
+                            <input type="text" id="pe-name" class="settings-text-input" value="${esc(persona?.name || '')}" placeholder="Name sent to the AI">
+                        </div>
+                        <div>
+                            <label class="slider-label" style="display:block;margin-bottom:4px">Description *</label>
+                            <textarea id="pe-desc" class="settings-textarea" rows="3" placeholder="Describe this persona">${esc(persona?.description || '')}</textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+                        <button class="btn btn-outlined" id="pe-cancel">Cancel</button>
+                        <button class="btn" id="pe-save" style="background:#3B82F6">Save</button>
+                    </div>
+                </div>`;
+
+            overlay.querySelector('#persona-edit-cancel').onclick = () => renderList();
+            overlay.querySelector('#pe-cancel').onclick = () => renderList();
+            overlay.querySelector('#pe-save').onclick = async () => {
+                const name = document.getElementById('pe-name').value.trim();
+                const desc = document.getElementById('pe-desc').value.trim();
+                if (!name) { alert('Name is required'); return; }
+                if (!desc) { alert('Description is required'); return; }
+                const title = document.getElementById('pe-title').value.trim();
+
+                if (persona) {
+                    await apiJson('/api/personas/update', {
+                        method: 'POST',
+                        body: JSON.stringify({ id: persona.id, title, name, description: desc }),
+                    });
+                    Object.assign(persona, { title, name, description: desc });
+                } else {
+                    const result = await apiJson('/api/personas', {
+                        method: 'POST',
+                        body: JSON.stringify({ title, name, description: desc, persona: '' }),
+                    });
+                    // Reload personas to get the new one
+                    try {
+                        const res = await fetch('/api/personas', { headers: {'Authorization': `Bearer ${token}`} });
+                        if (res.ok) personas = await res.json();
+                    } catch (_) {}
+                }
+                renderList();
+            };
+        }
+
+        document.body.appendChild(overlay);
+        renderList();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // DATA BANK MODAL
+    // ═══════════════════════════════════════════════════════════
+
+    function showDataBankModal() {
+        if (!currentCharacterId) return;
+
+        let overlay = document.getElementById('databank-modal');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'databank-modal';
+            overlay.className = 'modal-overlay';
+            document.body.appendChild(overlay);
+        }
+
+        overlay.innerHTML = `<div class="modal" style="min-width:min(600px,95vw);max-width:min(800px,95vw);max-height:85vh;display:flex;flex-direction:column;">
+            <div class="modal-title">📚 Data Bank — ${esc(currentCharacterName)}</div>
+            <p style="color:var(--text-muted);text-align:center;padding:24px">Loading...</p>
+        </div>`;
+        overlay.classList.add('active');
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('active'); });
+
+        _loadDataBank(overlay);
+    }
+
+    async function _loadDataBank(overlay) {
+        const entries = await apiJson(`/api/characters/${currentCharacterId}/databank`);
+        if (!Array.isArray(entries)) {
+            overlay.querySelector('.modal').innerHTML = `
+                <div class="modal-title">📚 Data Bank</div>
+                <p style="color:var(--text-muted);padding:16px">Failed to load Data Bank entries.</p>
+                <div class="modal-actions"><button class="btn btn-outlined" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button></div>`;
+            return;
+        }
+
+        function renderDB() {
+            const modal = overlay.querySelector('.modal');
+            let listHtml = '';
+            if (entries.length === 0) {
+                listHtml = '<p style="color:var(--text-muted);text-align:center;padding:24px">No Data Bank entries yet. Add knowledge that will be injected into context via RAG.</p>';
+            } else {
+                listHtml = entries.map((e, i) => `
+                    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                            <strong style="color:var(--text-primary);font-size:13px">${esc(e.title)}</strong>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn-icon db-edit" data-idx="${i}" title="Edit">✏️</button>
+                                <button class="btn-icon db-delete" data-idx="${i}" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+                        <div style="color:var(--text-secondary);font-size:12px;white-space:pre-wrap;max-height:80px;overflow:hidden">${esc(e.content)}</div>
+                    </div>
+                `).join('');
+            }
+
+            modal.innerHTML = `
+                <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>📚 Data Bank — ${esc(currentCharacterName)}</span>
+                    <button class="btn btn-primary" id="btn-db-add" style="font-size:12px;padding:4px 12px">+ Add Entry</button>
+                </div>
+                <div style="overflow-y:auto;flex:1;padding:8px">${listHtml}</div>
+                <div class="modal-actions">
+                    <button class="btn btn-outlined" id="btn-db-close">Close</button>
+                </div>
+            `;
+
+            modal.querySelector('#btn-db-close').addEventListener('click', () => overlay.classList.remove('active'));
+            modal.querySelector('#btn-db-add').addEventListener('click', () => showEditDBEntryModal(null, overlay, entries, renderDB));
+
+            modal.querySelectorAll('.db-edit').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    showEditDBEntryModal(entries[idx], overlay, entries, renderDB);
+                });
+            });
+
+            modal.querySelectorAll('.db-delete').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    const entry = entries[idx];
+                    const res = await api(`/api/characters/${currentCharacterId}/databank/${entry.id}/delete`, { method: 'POST' });
+                    if (res && res.ok) { entries.splice(idx, 1); renderDB(); }
+                });
+            });
+        }
+
+        renderDB();
+    }
+
+    function showEditDBEntryModal(entry, parentOverlay, entries, renderParent) {
+        const isNew = !entry;
+        let dbOverlay = document.createElement('div');
+        dbOverlay.className = 'modal-overlay active';
+        dbOverlay.style.zIndex = '1001';
+        dbOverlay.innerHTML = `
+            <div class="modal" style="min-width:min(450px,95vw);">
+                <div class="modal-title">${isNew ? 'New Data Bank Entry' : 'Edit Data Bank Entry'}</div>
+                <div style="display:flex;flex-direction:column;gap:12px">
+                    <div>
+                        <label class="slider-label" style="display:block;margin-bottom:4px">Title</label>
+                        <input type="text" id="dbe-title" class="settings-text-input" value="${esc(entry?.title || '')}" placeholder="Entry title...">
+                    </div>
+                    <div>
+                        <label class="slider-label" style="display:block;margin-bottom:4px">Content</label>
+                        <textarea id="dbe-content" class="settings-textarea" rows="8" placeholder="Knowledge content...">${esc(entry?.content || '')}</textarea>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-outlined" id="btn-dbe-cancel">Cancel</button>
+                    <button class="btn btn-primary" id="btn-dbe-save">Save</button>
+                </div>
+            </div>`;
+        document.body.appendChild(dbOverlay);
+
+        dbOverlay.querySelector('#btn-dbe-cancel').addEventListener('click', () => dbOverlay.remove());
+        dbOverlay.addEventListener('click', (e) => { if (e.target === dbOverlay) dbOverlay.remove(); });
+        dbOverlay.querySelector('#btn-dbe-save').addEventListener('click', async () => {
+            const title = dbOverlay.querySelector('#dbe-title').value.trim() || 'Untitled';
+            const content = dbOverlay.querySelector('#dbe-content').value;
+
+            if (isNew) {
+                const res = await apiJson(`/api/characters/${currentCharacterId}/databank`, {
+                    method: 'POST',
+                    body: JSON.stringify({ title, content }),
+                });
+                if (res && res.id) {
+                    entries.push({ id: res.id, title, content, characterId: currentCharacterId });
+                }
+            } else {
+                await api(`/api/characters/${currentCharacterId}/databank/${entry.id}/update`, {
+                    method: 'POST',
+                    body: JSON.stringify({ title, content }),
+                });
+                entry.title = title;
+                entry.content = content;
+            }
+
+            dbOverlay.remove();
+            renderParent();
+        });
     }
 
     // ═══════════════════════════════════════════════════════════
