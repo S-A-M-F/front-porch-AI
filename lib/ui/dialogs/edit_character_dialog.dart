@@ -114,43 +114,55 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
   }
 
   Future<void> _pickAvatar() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-    );
-    if (result == null || result.files.isEmpty) return;
-    final pickedPath = result.files.single.path;
-    if (pickedPath == null) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final pickedPath = result.files.single.path;
+      if (pickedPath == null) return;
 
-    final imageBytes = await File(pickedPath).readAsBytes();
-    if (!mounted) return;
+      final imageBytes = await File(pickedPath).readAsBytes();
+      if (!mounted) return;
 
-    // Show the crop dialog
-    final croppedBytes = await ImageCropDialog.show(
-      context,
-      imageBytes: imageBytes,
-    );
-    if (croppedBytes == null || !mounted) return;
+      // Show the crop dialog
+      final croppedBytes = await ImageCropDialog.show(
+        context,
+        imageBytes: imageBytes,
+      );
+      if (croppedBytes == null || !mounted) return;
 
-    // Save cropped image to charactersDir with a timestamped name
-    final storage = Provider.of<StorageService>(context, listen: false);
-    final charDir = storage.charactersDir;
-    await charDir.create(recursive: true);
+      // Save cropped image to charactersDir with a timestamped name
+      final storage = Provider.of<StorageService>(context, listen: false);
+      final charDir = storage.charactersDir;
+      await charDir.create(recursive: true);
 
-    final safeName = _nameController.text.trim().isNotEmpty
-        ? _nameController.text.trim()
-            .replaceAll(RegExp(r'[^\w\s-]'), '')
-            .replaceAll(RegExp(r'\s+'), '_')
-        : 'avatar';
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final destFilename = '${safeName}_$timestamp.png';
-    final destPath = p.join(charDir.path, destFilename);
+      final safeName = _nameController.text.trim().isNotEmpty
+          ? _nameController.text.trim()
+              .replaceAll(RegExp(r'[^\w\s-]'), '')
+              .replaceAll(RegExp(r'\s+'), '_')
+          : 'avatar';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final destFilename = '${safeName}_$timestamp.png';
+      final destPath = p.join(charDir.path, destFilename);
 
-    await File(destPath).writeAsBytes(croppedBytes);
+      await File(destPath).writeAsBytes(croppedBytes);
 
-    setState(() {
-      _newAvatarPath = destPath;
-    });
+      setState(() {
+        _newAvatarPath = destPath;
+      });
+    } catch (e) {
+      debugPrint('File picker error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open file picker: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
   }
 
   void _openExpandedEditor(String title, TextEditingController controller, {String? hintText}) {
