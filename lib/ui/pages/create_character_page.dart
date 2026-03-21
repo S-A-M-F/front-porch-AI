@@ -91,35 +91,47 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   }
 
   Future<void> _pickImage() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-    );
-
-    if (result != null && result.files.single.path != null) {
-      final pickedPath = result.files.single.path!;
-      final imageBytes = await File(pickedPath).readAsBytes();
-
-      if (!mounted) return;
-
-      // Show the crop dialog
-      final croppedBytes = await ImageCropDialog.show(
-        context,
-        imageBytes: imageBytes,
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
       );
 
-      if (croppedBytes != null && mounted) {
-        // Save cropped bytes to a temp file
-        final storage = Provider.of<StorageService>(context, listen: false);
-        final charDir = storage.charactersDir;
-        await charDir.create(recursive: true);
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final tempPath = '${charDir.path}/cropped_avatar_$timestamp.png';
-        await File(tempPath).writeAsBytes(croppedBytes);
+      if (result != null && result.files.single.path != null) {
+        final pickedPath = result.files.single.path!;
+        final imageBytes = await File(pickedPath).readAsBytes();
 
-        setState(() {
-          _imagePath = tempPath;
-        });
+        if (!mounted) return;
+
+        // Show the crop dialog
+        final croppedBytes = await ImageCropDialog.show(
+          context,
+          imageBytes: imageBytes,
+        );
+
+        if (croppedBytes != null && mounted) {
+          // Save cropped bytes to a temp file
+          final storage = Provider.of<StorageService>(context, listen: false);
+          final charDir = storage.charactersDir;
+          await charDir.create(recursive: true);
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          final tempPath = '${charDir.path}/cropped_avatar_$timestamp.png';
+          await File(tempPath).writeAsBytes(croppedBytes);
+
+          setState(() {
+            _imagePath = tempPath;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('File picker error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open file picker: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
       }
     }
   }
