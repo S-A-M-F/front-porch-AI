@@ -4733,13 +4733,64 @@ class _RagSetupDialogState extends State<_RagSetupDialog> {
             ],
           ),
         ),
-        if (hasError && sidecar.error != null) ...[
+        if (hasError && sidecar.error != null) ...[ 
           const SizedBox(height: 8),
           Text(
             sidecar.error!,
             style: const TextStyle(color: Colors.redAccent, fontSize: 11),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
+          // Troubleshooting hints based on error type
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.orangeAccent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline, size: 14, color: Colors.orangeAccent),
+                    SizedBox(width: 6),
+                    Text('Troubleshooting', style: TextStyle(
+                      color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.w600,
+                    )),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (sidecar.error!.contains('retrieve') || sidecar.error!.contains('download') || sidecar.error!.contains('network')) ...[
+                  const Text('• Check your internet connection', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const Text('• Verify you can access huggingface.co', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const Text('• Try again — the server may be temporarily busy', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const SizedBox(height: 4),
+                  const Text('• If this persists, try clearing the cache:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  Text(
+                    Platform.isWindows
+                        ? '  %LOCALAPPDATA%/front-porch-ai/embeddings/'
+                        : Platform.isMacOS
+                            ? '  ~/Library/Caches/front-porch-ai/embeddings/'
+                            : '  ~/.cache/front-porch-ai/embeddings/',
+                    style: const TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace'),
+                  ),
+                ] else if (sidecar.error!.contains('onnxruntime') || sidecar.error!.contains('.dll')) ...[
+                  const Text('• A conflicting ONNX Runtime library may be installed', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const Text('• Check for onnxruntime.dll in C:\\Windows\\System32\\', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const Text('• Remove or rename the conflicting file and retry', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                ] else if (sidecar.error!.contains('bind') || sidecar.error!.contains('port')) ...[
+                  const Text('• Port 5055 may be in use by another application', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const Text('• Close other applications using that port and retry', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                ] else ...[
+                  const Text('• Try clicking Retry — transient errors often resolve', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const Text('• If this persists, restart the application', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                ],
+              ],
+            ),
           ),
         ],
         const SizedBox(height: 20),

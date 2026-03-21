@@ -481,9 +481,11 @@ class ChatService extends ChangeNotifier {
     await _cancelAndWaitForGeneration();
     _generationEpoch++;
 
-    // If same character is already active, don't reset unless empty
-    if (_activeCharacter?.name == character?.name && 
-        _activeCharacter?.imagePath == character?.imagePath && 
+    // If same character is already active, don't reset unless empty.
+    // Use dbId (stable DB identifier) rather than imagePath which can
+    // differ in format (basename vs full path) between repository and runtime.
+    if (_activeCharacter?.name == character?.name &&
+        _activeCharacter?.dbId == character?.dbId &&
         _messages.isNotEmpty) {
       return;
     }
@@ -499,6 +501,8 @@ class ChatService extends ChangeNotifier {
     _loadActiveObjective();
     // Load evolved personality/scenario from DB
     _loadEvolvedFields();
+    debugPrint('[ChatService] 🟡 setActiveCharacter: clearing messages '
+        '(had ${_messages.length}) for ${character?.name}, loading session...');
     _messages.clear();
     _currentSessionId = null;
     _summary = '';
@@ -556,6 +560,8 @@ class ChatService extends ChangeNotifier {
 
     // Clear 1:1 mode
     _activeCharacter = null;
+    debugPrint('[ChatService] 🟡 setActiveGroup: clearing messages '
+        '(had ${_messages.length}) for group ${group.name}');
     _messages.clear();
     _currentSessionId = null;
     _isLoadingSession = true;
@@ -652,6 +658,18 @@ class ChatService extends ChangeNotifier {
   Future<void> _saveChat() async {
     if ((_activeCharacter == null && _activeGroup == null) || _currentSessionId == null) return;
     
+    // ── Safety guard: never overwrite existing session data with empty messages.
+    // This prevents data loss if _messages is momentarily empty due to a rebuild
+    // race, nav glitch, or any other transient state issue.
+    if (_messages.isEmpty) {
+      debugPrint('[ChatService] ⚠ _saveChat called with empty messages for '
+          'session $_currentSessionId — skipping to protect existing data.');
+      return;
+    }
+
+    // Snapshot messages at the start so async gaps can't see a mutated list.
+    final snapshot = List<ChatMessage>.from(_messages);
+
     final charId = _getCharacterId();
 
     // Look up character DB id if in 1:1 mode
@@ -684,11 +702,11 @@ class ChatService extends ChangeNotifier {
       updatedAt: drift.Value(DateTime.now()),
     ));
 
-    // Replace all messages for this session
+    // Replace all messages for this session using the snapshot
     await _db.deleteMessagesForSession(_currentSessionId!);
     final messageBatch = <MessagesCompanion>[];
-    for (int i = 0; i < _messages.length; i++) {
-      final m = _messages[i];
+    for (int i = 0; i < snapshot.length; i++) {
+      final m = snapshot[i];
       messageBatch.add(MessagesCompanion(
         sessionId: drift.Value(_currentSessionId!),
         position: drift.Value(i),
@@ -735,6 +753,8 @@ class ChatService extends ChangeNotifier {
     // Load messages
     try {
       final dbMessages = await _db.getMessagesForSession(_currentSessionId!);
+      debugPrint('[ChatService] 🟢 _loadLastSession: loading ${dbMessages.length} '
+          'messages for session $_currentSessionId');
       _messages.clear();
       for (final m in dbMessages) {
         List<String> swipes;
@@ -831,6 +851,8 @@ class ChatService extends ChangeNotifier {
 
     try {
       final dbMessages = await _db.getMessagesForSession(sessionId);
+      debugPrint('[ChatService] 🟢 loadSession: loading ${dbMessages.length} '
+          'messages for session $sessionId');
       _messages.clear();
       for (final m in dbMessages) {
         List<String> swipes;
@@ -923,6 +945,7 @@ class ChatService extends ChangeNotifier {
       )
     ).toList();
 
+    debugPrint('[ChatService] 🟡 forkSession: clearing messages for fork at index $messageIndex');
     _messages.clear();
     _messages.addAll(forkedMessages);
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -943,6 +966,7 @@ class ChatService extends ChangeNotifier {
       final Map<String, dynamic> data = jsonDecode(jsonData);
       final List<dynamic> messages = data['messages'] ?? [];
 
+      debugPrint('[ChatService] 🟡 importFromSillyTavern: clearing messages for import');
       _messages.clear();
       
       for (final msg in messages) {
@@ -993,6 +1017,7 @@ class ChatService extends ChangeNotifier {
   Future<void> startNewChat() async {
     if (_activeCharacter == null && _activeGroup == null) return;
 
+    debugPrint('[ChatService] 🟡 startNewChat: clearing messages (had ${_messages.length})');
     _messages.clear();
     _greetingIndex = 0;
     _summary = '';
@@ -2042,6 +2067,31 @@ class ChatService extends ChangeNotifier {
 
         // (Task completion check now runs pre-generation in sendMessage)
 
+        // TTS auto-play: speak the new character message automatically
+        if (_ttsService != null &&
+            _storageService.ttsEnabled &&
+            _storageService.ttsAutoPlay &&
+            _messages.isNotEmpty &&
+            !_messages.last.isUser) {
+          final lastMsg = _messages.last;
+          final msgId = 'msg_${_messages.length - 1}';
+          // Resolve per-character voice, falling back to global default
+          String? voiceKey;
+          if (_activeGroup != null) {
+            final charMatch = _groupCharacters
+                .where((c) => c.name == lastMsg.sender)
+                .firstOrNull;
+            voiceKey = charMatch?.ttsVoice;
+          } else {
+            voiceKey = _activeCharacter?.ttsVoice;
+          }
+          _ttsService!.speak(
+            lastMsg.displayText,
+            voiceKey: voiceKey,
+            messageId: msgId,
+          );
+        }
+
         // Auto-play: if director mode is active, queue the next character
         if (_autoPlayActive && _observerMode && _activeGroup != null) {
           // If TTS is active, wait for it to finish before starting the delay
@@ -2064,6 +2114,7 @@ class ChatService extends ChangeNotifier {
       }
 
     } catch (e) {
+      final wasCancelled = _cancelRequested;
       _drainTimer?.cancel();
       _drainTimer = null;
       _tokenBuffer.clear();
@@ -2072,6 +2123,27 @@ class ChatService extends ChangeNotifier {
       _generationProgress = 0.0;
       _isBuffering = false;
       _generationStartTime = null;
+
+      // User-initiated cancel — keep the partial response, no error message
+      if (wasCancelled) {
+        // Signal clean completion to SSE listeners
+        _tokenBroadcast.add('__DONE__');
+        if (_sentenceBuffer.trim().isNotEmpty) {
+          _sentenceBroadcast.add(_sentenceBuffer.trim());
+          _sentenceBuffer = '';
+        }
+        _sentenceBroadcast.add('__DONE__');
+
+        // Restore original model if swapped for call mode
+        if (_originalModelName != null && _llmProvider != null) {
+          _llmProvider!.openRouterService.configure(modelName: _originalModelName);
+        }
+
+        // Save the partial response so regen/continue work
+        await _saveChat();
+        notifyListeners();
+        return;
+      }
 
       // Build user-friendly error message
       String errorMsg = e.toString();
@@ -2277,7 +2349,18 @@ class ChatService extends ChangeNotifier {
   }
 
 
+  /// Reload the current session from the database without clearing messages first.
+  /// Used after cloud sync or DB migration updates the database — preserves the
+  /// user's active chat instead of wiping it.
+  Future<void> reloadCurrentSession() async {
+    if (_currentSessionId == null) return;
+    debugPrint('[ChatService] 🔄 reloadCurrentSession: reloading session $_currentSessionId '
+        '(currently ${_messages.length} messages in memory)');
+    await loadSession(_currentSessionId!);
+  }
+
   void clearChat() async {
+    debugPrint('[ChatService] 🟡 clearChat: clearing ${_messages.length} messages');
     _messages.clear();
     await _saveChat();
     notifyListeners();
@@ -2299,6 +2382,7 @@ class ChatService extends ChangeNotifier {
         await loadSession(remaining.first['id']);
       } else {
         // No sessions left — start fresh
+        debugPrint('[ChatService] 🟡 deleteSession: no sessions left, clearing messages');
         _messages.clear();
         _currentSessionId = null;
         await startNewChat();

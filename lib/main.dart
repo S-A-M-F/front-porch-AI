@@ -411,6 +411,13 @@ class _MyAppState extends State<MyApp> with WindowListener {
                   _checkForUpdates(context);
                   _runCloudSync(context);
                   _autoStartWebServer(context);
+                  // Wire TtsService into ChatService (can't be done during provider
+                  // creation because TtsService is registered later in the tree)
+                  try {
+                    final chatService = Provider.of<ChatService>(context, listen: false);
+                    final tts = Provider.of<TtsService>(context, listen: false);
+                    chatService.setTtsService(tts);
+                  } catch (_) {}
                 });
               }
 
@@ -701,7 +708,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
           await personaService.reload();
           await groupRepo.reload();
           await worldRepo.loadWorlds();
-          chatService.clearChat();
+          await chatService.reloadCurrentSession();
         }
 
         if (mounted) {
@@ -1016,7 +1023,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
           await personaService.reload();
           await groupRepo.reload();
           await worldRepo.loadWorlds();
-          chatService.clearChat();
+          await chatService.reloadCurrentSession();
         }
 
         // Show confirmation dialog before uploading v3 DB to cloud
@@ -1100,7 +1107,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
           await personaService.reload();
           await groupRepo.reload();
           await worldRepo.loadWorlds();
-          chatService.clearChat();
+          await chatService.reloadCurrentSession();
         }
       }
     } catch (e) {
