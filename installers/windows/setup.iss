@@ -4,7 +4,7 @@
 #define MyAppName "Front Porch AI"
 #define MyAppPublisher "linux4life1"
 #define MyAppURL "https://github.com/linux4life1/front-porch-AI"
-#define MyAppExeName "Front Porch AI.exe"
+#define MyAppExeName "front_porch_ai.exe"
 
 [Setup]
 AppId={{B7E2F8A1-4D3C-4E5B-9F1A-2C8D6E0F3B9A}
