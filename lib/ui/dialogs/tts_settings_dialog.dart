@@ -158,14 +158,24 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                           inactiveColor: Colors.white12,
                           onChanged: (val) => storage.setTtsSpeechRate(val),
                         ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Stack(
                             children: [
-                              Text('0.5x', style: TextStyle(color: Colors.white24, fontSize: 10)),
-                              Text('1.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
-                              Text('2.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('0.5x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              ),
+                              // 1.0 is at (1.0 - 0.5) / (2.0 - 0.5) = 0.333 of the range
+                              // Convert to -1..1 alignment: 0.333 * 2 - 1 = -0.333
+                              const Align(
+                                alignment: Alignment(-0.333, 0),
+                                child: Text('1.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              ),
+                              const Align(
+                                alignment: Alignment.centerRight,
+                                child: Text('2.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                              ),
                             ],
                           ),
                         ),
