@@ -175,14 +175,6 @@ void main(List<String> args) async {
               );
               chatService.setMemoryService(memoryService);
             } catch (_) {}
-            // Wire TtsService after the provider tree is fully built
-            // (TtsService is registered later in the tree, so it's not available yet)
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              try {
-                final tts = Provider.of<TtsService>(context, listen: false);
-                chatService.setTtsService(tts);
-              } catch (_) {}
-            });
             return chatService;
           },
           update: (context, kobold, persona, storage, worldRepo, previous) {
@@ -419,6 +411,13 @@ class _MyAppState extends State<MyApp> with WindowListener {
                   _checkForUpdates(context);
                   _runCloudSync(context);
                   _autoStartWebServer(context);
+                  // Wire TtsService into ChatService (can't be done during provider
+                  // creation because TtsService is registered later in the tree)
+                  try {
+                    final chatService = Provider.of<ChatService>(context, listen: false);
+                    final tts = Provider.of<TtsService>(context, listen: false);
+                    chatService.setTtsService(tts);
+                  } catch (_) {}
                 });
               }
 
