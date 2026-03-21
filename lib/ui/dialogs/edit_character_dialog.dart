@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
@@ -121,7 +122,17 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     final pickedPath = result.files.single.path;
     if (pickedPath == null) return;
 
-    // Copy to charactersDir with a timestamped name
+    final imageBytes = await File(pickedPath).readAsBytes();
+    if (!mounted) return;
+
+    // Show the crop dialog
+    final croppedBytes = await ImageCropDialog.show(
+      context,
+      imageBytes: imageBytes,
+    );
+    if (croppedBytes == null || !mounted) return;
+
+    // Save cropped image to charactersDir with a timestamped name
     final storage = Provider.of<StorageService>(context, listen: false);
     final charDir = storage.charactersDir;
     await charDir.create(recursive: true);
@@ -135,7 +146,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     final destFilename = '${safeName}_$timestamp.png';
     final destPath = p.join(charDir.path, destFilename);
 
-    await File(pickedPath).copy(destPath);
+    await File(destPath).writeAsBytes(croppedBytes);
 
     setState(() {
       _newAvatarPath = destPath;
