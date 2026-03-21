@@ -38,6 +38,7 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
   List<String> _installedPiperVoices = [];
   final _apiKeyController = TextEditingController();
   final _baseUrlController = TextEditingController();
+  final _modelController = TextEditingController();
   bool _obscureApiKey = true;
 
   @override
@@ -47,12 +48,14 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
     final storage = Provider.of<StorageService>(context, listen: false);
     _apiKeyController.text = storage.openaiTtsApiKey;
     _baseUrlController.text = storage.openaiTtsBaseUrl;
+    _modelController.text = storage.openaiTtsModel;
   }
 
   @override
   void dispose() {
     _apiKeyController.dispose();
     _baseUrlController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
@@ -537,12 +540,16 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
       // Model
       const Text('Model',
           style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      const Text('OpenAI uses tts-1 or tts-1-hd. Other providers may differ.',
+          style: TextStyle(color: Colors.white24, fontSize: 11)),
       const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        initialValue: storage.openaiTtsModel,
-        dropdownColor: const Color(0xFF374151),
-        style: const TextStyle(color: Colors.white),
+      TextField(
+        controller: _modelController,
+        style: const TextStyle(color: Colors.white, fontSize: 13),
         decoration: InputDecoration(
+          hintText: 'tts-1',
+          hintStyle: const TextStyle(color: Colors.white24),
           filled: true,
           fillColor: Colors.black26,
           border: OutlineInputBorder(
@@ -551,15 +558,7 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
-        items: const [
-          DropdownMenuItem(value: 'tts-1',
-              child: Text('TTS Standard — \$15/1M chars')),
-          DropdownMenuItem(value: 'tts-1-hd',
-              child: Text('TTS HD — \$30/1M chars')),
-        ],
-        onChanged: (val) {
-          if (val != null) storage.setOpenaiTtsModel(val);
-        },
+        onChanged: (val) => storage.setOpenaiTtsModel(val.trim()),
       ),
       const SizedBox(height: 12),
 
