@@ -305,79 +305,84 @@ class UpdateService extends ChangeNotifier {
   }
 
   /// Replace the current .app bundle with the one inside the downloaded DMG.
-  /// 1. Mount DMG with hdiutil
-  /// 2. Find the .app inside
-  /// 3. rm -rf old .app, cp -R new .app
-  /// 4. Strip quarantine with xattr -cr
-  /// 5. Unmount DMG
+  /// Spawns a detached shell script that:
+  ///   1. Waits for this process to exit
+  ///   2. Mounts the DMG
+  ///   3. Replaces the .app bundle
+  ///   4. Strips quarantine
+  ///   5. Unmounts the DMG
+  ///   6. Relaunches the app
   Future<void> _replaceMacApp(String dmgPath) async {
     final currentApp = _currentMacAppPath;
     final appParent = File(currentApp).parent.path;
-    debugPrint('macOS update: replacing $currentApp from $dmgPath');
+    final appName = currentApp.split('/').last;
+    final destPath = '$appParent/$appName';
+    final currentPid = pid; // Current process PID (dart:io top-level getter)
 
-    // Mount the DMG (no -quiet: we need stdout to find the mount point)
-    final mountResult = await Process.run('hdiutil', [
-      'attach', dmgPath, '-nobrowse', '-noverify', '-mountrandom', '/tmp',
-    ]);
-    if (mountResult.exitCode != 0) {
-      throw Exception('Failed to mount DMG: ${mountResult.stderr}');
-    }
+    debugPrint('macOS update: will replace $currentApp from $dmgPath after PID $currentPid exits');
 
-    // Parse mount point from the last line of hdiutil output.
-    // Format: "/dev/disk4s1  Apple_HFS  /private/tmp/dmg.XXXXX"
-    // Fields are separated by spaces; the mount path is the last field.
-    final mountOutput = (mountResult.stdout as String).trim();
-    final lastLine = mountOutput.split('\n').last.trim();
-    final mountPoint = lastLine.split(RegExp(r'\s+')).last.trim();
-    debugPrint('DMG mounted at: $mountPoint');
+    // Write a shell script that performs the replacement after we exit
+    final scriptPath = '${Directory.systemTemp.path}/fp_update_${DateTime.now().millisecondsSinceEpoch}.sh';
+    final script = '''#!/bin/bash
+# Wait for the current app process to exit (max 30s)
+for i in {1..60}; do
+  if ! kill -0 $currentPid 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
 
-    try {
-      // Find the .app bundle inside the mounted volume
-      final volumeDir = Directory(mountPoint);
-      String? newAppPath;
-      await for (final entity in volumeDir.list()) {
-        if (entity is Directory && entity.path.endsWith('.app')) {
-          newAppPath = entity.path;
-          break;
-        }
-      }
-      if (newAppPath == null) {
-        throw Exception('No .app found inside mounted DMG');
-      }
-      debugPrint('Found new app: $newAppPath');
+# Mount the DMG
+MOUNT_OUTPUT=\$(hdiutil attach "$dmgPath" -nobrowse -noverify -mountrandom /tmp 2>&1)
+if [ \$? -ne 0 ]; then
+  echo "Failed to mount DMG" >&2
+  exit 1
+fi
 
-      // Remove old .app
-      final rmResult = await Process.run('rm', ['-rf', currentApp]);
-      if (rmResult.exitCode != 0) {
-        debugPrint('rm -rf old app failed: ${rmResult.stderr}');
-      }
+# Extract mount point (last field of last line, tab-delimited)
+MOUNT_POINT=\$(echo "\$MOUNT_OUTPUT" | tail -1 | awk -F'\\t' '{print \$NF}' | xargs)
 
-      // Copy new .app to the same location
-      final appName = currentApp.split('/').last;
-      final destPath = '$appParent/$appName';
-      final cpResult = await Process.run('cp', ['-R', newAppPath, destPath]);
-      if (cpResult.exitCode != 0) {
-        throw Exception('Failed to copy new app: ${cpResult.stderr}');
-      }
+# Find the .app inside the mounted volume
+NEW_APP=\$(find "\$MOUNT_POINT" -maxdepth 1 -name "*.app" -type d | head -1)
+if [ -z "\$NEW_APP" ]; then
+  hdiutil detach "\$MOUNT_POINT" -quiet 2>/dev/null
+  echo "No .app found in DMG" >&2
+  exit 1
+fi
 
-      // Strip quarantine to prevent Gatekeeper "damaged app" dialog
-      await Process.run('xattr', ['-cr', destPath]);
-      debugPrint('macOS app replaced and quarantine stripped');
-    } finally {
-      // Always unmount the DMG
-      await Process.run('hdiutil', ['detach', mountPoint, '-quiet']);
-      debugPrint('DMG unmounted');
-    }
+# Replace the old app
+rm -rf "$destPath"
+cp -R "\$NEW_APP" "$destPath"
+
+# Strip quarantine
+xattr -cr "$destPath" 2>/dev/null
+
+# Unmount DMG
+hdiutil detach "\$MOUNT_POINT" -quiet 2>/dev/null
+
+# Clean up the DMG and this script
+rm -f "$dmgPath"
+rm -f "$scriptPath"
+
+# Relaunch
+open -n "$destPath"
+''';
+
+    await File(scriptPath).writeAsString(script);
+    await Process.run('chmod', ['+x', scriptPath]);
+
+    // Launch the script detached — it will outlive this process
+    await Process.start(
+      '/bin/bash', [scriptPath],
+      mode: ProcessStartMode.detached,
+    );
+    debugPrint('macOS update script launched: $scriptPath');
   }
 
   /// Relaunch the macOS app after replacing it.
+  /// (Now handled by the update script, but kept for installOnClose fallback)
   Future<void> _relaunchMacApp() async {
-    final appPath = _currentMacAppPath;
-    debugPrint('Relaunching macOS app: $appPath');
-    await Process.start(
-      'open', ['-n', appPath],
-      mode: ProcessStartMode.detached,
-    );
+    // Relaunch is handled by the update shell script
   }
 
   /// Compare version strings (e.g. "0.0.4.1" vs "0.0.4")
