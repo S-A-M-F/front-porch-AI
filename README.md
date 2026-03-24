@@ -122,7 +122,22 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
 > **Note:** Versions **0.8.x and earlier** remain licensed under **GPLv3**. The license change applies only to v0.9.0 and all future releases.
 
 
-## 🆕 What's New in V0.9.3
+## 🆕 What's New in V0.9.4.1
+
+- 👥 **Group Chat Enhancements**: Fork any 1:1 conversation into a group chat, preserving full message history. Add or remove characters mid-conversation without losing context. Character Evolution now works per-character within groups.
+- 🛡️ **Database Power-Failure Protection**: SQLite now runs with `PRAGMA synchronous = FULL` and performs an integrity check (`PRAGMA quick_check`) on every startup. If corruption is detected, a recovery overlay offers one-tap restore from any available backup.
+- 💾 **Automatic Local Backups**: Rolling backups are created every 10 minutes (always on). Up to 10 backups are retained (~1.5 hours of coverage), with older backups pruned automatically.
+- ✍️ **Author's Note in Group Chat**: The Author's Note panel is now available in the group chat sidebar, so you can steer the story while chatting as your persona — no need to switch to Director Mode.
+- 🌐 **WebUI Group Chat Management**: Fork-to-group, add/remove group members, and tappable sender names for quick character identification — all available in the WebUI.
+- 🐛 **Bug Fixes**:
+  - Fixed GPU layers being silently overridden when manually configured
+  - Allow localhost API connections without requiring an API key
+  - Removed outdated "pre-alpha" warning from group chat creation dialog
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.9.3
 
 - ☁️ **Platform-Agnostic Image Paths**: Character avatar paths are now stored as filenames only in the database, resolved to full paths at runtime. Syncing between Linux, macOS, and Windows no longer causes missing avatars or orphaned PNG cleanup.
 - 🍎 **macOS Auto-Update Fix**: Fixed DMG mounting and volume detection that caused self-update to silently fail. The update dialog now shows clear error messages if something goes wrong.
@@ -131,8 +146,6 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
 - 🍎 **macOS Gatekeeper Fix**: Re-sign the macOS app bundle after ML engine bundling to prevent the "app is damaged" error from Gatekeeper.
 - 🏷️ **Version String Fix**: Four-part version numbers (e.g. `0.9.2.1`) now display correctly instead of being truncated to three parts.
 
-<details>
-<summary><strong>📦 Previous Releases</strong></summary>
 
 ### What's New in V0.9.2
 
