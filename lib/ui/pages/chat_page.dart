@@ -2270,6 +2270,12 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
 
+          // ── Author's Note ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: _AuthorNoteSection(chatService: chatService),
+          ),
+
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 10, 12, 0),
             child: Text('Characters', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -2333,7 +2339,9 @@ class _ChatPageState extends State<ChatPage> {
                             ch.description.length > 40 ? '${ch.description.substring(0, 40)}...' : ch.description,
                             style: const TextStyle(fontSize: 11, color: Colors.white38),
                           ),
-                          Row(
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 0,
                             children: [
                               TextButton.icon(
                                 onPressed: () => _showVoicePickerForCharacter(ch),
@@ -2373,13 +2381,13 @@ class _ChatPageState extends State<ChatPage> {
                         children: [
                           if (isNext)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                               decoration: BoxDecoration(
                                 color: Colors.purpleAccent.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
                               ),
-                              child: const Text('Next ▶', style: TextStyle(fontSize: 10, color: Colors.purpleAccent, fontWeight: FontWeight.bold)),
+                              child: const Text('Next ▶', style: TextStyle(fontSize: 9, color: Colors.purpleAccent, fontWeight: FontWeight.bold)),
                             ),
                           if (canRemove)
                             IconButton(
