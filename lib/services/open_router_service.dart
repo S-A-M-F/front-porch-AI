@@ -68,7 +68,12 @@ class OpenRouterService extends LLMService {
   String get modelName => _modelName;
 
   @override
-  bool get isReady => _isReady && _apiKey.isNotEmpty && _modelName.isNotEmpty;
+  bool get isReady {
+    if (!_isReady || _modelName.isEmpty) return false;
+    // Allow empty API key for local backends (LM Studio, vLLM, etc.)
+    final isLocal = _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
+    return _apiKey.isNotEmpty || isLocal;
+  }
 
   @override
   String get backendName => 'Remote API';
@@ -80,7 +85,8 @@ class OpenRouterService extends LLMService {
   })  : _apiUrl = apiUrl,
         _apiKey = apiKey,
         _modelName = modelName {
-    _isReady = _apiKey.isNotEmpty && _modelName.isNotEmpty;
+    final isLocal = apiUrl.contains('localhost') || apiUrl.contains('127.0.0.1');
+    _isReady = (_apiKey.isNotEmpty || isLocal) && _modelName.isNotEmpty;
   }
 
   /// Update configuration at runtime (e.g. when user changes settings).
@@ -89,7 +95,9 @@ class OpenRouterService extends LLMService {
     if (apiUrl != null && apiUrl != _apiUrl) { _apiUrl = apiUrl; changed = true; }
     if (apiKey != null && apiKey != _apiKey) { _apiKey = apiKey; changed = true; }
     if (modelName != null && modelName != _modelName) { _modelName = modelName; changed = true; }
-    final newReady = _apiKey.isNotEmpty && _modelName.isNotEmpty;
+    // Allow local backends without API key
+    final isLocal = _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
+    final newReady = (_apiKey.isNotEmpty || isLocal) && _modelName.isNotEmpty;
     if (newReady != _isReady) { _isReady = newReady; changed = true; }
     if (changed) {
       // Defer notification to after the current frame to avoid calling
@@ -145,24 +153,46 @@ class OpenRouterService extends LLMService {
     final client = http.Client();
     try {
       final uri = Uri.parse('$_apiUrl/models');
+      debugPrint('[OpenRouter] Fetching models from: $uri');
       final response = await client.get(
         uri,
         headers: {
-          'Authorization': 'Bearer $_apiKey',
+          if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
         },
       ).timeout(const Duration(seconds: 15));
 
-      if (response.statusCode != 200) return [];
+      debugPrint('[OpenRouter] Response status: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        debugPrint('[OpenRouter] Error body: ${response.body}');
+        return [];
+      }
 
       final body = jsonDecode(response.body);
-      final data = body['data'] as List<dynamic>? ?? [];
+      debugPrint('[OpenRouter] Response keys: ${body.keys.toList()}');
+      // Handle both OpenAI format ('data') and LM Studio format ('models')
+      final data = (body['data'] as List<dynamic>?) 
+          ?? (body['models'] as List<dynamic>?) 
+          ?? [];
+      debugPrint('[OpenRouter] Found ${data.length} model entries');
+      if (data.isNotEmpty) {
+        debugPrint('[OpenRouter] First entry type: ${data.first.runtimeType}');
+        debugPrint('[OpenRouter] First entry: ${data.first}');
+      }
       final models = <RemoteModelInfo>[];
 
       for (final m in data) {
-        final id = m['id']?.toString() ?? '';
-        if (id.isEmpty) continue;
+        String id = '';
+        String name = '';
 
-        final name = m['name']?.toString() ?? id;
+        if (m is String) {
+          // Plain string list of model names (some backends)
+          id = m;
+          name = m;
+        } else if (m is Map) {
+          id = m['id']?.toString() ?? m['key']?.toString() ?? m['name']?.toString() ?? m['model']?.toString() ?? '';
+          name = m['display_name']?.toString() ?? m['name']?.toString() ?? m['id']?.toString() ?? id;
+        }
+        if (id.isEmpty) continue;
         final pricing = m['pricing'] as Map<String, dynamic>?;
 
         // API returns USD per token; convert to per 1M tokens for readability
@@ -183,9 +213,11 @@ class OpenRouterService extends LLMService {
         ));
       }
 
+      debugPrint('[OpenRouter] Parsed ${models.length} models');
       models.sort((a, b) => a.id.compareTo(b.id));
       return models;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[OpenRouter] Error fetching models: $e');
       return [];
     } finally {
       client.close();

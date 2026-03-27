@@ -213,8 +213,9 @@ class $CharactersTable extends Characters
         requiredDuringInsert: false,
         defaultValue: const Constant(''),
       );
-  static const VerificationMeta _evolvedScenarioMeta =
-      const VerificationMeta('evolvedScenario');
+  static const VerificationMeta _evolvedScenarioMeta = const VerificationMeta(
+    'evolvedScenario',
+  );
   @override
   late final GeneratedColumn<String> evolvedScenario = GeneratedColumn<String>(
     'evolved_scenario',
@@ -224,8 +225,9 @@ class $CharactersTable extends Characters
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
-  static const VerificationMeta _evolutionCountMeta =
-      const VerificationMeta('evolutionCount');
+  static const VerificationMeta _evolutionCountMeta = const VerificationMeta(
+    'evolutionCount',
+  );
   @override
   late final GeneratedColumn<int> evolutionCount = GeneratedColumn<int>(
     'evolution_count',
@@ -742,7 +744,9 @@ class Character extends DataClass implements Insertable<Character> {
       lorebook: serializer.fromJson<String?>(json['lorebook']),
       worldNames: serializer.fromJson<String>(json['worldNames']),
       memorySources: serializer.fromJson<String>(json['memorySources']),
-      evolvedPersonality: serializer.fromJson<String>(json['evolvedPersonality']),
+      evolvedPersonality: serializer.fromJson<String>(
+        json['evolvedPersonality'],
+      ),
       evolvedScenario: serializer.fromJson<String>(json['evolvedScenario']),
       evolutionCount: serializer.fromJson<int>(json['evolutionCount']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -6425,6 +6429,407 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   }
 }
 
+class $StoryProjectsTable extends StoryProjects
+    with TableInfo<$StoryProjectsTable, StoryProject> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StoryProjectsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('Untitled Story'),
+  );
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+    'data',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    data,
+    createdAt,
+    updatedAt,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'story_projects';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StoryProject> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+        _dataMeta,
+        this.data.isAcceptableOrUnknown(data['data']!, _dataMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  StoryProject map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StoryProject(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      data: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+    );
+  }
+
+  @override
+  $StoryProjectsTable createAlias(String alias) {
+    return $StoryProjectsTable(attachedDatabase, alias);
+  }
+}
+
+class StoryProject extends DataClass implements Insertable<StoryProject> {
+  final String id;
+  final String title;
+  final String data;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+  const StoryProject({
+    required this.id,
+    required this.title,
+    required this.data,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['title'] = Variable<String>(title);
+    map['data'] = Variable<String>(data);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  StoryProjectsCompanion toCompanion(bool nullToAbsent) {
+    return StoryProjectsCompanion(
+      id: Value(id),
+      title: Value(title),
+      data: Value(data),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+    );
+  }
+
+  factory StoryProject.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StoryProject(
+      id: serializer.fromJson<String>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      data: serializer.fromJson<String>(json['data']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'title': serializer.toJson<String>(title),
+      'data': serializer.toJson<String>(data),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  StoryProject copyWith({
+    String? id,
+    String? title,
+    String? data,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+  }) => StoryProject(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    data: data ?? this.data,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+  );
+  StoryProject copyWithCompanion(StoryProjectsCompanion data) {
+    return StoryProject(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      data: data.data.present ? data.data.value : this.data,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StoryProject(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('data: $data, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, title, data, createdAt, updatedAt, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StoryProject &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.data == this.data &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class StoryProjectsCompanion extends UpdateCompanion<StoryProject> {
+  final Value<String> id;
+  final Value<String> title;
+  final Value<String> data;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<int> rowid;
+  const StoryProjectsCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.data = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  StoryProjectsCompanion.insert({
+    required String id,
+    this.title = const Value.absent(),
+    required String data,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       data = Value(data);
+  static Insertable<StoryProject> custom({
+    Expression<String>? id,
+    Expression<String>? title,
+    Expression<String>? data,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (data != null) 'data': data,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  StoryProjectsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? title,
+    Value<String>? data,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return StoryProjectsCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      data: data ?? this.data,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StoryProjectsCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('data: $data, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncMetaTable extends SyncMeta
     with TableInfo<$SyncMetaTable, SyncMetaData> {
   @override
@@ -6692,6 +7097,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $ObjectivesTable objectives = $ObjectivesTable(this);
+  late final $StoryProjectsTable storyProjects = $StoryProjectsTable(this);
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -6708,6 +7114,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     messageEmbeddings,
     dataBankEntries,
     objectives,
+    storyProjects,
     syncMeta,
   ];
 }
@@ -6731,6 +7138,9 @@ typedef $$CharactersTableCreateCompanionBuilder =
       Value<String?> lorebook,
       Value<String> worldNames,
       Value<String> memorySources,
+      Value<String> evolvedPersonality,
+      Value<String> evolvedScenario,
+      Value<int> evolutionCount,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -6755,6 +7165,9 @@ typedef $$CharactersTableUpdateCompanionBuilder =
       Value<String?> lorebook,
       Value<String> worldNames,
       Value<String> memorySources,
+      Value<String> evolvedPersonality,
+      Value<String> evolvedScenario,
+      Value<int> evolutionCount,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -6852,6 +7265,21 @@ class $$CharactersTableFilterComposer
 
   ColumnFilters<String> get memorySources => $composableBuilder(
     column: $table.memorySources,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get evolvedPersonality => $composableBuilder(
+    column: $table.evolvedPersonality,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get evolvedScenario => $composableBuilder(
+    column: $table.evolvedScenario,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get evolutionCount => $composableBuilder(
+    column: $table.evolutionCount,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6965,6 +7393,21 @@ class $$CharactersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get evolvedPersonality => $composableBuilder(
+    column: $table.evolvedPersonality,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get evolvedScenario => $composableBuilder(
+    column: $table.evolvedScenario,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get evolutionCount => $composableBuilder(
+    column: $table.evolutionCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7059,6 +7502,21 @@ class $$CharactersTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get evolvedPersonality => $composableBuilder(
+    column: $table.evolvedPersonality,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get evolvedScenario => $composableBuilder(
+    column: $table.evolvedScenario,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get evolutionCount => $composableBuilder(
+    column: $table.evolutionCount,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -7117,6 +7575,9 @@ class $$CharactersTableTableManager
                 Value<String?> lorebook = const Value.absent(),
                 Value<String> worldNames = const Value.absent(),
                 Value<String> memorySources = const Value.absent(),
+                Value<String> evolvedPersonality = const Value.absent(),
+                Value<String> evolvedScenario = const Value.absent(),
+                Value<int> evolutionCount = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -7139,6 +7600,9 @@ class $$CharactersTableTableManager
                 lorebook: lorebook,
                 worldNames: worldNames,
                 memorySources: memorySources,
+                evolvedPersonality: evolvedPersonality,
+                evolvedScenario: evolvedScenario,
+                evolutionCount: evolutionCount,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -7163,6 +7627,9 @@ class $$CharactersTableTableManager
                 Value<String?> lorebook = const Value.absent(),
                 Value<String> worldNames = const Value.absent(),
                 Value<String> memorySources = const Value.absent(),
+                Value<String> evolvedPersonality = const Value.absent(),
+                Value<String> evolvedScenario = const Value.absent(),
+                Value<int> evolutionCount = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -7185,6 +7652,9 @@ class $$CharactersTableTableManager
                 lorebook: lorebook,
                 worldNames: worldNames,
                 memorySources: memorySources,
+                evolvedPersonality: evolvedPersonality,
+                evolvedScenario: evolvedScenario,
+                evolutionCount: evolutionCount,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -9747,6 +10217,225 @@ typedef $$ObjectivesTableProcessedTableManager =
       Objective,
       PrefetchHooks Function()
     >;
+typedef $$StoryProjectsTableCreateCompanionBuilder =
+    StoryProjectsCompanion Function({
+      required String id,
+      Value<String> title,
+      required String data,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<int> rowid,
+    });
+typedef $$StoryProjectsTableUpdateCompanionBuilder =
+    StoryProjectsCompanion Function({
+      Value<String> id,
+      Value<String> title,
+      Value<String> data,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$StoryProjectsTableFilterComposer
+    extends Composer<_$AppDatabase, $StoryProjectsTable> {
+  $$StoryProjectsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$StoryProjectsTableOrderingComposer
+    extends Composer<_$AppDatabase, $StoryProjectsTable> {
+  $$StoryProjectsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$StoryProjectsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $StoryProjectsTable> {
+  $$StoryProjectsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$StoryProjectsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $StoryProjectsTable,
+          StoryProject,
+          $$StoryProjectsTableFilterComposer,
+          $$StoryProjectsTableOrderingComposer,
+          $$StoryProjectsTableAnnotationComposer,
+          $$StoryProjectsTableCreateCompanionBuilder,
+          $$StoryProjectsTableUpdateCompanionBuilder,
+          (
+            StoryProject,
+            BaseReferences<_$AppDatabase, $StoryProjectsTable, StoryProject>,
+          ),
+          StoryProject,
+          PrefetchHooks Function()
+        > {
+  $$StoryProjectsTableTableManager(_$AppDatabase db, $StoryProjectsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StoryProjectsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StoryProjectsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StoryProjectsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> data = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StoryProjectsCompanion(
+                id: id,
+                title: title,
+                data: data,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                Value<String> title = const Value.absent(),
+                required String data,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => StoryProjectsCompanion.insert(
+                id: id,
+                title: title,
+                data: data,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$StoryProjectsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $StoryProjectsTable,
+      StoryProject,
+      $$StoryProjectsTableFilterComposer,
+      $$StoryProjectsTableOrderingComposer,
+      $$StoryProjectsTableAnnotationComposer,
+      $$StoryProjectsTableCreateCompanionBuilder,
+      $$StoryProjectsTableUpdateCompanionBuilder,
+      (
+        StoryProject,
+        BaseReferences<_$AppDatabase, $StoryProjectsTable, StoryProject>,
+      ),
+      StoryProject,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncMetaTableCreateCompanionBuilder =
     SyncMetaCompanion Function({
       Value<int> id,
@@ -9929,6 +10618,8 @@ class $AppDatabaseManager {
       $$DataBankEntriesTableTableManager(_db, _db.dataBankEntries);
   $$ObjectivesTableTableManager get objectives =>
       $$ObjectivesTableTableManager(_db, _db.objectives);
+  $$StoryProjectsTableTableManager get storyProjects =>
+      $$StoryProjectsTableTableManager(_db, _db.storyProjects);
   $$SyncMetaTableTableManager get syncMeta =>
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
 }

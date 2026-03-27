@@ -117,7 +117,10 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Fetch available models from the configured API on startup.
   void _autoFetchModels() async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    if (storage.remoteApiKey.isEmpty) return; // no API configured
+    // Allow empty API key for local backends (LM Studio, vLLM, etc.)
+    final isLocal = storage.remoteApiUrl.contains('localhost') || storage.remoteApiUrl.contains('127.0.0.1');
+    if (storage.remoteApiUrl.isEmpty) return; // No API URL configured
+    if (storage.remoteApiKey.isEmpty && !isLocal) return; // no API configured
 
     final openRouter = Provider.of<OpenRouterService>(context, listen: false);
     openRouter.configure(
@@ -1314,6 +1317,37 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Quick-connect presets
+                  Text('Quick Connect', style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _buildApiPresetChip(
+                        label: '🖥️ LM Studio',
+                        url: 'http://localhost:1234/v1',
+                        clearKey: true,
+                        storageService: storageService,
+                        context: context,
+                      ),
+                      _buildApiPresetChip(
+                        label: '🌐 OpenRouter',
+                        url: 'https://openrouter.ai/api/v1',
+                        clearKey: false,
+                        storageService: storageService,
+                        context: context,
+                      ),
+                      _buildApiPresetChip(
+                        label: '⚡ Nano-GPT',
+                        url: 'https://nano-gpt.com/api/v1',
+                        clearKey: false,
+                        storageService: storageService,
+                        context: context,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   Text('API URL', style: theme.textTheme.bodySmall),
                   const SizedBox(height: 4),
                   TextFormField(
@@ -2601,6 +2635,63 @@ class _SettingsPageState extends State<SettingsPage> {
             duration: const Duration(seconds: 2),
           ),
         );
+      },
+    );
+  }
+
+  Widget _buildApiPresetChip({
+    required String label,
+    required String url,
+    required bool clearKey,
+    required StorageService storageService,
+    required BuildContext context,
+  }) {
+    final isActive = storageService.remoteApiUrl == url;
+    return ActionChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: isActive ? Colors.white : Colors.white70,
+        ),
+      ),
+      backgroundColor: isActive ? Colors.indigo : const Color(0xFF2D3748),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isActive ? Colors.indigoAccent : Colors.white24,
+        ),
+      ),
+      onPressed: () async {
+        storageService.setRemoteApiUrl(url);
+        if (clearKey) storageService.setRemoteApiKey('');
+
+        // Auto-configure and fetch models
+        final openRouter = Provider.of<OpenRouterService>(context, listen: false);
+        openRouter.configure(
+          apiUrl: url,
+          apiKey: clearKey ? '' : storageService.remoteApiKey,
+        );
+
+        setState(() => _isFetchingModels = true);
+        try {
+          final models = await openRouter.fetchAvailableModels();
+          if (mounted) {
+            setState(() {
+              _availableModels = models;
+              _isFetchingModels = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(
+                models.isEmpty
+                    ? '$label connected — no models found yet.'
+                    : '$label connected — found ${models.length} models.',
+              )),
+            );
+          }
+        } catch (_) {
+          if (mounted) setState(() => _isFetchingModels = false);
+        }
       },
     );
   }
