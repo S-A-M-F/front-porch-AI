@@ -56,6 +56,8 @@ import 'package:front_porch_ai/services/db_reunification_service.dart';
 import 'package:front_porch_ai/services/embedding_service.dart';
 import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
+import 'package:front_porch_ai/services/story_repository.dart';
+import 'package:front_porch_ai/services/story_pipeline_service.dart';
 
 
 import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
@@ -288,6 +290,31 @@ void main(List<String> args) async {
             ws.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
             ws.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
             return ws;
+          },
+        ),
+        // Porch Stories: repository + pipeline
+        ChangeNotifierProvider(create: (context) {
+          final repo = StoryRepository(db);
+          repo.loadProjects();
+          return repo;
+        }),
+        ChangeNotifierProxyProvider2<LLMProvider, StorageService, StoryPipelineService>(
+          create: (context) {
+            final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+            final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+            final storage = Provider.of<StorageService>(context, listen: false);
+            final embeddingService = EmbeddingService(sidecar);
+            final memoryService = MemoryService(embeddingService, storage, db);
+            final repo = Provider.of<StoryRepository>(context, listen: false);
+            return StoryPipelineService(repo, llmProvider.activeService, memoryService, db);
+          },
+          update: (context, llmProvider, storage, previous) {
+            if (previous != null) return previous;
+            final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+            final embeddingService = EmbeddingService(sidecar);
+            final memoryService = MemoryService(embeddingService, storage, db);
+            final repo = Provider.of<StoryRepository>(context, listen: false);
+            return StoryPipelineService(repo, llmProvider.activeService, memoryService, db);
           },
         ),
       ],

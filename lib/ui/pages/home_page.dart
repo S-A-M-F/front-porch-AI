@@ -45,6 +45,7 @@ import 'package:front_porch_ai/models/character_card.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
+import 'package:front_porch_ai/ui/pages/story_home_view.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -73,6 +74,9 @@ class _HomePageState extends State<HomePage> {
 
   // Grid scale
   double _gridScale = 300.0;
+
+  // Porch Stories mode toggle
+  bool _showStories = false;
 
   // Scroll controller for the character grid (visible scrollbar)
   final ScrollController _gridScrollController = ScrollController();
@@ -288,6 +292,25 @@ class _HomePageState extends State<HomePage> {
           );
         }
 
+        // If Porch Stories mode is active, show the stories view
+        if (_showStories) {
+          return _wrapWithStatusBar(context, Column(
+            children: [
+              // Radio toggle
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                child: Row(
+                  children: [
+                    _buildModeToggle(),
+                    const Spacer(),
+                  ],
+                ),
+              ),
+              const Expanded(child: StoryHomeView()),
+            ],
+          ));
+        }
+
         // Filter characters based on search and active folder
         final filteredCharacters = _getFilteredCharacters(repo, folderService);
 
@@ -333,7 +356,7 @@ class _HomePageState extends State<HomePage> {
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ] else
-                        Text('My Characters', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                        _buildModeToggle(),
                       const SizedBox(width: 16),
                       // Sort dropdown
                       if (!_isSelecting && !_isOrganizing)
@@ -854,6 +877,53 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// Wraps content with an optional model-loading status bar at the bottom.
+  Widget _buildModeToggle() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _modeButton('Chats', Icons.chat_bubble_outline, !_showStories, () => setState(() => _showStories = false)),
+          _modeButton('Porch Stories', Icons.auto_stories, _showStories, () => setState(() => _showStories = true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeButton(String label, IconData icon, bool isActive, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? Colors.amber.shade800.withValues(alpha: 0.25) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: isActive ? Border.all(color: Colors.amber.shade700.withValues(alpha: 0.5)) : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: isActive ? Colors.amber.shade400 : Colors.white38),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.white54,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _wrapWithStatusBar(BuildContext context, Widget content) {
     String status = '';
     try {

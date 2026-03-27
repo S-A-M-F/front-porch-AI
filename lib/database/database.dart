@@ -219,9 +219,22 @@ class Objectives extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Porch Stories — AI-generated novel projects.
+class StoryProjects extends Table {
+  TextColumn get id => text()();
+  TextColumn get title => text().withDefault(const Constant('Untitled Story'))();
+  TextColumn get data => text()(); // Full StoryProject JSON blob
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // ── Database Definition ─────────────────────────────────────────────────
 
-@DriftDatabase(tables: [Characters, Sessions, Messages, Groups, Folders, Personas, Worlds, MessageEmbeddings, DataBankEntries, Objectives, SyncMeta])
+@DriftDatabase(tables: [Characters, Sessions, Messages, Groups, Folders, Personas, Worlds, MessageEmbeddings, DataBankEntries, Objectives, StoryProjects, SyncMeta])
 class AppDatabase extends _$AppDatabase {
   AppDatabase._internal(super.e);
 
@@ -334,7 +347,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -450,6 +463,19 @@ class AppDatabase extends _$AppDatabase {
         try {
           await customStatement("ALTER TABLE characters ADD COLUMN evolution_count INTEGER NOT NULL DEFAULT 0");
         } catch (_) {}
+      }
+      if (from < 11) {
+        // v10→v11: add story_projects table for Porch Stories
+        await customStatement(
+          'CREATE TABLE IF NOT EXISTS story_projects ('
+          'id TEXT NOT NULL, '
+          'title TEXT NOT NULL DEFAULT \'Untitled Story\', '
+          'data TEXT NOT NULL, '
+          'created_at INTEGER NOT NULL DEFAULT 0, '
+          'updated_at INTEGER NOT NULL DEFAULT 0, '
+          'deleted_at INTEGER, '
+          'PRIMARY KEY (id))'
+        );
       }
     },
   );
@@ -1104,6 +1130,41 @@ class AppDatabase extends _$AppDatabase {
   Future<int> deleteObjectivesForCharacter(String characterId) =>
       (delete(objectives)..where((o) => o.characterId.equals(characterId))).go();
 
+  // ── Story Project Queries ────────────────────────────────────────────
+
+  Future<List<StoryProject>> getAllStoryProjects() =>
+      (select(storyProjects)..where((s) => s.deletedAt.isNull())
+        ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)]))
+      .get();
+
+  Stream<List<StoryProject>> watchAllStoryProjects() =>
+      (select(storyProjects)..where((s) => s.deletedAt.isNull())
+        ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)]))
+      .watch();
+
+  Future<StoryProject?> getStoryProjectById(String id) =>
+      (select(storyProjects)..where((s) => s.id.equals(id))).getSingleOrNull();
+
+  Future<String> insertStoryProject(StoryProjectsCompanion project) async {
+    final id = project.id.present ? project.id.value : _uuid.v4();
+    project = project.copyWith(id: Value(id));
+    await into(storyProjects).insert(project);
+    await bumpSyncVersion();
+    return id;
+  }
+
+  Future<void> updateStoryProject(StoryProjectsCompanion project) async {
+    await (update(storyProjects)..where((s) => s.id.equals(project.id.value)))
+        .write(project);
+    await bumpSyncVersion();
+  }
+
+  Future<int> deleteStoryProject(String id) async {
+    final count = await (delete(storyProjects)..where((s) => s.id.equals(id))).go();
+    await bumpSyncVersion();
+    return count;
+  }
+
   // ── Soft Delete Cleanup ─────────────────────────────────────────────
 
   /// Permanently remove rows soft-deleted more than 30 days ago.
@@ -1111,7 +1172,7 @@ class AppDatabase extends _$AppDatabase {
     final cutoff = DateTime.now().subtract(const Duration(days: 30));
     final cutoffEpoch = cutoff.millisecondsSinceEpoch ~/ 1000;
     for (final table in ['messages', 'sessions', 'characters', 'folders',
-                          'groups', 'personas', 'worlds']) {
+                          'groups', 'personas', 'worlds', 'story_projects']) {
       await customUpdate(
         'DELETE FROM $table WHERE deleted_at IS NOT NULL AND deleted_at < ?',
         variables: [Variable(cutoffEpoch)],
