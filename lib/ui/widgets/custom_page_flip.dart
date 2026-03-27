@@ -93,6 +93,18 @@ class CustomPageFlipState extends State<CustomPageFlip> with SingleTickerProvide
     _controller.animateTo(0.0, curve: Curves.easeOutCubic);
   }
 
+  /// Jump directly to a specific page index (no animation).
+  void goToPage(int page) {
+    if (_isTurning) return;
+    final targetPage = page.clamp(0, widget.pages.length - 1);
+    if (targetPage == _currentPage) return;
+    setState(() {
+      _currentPage = targetPage;
+      _controller.value = 0.0;
+    });
+    widget.onPageFlipped?.call(targetPage);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.pages.isEmpty) return const SizedBox.shrink();

@@ -58,6 +58,7 @@ import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
 import 'package:front_porch_ai/services/story_pipeline_service.dart';
+import 'package:front_porch_ai/services/audiobook_generator_service.dart';
 
 
 import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
@@ -221,6 +222,14 @@ void main(List<String> args) async {
           ),
           update: (context, storage, voiceManager, previous) =>
               previous ?? TtsService(storage, voiceManager),
+        ),
+        ChangeNotifierProxyProvider2<TtsService, StorageService, AudiobookGeneratorService>(
+          create: (context) => AudiobookGeneratorService(
+            Provider.of<TtsService>(context, listen: false),
+            Provider.of<StorageService>(context, listen: false),
+          ),
+          update: (context, tts, storage, previous) =>
+              previous ?? AudiobookGeneratorService(tts, storage),
         ),
         ChangeNotifierProxyProvider<StorageService, SttService>(
           create: (context) => SttService(

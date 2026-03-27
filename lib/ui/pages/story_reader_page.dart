@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
+//
 // This file is part of Front Porch AI.
 //
 // Front Porch AI is free software: you can redistribute it and/or modify
@@ -16,13 +17,17 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:front_porch_ai/ui/widgets/custom_page_flip.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
+import 'package:front_porch_ai/services/story_pipeline_service.dart';
+import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/models/story_project.dart';
 
 /// A book-like reader for completed Porch Stories with paper aesthetic
@@ -37,6 +42,7 @@ class StoryReaderPage extends StatefulWidget {
 
 class _StoryReaderPageState extends State<StoryReaderPage> {
   final _flipKey = GlobalKey<CustomPageFlipState>();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentPage = 0;
   List<_BookPage>? _pages; // Null when not yet calculated
   BoxConstraints? _lastConstraints;
@@ -47,6 +53,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
   late AudioPlayer _sfxPlayer;
   bool _isAudioPlaying = true;
   bool _isAudioMuted = true; // explicitly muted by default per user request
+  
+  bool _isReadingAlong = false;
+  int _bufferedPageCount = 0;
 
   @override
   void initState() {
@@ -91,9 +100,564 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
 
   @override
   void dispose() {
+    _isReadingAlong = false;
+    // ensure TTS stops on exit
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try { Provider.of<TtsService>(context, listen: false).stop(); } catch (_) {}
+    });
     _ambientPlayer.dispose();
     _sfxPlayer.dispose();
+    _readAlongPlayer?.dispose();
     super.dispose();
+  }
+
+  // Read-along audio player (separate from ambient)
+  AudioPlayer? _readAlongPlayer;
+  
+  /// Get the text content for a given flip-page index.
+  String _getPageText(int flipPage) {
+    if (_pages == null) return '';
+    final width = MediaQuery.of(context).size.width;
+    final isTwoPageSpread = width > 800;
+    
+    if (isTwoPageSpread) {
+      final leftIdx = flipPage * 2;
+      final rightIdx = leftIdx + 1;
+      final buf = StringBuffer();
+      if (leftIdx < _pages!.length) {
+        buf.write('${_pages![leftIdx].title}. ${_pages![leftIdx].body}\n\n');
+      }
+      if (rightIdx < _pages!.length) {
+        buf.write('${_pages![rightIdx].title}. ${_pages![rightIdx].body}');
+      }
+      return buf.toString();
+    } else {
+      if (flipPage < _pages!.length) {
+        return '${_pages![flipPage].title}. ${_pages![flipPage].body}';
+      }
+      return '';
+    }
+  }
+  
+  /// Parse text into narration and dialogue segments, identifying speakers.
+  List<_VoiceSegment> _parseVoiceSegments(String text, List<StoryCastMember> cast) {
+    final segments = <_VoiceSegment>[];
+    // Match quoted dialogue: "...", "...", or "..."
+    final dialoguePattern = RegExp(r'["""]([^"""]+)["""]');
+    int lastEnd = 0;
+
+    for (final match in dialoguePattern.allMatches(text)) {
+      // Add narration before this dialogue
+      if (match.start > lastEnd) {
+        final narration = text.substring(lastEnd, match.start).trim();
+        if (narration.isNotEmpty) {
+          segments.add(_VoiceSegment(text: narration, voiceKey: null, characterName: null));
+        }
+      }
+
+      // Find the speaker by looking for a character name within ~100 chars before/after the quote
+      final searchStart = (match.start - 100).clamp(0, text.length);
+      final searchEnd = (match.end + 60).clamp(0, text.length);
+      final context = text.substring(searchStart, searchEnd).toLowerCase();
+      
+      String? matchedVoice;
+      String? matchedName;
+      for (final c in cast) {
+        if (c.voiceModel != null && c.voiceModel!.isNotEmpty) {
+          // Check for first name or full name in the surrounding context
+          final firstName = c.name.split(' ').first.toLowerCase();
+          if (context.contains(firstName)) {
+            matchedVoice = c.voiceModel;
+            matchedName = c.name;
+            break;
+          }
+        }
+      }
+
+      segments.add(_VoiceSegment(
+        text: match.group(1) ?? '',
+        voiceKey: matchedVoice,
+        characterName: matchedName,
+      ));
+      lastEnd = match.end;
+    }
+
+    // Add remaining narration
+    if (lastEnd < text.length) {
+      final remaining = text.substring(lastEnd).trim();
+      if (remaining.isNotEmpty) {
+        segments.add(_VoiceSegment(text: remaining, voiceKey: null, characterName: null));
+      }
+    }
+
+    // If no dialogue found, return the whole text as one narration segment
+    if (segments.isEmpty) {
+      segments.add(_VoiceSegment(text: text, voiceKey: null, characterName: null));
+    }
+
+    return segments;
+  }
+
+  /// Generate audio for a page, using per-character voices for dialogue segments.
+  /// Returns a single WAV file with all segments stitched together in order.
+  Future<File?> _generatePageAudio(String pageText, TtsService tts, List<StoryCastMember> cast) async {
+    final hasVoicedCharacters = cast.any((c) => c.voiceModel != null && c.voiceModel!.isNotEmpty);
+    
+    // Fast path: no character voices configured, use single default voice
+    if (!hasVoicedCharacters) {
+      return tts.generateAudioFile(pageText);
+    }
+
+    // Parse into voice segments and generate each sequentially
+    final segments = _parseVoiceSegments(pageText, cast);
+    final segmentFiles = <File>[];
+    
+    for (final seg in segments) {
+      if (!_isReadingAlong) break;
+      final file = await tts.generateAudioFile(seg.text, voiceKey: seg.voiceKey);
+      if (file != null) segmentFiles.add(file);
+    }
+
+    if (segmentFiles.isEmpty) return null;
+    if (segmentFiles.length == 1) return segmentFiles.first;
+
+    // Stitch multiple WAV files into one by concatenating PCM data
+    try {
+      final pcmChunks = <List<int>>[];
+      int sampleRate = 24000;
+      int numChannels = 1;
+      int bitsPerSample = 16;
+
+      for (final wavFile in segmentFiles) {
+        final bytes = await wavFile.readAsBytes();
+        if (bytes.length < 44) continue;
+        
+        // Parse WAV header to find data chunk
+        final bd = ByteData.sublistView(bytes);
+        sampleRate = bd.getUint32(24, Endian.little);
+        numChannels = bd.getUint16(22, Endian.little);
+        bitsPerSample = bd.getUint16(34, Endian.little);
+        
+        // Find the "data" chunk
+        int dataOffset = 12;
+        while (dataOffset + 8 < bytes.length) {
+          final chunkId = String.fromCharCodes(bytes.sublist(dataOffset, dataOffset + 4));
+          final chunkSize = bd.getUint32(dataOffset + 4, Endian.little);
+          if (chunkId == 'data') {
+            dataOffset += 8;
+            final end = (dataOffset + chunkSize).clamp(0, bytes.length).toInt();
+            pcmChunks.add(bytes.sublist(dataOffset, end));
+            break;
+          }
+          dataOffset += 8 + chunkSize.toInt();
+        }
+      }
+
+      if (pcmChunks.isEmpty) return segmentFiles.first;
+
+      // Calculate total PCM size
+      int totalPcm = 0;
+      for (final chunk in pcmChunks) {
+        totalPcm += chunk.length;
+      }
+
+      // Build new WAV header + concatenated PCM
+      final byteRate = sampleRate * numChannels * (bitsPerSample >> 3);
+      final blockAlign = numChannels * (bitsPerSample >> 3);
+      final header = ByteData(44);
+      
+      // RIFF header
+      header.setUint8(0, 0x52); header.setUint8(1, 0x49);
+      header.setUint8(2, 0x46); header.setUint8(3, 0x46);
+      header.setUint32(4, 36 + totalPcm, Endian.little);
+      header.setUint8(8, 0x57); header.setUint8(9, 0x41);
+      header.setUint8(10, 0x56); header.setUint8(11, 0x45);
+      // fmt chunk
+      header.setUint8(12, 0x66); header.setUint8(13, 0x6d);
+      header.setUint8(14, 0x74); header.setUint8(15, 0x20);
+      header.setUint32(16, 16, Endian.little);
+      header.setUint16(20, 1, Endian.little); // PCM
+      header.setUint16(22, numChannels, Endian.little);
+      header.setUint32(24, sampleRate, Endian.little);
+      header.setUint32(28, byteRate, Endian.little);
+      header.setUint16(32, blockAlign, Endian.little);
+      header.setUint16(34, bitsPerSample, Endian.little);
+      // data chunk
+      header.setUint8(36, 0x64); header.setUint8(37, 0x61);
+      header.setUint8(38, 0x74); header.setUint8(39, 0x61);
+      header.setUint32(40, totalPcm, Endian.little);
+
+      // Write to temp file
+      final tempDir = await Directory.systemTemp.createTemp('readalong_');
+      final outFile = File('${tempDir.path}/stitched.wav');
+      final sink = outFile.openWrite();
+      sink.add(header.buffer.asUint8List());
+      for (final chunk in pcmChunks) {
+        sink.add(chunk);
+      }
+      await sink.close();
+      
+      return outFile;
+    } catch (e) {
+      debugPrint('[ReadAlong] WAV stitch error: $e');
+      return segmentFiles.first; // Fallback to first segment
+    }
+  }
+
+  Future<void> _startReadAlong() async {
+    if (_isReadingAlong || _pages == null) return;
+    setState(() => _isReadingAlong = true);
+
+    final tts = Provider.of<TtsService>(context, listen: false);
+    final repo = Provider.of<StoryRepository>(context, listen: false);
+    final project = repo.getById(widget.projectId);
+    final cast = project?.cast ?? [];
+
+    final flipCount = _getFlipPageCount();
+    const bufferDepth = 3; // How many pages ahead to pre-generate
+
+    // Buffer: map of page index -> single stitched audio file
+    final Map<int, File?> audioBuffer = {};
+    _bufferedPageCount = 0;
+
+    // Background buffer filler — runs concurrently with playback
+    int nextPageToBuffer = _currentPage;
+    bool bufferDone = false;
+
+    Future<void> fillBuffer() async {
+      while (_isReadingAlong && !bufferDone) {
+        if (nextPageToBuffer >= flipCount) {
+          bufferDone = true;
+          break;
+        }
+        // Only buffer ahead by bufferDepth from current playback position
+        if (nextPageToBuffer - _currentPage >= bufferDepth) {
+          await Future.delayed(const Duration(milliseconds: 200));
+          continue;
+        }
+        final pageIdx = nextPageToBuffer;
+        nextPageToBuffer++;
+        
+        final text = _getPageText(pageIdx);
+        if (text.trim().isEmpty) {
+          audioBuffer[pageIdx] = null;
+          continue;
+        }
+        
+        final file = await _generatePageAudio(text, tts, cast);
+        if (!_isReadingAlong) break;
+        audioBuffer[pageIdx] = file;
+        if (mounted) {
+          setState(() {
+            _bufferedPageCount = audioBuffer.length - 1; // -1 for the page currently playing
+          });
+        }
+      }
+    }
+
+    // Start the buffer filler concurrently
+    final bufferFuture = fillBuffer();
+
+    // Wait for the first page to be buffered
+    while (!audioBuffer.containsKey(_currentPage) && _isReadingAlong) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    // Playback loop
+    while (_isReadingAlong && _currentPage < flipCount) {
+      if (!audioBuffer.containsKey(_currentPage)) {
+        // Wait for buffer to catch up
+        while (!audioBuffer.containsKey(_currentPage) && _isReadingAlong) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+        continue;
+      }
+
+      final audioFile = audioBuffer[_currentPage];
+      if (audioFile != null && audioFile.existsSync()) {
+        final segPlayer = AudioPlayer();
+        final completer = Completer<void>();
+        final sub = segPlayer.onPlayerComplete.listen((_) {
+          if (!completer.isCompleted) completer.complete();
+        });
+        
+        try {
+          await segPlayer.play(DeviceFileSource(audioFile.path));
+          await completer.future;
+        } catch (e) {
+          debugPrint('[ReadAlong] Playback error: $e');
+        } finally {
+          await sub.cancel();
+          await segPlayer.dispose();
+        }
+      }
+
+      if (!_isReadingAlong) break;
+
+      // Clean up played page from buffer to free memory
+      audioBuffer.remove(_currentPage);
+      if (mounted) {
+        setState(() {
+          _bufferedPageCount = audioBuffer.length;
+        });
+      }
+
+      // Advance to next page
+      if (_currentPage < flipCount - 1) {
+        _flipKey.currentState?.nextPage();
+        await Future.delayed(const Duration(milliseconds: 800));
+      } else {
+        break; // End of story
+      }
+    }
+
+    bufferDone = true;
+    await bufferFuture; // Clean up the buffer filler
+
+    _readAlongPlayer?.stop();
+    if (mounted) setState(() => _isReadingAlong = false);
+  }
+
+  void _stopReadAlong() {
+    _isReadingAlong = false;
+    _readAlongPlayer?.stop();
+    Provider.of<TtsService>(context, listen: false).stop();
+    setState(() {});
+  }
+
+  // ── Scene regeneration from reader ──
+  bool _isRegenerating = false;
+
+  /// Returns the scene metadata (actIndex, sceneIndex) for the current page, or null if not a prose page.
+  ({int actIndex, int sceneIndex})? _getCurrentSceneMeta() {
+    if (_pages == null) return null;
+    final width = MediaQuery.of(context).size.width;
+    final isTwoPageSpread = width > 800;
+    
+    final pageIdx = isTwoPageSpread ? _currentPage * 2 : _currentPage;
+    if (pageIdx >= _pages!.length) return null;
+    
+    final page = _pages![pageIdx];
+    if (page.actIndex == null || page.sceneIndex == null) return null;
+    return (actIndex: page.actIndex!, sceneIndex: page.sceneIndex!);
+  }
+
+  Future<void> _regenCurrentScene() async {
+    final meta = _getCurrentSceneMeta();
+    if (meta == null) return;
+
+    final repo = Provider.of<StoryRepository>(context, listen: false);
+    final pipeline = Provider.of<StoryPipelineService>(context, listen: false);
+    final project = repo.getById(widget.projectId);
+    if (project == null) return;
+
+    final scene = project.scenes[meta.actIndex]?[meta.sceneIndex];
+    if (scene == null) return;
+
+    // Confirm
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF3D2317),
+        title: const Text('Rewrite Scene?', style: TextStyle(color: Color(0xFFF5E6D3))),
+        content: Text(
+          'This will regenerate all prose for "${scene.title}". The page will update automatically when done.',
+          style: const TextStyle(color: Color(0xFFD4C4B0)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Rewrite', style: TextStyle(color: Colors.orange)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isRegenerating = true);
+
+    // Clear prose for this scene
+    final sId = '${meta.actIndex}-${meta.sceneIndex}';
+    final beats = project.beats[sId] ?? [];
+    for (int b = 0; b < beats.length; b++) {
+      project.prose.remove('$sId-$b');
+    }
+    await repo.saveProject(project);
+
+    try {
+      await pipeline.regenerateSceneProse(project, meta.actIndex, meta.sceneIndex);
+      if (mounted) {
+        // Force page rebuild
+        _pages = null;
+        _lastConstraints = null;
+        setState(() => _isRegenerating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ "${scene.title}" rewritten!'),
+            backgroundColor: const Color(0xFF3D2317),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRegenerating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Rewrite failed: $e'), backgroundColor: Colors.red.shade800),
+        );
+      }
+    }
+  }
+
+  /// Build the Table of Contents end drawer.
+  Widget _buildTocDrawer(bool isTwoPageSpread) {
+    final repo = Provider.of<StoryRepository>(context, listen: false);
+    final project = repo.getById(widget.projectId);
+    if (project == null || _pages == null) {
+      return const Drawer(child: SizedBox.shrink());
+    }
+
+    // Build a map of (actIdx, sceneIdx) -> first page index for that scene
+    final Map<String, int> sceneToPage = {};
+    for (int i = 0; i < _pages!.length; i++) {
+      final p = _pages![i];
+      if (p.actIndex != null && p.sceneIndex != null) {
+        final key = '${p.actIndex}-${p.sceneIndex}';
+        sceneToPage.putIfAbsent(key, () => i);
+      }
+      if (p.type == _PageType.actTitle) {
+        // Find which act this is by matching the title
+        for (int a = 0; a < project.acts.length; a++) {
+          if (p.title == 'Act ${project.acts[a].number}') {
+            sceneToPage.putIfAbsent('act-$a', () => i);
+            break;
+          }
+        }
+      }
+    }
+
+    return Drawer(
+      backgroundColor: const Color(0xFF2C1810),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFF5A3A25), width: 1)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    project.title,
+                    style: const TextStyle(
+                      fontFamily: 'Georgia',
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFF5E6D3),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Table of Contents',
+                    style: TextStyle(
+                      fontFamily: 'Georgia',
+                      fontSize: 12,
+                      color: const Color(0xFFF5E6D3).withValues(alpha: 0.5),
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // TOC entries
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                children: [
+                  // Title page
+                  _tocEntry('Title Page', 0, isTwoPageSpread, isTitle: true),
+                  
+                  for (int actIdx = 0; actIdx < project.acts.length; actIdx++) ...[
+                    const SizedBox(height: 8),
+                    // Act header
+                    _tocEntry(
+                      'Act ${project.acts[actIdx].number}: ${project.acts[actIdx].title}',
+                      sceneToPage['act-$actIdx'] ?? 0,
+                      isTwoPageSpread,
+                      isAct: true,
+                    ),
+                    // Scenes
+                    for (int sceneIdx = 0; sceneIdx < (project.scenes[actIdx]?.length ?? 0); sceneIdx++)
+                      _tocEntry(
+                        project.scenes[actIdx]![sceneIdx].title,
+                        sceneToPage['$actIdx-$sceneIdx'] ?? 0,
+                        isTwoPageSpread,
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tocEntry(String label, int pageIndex, bool isTwoPageSpread, {bool isTitle = false, bool isAct = false}) {
+    final flipPage = isTwoPageSpread ? pageIndex ~/ 2 : pageIndex;
+    final isCurrentPage = _currentPage == flipPage;
+
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context); // Close drawer
+        setState(() => _currentPage = flipPage);
+        _flipKey.currentState?.goToPage(flipPage);
+      },
+      child: Container(
+        padding: EdgeInsets.only(
+          left: isAct || isTitle ? 20 : 40,
+          right: 20,
+          top: isAct ? 10 : 6,
+          bottom: isAct ? 10 : 6,
+        ),
+        color: isCurrentPage ? const Color(0xFF5A3A25).withValues(alpha: 0.3) : null,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Georgia',
+                  fontSize: isAct ? 14 : 13,
+                  fontWeight: isAct || isTitle ? FontWeight.w600 : FontWeight.normal,
+                  color: isCurrentPage
+                      ? Colors.amber
+                      : isAct || isTitle
+                          ? const Color(0xFFF5E6D3)
+                          : const Color(0xFFD4C4B0),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              '${pageIndex + 1}',
+              style: TextStyle(
+                fontFamily: 'Georgia',
+                fontSize: 11,
+                color: const Color(0xFFF5E6D3).withValues(alpha: 0.3),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _buildPages(BoxConstraints constraints, bool isTwoPageSpread) {
@@ -231,6 +795,8 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             title: isFirstPage ? scene.title : '',
             subtitle: isFirstPage ? scene.location : '',
             body: chunk,
+            actIndex: actIdx,
+            sceneIndex: sceneIdx,
           ));
 
           remainingText = remainingText.substring(bestFitLength).trimLeft();
@@ -396,7 +962,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             : '${_currentPage + 1}';
 
         return Scaffold(
+          key: _scaffoldKey,
           backgroundColor: const Color(0xFF2C1810),
+          endDrawer: _buildTocDrawer(isTwoPageSpread),
           appBar: AppBar(
             backgroundColor: const Color(0xFF3D2317),
             foregroundColor: const Color(0xFFF5E6D3),
@@ -411,6 +979,70 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             ),
             centerTitle: true,
             actions: [
+              Consumer<TtsService>(
+                builder: (context, tts, _) {
+                  if (_isReadingAlong) {
+                    return Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          margin: const EdgeInsets.only(right: 4),
+                          decoration: BoxDecoration(
+                            color: _bufferedPageCount > 0
+                                ? Colors.green.withValues(alpha: 0.2)
+                                : Colors.orange.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _bufferedPageCount > 0
+                                  ? Colors.green.withValues(alpha: 0.4)
+                                  : Colors.orange.withValues(alpha: 0.4),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.queue_music, size: 12, color: _bufferedPageCount > 0 ? Colors.greenAccent : Colors.orange),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$_bufferedPageCount pg',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: _bufferedPageCount > 0 ? Colors.greenAccent : Colors.orange,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (tts.isGenerating)
+                          const Padding(
+                            padding: EdgeInsets.only(right: 8),
+                            child: SizedBox(
+                              width: 14, height: 14,
+                              child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2)
+                            ),
+                          ),
+                        TextButton.icon(
+                          onPressed: _stopReadAlong,
+                          icon: const Icon(Icons.stop_circle, color: Colors.amber, size: 20),
+                          label: const Text('Stop', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                        ),
+                      ],
+                    );
+                  }
+                  return TextButton.icon(
+                    onPressed: _startReadAlong,
+                    icon: const Icon(Icons.play_circle_fill, color: Colors.white70),
+                    label: const Text('Read to me', style: TextStyle(color: Colors.white70)),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              if (_getCurrentSceneMeta() != null)
+                IconButton(
+                  icon: Icon(Icons.refresh, color: Colors.orange.withValues(alpha: 0.8)),
+                  tooltip: 'Rewrite this scene',
+                  onPressed: _isRegenerating ? null : _regenCurrentScene,
+                ),
               IconButton(
                 icon: Icon(_isAudioMuted ? Icons.volume_off : Icons.volume_up),
                 tooltip: 'Toggle Ambient Audio',
@@ -420,6 +1052,11 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                 icon: const Icon(Icons.file_download_outlined),
                 tooltip: 'Export as text file',
                 onPressed: _exportStory,
+              ),
+              IconButton(
+                icon: const Icon(Icons.menu_book),
+                tooltip: 'Table of Contents',
+                onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
               ),
             ],
           ),
@@ -475,6 +1112,28 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                         }
                       },
                       onFlipStart: _playPageTurn,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Reading progress bar
+              Positioned(
+                left: 0, right: 0, bottom: 56,
+                child: Center(
+                  child: Container(
+                    constraints: BoxConstraints(maxWidth: isTwoPageSpread ? 1160 : 580),
+                    margin: const EdgeInsets.symmetric(horizontal: 40),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: flipCount > 1 ? _currentPage / (flipCount - 1) : 1.0,
+                        backgroundColor: const Color(0xFF5A3A25).withValues(alpha: 0.3),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.amber.withValues(alpha: 0.5),
+                        ),
+                        minHeight: 3,
+                      ),
                     ),
                   ),
                 ),
@@ -908,13 +1567,26 @@ class _BookPage {
   final String title;
   final String? subtitle;
   final String body;
+  final int? actIndex;
+  final int? sceneIndex;
 
   const _BookPage({
     required this.type,
     required this.title,
     this.subtitle,
     required this.body,
+    this.actIndex,
+    this.sceneIndex,
   });
 }
 
 // End of file
+
+/// A segment of text with an optional character voice for TTS narration.
+class _VoiceSegment {
+  final String text;
+  final String? voiceKey;   // TTS voice model ID, null = default narrator
+  final String? characterName;
+
+  const _VoiceSegment({required this.text, this.voiceKey, this.characterName});
+}
