@@ -122,7 +122,25 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
 > **Note:** Versions **0.8.x and earlier** remain licensed under **GPLv3**. The license change applies only to v0.9.0 and all future releases.
 
 
-## 🆕 What's New in V0.9.4.1
+## 🆕 What's New in V0.9.5
+
+- 📖 **Porch Stories — AI Novel Generator**: Transform character chat histories into full-length novels. A multi-stage AI pipeline takes your concept from story bible to published prose, with a skeuomorphic book reader for immersive reading.
+  - **5-Stage Pipeline**: Chat Distiller → Story Architect → Scene Weaver → Beat Crafter → Prose Writer — each stage refining the narrative from raw concept to polished prose.
+  - **Chat History Integration**: Import past character conversations as canon source material. The AI distills your chat sessions into a chronological event timeline and novelizes what actually happened.
+  - **Character Role Assignment**: Assign roles (Protagonist, Antagonist, Supporting, Love Interest, Mentor) to imported characters. First-selected character defaults to Protagonist.
+  - **User Self-Insert**: Toggle "Play as a character?" to inject your active persona into the story cast with a role of your choice.
+  - **Story Customization**: Full creative control — POV (First/Third Person), act count (1–5), genre & mood multi-select, prose length, narrative pace, dialogue density, maturity rating, and writing style.
+  - **Skeuomorphic Book Reader**: Realistic page-flip book UI with animated page turns, vintage paper textures, and act/scene dividers.
+  - **Read-Along (Multi-Voice TTS)**: "Read to me" mode with per-character voice casting. Assign TTS voices to characters in the dashboard — each character's dialogue is spoken in their own voice, with narration in the default voice. 3-page deep audio pre-buffering with a live buffer indicator.
+  - **Table of Contents Drawer**: Pull-out TOC listing all acts and scenes with one-tap navigation.
+  - **Scene Regeneration**: Regenerate any scene from the reader with context-aware continuity — the AI receives both backward context (previous scene) and forward context (next scene) to maintain narrative flow.
+  - **Reading Progress Bar**: Subtle amber progress bar tracking your position through the book.
+  - **Prompt Tier Support**: Choose between Frontier (best quality) and Fast (speed-optimized) AI generation tiers.
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.9.4.1
 
 - 👥 **Group Chat Enhancements**: Fork any 1:1 conversation into a group chat, preserving full message history. Add or remove characters mid-conversation without losing context. Character Evolution now works per-character within groups.
 - 🛡️ **Database Power-Failure Protection**: SQLite now runs with `PRAGMA synchronous = FULL` and performs an integrity check (`PRAGMA quick_check`) on every startup. If corruption is detected, a recovery overlay offers one-tap restore from any available backup.
@@ -133,9 +151,6 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
   - Fixed GPU layers being silently overridden when manually configured
   - Allow localhost API connections without requiring an API key
   - Removed outdated "pre-alpha" warning from group chat creation dialog
-
-<details>
-<summary><strong>📦 Previous Releases</strong></summary>
 
 ### What's New in V0.9.3
 

@@ -48,6 +48,7 @@ class StoryCastMember {
   String role;
   String description;
   String? voiceSample;
+  String? voiceModel; // TTS voice model ID for read-along narration
   Map<String, String> details; // history, story_events, goals, evolution, deep_profile
 
   StoryCastMember({
@@ -55,6 +56,7 @@ class StoryCastMember {
     this.role = '',
     this.description = '',
     this.voiceSample,
+    this.voiceModel,
     Map<String, String>? details,
   }) : details = details ?? {};
 
@@ -63,6 +65,7 @@ class StoryCastMember {
     'role': role,
     'description': description,
     if (voiceSample != null) 'voice_sample': voiceSample,
+    if (voiceModel != null) 'voice_model': voiceModel,
     'details': details,
   };
 
@@ -71,6 +74,7 @@ class StoryCastMember {
     role: json['role'] ?? '',
     description: json['description'] ?? '',
     voiceSample: json['voice_sample'],
+    voiceModel: json['voice_model'],
     details: (json['details'] as Map<String, dynamic>?)
         ?.map((k, v) => MapEntry(k, v.toString())) ?? {},
   );
@@ -312,6 +316,8 @@ class StoryProject {
   List<String> chatHistoryCharacterIds; // Character embed IDs to pull RAG from
   List<Map<String, String>> characterCardSnapshots; // Snapshotted character card data
   bool parallelGeneration; // Whether to run scene generation in parallel (requires compatible backend)
+  bool includeUserPersona; // Whether to include the user's persona as a story character
+  String userPersonaRole; // Role for the user persona: 'Protagonist', 'Supporting', etc.
 
   // ── Story Customization Options ──
   String pov; // 'First Person', 'Third Person Limited', 'Third Person Omniscient'
@@ -356,6 +362,8 @@ class StoryProject {
     this.chatHistoryCharacterIds = const [],
     this.characterCardSnapshots = const [],
     this.parallelGeneration = false,
+    this.includeUserPersona = false,
+    this.userPersonaRole = 'Protagonist',
     this.pov = 'Third Person Limited',
     this.actCount = 3,
     List<String>? selectedGenres,
@@ -404,6 +412,8 @@ class StoryProject {
     'chat_history_character_ids': chatHistoryCharacterIds,
     'character_card_snapshots': characterCardSnapshots,
     'parallel_generation': parallelGeneration,
+    'include_user_persona': includeUserPersona,
+    'user_persona_role': userPersonaRole,
     'pov': pov,
     'act_count': actCount,
     'selected_genres': selectedGenres,
@@ -469,6 +479,8 @@ class StoryProject {
           ?.map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v.toString())))
           .toList() ?? [],
       parallelGeneration: json['parallel_generation'] ?? false,
+      includeUserPersona: json['include_user_persona'] ?? false,
+      userPersonaRole: json['user_persona_role'] ?? 'Protagonist',
       pov: json['pov'] ?? 'Third Person Limited',
       actCount: json['act_count'] ?? 3,
       selectedGenres: (json['selected_genres'] as List?)?.map((e) => e.toString()).toList(),

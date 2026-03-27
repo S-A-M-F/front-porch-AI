@@ -21,8 +21,13 @@ import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
 import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/models/story_project.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:front_porch_ai/ui/pages/story_structure_page.dart';
 import 'package:front_porch_ai/ui/pages/story_reader_page.dart';
+import 'package:front_porch_ai/services/audiobook_generator_service.dart';
+import 'package:front_porch_ai/services/epub_generator_service.dart';
+import 'package:front_porch_ai/services/tts_service.dart';
 
 /// Dashboard page — story bible overview: concept, themes, cast, threads, lore.
 class StoryDashboardPage extends StatefulWidget {
@@ -165,6 +170,103 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     }
   }
 
+  Future<void> _startAudiobookGeneration(StoryProject project, AudiobookGeneratorService service) async {
+    try {
+      final audiobook = await service.generateAudiobook(project);
+      if (audiobook != null && mounted) {
+        // Save file dialog
+        final String? outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save Audiobook',
+          fileName: 'audiobook_${project.title.replaceAll(' ', '_')}.wav',
+          type: FileType.custom,
+          allowedExtensions: ['wav'],
+        );
+        if (outputFile != null) {
+          await audiobook.file.copy(outputFile);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Audiobook saved to $outputFile'), backgroundColor: Colors.green),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Audiobook Failed: $e'), backgroundColor: Colors.red.shade800),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportEpub(StoryProject project) async {
+    try {
+      final epub = await EpubGeneratorService.generateEpub(project);
+      if (epub != null && mounted) {
+        final String? outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save eBook',
+          fileName: '${project.title.replaceAll(' ', '_')}.epub',
+          type: FileType.custom,
+          allowedExtensions: ['epub'],
+        );
+        if (outputFile != null) {
+          await File(outputFile).writeAsBytes(epub.bytes);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('eBook saved to $outputFile'), backgroundColor: Colors.green),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('eBook Export Failed: $e'), backgroundColor: Colors.red.shade800),
+        );
+      }
+    }
+  }
+
+  Widget _buildAudiobookProgress(AudiobookGeneratorService service) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade900.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.headphones, color: Colors.amber),
+              const SizedBox(width: 12),
+              const Text('Compiling Audiobook...', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: service.stop,
+                icon: const Icon(Icons.stop, color: Colors.redAccent, size: 16),
+                label: const Text('Abort', style: TextStyle(color: Colors.redAccent)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LinearProgressIndicator(
+            value: service.progress,
+            backgroundColor: Colors.white12,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade600),
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          const SizedBox(height: 8),
+          Text(service.status, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer2<StoryRepository, StoryPipelineService>(
@@ -256,6 +358,52 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Audiobook Generator ──
+          Consumer<AudiobookGeneratorService>(
+            builder: (context, abService, _) {
+              if (abService.isGenerating) {
+                return _buildAudiobookProgress(abService);
+              }
+              if (project.prose.isNotEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber.shade800,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.headphones),
+                          label: const Text('Export Audiobook (.wav)', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onPressed: () => _startAudiobookGeneration(project, abService),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade800,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.book),
+                          label: const Text('Export eBook (.epub)', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onPressed: () => _exportEpub(project),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox();
+            },
+          ),
+          
           // ── Chat History Preview ──
           if (project.useChatHistory && project.chatHistoryCharacterIds.isNotEmpty) ...[
             _buildChatHistorySection(project),
@@ -770,6 +918,49 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                   const SizedBox(height: 8),
                   Text('Voice: "${c.voiceSample}"', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontStyle: FontStyle.italic, fontSize: 12)),
                 ],
+                // TTS Voice picker
+                const SizedBox(height: 10),
+                Consumer<TtsService>(
+                  builder: (context, tts, _) {
+                    final voices = tts.activeVoices;
+                    if (voices.isEmpty) return const SizedBox.shrink();
+                    return Row(
+                      children: [
+                        Icon(Icons.record_voice_over, size: 14, color: Colors.amber.withValues(alpha: 0.6)),
+                        const SizedBox(width: 8),
+                        Text('TTS Voice:', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DropdownButton<String>(
+                            value: c.voiceModel,
+                            hint: Text('Default narrator', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12)),
+                            dropdownColor: const Color(0xFF1E293B),
+                            isExpanded: true,
+                            underline: Container(height: 1, color: Colors.white12),
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            items: [
+                              DropdownMenuItem<String>(
+                                value: null,
+                                child: Text('Default narrator', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
+                              ),
+                              ...voices.map((v) => DropdownMenuItem<String>(
+                                value: v.id,
+                                child: Text(v.name, style: const TextStyle(fontSize: 12)),
+                              )),
+                            ],
+                            onChanged: (value) {
+                              c.voiceModel = value;
+                              final repo = Provider.of<StoryRepository>(context, listen: false);
+                              final project = _project;
+                              if (project != null) repo.saveProject(project);
+                              setState(() {});
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
                 ...c.details.entries.map((e) => Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text('${e.key}: ${e.value}', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),

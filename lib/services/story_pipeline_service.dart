@@ -813,13 +813,16 @@ Output the merged, deduplicated, chronologically ordered timeline. Output ONLY t
     final buffer = StringBuffer();
     buffer.writeln('\n\n## Character Definitions (from imported character cards)');
     buffer.writeln('These are the CORE characters of the story. Use their names, personalities, ');
-    buffer.writeln('descriptions, and scenarios faithfully. You MAY create additional supporting ');
+    buffer.writeln('descriptions, and relationships faithfully. You MAY create additional supporting ');
     buffer.writeln('NPCs, antagonists, and side characters to enrich the story, but the characters ');
     buffer.writeln('below should be the central figures.\n');
 
     for (int i = 0; i < project.characterCardSnapshots.length; i++) {
       final snap = project.characterCardSnapshots[i];
-      buffer.writeln('### Character ${i + 1}: ${snap['name'] ?? 'Unknown'}');
+      final role = snap['role'] ?? 'Supporting';
+      final isSelfInsert = snap['self_insert'] == 'true';
+      final roleLabel = isSelfInsert ? '$role — User Self-Insert' : role;
+      buffer.writeln('### Character ${i + 1}: ${snap['name'] ?? 'Unknown'} ($roleLabel)');
       if (snap['description']?.isNotEmpty == true) {
         buffer.writeln('Description: ${snap['description']}');
       }
@@ -886,8 +889,17 @@ ${chatContext.isNotEmpty ? '\nCRITICAL: Chat history is provided above. This is 
             .toList();
       }
 
-      // Add protagonist to cast
-      if (json['protagonist'] != null) {
+      // Pre-populate cast from character card snapshots with user-assigned roles
+      if (project.characterCardSnapshots.isNotEmpty) {
+        project.cast = project.characterCardSnapshots.map((snap) {
+          return StoryCastMember(
+            name: snap['name'] ?? 'Unknown',
+            role: snap['role'] ?? 'Supporting',
+            description: snap['description'] ?? snap['personality'] ?? '',
+          );
+        }).toList();
+      } else if (json['protagonist'] != null) {
+        // Fallback: use LLM-generated protagonist only when no snapshots exist
         project.cast = [StoryCastMember.fromJson(json['protagonist'])];
       }
 
@@ -1348,48 +1360,19 @@ Next Beat Plan: ${nextBeat.description}''';
         throw Exception('No scenes generated for Act ${act.number}');
       }
 
-      if (project.parallelGeneration) {
-        // ── Parallel mode: all scenes process concurrently ──
+      // Generate beats for each scene sequentially
+      for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
+        final sId = '$actIndex-$sceneIdx';
+        if (project.beats[sId] == null || project.beats[sId]!.isEmpty) {
+          _setStatus('Act ${act.number}: Beats', 'Planning beats for scene ${sceneIdx + 1}/${scenes.length}...');
+          await runBeatDirector(project, actIndex, sceneIdx);
+        }
+      }
 
-        // Step 2: Generate beats for all scenes in parallel
-        _setStatus('Act ${act.number}: Beats', 'Planning beats for ${scenes.length} scenes (parallel)...');
-        final beatFutures = <Future>[];
-        for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
-          final sId = '$actIndex-$sceneIdx';
-          if (project.beats[sId] == null || project.beats[sId]!.isEmpty) {
-            beatFutures.add(runBeatDirector(project, actIndex, sceneIdx));
-          }
-        }
-        if (beatFutures.isNotEmpty) {
-          await Future.wait(beatFutures);
-        }
-
-        // Step 3: Write prose for all scenes in parallel
-        _setStatus('Act ${act.number}: Writing', 'Writing ${scenes.length} scenes (parallel)...');
-        final proseFutures = <Future>[];
-        for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
-          proseFutures.add(_writeSceneProseCombined(project, actIndex, sceneIdx));
-        }
-        if (proseFutures.isNotEmpty) {
-          await Future.wait(proseFutures);
-        }
-      } else {
-        // ── Sequential mode: one scene at a time ──
-
-        // Step 2: Generate beats for each scene
-        for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
-          final sId = '$actIndex-$sceneIdx';
-          if (project.beats[sId] == null || project.beats[sId]!.isEmpty) {
-            _setStatus('Act ${act.number}: Beats', 'Planning beats for scene ${sceneIdx + 1}/${scenes.length}...');
-            await runBeatDirector(project, actIndex, sceneIdx);
-          }
-        }
-
-        // Step 3: Write prose for each scene
-        for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
-          _setStatus('Act ${act.number}: Writing', 'Writing scene ${sceneIdx + 1}/${scenes.length}...');
-          await _writeSceneProseCombined(project, actIndex, sceneIdx);
-        }
+      // Write prose for each scene sequentially (beats reference previous beats)
+      for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
+        _setStatus('Act ${act.number}: Writing', 'Writing scene ${sceneIdx + 1}/${scenes.length}...');
+        await _writeSceneProseCombined(project, actIndex, sceneIdx);
       }
 
       _setStatus('Act ${act.number} Complete', 'Ready for review');
@@ -1403,7 +1386,23 @@ Next Beat Plan: ${nextBeat.description}''';
     }
   }
 
-  /// Write all prose for a scene in a single combined LLM call instead of beat-by-beat.
+  /// Public method to regenerate prose for a single scene (after clearing old prose).
+  Future<void> regenerateSceneProse(StoryProject project, int actIndex, int sceneIndex) async {
+    _isRunning = true;
+    _setStatus('Rewriting', 'Regenerating scene ${sceneIndex + 1} prose...');
+    try {
+      await _writeSceneProseCombined(project, actIndex, sceneIndex);
+      _setStatus('Complete', 'Scene rewrite finished!');
+    } catch (e) {
+      _setStatus('Error', 'Scene rewrite failed: $e');
+      rethrow;
+    } finally {
+      _isRunning = false;
+      notifyListeners();
+    }
+  }
+
+  /// Write prose for a scene beat-by-beat with individual LLM calls.
   Future<void> _writeSceneProseCombined(StoryProject project, int actIndex, int sceneIndex) async {
     final sId = '$actIndex-$sceneIndex';
     final scenes = project.scenes[actIndex] ?? [];
@@ -1461,21 +1460,53 @@ Next Beat Plan: ${nextBeat.description}''';
     }
 
     final isFirstScene = actIndex == 0 && sceneIndex == 0;
-    final introDirective = isFirstScene
-        ? '''\n\nIMPORTANT -- THIS IS THE OPENING SCENE OF THE NOVEL:
-- Introduce the protagonist naturally through action and description. Show who they are.
-- Ground the reader in the world: where are we? what era? what is the atmosphere?
-- Do NOT assume the reader knows anything about the characters or setting.
-- Open with a hook that draws the reader in immediately.'''
-        : '';
-
     final pov = project.pov;
     final pace = project.narrativePace;
     final dialogue = project.dialogueDensity;
     final styleGuide = project.writingStyle.isNotEmpty ? 'Writing Style: ${project.writingStyle}.' : '';
     final maturity = project.maturityRating;
 
-    final prompt = '''You are a skilled novelist. Write the complete prose for this scene.
+    // Generate each beat individually for maximum prose length
+    String runningContext = previousSceneText; // Carries forward from scene to scene
+
+    for (int beatIdx = 0; beatIdx < beats.length; beatIdx++) {
+      final bId = '$sId-$beatIdx';
+      
+      // Skip if already finalized
+      if (project.prose[bId]?.final_ != null) {
+        // Still update running context so the next beat stays continuous
+        runningContext = project.prose[bId]!.final_!;
+        if (runningContext.length > 600) {
+          runningContext = runningContext.substring(runningContext.length - 600);
+        }
+        continue;
+      }
+
+      final beat = beats[beatIdx];
+      final isFirstBeat = beatIdx == 0;
+      final isOpeningBeat = isFirstScene && isFirstBeat;
+
+      // Update status so UI shows per-beat progress
+      _setStatus('Writing', 'Scene ${sceneIndex + 1}, Beat ${beatIdx + 1}/${beats.length}: ${beat.type}...');
+
+      // Build forward-context for the last beat so it transitions into the next scene
+      String forwardHint = '';
+      final isLastBeat = beatIdx == beats.length - 1;
+      if (isLastBeat) {
+        // Look for the next scene in this act, or the first scene of the next act
+        StoryScene? nextScene;
+        if (sceneIndex + 1 < scenes.length) {
+          nextScene = scenes[sceneIndex + 1];
+        } else if (actIndex + 1 < project.acts.length) {
+          final nextActScenes = project.scenes[actIndex + 1] ?? [];
+          if (nextActScenes.isNotEmpty) nextScene = nextActScenes[0];
+        }
+        if (nextScene != null) {
+          forwardHint = '\nTRANSITION HINT — The NEXT scene is: "${nextScene.title}" at ${nextScene.location}.\n${nextScene.description}\nEnd this beat in a way that naturally leads into the next scene. Do NOT start the next scene — just set up the transition.';
+        }
+      }
+
+      final prompt = '''You are a skilled novelist writing one section of a larger scene.
 
 Story: ${project.concept}
 Act ${act.number}: ${act.title} -- ${act.description}
@@ -1484,52 +1515,48 @@ Location: ${scene.location}
 $castInfo
 Scene description: ${scene.description}
 ${_getPreviousActsContext(project, actIndex)}
-The scene has these beats (write prose that flows naturally through all of them):
-$beatDescriptions
-$introDirective
 
-CRITICAL FORMATTING RULES:
+YOUR CURRENT TASK: Write the prose for Beat ${beatIdx + 1} of ${beats.length} in this scene.
+Beat type: ${beat.type}
+Beat description: ${beat.description}
+${isOpeningBeat ? '''
+
+IMPORTANT -- THIS IS THE OPENING OF THE NOVEL:
+- Introduce the protagonist naturally through action and description.
+- Ground the reader in the world: where are we? what era? what is the atmosphere?
+- Do NOT assume the reader knows anything about the characters or setting.
+- Open with a hook that draws the reader in immediately.''' : ''}
+
+CONTENT MATURITY: $maturity
+${maturity == 'Explicit' ? 'This is an UNRESTRICTED adult story. Write graphic violence, sexual content, dark themes, and profanity naturally as the story demands. Do NOT censor, fade to black, or skip over explicit scenes. Write them in full vivid detail.' : maturity == 'Mature' ? 'This is a mature adult story. Include realistic violence, strong language, and suggestive/sexual themes where appropriate. You may be moderately graphic but avoid excessive gratuitous detail.' : 'This is a clean story suitable for all audiences. No graphic violence, sexual content, or strong language.'}
+
+WRITING RULES:
 1. Use $pov point of view consistently. ${pov == 'First Person' ? 'The narrator IS the protagonist. Use "I", "my", "me".' : 'NEVER use first person ("I", "my").'}
 2. Use SHORT PARAGRAPHS -- 2-4 sentences maximum per paragraph. Separate paragraphs with blank lines.
 3. Dialogue density: $dialogue. ${dialogue == 'Dialogue-Heavy' ? 'Characters should talk frequently. Dialogue drives the scene.' : dialogue == 'Sparse' ? 'Minimal dialogue. Focus on internal narrative and action.' : 'Balance dialogue with prose.'}
 4. Narrative pace: $pace. ${pace == 'Slow Burn' ? 'Linger on atmosphere and sensory details.' : pace == 'Fast-Paced' ? 'Tight sentences. Favor action. No lingering.' : 'Balance reflection with momentum.'}
-5. Each beat should produce roughly 300-500 words of prose.
+5. Write 400-800 words of rich, detailed prose for this beat.
 6. Vary sentence length. Mix short punchy sentences with longer descriptive ones.
 $styleGuide
-7. NEVER repeat phrases, sentences, or descriptions from earlier beats. Each beat must introduce NEW information.
-8. ZERO REPETITION: Do not reuse the same metaphors, adjectives, or sentence structures across beats.
-${previousSceneText.isNotEmpty ? '\nCONTINUITY — THE PREVIOUS SCENE ENDED WITH THIS TEXT (your scene MUST pick up seamlessly from here):\n"""\n...${previousSceneText}\n"""\nStart your prose as a DIRECT continuation of the above text. The reader should feel zero discontinuity.' : ''}
+${runningContext.isNotEmpty ? '\nCONTINUITY — The story so far ends with:\n"""\n...$runningContext\n"""\nYour prose MUST continue seamlessly from this text. The reader should feel zero discontinuity.' : ''}
+$forwardHint
 
-Write the COMPLETE scene as flowing narrative prose.
-Do NOT label the beats -- write it as a single continuous scene.
-Each beat must flow from the EXACT emotional and physical state left by the previous beat.
-${actIndex > 0 ? 'Maintain continuity with previous acts. Reference established events and character development.' : ''}
-${tier == PromptTier.smallLocal ? 'Keep it concise but engaging.' : 'Write richly with detail and atmosphere.'}
+Output ONLY the prose text for this single beat, nothing else. No labels, no headers.''';
 
-Output ONLY the prose text, nothing else.''';
+      final response = await _callLLM(prompt, maxLength: tier == PromptTier.smallLocal ? 4096 : 8192, temp: 0.85);
+      final cleanedResponse = _stripThinkTags(response).trim();
 
-    final response = await _callLLM(prompt, maxLength: tier == PromptTier.smallLocal ? 4096 : 8192, temp: 0.85);
-    
-    // Split the prose roughly evenly across beats
-    final cleanedResponse = _stripThinkTags(response).trim();
-    final sentences = cleanedResponse.split(RegExp(r'(?<=[.!?])\s+'));
-    final sentencesPerBeat = (sentences.length / beats.length).ceil().clamp(1, sentences.length);
+      project.prose[bId] = BeatProse(draft: cleanedResponse, final_: cleanedResponse);
 
-    for (int i = 0; i < beats.length; i++) {
-      final bId = '$sId-$i';
-      if (project.prose[bId]?.final_ != null) continue;
-
-      final start = i * sentencesPerBeat;
-      final end = ((i + 1) * sentencesPerBeat).clamp(0, sentences.length);
-      if (start >= sentences.length) {
-        project.prose[bId] = BeatProse(final_: '');
-        continue;
+      // Update running context for the next beat
+      runningContext = cleanedResponse;
+      if (runningContext.length > 600) {
+        runningContext = runningContext.substring(runningContext.length - 600);
       }
-      final beatText = sentences.sublist(start, end).join(' ');
-      project.prose[bId] = BeatProse(draft: beatText, final_: beatText);
-    }
 
-    await _repository.saveProject(project);
+      // Save after each beat so progress isn't lost if something crashes
+      await _repository.saveProject(project);
+    }
   }
 
   /// Autopilot: run the entire pipeline from concept to finished prose.

@@ -238,7 +238,15 @@ class _StoryStructurePageState extends State<StoryStructurePage> {
                                   fontSize: 12,
                                 ),
                               ),
-                            const SizedBox(width: 8),
+                            if (proseCount > 0)
+                              IconButton(
+                                icon: Icon(Icons.refresh, size: 16, color: Colors.orange.withValues(alpha: 0.7)),
+                                tooltip: 'Rewrite scene prose',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                onPressed: pipeline.isRunning ? null : () => _regenerateScene(project, actIdx, sceneIdx, pipeline),
+                              ),
+                            const SizedBox(width: 4),
                             Icon(Icons.chevron_right, size: 18, color: Colors.white.withValues(alpha: 0.3)),
                           ],
                         ),
@@ -309,6 +317,64 @@ class _StoryStructurePageState extends State<StoryStructurePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('✅ Act ${actIdx + 1} complete! Review the scenes below.'),
+            backgroundColor: const Color(0xFF2A2A2A),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red.shade800),
+        );
+      }
+    }
+  }
+
+  Future<void> _regenerateScene(StoryProject project, int actIdx, int sceneIdx, StoryPipelineService pipeline) async {
+    final scene = project.scenes[actIdx]?[sceneIdx];
+    if (scene == null) return;
+
+    // Confirm with user
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Rewrite Scene?', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'This will regenerate all prose for "${scene.title}" using the new per-beat system. The old text will be replaced.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Rewrite', style: TextStyle(color: Colors.orange)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Clear prose for this scene only
+    final sId = '$actIdx-$sceneIdx';
+    final beats = project.beats[sId] ?? [];
+    for (int b = 0; b < beats.length; b++) {
+      project.prose.remove('$sId-$b');
+    }
+
+    // Save the cleared state
+    final repo = Provider.of<StoryRepository>(context, listen: false);
+    await repo.saveProject(project);
+
+    // Re-run prose generation for this scene
+    try {
+      await pipeline.regenerateSceneProse(project, actIdx, sceneIdx);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ "${scene.title}" rewritten!'),
             backgroundColor: const Color(0xFF2A2A2A),
           ),
         );

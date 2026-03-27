@@ -16,18 +16,27 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
+import 'package:front_porch_ai/services/audiobook_generator_service.dart';
+import 'package:front_porch_ai/services/epub_generator_service.dart';
 import 'package:front_porch_ai/models/story_project.dart';
 import 'package:front_porch_ai/ui/pages/story_setup_page.dart';
 import 'package:front_porch_ai/ui/pages/story_dashboard_page.dart';
 import 'package:front_porch_ai/ui/pages/story_reader_page.dart';
 
 /// The "Porch Stories" home view — shows all story projects with create/delete.
-class StoryHomeView extends StatelessWidget {
+class StoryHomeView extends StatefulWidget {
   const StoryHomeView({super.key});
 
+  @override
+  State<StoryHomeView> createState() => _StoryHomeViewState();
+}
+
+class _StoryHomeViewState extends State<StoryHomeView> {
   @override
   Widget build(BuildContext context) {
     return Consumer<StoryRepository>(
@@ -94,6 +103,53 @@ class StoryHomeView extends StatelessWidget {
                   _buildCreateButton(context, repo),
                 ],
               ),
+            ),
+
+            // Audiobook generation progress banner
+            Consumer<AudiobookGeneratorService>(
+              builder: (context, abService, _) {
+                if (!abService.isGenerating) return const SizedBox.shrink();
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade900.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.5)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text('Generating Audiobook...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                          TextButton(
+                            onPressed: abService.stop,
+                            child: const Text('Abort', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      LinearProgressIndicator(
+                        value: abService.progress,
+                        backgroundColor: Colors.white12,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade600),
+                        minHeight: 6,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(abService.status, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                    ],
+                  ),
+                );
+              },
             ),
 
             // Project list
@@ -250,6 +306,35 @@ class StoryHomeView extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => StoryReaderPage(projectId: project.dbId!)),
                   ),
                 ),
+              // Export menu (only for stories with prose)
+              if (totalProse > 0)
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.download, color: Colors.white.withValues(alpha: 0.6), size: 20),
+                  tooltip: 'Export',
+                  color: const Color(0xFF1E293B),
+                  onSelected: (value) {
+                    if (value == 'audiobook') _startAudiobookExport(project);
+                    if (value == 'epub') _startEpubExport(project);
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'audiobook',
+                      child: Row(children: [
+                        Icon(Icons.headphones, color: Colors.amber, size: 18),
+                        SizedBox(width: 10),
+                        Text('Export Audiobook (.wav)', style: TextStyle(color: Colors.white)),
+                      ]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'epub',
+                      child: Row(children: [
+                        Icon(Icons.book, color: Colors.blue, size: 18),
+                        SizedBox(width: 10),
+                        Text('Export eBook (.epub)', style: TextStyle(color: Colors.white)),
+                      ]),
+                    ),
+                  ],
+                ),
               // Delete
               IconButton(
                 icon: Icon(Icons.delete_outline, color: Colors.red.withValues(alpha: 0.5), size: 20),
@@ -261,6 +346,63 @@ class StoryHomeView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _startAudiobookExport(StoryProject project) async {
+    final service = Provider.of<AudiobookGeneratorService>(context, listen: false);
+    try {
+      final audiobook = await service.generateAudiobook(project);
+      if (audiobook != null && mounted) {
+        final String? outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save Audiobook',
+          fileName: 'audiobook_${project.title.replaceAll(' ', '_')}.wav',
+          type: FileType.custom,
+          allowedExtensions: ['wav'],
+        );
+        if (outputFile != null) {
+          await audiobook.file.copy(outputFile);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Audiobook saved to $outputFile'), backgroundColor: Colors.green),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Audiobook failed: $e'), backgroundColor: Colors.red.shade800),
+        );
+      }
+    }
+  }
+
+  Future<void> _startEpubExport(StoryProject project) async {
+    try {
+      final epub = await EpubGeneratorService.generateEpub(project);
+      if (epub != null && mounted) {
+        final String? outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save eBook',
+          fileName: '${project.title.replaceAll(' ', '_')}.epub',
+          type: FileType.custom,
+          allowedExtensions: ['epub'],
+        );
+        if (outputFile != null) {
+          await File(outputFile).writeAsBytes(epub.bytes);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('eBook saved to $outputFile'), backgroundColor: Colors.green),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('eBook export failed: $e'), backgroundColor: Colors.red.shade800),
+        );
+      }
+    }
   }
 
   String _tierLabel(PromptTier tier) {

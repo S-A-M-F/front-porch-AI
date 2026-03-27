@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
 import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/models/story_project.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/ui/pages/story_dashboard_page.dart';
@@ -57,6 +58,17 @@ class _StorySetupPageState extends State<StorySetupPage> {
   bool _useChatHistory = false;
   bool _parallelGeneration = false;
   final Set<String> _selectedCharacterIds = {};
+  final Map<String, String> _characterRoles = {}; // charDbId -> role
+  bool _includeUserPersona = false;
+  String _userPersonaRole = 'Protagonist';
+
+  static const _roleOptions = [
+    'Protagonist',
+    'Antagonist',
+    'Supporting',
+    'Love Interest',
+    'Mentor',
+  ];
 
   // ── Option Lists ──
   static const _povOptions = [
@@ -129,6 +141,20 @@ class _StorySetupPageState extends State<StorySetupPage> {
       _useChatHistory = project.useChatHistory;
       _parallelGeneration = project.parallelGeneration;
       _selectedCharacterIds.addAll(project.chatHistoryCharacterIds);
+      _includeUserPersona = project.includeUserPersona;
+      _userPersonaRole = project.userPersonaRole;
+      // Restore roles from snapshots
+      for (final snap in project.characterCardSnapshots) {
+        final name = snap['name'] ?? '';
+        final role = snap['role'] ?? 'Supporting';
+        // Find the character ID by name
+        final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+        for (final c in charRepo.characters) {
+          if (c.dbId != null && c.name == name && _selectedCharacterIds.contains(c.dbId)) {
+            _characterRoles[c.dbId!] = role;
+          }
+        }
+      }
       _pov = project.pov;
       _actCount = project.actCount;
       _selectedGenres.addAll(project.selectedGenres);
@@ -377,16 +403,14 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 if (_useChatHistory) ...[
                   const SizedBox(height: 12),
                   _buildCharacterPicker(),
+                  if (_selectedCharacterIds.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildRoleAssignment(),
+                  ],
+                  const SizedBox(height: 12),
+                  _buildUserPersonaToggle(),
                 ],
                 const SizedBox(height: 12),
-                _buildToggleTile(
-                  'Parallel Generation',
-                  'Generate scenes concurrently for faster results',
-                  Icons.speed,
-                  _parallelGeneration,
-                  Colors.tealAccent,
-                  (v) => setState(() => _parallelGeneration = v),
-                ),
                 const SizedBox(height: 32),
 
                 // ═══════════════════════════════════════
@@ -830,14 +854,140 @@ class _StorySetupPageState extends State<StorySetupPage> {
                   setState(() {
                     if (selected) {
                       _selectedCharacterIds.add(charDbId);
+                      // Default first character to Protagonist
+                      if (_selectedCharacterIds.length == 1) {
+                        _characterRoles[charDbId] = 'Protagonist';
+                      } else {
+                        _characterRoles.putIfAbsent(charDbId, () => 'Supporting');
+                      }
                     } else {
                       _selectedCharacterIds.remove(charDbId);
+                      _characterRoles.remove(charDbId);
                     }
                   });
                 },
               );
             }).toList(),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoleAssignment() {
+    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.purple.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.theater_comedy, size: 16, color: Colors.purple.shade300),
+              const SizedBox(width: 8),
+              Text('Assign Roles', style: TextStyle(color: Colors.purple.shade200, fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...charRepo.characters.where((c) => c.dbId != null && _selectedCharacterIds.contains(c.dbId)).map((char) {
+            final charDbId = char.dbId!;
+            final currentRole = _characterRoles[charDbId] ?? 'Supporting';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.purple.shade900.withValues(alpha: 0.4),
+                    child: Text(char.name[0], style: TextStyle(color: Colors.purple.shade200, fontSize: 12)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(char.name, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                  ),
+                  DropdownButton<String>(
+                    value: currentRole,
+                    dropdownColor: const Color(0xFF1E293B),
+                    underline: Container(height: 1, color: Colors.white12),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    items: _roleOptions.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12)))).toList(),
+                    onChanged: (v) => setState(() => _characterRoles[charDbId] = v ?? 'Supporting'),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserPersonaToggle() {
+    final personaService = Provider.of<UserPersonaService>(context, listen: false);
+    final persona = personaService.persona;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _includeUserPersona ? Colors.amber.withValues(alpha: 0.4) : Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.person_pin, size: 18, color: _includeUserPersona ? Colors.amber : Colors.white38),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Play as a character?',
+                  style: TextStyle(color: _includeUserPersona ? Colors.amber : Colors.white60, fontSize: 13),
+                ),
+              ),
+              Switch(
+                value: _includeUserPersona,
+                activeColor: Colors.amber,
+                onChanged: (v) => setState(() => _includeUserPersona = v),
+              ),
+            ],
+          ),
+          if (_includeUserPersona) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: Colors.amber.shade900.withValues(alpha: 0.4),
+                  child: Text(persona.name[0], style: TextStyle(color: Colors.amber.shade200, fontSize: 12)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(persona.name, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+                      if (persona.description.isNotEmpty)
+                        Text(persona.description, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                DropdownButton<String>(
+                  value: _userPersonaRole,
+                  dropdownColor: const Color(0xFF1E293B),
+                  underline: Container(height: 1, color: Colors.white12),
+                  style: const TextStyle(color: Colors.amber, fontSize: 12),
+                  items: _roleOptions.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12)))).toList(),
+                  onChanged: (v) => setState(() => _userPersonaRole = v ?? 'Protagonist'),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -864,6 +1014,8 @@ class _StorySetupPageState extends State<StorySetupPage> {
     project.useChatHistory = _useChatHistory;
     project.parallelGeneration = _parallelGeneration;
     project.chatHistoryCharacterIds = _selectedCharacterIds.toList();
+    project.includeUserPersona = _includeUserPersona;
+    project.userPersonaRole = _userPersonaRole;
 
     // Story customization
     project.pov = _pov;
@@ -876,9 +1028,9 @@ class _StorySetupPageState extends State<StorySetupPage> {
     project.dialogueDensity = _dialogueDensity;
     project.maturityRating = _maturityRating;
 
-    // Snapshot selected character card data
+    // Snapshot selected character card data with roles
+    final snapshots = <Map<String, String>>[];
     if (_useChatHistory && _selectedCharacterIds.isNotEmpty) {
-      final snapshots = <Map<String, String>>[];
       for (final char in charRepo.characters) {
         if (char.dbId != null && _selectedCharacterIds.contains(char.dbId)) {
           snapshots.add({
@@ -888,11 +1040,29 @@ class _StorySetupPageState extends State<StorySetupPage> {
             'scenario': char.scenario,
             'first_message': char.firstMessage,
             'system_prompt': char.systemPrompt,
+            'role': _characterRoles[char.dbId!] ?? 'Supporting',
           });
         }
       }
-      project.characterCardSnapshots = snapshots;
     }
+
+    // Add user persona as a character snapshot if enabled
+    if (_includeUserPersona) {
+      final personaService = Provider.of<UserPersonaService>(context, listen: false);
+      final persona = personaService.persona;
+      snapshots.add({
+        'name': persona.name,
+        'description': persona.description,
+        'personality': persona.persona,
+        'scenario': '',
+        'first_message': '',
+        'system_prompt': '',
+        'role': _userPersonaRole,
+        'self_insert': 'true',
+      });
+    }
+
+    project.characterCardSnapshots = snapshots;
 
     await repo.saveProject(project);
 

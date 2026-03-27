@@ -78,14 +78,20 @@ class KokoroEngine implements TtsEngine {
     // Dev mode: look relative to executable up to project root
     final execDir = File(Platform.resolvedExecutable).parent.path;
     // Walk up from the build dir to find the project root kokoro_tts.py
+    // macOS apps are deeply nested under build/macos/Build/Products/Debug/App.app/Contents/MacOS...
     var dir = Directory(execDir);
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 15; i++) {
       final candidate = File(p.join(dir.path, 'kokoro_tts.py'));
       if (candidate.existsSync()) return candidate.path;
       final parent = dir.parent;
       if (parent.path == dir.path) break;
       dir = parent;
     }
+    
+    // Final fallback: the current working directory (usually root when running flutter run)
+    final rootCandidate = File(p.join(Directory.current.path, 'kokoro_tts.py'));
+    if (rootCandidate.existsSync()) return rootCandidate.path;
+    
     return null;
   }
 
