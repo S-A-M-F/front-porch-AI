@@ -1532,7 +1532,8 @@
     right.appendChild(buildEditField('Scenario', 'scenario', card.scenario));
     right.appendChild(buildEditField('First Message', 'firstMessage', card.firstMessage, 6));
     right.appendChild(buildEditField('Example Dialogue', 'mesExample', card.mesExample || '', 3));
-    right.appendChild(buildEditField('System Prompt', 'systemPrompt', card.systemPrompt || '', 3));
+    // System Prompt is intentionally omitted — left blank for characters generated
+    // by the AI pipeline (matches Flutter app behavior since v0.9.5+).
     if (card.alternateGreetings && card.alternateGreetings.length) {
       const altSec = el('div', {className:'cw-section', style:'margin-top:16px'});
       altSec.appendChild(el('div', {className:'cw-section-title'}, `Alternate Greetings (${card.alternateGreetings.length})`));
