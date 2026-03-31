@@ -250,6 +250,17 @@ jobs:
           Compress-Archive -Path * -DestinationPath ../../../../../${{ matrix.asset_name }}
         shell: pwsh
 
+      - name: Download VC++ Redistributable
+        if: matrix.platform == 'windows'
+        run: |
+          # Download the latest VC++ 2015-2022 x64 Redistributable from Microsoft's CDN
+          # This is bundled into the installer so end-users get it automatically
+          $DestDir = "${{ github.workspace }}\${{ matrix.build_path }}\.."
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
+            -OutFile "$DestDir\vc_redist.x64.exe"
+          Write-Host "VC++ Redistributable downloaded to $DestDir"
+        shell: pwsh
+
       - name: Build Windows Installer (Inno Setup)
         if: matrix.platform == 'windows'
         run: |

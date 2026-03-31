@@ -74,6 +74,7 @@ class CharacterGenService {
     String backstory = '',
     String characterContext = '',
     String userPersonaContext = '',
+    String? worldLore,
     bool generateDescription = false,
     void Function(String accumulated)? onProgress,
     void Function(String error)? onError,
@@ -95,6 +96,7 @@ class CharacterGenService {
       descriptionDetail: descriptionDetail,
       backstory: backstory,
       generateDescription: generateDescription,
+      worldLore: worldLore,
     );
 
     debugPrint('CharacterGen: Starting generation for "$name"');
@@ -115,11 +117,9 @@ class CharacterGenService {
       return null;
     }
 
-    // ── Step 1b: Inject user's system prompt directly ─────────────
-    // Bypass AI generation to preserve {{char}}/{{user}} placeholders exactly.
-    if (apiSystemPrompt.isNotEmpty) {
-      card.systemPrompt = apiSystemPrompt;
-    }
+    // ── Step 1b: (system_prompt intentionally left blank) ────────────
+    // The character card's system_prompt field is left empty so the
+    // user's active system prompt or API default is used at chat time.
 
     // ── Step 1c: Truncation recovery ────────────────────────────
     // If critical fields are empty, the JSON was likely truncated.
@@ -127,7 +127,6 @@ class CharacterGenService {
     final missingFields = <String>[];
     if (card.personality.trim().isEmpty) missingFields.add('personality');
     if (card.scenario.trim().isEmpty) missingFields.add('scenario');
-    if (card.systemPrompt.trim().isEmpty && apiSystemPrompt.isEmpty) missingFields.add('system_prompt');
     if (card.mesExample.trim().isEmpty) missingFields.add('example_dialogue');
 
     if (missingFields.isNotEmpty) {
@@ -155,25 +154,48 @@ class CharacterGenService {
         if (card.scenario.trim().isEmpty && recoveryCard.scenario.trim().isNotEmpty) {
           card.scenario = recoveryCard.scenario;
         }
-        if (card.systemPrompt.trim().isEmpty && recoveryCard.systemPrompt.trim().isNotEmpty) {
-          card.systemPrompt = recoveryCard.systemPrompt;
-        }
         if (card.mesExample.trim().isEmpty && recoveryCard.mesExample.trim().isNotEmpty) {
           card.mesExample = recoveryCard.mesExample;
         }
         debugPrint('CharacterGen: Recovery filled ${missingFields.length - [
           if (card.personality.trim().isEmpty) 'personality',
           if (card.scenario.trim().isEmpty) 'scenario',
-          if (card.systemPrompt.trim().isEmpty) 'system_prompt',
           if (card.mesExample.trim().isEmpty) 'example_dialogue',
         ].length} fields');
       }
     }
 
-    // ── Step 1c: Separate lorebook generation ───────────────────
-    // If lorebook was requested but missing (truncated out), generate separately.
+    // ── Step 2: Character Interview (voice enrichment) ────────
+    // Run 5 in-character Q&A turns to establish authentic voice.
+    // Use the accumulated answers to rewrite description + personality,
+    // enrich lorebook entries, and pass the transcript into greeting prompts.
+    onStatus?.call('Running character interview...');
+    onProgress?.call('');
+    final interviewTranscript = await _runCharacterInterview(
+      card: card,
+      name: name,
+      onStatus: onStatus,
+      onProgress: onProgress,
+      worldLore: worldLore,
+    );
+
+    if (interviewTranscript.isNotEmpty) {
+      // Rewrite description and personality using the interview voice
+      onStatus?.call('Enriching character profile from interview...');
+      onProgress?.call('');
+      await _enrichCardFromInterview(
+        card: card,
+        name: name,
+        interviewTranscript: interviewTranscript,
+        onProgress: onProgress,
+      );
+    }
+
+    // ── Step 2b: Lorebook generation (after interview) ──────────
+    // Runs after interview so transcript context makes entries richer.
+    // Only fires if lorebook was requested and not yet generated inline.
     if (generateLorebook && (card.lorebook == null || card.lorebook!.entries.isEmpty)) {
-      debugPrint('CharacterGen: Lorebook missing from base card, generating separately...');
+      debugPrint('CharacterGen: Generating lorebook after interview...');
       onStatus?.call('Generating world lore...');
       onProgress?.call('');
       await _generateLorebookSeparately(
@@ -182,11 +204,13 @@ class CharacterGenService {
         concept: concept,
         loreCategories: loreCategories,
         loreDepth: loreDepth,
+        interviewTranscript: interviewTranscript,
+        worldLore: worldLore,
         onProgress: onProgress,
       );
     }
 
-    // ── Step 2: Generate first message ────────────────────────
+    // ── Step 3: Generate first message ────────────────────────
     onStatus?.call('Writing first message...');
     onProgress?.call(''); // Clear preview
     final firstMsgPrompt = _buildGreetingPrompt(
@@ -199,6 +223,8 @@ class CharacterGenService {
       previousGreetings: [],
       characterContext: characterContext,
       userPersonaContext: userPersonaContext,
+      interviewTranscript: interviewTranscript,
+      worldLore: worldLore,
     );
 
     final firstMsgOutput = await _callLLM(firstMsgPrompt,
@@ -207,23 +233,46 @@ class CharacterGenService {
       card.firstMessage = _cleanGreeting(firstMsgOutput);
     }
 
-    // ── Step 3: Generate alternate greetings ──────────────────
+    // ── Step 4: Generate alternate greetings ──────────────────
     if (altGreetingCount > 0) {
+      // Generate distinct meeting scenarios for each alt greeting upfront.
+      // This is the key difference: each alt gets its own unique context
+      // (chance coffee shop encounter, shared umbrella in a rainstorm, etc.)
+      // so they're structurally different stories, not just mood variations.
+      onStatus?.call('Planning alternate scenarios...');
+      onProgress?.call('');
+      final altScenarios = await _generateAltScenarios(
+        name: name,
+        concept: concept,
+        defaultScenario: card.scenario,
+        personality: card.personality,
+        count: altGreetingCount,
+        worldLore: worldLore,
+        onProgress: onProgress,
+      );
+
       final alts = <String>[];
       for (int i = 0; i < altGreetingCount; i++) {
         onStatus?.call('Writing alternate greeting ${i + 1} of $altGreetingCount...');
         onProgress?.call(''); // Clear preview
 
+        // Use the unique scenario for this alt; fall back to default if generation failed.
+        final altScenario = (i < altScenarios.length && altScenarios[i].isNotEmpty)
+            ? altScenarios[i]
+            : card.scenario;
+
         final altPrompt = _buildGreetingPrompt(
           name: name,
           description: card.description,
           personality: card.personality,
-          scenario: card.scenario,
+          scenario: altScenario,
           length: greetingLength,
           tone: greetingTones.isNotEmpty ? greetingTones[(i + 1) % greetingTones.length] : 'Neutral',
           previousGreetings: [card.firstMessage, ...alts],
           characterContext: characterContext,
           userPersonaContext: userPersonaContext,
+          interviewTranscript: interviewTranscript,
+          worldLore: worldLore,
         );
 
         final altOutput = await _callLLM(altPrompt,
@@ -235,8 +284,200 @@ class CharacterGenService {
       card.alternateGreetings = alts;
     }
 
+
     onStatus?.call('Character generated!');
     return card;
+  }
+
+  // ═════════════════════════════════════════════════════════════
+  //  Alternate Scenario Generation
+  // ═════════════════════════════════════════════════════════════
+
+  /// Generate [count] structurally distinct meeting scenarios for alt greetings.
+  /// Each must be a completely different context from the default and from each other.
+  /// Returns a list of scenario strings (may be shorter than [count] if parsing fails).
+  Future<List<String>> _generateAltScenarios({
+    required String name,
+    required String concept,
+    required String defaultScenario,
+    required String personality,
+    required int count,
+    String? worldLore,
+    void Function(String)? onProgress,
+  }) async {
+    final loreSection = (worldLore != null && worldLore.trim().isNotEmpty)
+        ? '\n[ESTABLISHED WORLD LORE]:\n$worldLore\n\n(Use locations, situations, and systems specific to this world.)\n'
+        : '';
+
+    final prompt = '''Generate exactly $count completely different meeting scenarios for a roleplay character. Each scenario is where {{user}} and $name first encounter each other — or meet again in an unexpected context.
+
+CHARACTER:
+Name: $name
+Concept: ${concept.length > 300 ? concept.substring(0, 300) + '...' : concept}
+Personality: ${personality.length > 300 ? personality.substring(0, 300) + '...' : personality}
+
+DEFAULT SCENARIO (do NOT repeat or closely resemble this):
+$defaultScenario$loreSection
+
+RULES:
+- Each scenario must be a completely different TYPE of encounter (location, circumstances, and dynamic must all differ)
+- No two scenarios can have the same setting or situation premise
+- Scenarios should feel organic and character-appropriate — not random
+- Each is 2-3 sentences: where they meet, why they're both there, and the immediate spark or tension
+- Use {{user}} and {{char}} as placeholders
+- Vary the energy: include a mix of (intimate, public, high-stakes, mundane-turned-interesting, unexpected)
+- Scenarios must be self-contained — a writer can generate a full opening scene from just this text
+
+Output ONLY a JSON object with a single key "scenarios" containing an array of exactly $count strings.
+Example format: {"scenarios": ["Scenario one text.", "Scenario two text."]}
+
+Respond with ONLY the JSON:''';
+
+    final output = await _callLLM(prompt, maxLen: 1024, minLen: 100, onProgress: onProgress);
+    if (output == null) {
+      debugPrint('CharacterGen: Alt scenario generation failed — using default scenario for all alts');
+      return [];
+    }
+
+    try {
+      final cleaned = _stripContent(output);
+      final data = json.decode(cleaned) as Map<String, dynamic>;
+      final raw = data['scenarios'];
+      if (raw is List) {
+        final scenarios = raw
+            .whereType<String>()
+            .where((s) => s.trim().isNotEmpty)
+            .toList();
+        debugPrint('CharacterGen: Generated ${scenarios.length} alt scenarios');
+        return scenarios;
+      }
+    } catch (e) {
+      debugPrint('CharacterGen: Alt scenario parse failed: $e — using default for all alts');
+    }
+    return [];
+  }
+
+  // ═════════════════════════════════════════════════════════════
+  //  Character Interview (Voice Enrichment)
+  // ═════════════════════════════════════════════════════════════
+
+  static const _interviewQuestions = [
+    'Describe your physical appearance in your own words. Be specific — what do you look like, and how do you carry yourself?',
+    'Who are you, and what do you want more than anything?',
+    'What are your goals and plans right now — what are you actively working toward?',
+    'And how do you intend to achieve them? What is your approach or strategy — and what might get in your way?',
+    'Tell me about a moment from your past that shaped who you are today.',
+    'What are you most afraid of, and what brings you genuine joy?',
+    'How do you treat people who have just met you versus people you trust completely?',
+  ];
+
+  /// Run a cumulative in-character interview, returning the full transcript.
+  /// Each answer is folded back into the next question's context — exactly as
+  /// EllipsisLM does — so the model's "voice" deepens with each turn.
+  Future<String> _runCharacterInterview({
+    required CharacterCard card,
+    required String name,
+    void Function(String)? onStatus,
+    void Function(String)? onProgress,
+    String? worldLore,
+  }) async {
+    final transcript = StringBuffer();
+    // Seed the LLM with who this character is so the first answer is grounded
+    final seed = 'You are ${name}.\n'
+        'Your personality: ${card.personality.length > 400 ? card.personality.substring(0, 400) : card.personality}\n'
+        'Your scenario: ${card.scenario.length > 200 ? card.scenario.substring(0, 200) : card.scenario}\n\n'
+        '${worldLore != null && worldLore.trim().isNotEmpty ? "You exist in the following established world. Use its terminology, locations, and facts:\n$worldLore\n\n" : ""}'
+        'Answer each question in first person, fully in-character. '
+        'Be specific, vivid, and emotionally honest. Respond as ${name} would speak — '
+        'use their vocabulary, cadence, and emotional register.';
+
+    for (int i = 0; i < _interviewQuestions.length; i++) {
+      final q = _interviewQuestions[i];
+      onStatus?.call('Character interview (${i + 1}/${_interviewQuestions.length})...');
+      onProgress?.call('');
+
+      final prompt = '$seed\n\n'
+          '${transcript.isNotEmpty ? 'Previous answers:\n$transcript\n\n' : ''}'
+          'Question: $q\n\n'
+          '${name}: ';
+
+      final answer = await _callLLM(prompt, maxLen: 1200, minLen: 80, onProgress: onProgress);
+      if (answer == null || answer.trim().isEmpty) {
+        debugPrint('CharacterGen: Interview Q${i + 1} got empty answer — skipping');
+        continue;
+      }
+
+      // Strip any think blocks from the answer before adding to transcript
+      final cleanAnswer = answer
+          .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+          .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
+          .trim();
+
+      transcript.writeln('Q: $q');
+      transcript.writeln('A: $cleanAnswer');
+      transcript.writeln();
+      debugPrint('CharacterGen: Interview Q${i + 1} answered (${cleanAnswer.length} chars)');
+    }
+
+    return transcript.toString().trim();
+  }
+
+  /// Use the completed interview transcript to rewrite description and personality
+  /// with richer, voice-consistent prose grounded in the character's own words.
+  Future<void> _enrichCardFromInterview({
+    required CharacterCard card,
+    required String name,
+    required String interviewTranscript,
+    void Function(String)? onProgress,
+  }) async {
+    final prompt = '''
+You have just completed an in-character interview with $name.
+Using the interview answers below as your source of truth, rewrite two fields
+for this character card. Output ONLY a JSON object with exactly two keys.
+No markdown. No explanation. Just raw JSON.
+
+INTERVIEW TRANSCRIPT:
+$interviewTranscript
+
+CURRENT DESCRIPTION (physical appearance only):
+${card.description}
+
+CURRENT PERSONALITY (inner traits):
+${card.personality}
+
+Rewrite these fields using the specific details, voice, and texture revealed in the interview:
+
+- "description": (string) Third-person. Physical appearance ONLY: body, face, hair, eyes, clothing, posture, distinguishing marks. Use specific details that emerged in the interview — not generic adjectives. 2-3 paragraphs. Do NOT include personality, backstory, or scenario.
+- "personality": (string) Third-person. Inner traits, motivations, fears, speech patterns, behavioral quirks, relationship style — grounded in what the character revealed. 2-3 paragraphs. Do NOT repeat physical appearance or scenario.
+
+Use {{char}} for the character name and {{user}} for the user throughout.
+
+Respond with ONLY the JSON:''';
+
+    final output = await _callLLM(prompt, maxLen: 2048, minLen: 200, onProgress: onProgress);
+    if (output == null) {
+      debugPrint('CharacterGen: Interview enrichment got no response — keeping original fields');
+      return;
+    }
+
+    final cleaned = _stripContent(output);
+    try {
+      final data = json.decode(cleaned) as Map<String, dynamic>;
+      final newDesc = data['description']?.toString().trim() ?? '';
+      final newPers = data['personality']?.toString().trim() ?? '';
+
+      // Only update if the enriched versions are substantively longer/different
+      if (newDesc.isNotEmpty && newDesc.length >= card.description.length * 0.5) {
+        card.description = newDesc;
+        debugPrint('CharacterGen: Description enriched (${newDesc.length} chars)');
+      }
+      if (newPers.isNotEmpty && newPers.length >= card.personality.length * 0.5) {
+        card.personality = newPers;
+        debugPrint('CharacterGen: Personality enriched (${newPers.length} chars)');
+      }
+    } catch (e) {
+      debugPrint('CharacterGen: Interview enrichment parse failed: $e — keeping original fields');
+    }
   }
 
   // ═════════════════════════════════════════════════════════════
@@ -360,13 +601,6 @@ class CharacterGenService {
         case 'scenario':
           fieldSpecs.add('- "scenario": (string) 1 paragraph, the default conversation setting');
           break;
-        case 'system_prompt':
-          String spec = '- "system_prompt": (string) brief instruction for how to portray this character';
-          if (apiSystemPrompt.isNotEmpty) {
-            spec += '. Incorporate: "$apiSystemPrompt"';
-          }
-          fieldSpecs.add(spec);
-          break;
         case 'example_dialogue':
           fieldSpecs.add('- "example_dialogue": (string) format: <START>\\n{{user}}: message\\n{{char}}: response\\n<START>\\n{{user}}: message\\n{{char}}: response');
           break;
@@ -392,13 +626,16 @@ Use {{char}} for character name and {{user}} for user name. Respond with ONLY th
     return _parseCharacterJson(cleaned, name);
   }
 
-  /// Generate lorebook entries as a separate call when truncated from base card.
+  /// Generate lorebook entries as a separate call.
+  /// Accepts the interview transcript to ground entries in the character's world.
   Future<void> _generateLorebookSeparately({
     required CharacterCard card,
     required String name,
     required String concept,
     required List<String> loreCategories,
     required String loreDepth,
+    String interviewTranscript = '',
+    String? worldLore,
     void Function(String accumulated)? onProgress,
   }) async {
     String countRange;
@@ -429,20 +666,33 @@ Use {{char}} for character name and {{user}} for user name. Respond with ONLY th
       }
     }
 
+    // When we have an interview transcript, surface the world details
+    // the character described so entries feel grounded in this specific world.
+    final interviewSection = interviewTranscript.isNotEmpty
+        ? '\nWORLD VOICE — The character described their world in their own words. '
+          'Let these details inform the texture and specificity of lorebook entries:\n'
+          '${interviewTranscript.length > 1200 ? interviewTranscript.substring(0, 1200) + "..." : interviewTranscript}\n'
+        : '';
+        
+    final loreSection = (worldLore != null && worldLore.trim().isNotEmpty)
+        ? '\n[ESTABLISHED WORLD LORE]:\n$worldLore\n\n(IMPORTANT: Prioritize writing entries for specific factions, locations, names, and magic systems mentioned in the established lore text over inventing new ones.)\n'
+        : '';
+
     final prompt = '''Generate WORLD-BUILDING lorebook entries for a roleplay setting. Output ONLY a JSON object with a single key "lorebook" containing an array of $countRange entry objects.$categoryHint
 
 The character who lives in this world:
 Name: $name
 Concept: ${concept.length > 500 ? '${concept.substring(0, 500)}...' : concept}
 ${card.description.trim().isNotEmpty ? 'Description: ${card.description.length > 300 ? '${card.description.substring(0, 300)}...' : card.description}' : ''}
-${card.scenario.trim().isNotEmpty ? 'Scenario: ${card.scenario}' : ''}$categoryGuidance
+${card.scenario.trim().isNotEmpty ? 'Scenario: ${card.scenario}' : ''}$interviewSection$loreSection$categoryGuidance
 
 CRITICAL RULES:
 1. Entries MUST describe the WORLD — places, factions, customs, magic systems, creatures, world events, items, NPCs
 2. Do NOT create entries about the character's personal history, backstory, childhood, relationships, or biography
 3. Each entry should be something that EXISTS IN THE WORLD independently of the character
 4. Keys should be common words/phrases a user would naturally type during roleplay (e.g. "tavern, inn, drink" not "The Gilded Chalice Tavern")
-5. Content should be 1-2 paragraphs of rich, descriptive world lore
+5. Content should be 1-2 paragraphs of rich, descriptive world lore — specific and evocative, not generic
+6. If the interview mentioned specific places, customs, or factions, make entries for those first
 
 Each entry format: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of world lore"}
 
@@ -507,6 +757,7 @@ Output ONLY the JSON:''';
     String descriptionDetail = '2-3 paragraphs',
     String backstory = '',
     bool generateDescription = false,
+    String? worldLore,
   }) {
     final keywordsLine = personalityKeywords.isNotEmpty
         ? 'Personality keywords: $personalityKeywords\n'
@@ -518,6 +769,9 @@ Output ONLY the JSON:''';
         : '';
     final backstoryLine = backstory.isNotEmpty
         ? 'Backstory: $backstory\n'
+        : '';
+    final loreLine = (worldLore != null && worldLore.trim().isNotEmpty)
+        ? '\n[ESTABLISHED WORLD LORE/RULES]:\n$worldLore\n(Must strictly adhere to the above facts, terminology, and locations)\n'
         : '';
 
     // Build lorebook spec with depth and categories
@@ -540,15 +794,9 @@ Output ONLY the JSON:''';
       lorebookSpec = '- "lorebook": (array of $countRange objects) WORLD-BUILDING entries$categoryHint. Each entry describes the WORLD (places, factions, customs, magic, creatures, events) — NOT the character\'s personal history or biography. Each: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of world lore"}\n';
     }
 
-    // System prompt spec — if user already has one, skip AI generation entirely
-    // (we'll inject it directly post-generation to preserve {{char}}/{{user}} placeholders)
-    String sysSpec;
-    final skipSysPromptGeneration = apiSystemPrompt.isNotEmpty;
-    if (skipSysPromptGeneration) {
-      sysSpec = ''; // Will be injected directly into card after generation
-    } else {
-      sysSpec = '- "system_prompt": (string) brief instruction for how to portray this character (2-3 sentences max)';
-    }
+    // System prompt is intentionally left blank — not generated by AI.
+    // The user's active system prompt or API default applies at chat time.
+    const sysSpec = '';
 
     // Description spec — only included for guided mode
     final descriptionSpec = generateDescription
@@ -567,7 +815,7 @@ Output ONLY the JSON:''';
 
 Character name: $name
 Concept: $concept
-$ageLine$sexLine$relationshipLine$backstoryLine$keywordsLine
+$ageLine$sexLine$relationshipLine$backstoryLine$keywordsLine$loreLine
 Required JSON keys (generate them IN THIS ORDER):
 ${descriptionSpec}- "personality": (string) 1-2 paragraphs, third person. ONLY inner traits, social style, motives, quirks, and behavioral tics. Do NOT repeat physical appearance or scenario/setting info here — those belong in other fields
 - "scenario": (string) 2-4 sentences MAX. Where/when/why {{user}} and {{char}} meet. ONLY the situation that frames the roleplay. No personality traits, no backstory, no system instructions — just the setting and circumstance. Keep it SHORT
@@ -596,6 +844,8 @@ Respond with ONLY the JSON:''';
     required List<String> previousGreetings,
     String characterContext = '',
     String userPersonaContext = '',
+    String interviewTranscript = '',
+    String? worldLore,
   }) {
     String lengthSpec;
     String lengthEnforcement;
@@ -679,12 +929,32 @@ Character Details (weave these naturally into the scene — SHOW through action,
 $characterContext''';
     }
 
+    // Inject interview transcript as voice reference — capped to avoid bloating context.
+    // The LLM uses this to match the cadence, vocabulary, and emotional register
+    // already established in the interview rather than inventing a new voice.
+    String voiceSection = '';
+    if (interviewTranscript.isNotEmpty) {
+      final excerpt = interviewTranscript.length > 1000
+          ? interviewTranscript.substring(0, 1000) + '...'
+          : interviewTranscript;
+      voiceSection = '''
+
+== ESTABLISHED VOICE ==
+The following are $name's own words from an in-character interview. Match this exact voice, vocabulary, cadence, and emotional register when writing the greeting — do NOT invent a different tone:
+$excerpt''';
+    }
+    
+    String loreSection = '';
+    if (worldLore != null && worldLore.trim().isNotEmpty) {
+      loreSection = '\n\n== ESTABLISHED WORLD LORE ==\nThe scene is taking place in this world. Strictly follow its rules, terminology, magic, and locations:\n$worldLore';
+    }
+
     return '''Write an opening roleplay message as $name (first person: "I", "my", "me"). This is the very first moment of the story — set the scene and introduce who $name is through vivid prose. Output ONLY the message text.
 
 == WHO $name IS ==
 Description: $description
 Personality: $personality
-Scenario: $scenario$characterSection$personaSection
+Scenario: $scenario$characterSection$personaSection$voiceSection$loreSection
 $toneSpec
 
 == NARRATIVE STRUCTURE (follow this order) ==

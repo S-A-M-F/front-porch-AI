@@ -1740,7 +1740,8 @@ class ChatService extends ChangeNotifier {
       } else if (mode == GenerationMode.impersonate) {
         suffix = "\n${userName}:";
       } else if (mode == GenerationMode.continue_) {
-        suffix = ""; 
+        // Suffix will be set after history is built — see below
+        suffix = "";
       }
 
       // Build example dialogues block
@@ -1773,6 +1774,16 @@ class ChatService extends ChangeNotifier {
       String summaryBlock = '';
       if (_summary.isNotEmpty) {
         summaryBlock = '[Summary of events so far: $_summary]\n';
+      }
+
+      // ── Continue mode: remove the last message from history ──
+      // For continue mode, we exclude the last message from the chat history
+      // and place it as the prompt suffix so the LLM continues from it naturally.
+      ChatMessage? _continuePoppedMessage;
+      if (mode == GenerationMode.continue_ && _messages.isNotEmpty) {
+        _continuePoppedMessage = _messages.removeLast();
+        // Set the suffix to the last message text so the LLM continues from it
+        suffix = "\n${_continuePoppedMessage.sender}: ${_continuePoppedMessage.text}";
       }
 
       String history = _buildChatHistory();
@@ -1810,6 +1821,11 @@ class ChatService extends ChangeNotifier {
             ? '[Director: ${lastMsg.text}]'
             : '${lastMsg.sender}: ${lastMsg.text}';
         droppedMessages = _messages.length - 1;
+      }
+
+      // ── Restore the popped continue message back into the list ──
+      if (_continuePoppedMessage != null) {
+        _messages.add(_continuePoppedMessage);
       }
 
       // ── RAG Memory Retrieval ──
@@ -1933,7 +1949,7 @@ class ChatService extends ChangeNotifier {
         xtcThreshold: _storageService.xtcThreshold,
         xtcProbability: _storageService.xtcProbability,
         stopSequences: stopList,
-        reasoningEnabled: _callMode ? false : _storageService.reasoningEnabled,
+        reasoningEnabled: (_callMode || mode == GenerationMode.continue_) ? false : _storageService.reasoningEnabled,
         reasoningEffort: _storageService.reasoningEffort,
         bannedPhrases: _storageService.bannedPhrases.isNotEmpty ? _storageService.bannedPhrases : null,
       );
@@ -2845,14 +2861,31 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Generate subtasks for the current objective using the LLM.
+  /// Clears existing tasks first so regen always produces a clean slate.
   Future<void> generateObjectiveTasks({int taskCount = 5, bool nsfw = false}) async {
     if (_activeObjective == null) return;
     if (_llmProvider == null) return;
+
+    // Snapshot existing tasks so we can restore on failure
+    final previousTasks = objectiveTasks;
+
+    // Clear tasks immediately — UI shows empty state while LLM works
+    await _db.updateObjective(ObjectivesCompanion(
+      id: drift.Value(_activeObjective!.id),
+      tasks: const drift.Value('[]'),
+    ));
+    await _loadActiveObjective();
 
     try {
       final llmService = _llmProvider!.activeService;
       if (llmService == null || !llmService.isReady) {
         debugPrint('[Objective] LLM not ready');
+        // Restore tasks since we cleared them
+        await _db.updateObjective(ObjectivesCompanion(
+          id: drift.Value(_activeObjective!.id),
+          tasks: drift.Value(jsonEncode(previousTasks)),
+        ));
+        await _loadActiveObjective();
         return;
       }
 
@@ -2908,7 +2941,7 @@ class ChatService extends ChangeNotifier {
       final genTasks = <Map<String, dynamic>>[];
 
       for (final line in lines) {
-        final match = RegExp(r'^\s*\d+[\.)\-]\s*(.+)').firstMatch(line.trim());
+        final match = RegExp(r'^\s*\d+[\.\)\-]\s*(.+)').firstMatch(line.trim());
         if (match != null) {
           final desc = match.group(1)!.trim();
           if (desc.isNotEmpty) {
@@ -2925,10 +2958,22 @@ class ChatService extends ChangeNotifier {
         await _loadActiveObjective();
         debugPrint('[Objective] Generated ${genTasks.length} tasks');
       } else {
-        debugPrint('[Objective] Could not parse tasks from response');
+        // Parse failed — restore previous tasks so we don't leave an empty list
+        debugPrint('[Objective] Could not parse tasks from response — restoring previous');
+        await _db.updateObjective(ObjectivesCompanion(
+          id: drift.Value(_activeObjective!.id),
+          tasks: drift.Value(jsonEncode(previousTasks)),
+        ));
+        await _loadActiveObjective();
       }
     } catch (e) {
       debugPrint('[Objective] Task generation failed: $e');
+      // Restore previous tasks on error
+      await _db.updateObjective(ObjectivesCompanion(
+        id: drift.Value(_activeObjective!.id),
+        tasks: drift.Value(jsonEncode(previousTasks)),
+      ));
+      await _loadActiveObjective();
     }
   }
 
@@ -2939,6 +2984,21 @@ class ChatService extends ChangeNotifier {
     if (taskIndex < 0 || taskIndex >= tasks.length) return;
 
     tasks[taskIndex]['completed'] = !(tasks[taskIndex]['completed'] as bool);
+    await _db.updateObjective(ObjectivesCompanion(
+      id: drift.Value(_activeObjective!.id),
+      tasks: drift.Value(jsonEncode(tasks)),
+    ));
+    await _loadActiveObjective();
+  }
+
+  /// Update the description of a specific task.
+  Future<void> updateTask(int taskIndex, String newDescription) async {
+    if (_activeObjective == null) return;
+    final tasks = objectiveTasks;
+    if (taskIndex < 0 || taskIndex >= tasks.length) return;
+    if (newDescription.trim().isEmpty) return;
+
+    tasks[taskIndex]['description'] = newDescription.trim();
     await _db.updateObjective(ObjectivesCompanion(
       id: drift.Value(_activeObjective!.id),
       tasks: drift.Value(jsonEncode(tasks)),

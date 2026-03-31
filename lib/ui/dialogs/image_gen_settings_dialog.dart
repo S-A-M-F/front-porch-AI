@@ -34,17 +34,30 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   bool _loadingModels = false;
   final _negativePromptController = TextEditingController();
 
+  // Local backend state
+  final _localUrlController = TextEditingController();
+  List<String> _localModels = [];
+  bool _loadingLocalModels = false;
+  bool? _connectionOk; // null = untested, true = ok, false = failed
+  bool _testingConnection = false;
+
   @override
   void initState() {
     super.initState();
     final storage = Provider.of<StorageService>(context, listen: false);
     _negativePromptController.text = storage.imageGenNegativePrompt;
+    _localUrlController.text = storage.localImageGenUrl;
     _fetchModels();
+    // Pre-fetch local models if already on a local backend
+    if (storage.imageGenBackend != 'remote') {
+      _fetchLocalModels(storage.localImageGenUrl);
+    }
   }
 
   @override
   void dispose() {
     _negativePromptController.dispose();
+    _localUrlController.dispose();
     super.dispose();
   }
 
@@ -60,6 +73,37 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
     }
   }
 
+  Future<void> _fetchLocalModels(String url) async {
+    if (url.isEmpty) return;
+    setState(() => _loadingLocalModels = true);
+    final service = Provider.of<ImageGenService>(context, listen: false);
+    final models = await service.fetchA1111Models(url);
+    if (mounted) {
+      setState(() {
+        _localModels = models;
+        _loadingLocalModels = false;
+      });
+    }
+  }
+
+  Future<void> _testConnection() async {
+    final url = _localUrlController.text.trim();
+    if (url.isEmpty) return;
+    setState(() {
+      _testingConnection = true;
+      _connectionOk = null;
+    });
+    final service = Provider.of<ImageGenService>(context, listen: false);
+    final ok = await service.testLocalConnection(url);
+    if (mounted) {
+      setState(() {
+        _connectionOk = ok;
+        _testingConnection = false;
+      });
+      if (ok) _fetchLocalModels(url);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<StorageService>(
@@ -70,7 +114,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Container(
             width: 540,
-            constraints: const BoxConstraints(maxHeight: 600),
+            constraints: const BoxConstraints(maxHeight: 640),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -105,7 +149,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Enable toggle
+                        // ── Enable toggle ─────────────────────────────
                         SwitchListTile(
                           title: const Text('Enable Image Generation',
                               style: TextStyle(color: Colors.white)),
@@ -119,233 +163,24 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                           onChanged: (val) => storage.setImageGenEnabled(val),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 16),
 
-                        // Info box — uses existing API credentials
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.black26,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                storage.remoteApiKey.isNotEmpty
-                                    ? Icons.check_circle
-                                    : Icons.info_outline,
-                                color: storage.remoteApiKey.isNotEmpty
-                                    ? Colors.green
-                                    : Colors.amber,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  storage.remoteApiKey.isNotEmpty
-                                      ? 'Using your remote API credentials for image generation.'
-                                      : 'Requires a remote API key — configure one in the Backend settings.',
-                                  style: TextStyle(
-                                    color: storage.remoteApiKey.isNotEmpty
-                                        ? Colors.white38
-                                        : Colors.amber,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        // Image Model selector
-                        const Text('Image Model',
+                        // ── Backend selector ──────────────────────────
+                        const Text('Image Source',
                             style: TextStyle(
                                 color: Colors.white54,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                initialValue: _models
-                                        .any((m) => m.id == storage.imageGenModel)
-                                    ? storage.imageGenModel
-                                    : null,
-                                dropdownColor: const Color(0xFF374151),
-                                style: const TextStyle(color: Colors.white),
-                                isExpanded: true,
-                                menuMaxHeight: 400,
-                                decoration: InputDecoration(
-                                  hintText: _loadingModels
-                                      ? 'Loading models...'
-                                      : _models.isEmpty
-                                          ? 'No image models found'
-                                          : 'Select a model',
-                                  hintStyle:
-                                      const TextStyle(color: Colors.white30),
-                                  filled: true,
-                                  fillColor: Colors.black26,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 10),
-                                ),
-                                items: _buildGroupedModelItems(),
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    storage.setImageGenModel(val);
-                                  }
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: _loadingModels
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.purpleAccent))
-                                  : const Icon(Icons.refresh,
-                                      color: Colors.white54),
-                              tooltip: 'Refresh models',
-                              onPressed:
-                                  _loadingModels ? null : _fetchModels,
-                            ),
-                          ],
-                        ),
-
-                        // Allow typing a custom model name
-                        const SizedBox(height: 8),
-                        TextField(
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 13),
-                          decoration: InputDecoration(
-                            hintText:
-                                'Or type a model name manually...',
-                            hintStyle:
-                                const TextStyle(color: Colors.white24),
-                            filled: true,
-                            fillColor: Colors.black26,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                            isDense: true,
-                          ),
-                          controller: TextEditingController(
-                              text: storage.imageGenModel),
-                          onSubmitted: (val) {
-                            if (val.trim().isNotEmpty) {
-                              storage.setImageGenModel(val.trim());
-                            }
-                          },
-                        ),
+                        _buildBackendSelector(storage),
 
                         const SizedBox(height: 20),
 
-                        // Image Size selector
-                        const Text('Image Size',
-                            style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 8),
-                        _buildSizeSelector(storage),
-
-                        const SizedBox(height: 20),
-
-                        // Default Style
-                        const Text('Default Style',
-                            style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          initialValue: ImageGenService.styleLabels.containsKey(storage.imageGenStyle)
-                              ? storage.imageGenStyle
-                              : 'photorealistic',
-                          dropdownColor: const Color(0xFF374151),
-                          style: const TextStyle(color: Colors.white),
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: Colors.black26,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                          ),
-                          items: ImageGenService.styleLabels.entries.map((e) {
-                            return DropdownMenuItem(
-                              value: e.key,
-                              child: Text(e.value),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              storage.setImageGenStyle(val);
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 6),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                          child: Text(
-                            'Pre-selected when generating images. Can be changed per generation.',
-                            style: TextStyle(color: Colors.white24, fontSize: 10),
-                          ),
-                        ),
-
-                        const SizedBox(height: 20),
-                        const Text('Default Negative Prompt',
-                            style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _negativePromptController,
-                          maxLines: 2,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 13),
-                          decoration: InputDecoration(
-                            hintText:
-                                'e.g. blurry, low quality, watermark, text',
-                            hintStyle:
-                                const TextStyle(color: Colors.white24),
-                            filled: true,
-                            fillColor: Colors.black26,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                          ),
-                          onChanged: (val) =>
-                              storage.setImageGenNegativePrompt(val),
-                        ),
-                        const SizedBox(height: 6),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                          child: Text(
-                            'Applied automatically to all generations. Leave empty to skip.',
-                            style:
-                                TextStyle(color: Colors.white24, fontSize: 10),
-                          ),
-                        ),
+                        // ── Per-backend config panel ──────────────────
+                        if (storage.imageGenBackend == 'remote')
+                          _buildRemotePanel(storage)
+                        else
+                          _buildLocalPanel(storage),
                       ],
                     ),
                   ),
@@ -357,6 +192,474 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       },
     );
   }
+
+  // ── Backend selector ────────────────────────────────────────────────
+
+  Widget _buildBackendSelector(StorageService storage) {
+    final backends = ImageGenBackend.values;
+    return Row(
+      children: backends.map((b) {
+        final isSelected = storage.imageGenBackend == b.key;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(
+                right: b == backends.last ? 0 : 8),
+            child: GestureDetector(
+              onTap: () {
+                storage.setImageGenBackend(b.key);
+                // Load local models when switching to a local backend
+                if (b != ImageGenBackend.remote) {
+                  _fetchLocalModels(storage.localImageGenUrl);
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.purpleAccent.withValues(alpha: 0.25)
+                      : Colors.black26,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected
+                        ? Colors.purpleAccent
+                        : Colors.white10,
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      b == ImageGenBackend.remote
+                          ? Icons.cloud_outlined
+                          : b == ImageGenBackend.drawThings
+                              ? Icons.apple
+                              : Icons.computer_outlined,
+                      size: 18,
+                      color: isSelected
+                          ? Colors.purpleAccent
+                          : Colors.white38,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      b.label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isSelected
+                            ? Colors.purpleAccent
+                            : Colors.white38,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // ── Remote backend panel (existing) ────────────────────────────────
+
+  Widget _buildRemotePanel(StorageService storage) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Info box
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                storage.remoteApiKey.isNotEmpty
+                    ? Icons.check_circle
+                    : Icons.info_outline,
+                color: storage.remoteApiKey.isNotEmpty
+                    ? Colors.green
+                    : Colors.amber,
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  storage.remoteApiKey.isNotEmpty
+                      ? 'Using your remote API credentials for image generation.'
+                      : 'Requires a remote API key — configure one in the Backend settings.',
+                  style: TextStyle(
+                    color: storage.remoteApiKey.isNotEmpty
+                        ? Colors.white38
+                        : Colors.amber,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Image Model selector
+        const Text('Image Model',
+            style: TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                initialValue: _models
+                        .any((m) => m.id == storage.imageGenModel)
+                    ? storage.imageGenModel
+                    : null,
+                dropdownColor: const Color(0xFF374151),
+                style: const TextStyle(color: Colors.white),
+                isExpanded: true,
+                menuMaxHeight: 400,
+                decoration: InputDecoration(
+                  hintText: _loadingModels
+                      ? 'Loading models...'
+                      : _models.isEmpty
+                          ? 'No image models found'
+                          : 'Select a model',
+                  hintStyle: const TextStyle(color: Colors.white30),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                ),
+                items: _buildGroupedModelItems(),
+                onChanged: (val) {
+                  if (val != null) storage.setImageGenModel(val);
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: _loadingModels
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.purpleAccent))
+                  : const Icon(Icons.refresh, color: Colors.white54),
+              tooltip: 'Refresh models',
+              onPressed: _loadingModels ? null : _fetchModels,
+            ),
+          ],
+        ),
+
+        // Manual model name override
+        const SizedBox(height: 8),
+        TextField(
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          decoration: InputDecoration(
+            hintText: 'Or type a model name manually...',
+            hintStyle: const TextStyle(color: Colors.white24),
+            filled: true,
+            fillColor: Colors.black26,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 10),
+            isDense: true,
+          ),
+          controller: TextEditingController(text: storage.imageGenModel),
+          onSubmitted: (val) {
+            if (val.trim().isNotEmpty) storage.setImageGenModel(val.trim());
+          },
+        ),
+
+        const SizedBox(height: 20),
+        _buildSharedFields(storage),
+      ],
+    );
+  }
+
+  // ── Local backend panel (A1111 / Draw Things) ──────────────────────
+
+  Widget _buildLocalPanel(StorageService storage) {
+    final isDrawThings = storage.imageGenBackend == 'drawthings';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Instructions
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isDrawThings
+                      ? 'Open Draw Things → Settings → Advanced → enable HTTP API Server. No API key needed.'
+                      : 'Start AUTOMATIC1111 with the --api flag (e.g. python launch.py --api). No API key needed.',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Server URL + test button
+        const Text('Server URL',
+            style: TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _localUrlController,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: isDrawThings
+                      ? 'http://127.0.0.1:7860'
+                      : 'http://127.0.0.1:7860',
+                  hintStyle: const TextStyle(color: Colors.white24),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  isDense: true,
+                  suffixIcon: _connectionOk == null
+                      ? null
+                      : Icon(
+                          _connectionOk!
+                              ? Icons.check_circle
+                              : Icons.cancel,
+                          color: _connectionOk!
+                              ? Colors.green
+                              : Colors.redAccent,
+                          size: 18,
+                        ),
+                ),
+                onChanged: (val) {
+                  storage.setLocalImageGenUrl(val.trim());
+                  // Reset connection indicator on edit
+                  setState(() => _connectionOk = null);
+                },
+                onSubmitted: (_) => _testConnection(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: _testingConnection ? null : _testConnection,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white10,
+                foregroundColor: Colors.white70,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+              ),
+              child: _testingConnection
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('Test', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // Checkpoint / model selector
+        const Text('Checkpoint Model',
+            style: TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        const Text(
+          'Fetched from the local server. Press Test to refresh.',
+          style: TextStyle(color: Colors.white24, fontSize: 10),
+        ),
+        const SizedBox(height: 8),
+        if (_loadingLocalModels)
+          const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.purpleAccent),
+            ),
+          )
+        else if (_localModels.isEmpty)
+          const Text(
+            'No models found — test the connection above to fetch them.',
+            style: TextStyle(color: Colors.white38, fontSize: 11),
+          )
+        else
+          DropdownButtonFormField<String>(
+            initialValue: _localModels.contains(storage.imageGenModel)
+                ? storage.imageGenModel
+                : null,
+            dropdownColor: const Color(0xFF374151),
+            style: const TextStyle(color: Colors.white),
+            isExpanded: true,
+            menuMaxHeight: 300,
+            decoration: InputDecoration(
+              hintText: 'Select a checkpoint',
+              hintStyle: const TextStyle(color: Colors.white30),
+              filled: true,
+              fillColor: Colors.black26,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 10),
+            ),
+            items: _localModels
+                .map((m) => DropdownMenuItem(
+                    value: m,
+                    child: Text(m,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white))))
+                .toList(),
+            onChanged: (val) {
+              if (val != null) storage.setImageGenModel(val);
+            },
+          ),
+
+        const SizedBox(height: 20),
+        _buildSharedFields(storage),
+      ],
+    );
+  }
+
+  // ── Shared size / style / negative-prompt fields ───────────────────
+
+  Widget _buildSharedFields(StorageService storage) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Image Size
+        const Text('Image Size',
+            style: TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        _buildSizeSelector(storage),
+
+        const SizedBox(height: 20),
+
+        // Default Style
+        const Text('Default Style',
+            style: TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue:
+              ImageGenService.styleLabels.containsKey(storage.imageGenStyle)
+                  ? storage.imageGenStyle
+                  : 'photorealistic',
+          dropdownColor: const Color(0xFF374151),
+          style: const TextStyle(color: Colors.white),
+          isExpanded: true,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.black26,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 10),
+          ),
+          items: ImageGenService.styleLabels.entries.map((e) {
+            return DropdownMenuItem(
+              value: e.key,
+              child: Text(e.value),
+            );
+          }).toList(),
+          onChanged: (val) {
+            if (val != null) storage.setImageGenStyle(val);
+          },
+        ),
+        const SizedBox(height: 6),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            'Pre-selected when generating images. Can be changed per generation.',
+            style: TextStyle(color: Colors.white24, fontSize: 10),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+        const Text('Default Negative Prompt',
+            style: TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _negativePromptController,
+          maxLines: 2,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          decoration: InputDecoration(
+            hintText: 'e.g. blurry, low quality, watermark, text',
+            hintStyle: const TextStyle(color: Colors.white24),
+            filled: true,
+            fillColor: Colors.black26,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 10),
+          ),
+          onChanged: (val) => storage.setImageGenNegativePrompt(val),
+        ),
+        const SizedBox(height: 6),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            'Applied automatically to all generations. Leave empty to skip.',
+            style: TextStyle(color: Colors.white24, fontSize: 10),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Grouped remote model dropdown items ─────────────────────────────
 
   /// Build dropdown items grouped by free (subscription-included) and paid.
   List<DropdownMenuItem<String>> _buildGroupedModelItems() {

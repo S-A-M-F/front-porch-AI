@@ -43,6 +43,7 @@ class OptimizationService {
     HardwareInfo hardware, {
     int modelSizeMb = 0,
     int? requestedContextSize,
+    int? kvBytesPerToken,
   }) {
     int vram = hardware.vramMb;
     
@@ -62,9 +63,11 @@ class OptimizationService {
 
     // If user specified a context size, respect it and adjust GPU layers
     if (requestedContextSize != null && requestedContextSize > 0) {
-      // Estimate KV cache VRAM cost: ~0.5 MB per 1K context (rough FP16 estimate)
-      // Actual varies by model architecture, but this is conservative
-      final contextVramMb = (requestedContextSize / 1024 * 0.5).round();
+      // Use exact KV cost if known, otherwise fall back to ~100 MB per 1K heuristic
+      final contextVramMb = kvBytesPerToken != null
+          ? (requestedContextSize * kvBytesPerToken / (1024 * 1024)).round()
+          : (requestedContextSize / 1024 * 100.0).round();
+          
       final availableForLayers = vram - contextVramMb - 200; // 200MB safety margin
 
       int gpuLayers;

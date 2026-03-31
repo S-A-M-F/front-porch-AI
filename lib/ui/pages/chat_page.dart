@@ -5534,43 +5534,14 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                       final isCurrent = !completed &&
                           tasks.take(i).every((t) => t['completed'] == true);
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: InkWell(
-                          onTap: () => chatService.toggleTask(i),
-                          onLongPress: () => chatService.removeTask(i),
-                          borderRadius: BorderRadius.circular(4),
-                          child: Row(
-                            children: [
-                              Icon(
-                                completed ? Icons.check_box : Icons.check_box_outline_blank,
-                                size: 16,
-                                color: completed
-                                    ? Colors.greenAccent
-                                    : isCurrent
-                                        ? Colors.orangeAccent
-                                        : Colors.white24,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  task['description'] as String,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: completed
-                                        ? Colors.white30
-                                        : isCurrent
-                                            ? Colors.white
-                                            : Colors.white54,
-                                    decoration: completed ? TextDecoration.lineThrough : null,
-                                  ),
-                                ),
-                              ),
-                              if (isCurrent)
-                                const Text('◂', style: TextStyle(fontSize: 10, color: Colors.orangeAccent)),
-                            ],
-                          ),
-                        ),
+                      return _EditableTaskRow(
+                        key: ValueKey('task_$i'),
+                        description: task['description'] as String,
+                        completed: completed,
+                        isCurrent: isCurrent,
+                        onToggle: () => chatService.toggleTask(i),
+                        onDelete: () => chatService.removeTask(i),
+                        onEdit: (newText) => chatService.updateTask(i, newText),
                       );
                     }),
                   ],
@@ -5678,18 +5649,53 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                       if (tasks.isNotEmpty)
                         InkWell(
                           onTap: _generatingTasks ? null : () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: const Color(0xFF1E293B),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                title: const Text('Regenerate Tasks?',
+                                    style: TextStyle(color: Colors.white, fontSize: 15)),
+                                content: const Text(
+                                  'This will clear all current tasks and generate new ones. Any manually added tasks will be lost.',
+                                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orangeAccent,
+                                      foregroundColor: Colors.black,
+                                    ),
+                                    child: const Text('Regenerate', style: TextStyle(fontSize: 12)),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm != true) return;
                             setState(() => _generatingTasks = true);
                             await chatService.generateObjectiveTasks(taskCount: _taskCount, nsfw: _nsfw);
                             if (mounted) setState(() => _generatingTasks = false);
                           },
-                          child: const Padding(
-                            padding: EdgeInsets.all(4),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.refresh, size: 12, color: Colors.white30),
-                                SizedBox(width: 4),
-                                Text('Regen tasks', style: TextStyle(fontSize: 10, color: Colors.white30)),
+                                if (_generatingTasks)
+                                  const SizedBox(width: 12, height: 12,
+                                      child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white38))
+                                else
+                                  const Icon(Icons.refresh, size: 12, color: Colors.white30),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _generatingTasks ? 'Generating...' : 'Regen tasks',
+                                  style: const TextStyle(fontSize: 10, color: Colors.white30),
+                                ),
                               ],
                             ),
                           ),
@@ -5717,6 +5723,157 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Editable Task Row ──────────────────────────────────────────────────
+
+class _EditableTaskRow extends StatefulWidget {
+  final String description;
+  final bool completed;
+  final bool isCurrent;
+  final VoidCallback onToggle;
+  final VoidCallback onDelete;
+  final ValueChanged<String> onEdit;
+
+  const _EditableTaskRow({
+    super.key,
+    required this.description,
+    required this.completed,
+    required this.isCurrent,
+    required this.onToggle,
+    required this.onDelete,
+    required this.onEdit,
+  });
+
+  @override
+  State<_EditableTaskRow> createState() => _EditableTaskRowState();
+}
+
+class _EditableTaskRowState extends State<_EditableTaskRow> {
+  bool _editing = false;
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.description);
+  }
+
+  @override
+  void didUpdateWidget(_EditableTaskRow old) {
+    super.didUpdateWidget(old);
+    if (!_editing && old.description != widget.description) {
+      _controller.text = widget.description;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (_controller.text.trim().isNotEmpty) {
+      widget.onEdit(_controller.text.trim());
+    }
+    setState(() => _editing = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Checkbox
+          GestureDetector(
+            onTap: widget.onToggle,
+            child: Icon(
+              widget.completed ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 16,
+              color: widget.completed
+                  ? Colors.greenAccent
+                  : widget.isCurrent
+                      ? Colors.orangeAccent
+                      : Colors.white24,
+            ),
+          ),
+          const SizedBox(width: 6),
+
+          // Description or edit field
+          Expanded(
+            child: _editing
+                ? TextField(
+                    controller: _controller,
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      filled: true,
+                      fillColor: const Color(0xFF374151),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide: const BorderSide(color: Colors.orangeAccent),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide: const BorderSide(color: Colors.orangeAccent),
+                      ),
+                    ),
+                    onSubmitted: (_) => _save(),
+                  )
+                : GestureDetector(
+                    onTap: widget.onToggle,
+                    child: Text(
+                      widget.description,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: widget.completed
+                            ? Colors.white30
+                            : widget.isCurrent
+                                ? Colors.white
+                                : Colors.white54,
+                        decoration: widget.completed ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                  ),
+          ),
+
+          // Current task indicator
+          if (widget.isCurrent && !_editing)
+            const Padding(
+              padding: EdgeInsets.only(left: 2),
+              child: Text('◂', style: TextStyle(fontSize: 10, color: Colors.orangeAccent)),
+            ),
+
+          const SizedBox(width: 4),
+
+          // Edit / Save button
+          if (_editing)
+            GestureDetector(
+              onTap: _save,
+              child: const Icon(Icons.check, size: 14, color: Colors.greenAccent),
+            )
+          else
+            GestureDetector(
+              onTap: () => setState(() => _editing = true),
+              child: const Icon(Icons.edit, size: 12, color: Colors.white24),
+            ),
+
+          const SizedBox(width: 4),
+
+          // Delete button
+          GestureDetector(
+            onTap: widget.onDelete,
+            child: const Icon(Icons.close, size: 12, color: Colors.white24),
+          ),
+        ],
+      ),
     );
   }
 }
