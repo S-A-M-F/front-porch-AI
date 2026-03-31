@@ -307,6 +307,8 @@ class WebServerService extends ChangeNotifier {
     // ── Image gen local proxy routes ──
     router.post('/api/image-gen/test-connection', _handleImgenTestConnection);
     router.get('/api/image-gen/local-models', _handleImgenLocalModels);
+    router.post('/api/image-gen/unload-model', _handleImgenUnloadModel);
+    router.post('/api/image-gen/switch-model', _handleImgenSwitchModel);
 
     // ── Porch Stories routes ──
     router.get('/api/stories', _handleGetStories);
@@ -4439,7 +4441,6 @@ class WebServerService extends ChangeNotifier {
       if (backend == 'drawthings') {
         models = await _imageGenService!.fetchDrawThingsModels(url);
       } else {
-        // a1111 or unspecified — same endpoint, same result
         models = await _imageGenService!.fetchA1111Models(url);
       }
       return shelf.Response.ok(
@@ -4451,6 +4452,45 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
+  /// POST /api/image-gen/unload-model — Unload the current model from memory.
+  Future<shelf.Response> _handleImgenUnloadModel(shelf.Request request) async {
+    if (_imageGenService == null) {
+      return _errorResponse(503, 'Image gen service not available');
+    }
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final url = body['url']?.toString() ?? '';
+      if (url.isEmpty) return _errorResponse(400, 'url is required');
+      final ok = await _imageGenService!.unloadLocalModel(url);
+      return shelf.Response.ok(
+        jsonEncode({'ok': ok, 'message': ok ? 'Model unloaded' : 'Unload not supported by server'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Unload failed: $e');
+    }
+  }
+
+  /// POST /api/image-gen/switch-model — Unload current model then load a new one.
+  Future<shelf.Response> _handleImgenSwitchModel(shelf.Request request) async {
+    if (_imageGenService == null) {
+      return _errorResponse(503, 'Image gen service not available');
+    }
+    try {
+      final body  = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final url   = body['url']?.toString() ?? '';
+      final model = body['model']?.toString() ?? '';
+      if (url.isEmpty)   return _errorResponse(400, 'url is required');
+      if (model.isEmpty) return _errorResponse(400, 'model is required');
+      final ok = await _imageGenService!.switchLocalModel(url, model);
+      return shelf.Response.ok(
+        jsonEncode({'ok': ok, 'message': ok ? 'Switched to $model' : 'Switch failed'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Switch failed: $e');
+    }
+  }
 
   // ══════════════════════════════════════════════════════════════════════
   // Porch Stories handlers

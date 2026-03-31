@@ -731,15 +731,47 @@ class ImageGenService extends ChangeNotifier {
   Future<List<String>> fetchDrawThingsModels(String baseUrl) =>
       fetchA1111Models(baseUrl);
 
+  /// Unload the currently active model from memory on a local server.
+  ///
+  /// Calls `POST /sdapi/v1/unload-checkpoint` (standard A1111 endpoint).
+  /// Draw Things may support this via its A1111-compat layer.
+  /// If the server doesn't support it the error is silently ignored —
+  /// model switching via [switchLocalModel] will still proceed.
+  ///
+  /// Returns true if the server acknowledged the unload (HTTP 200).
+  Future<bool> unloadLocalModel(String baseUrl) async {
+    final client = http.Client();
+    try {
+      final uri = Uri.parse('${baseUrl.trimRight()}/sdapi/v1/unload-checkpoint');
+      debugPrint('ImageGen: Requesting model unload at $uri');
+      final response = await client
+          .post(uri, headers: {'Content-Type': 'application/json'})
+          .timeout(const Duration(seconds: 30));
+      final ok = response.statusCode == 200;
+      debugPrint('ImageGen: Unload ${ok ? "accepted" : "rejected (${response.statusCode}) — may not be supported"}');
+      return ok;
+    } catch (e) {
+      debugPrint('ImageGen: unloadLocalModel failed (ignored): $e');
+      return false;
+    } finally {
+      client.close();
+    }
+  }
+
   /// Switch the active checkpoint on a local A1111 / Draw Things server.
   ///
-  /// Calls `POST /sdapi/v1/options` with the model name.
-  /// Draw Things may silently accept this and switch models; A1111 will
-  /// trigger a model load (which can take 10–60 s).
+  /// Sequence:
+  ///   1. `POST /sdapi/v1/unload-checkpoint` — free current model from memory
+  ///      (silently ignored if not supported by the server)
+  ///   2. `POST /sdapi/v1/options` with the new model name — trigger model load
   ///
-  /// Returns true if the request was accepted (HTTP 200).
+  /// Returns true if both requests completed (or unload was skipped/failed
+  /// gracefully and the options call returned 200).
   Future<bool> switchLocalModel(String baseUrl, String modelName) async {
     if (modelName.isEmpty) return false;
+    // Step 1: unload current model (best-effort — Draw Things may ignore this)
+    await unloadLocalModel(baseUrl);
+    // Step 2: request the new checkpoint
     final client = http.Client();
     try {
       final uri = Uri.parse('${baseUrl.trimRight()}/sdapi/v1/options');
@@ -750,7 +782,7 @@ class ImageGenService extends ChangeNotifier {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'sd_model_checkpoint': modelName}),
           )
-          .timeout(const Duration(seconds: 90)); // model loads can be slow
+          .timeout(const Duration(seconds: 120)); // model loads can be slow
       final ok = response.statusCode == 200;
       debugPrint('ImageGen: Checkpoint switch ${ok ? "accepted" : "rejected (${response.statusCode})"}');
       return ok;

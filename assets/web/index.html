@@ -696,6 +696,18 @@
                     💡 The selected model will be loaded before each generation.
                   </span>
                 </div>
+                <!-- Model action buttons -->
+                <div style="display:flex;gap:8px;margin-top:10px">
+                  <button class="btn btn-sm" id="btn-imgen-unload-model"
+                    style="flex:1;border:1px solid rgba(248,113,113,0.5);color:#f87171;background:rgba(248,113,113,0.08)">
+                    🗑 Unload Model
+                  </button>
+                  <button class="btn btn-sm" id="btn-imgen-switch-model"
+                    style="flex:1;border:1px solid rgba(167,139,250,0.5);color:#a78bfa;background:rgba(167,139,250,0.08)">
+                    ⇄ Switch to Selected
+                  </button>
+                </div>
+                <span id="imgen-model-action-status" style="font-size:11px;color:var(--text-muted);margin-top:4px;display:none;display:block"></span>
               </div>
 
 
