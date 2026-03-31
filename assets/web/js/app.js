@@ -4154,6 +4154,54 @@
             }
         });
 
+        // Unload current model from memory
+        $('#btn-imgen-unload-model')?.addEventListener('click', async () => {
+            const url      = $('#setting-imgen-local-url')?.value?.trim();
+            const statusEl = $('#imgen-model-action-status');
+            if (!url) return;
+            if (statusEl) { statusEl.textContent = '⏳ Unloading model…'; statusEl.style.color = 'var(--text-muted)'; statusEl.style.display = 'block'; }
+            const res = await apiJson('/api/image-gen/unload-model', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url }),
+            });
+            if (statusEl) {
+                if (res?.ok) {
+                    statusEl.textContent = '✅ Model unloaded from memory';
+                    statusEl.style.color = '#4ade80';
+                } else {
+                    statusEl.textContent = '⚠ Unload not supported — model may still be in memory';
+                    statusEl.style.color = '#fbbf24';
+                }
+            }
+        });
+
+        // Switch to the selected checkpoint (unload current first)
+        $('#btn-imgen-switch-model')?.addEventListener('click', async () => {
+            const url      = $('#setting-imgen-local-url')?.value?.trim();
+            const model    = $('#setting-imgen-local-model')?.value?.trim();
+            const statusEl = $('#imgen-model-action-status');
+            if (!url || !model) {
+                if (statusEl) { statusEl.textContent = '⚠ Select a checkpoint first'; statusEl.style.color = '#fbbf24'; statusEl.style.display = 'block'; }
+                return;
+            }
+            if (statusEl) { statusEl.textContent = '⏳ Unloading then switching to ' + model + '…'; statusEl.style.color = 'var(--text-muted)'; statusEl.style.display = 'block'; }
+            const res = await apiJson('/api/image-gen/switch-model', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url, model }),
+            });
+            if (statusEl) {
+                if (res?.ok) {
+                    statusEl.textContent = `✅ Switched to: ${model}`;
+                    statusEl.style.color = '#a78bfa';
+                } else {
+                    statusEl.textContent = '❌ Switch failed — check server logs';
+                    statusEl.style.color = '#f87171';
+                }
+            }
+        });
+
         // RAG / Memory save
         $('#btn-save-rag')?.addEventListener('click', async () => {
             const res = await api('/api/settings', {

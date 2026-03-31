@@ -38,8 +38,11 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   final _localUrlController = TextEditingController();
   List<String> _localModels = [];
   bool _loadingLocalModels = false;
-  bool? _connectionOk; // null = untested, true = ok, false = failed
+  bool? _connectionOk;      // null = untested, true = ok, false = failed
   bool _testingConnection = false;
+  bool _unloadingModel    = false;
+  bool _switchingModel    = false;
+  String _modelActionStatus = ''; // feedback message for unload/switch
 
   @override
   void initState() {
@@ -108,6 +111,41 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         _testingConnection = false;
       });
       if (ok) _fetchLocalModels(url);
+    }
+  }
+
+  Future<void> _unloadModel() async {
+    final url = _localUrlController.text.trim();
+    if (url.isEmpty) return;
+    setState(() { _unloadingModel = true; _modelActionStatus = ''; });
+    final service = Provider.of<ImageGenService>(context, listen: false);
+    final ok = await service.unloadLocalModel(url);
+    if (mounted) {
+      setState(() {
+        _unloadingModel = false;
+        _modelActionStatus = ok
+            ? '✓ Model unloaded from memory'
+            : '⚠ Unload not supported — model may still be in memory';
+      });
+    }
+  }
+
+  Future<void> _switchModel() async {
+    final url = _localUrlController.text.trim();
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final model = storage.imageGenModel;
+    if (url.isEmpty || model.isEmpty) return;
+    setState(() { _switchingModel = true; _modelActionStatus = 'Unloading current model…'; });
+    final service = Provider.of<ImageGenService>(context, listen: false);
+    // switchLocalModel() already calls unload then options internally
+    final ok = await service.switchLocalModel(url, model);
+    if (mounted) {
+      setState(() {
+        _switchingModel = false;
+        _modelActionStatus = ok
+            ? '✓ Switched to: $model'
+            : '✗ Failed to switch — check the server logs';
+      });
     }
   }
 
@@ -585,8 +623,67 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             },
           ),
 
+        const SizedBox(height: 16),
+
+        // Model action buttons
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: _unloadingModel
+                    ? const SizedBox(width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
+                    : const Icon(Icons.memory, size: 16, color: Colors.redAccent),
+                label: const Text('Unload Model',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.redAccent),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+                onPressed: (_unloadingModel || _switchingModel) ? null : _unloadModel,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                icon: _switchingModel
+                    ? const SizedBox(width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.swap_horiz, size: 16),
+                label: const Text('Switch to Selected',
+                    style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.purpleAccent),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+                onPressed: (_unloadingModel || _switchingModel || storage.imageGenModel.isEmpty)
+                    ? null
+                    : _switchModel,
+              ),
+            ),
+          ],
+        ),
+
+        if (_modelActionStatus.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            _modelActionStatus,
+            style: TextStyle(
+              fontSize: 11,
+              color: _modelActionStatus.startsWith('✓')
+                  ? Colors.greenAccent
+                  : _modelActionStatus.startsWith('⚠')
+                      ? Colors.amber
+                      : Colors.redAccent,
+            ),
+          ),
+        ],
+
         const SizedBox(height: 20),
         _buildSharedFields(storage),
+
       ],
     );
   }
