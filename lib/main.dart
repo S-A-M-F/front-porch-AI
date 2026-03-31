@@ -251,6 +251,31 @@ void main(List<String> args) async {
             return previous ?? ImageGenService(storage);
           },
         ),
+        // Porch Stories: repository + pipeline must be above WebServerService
+        ChangeNotifierProvider(create: (context) {
+          final repo = StoryRepository(db);
+          repo.loadProjects();
+          return repo;
+        }),
+        ChangeNotifierProxyProvider2<LLMProvider, StorageService, StoryPipelineService>(
+          create: (context) {
+            final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+            final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+            final storage = Provider.of<StorageService>(context, listen: false);
+            final embeddingService = EmbeddingService(sidecar);
+            final memoryService = MemoryService(embeddingService, storage, db);
+            final repo = Provider.of<StoryRepository>(context, listen: false);
+            return StoryPipelineService(repo, llmProvider.activeService, memoryService, db);
+          },
+          update: (context, llmProvider, storage, previous) {
+            if (previous != null) return previous;
+            final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+            final embeddingService = EmbeddingService(sidecar);
+            final memoryService = MemoryService(embeddingService, storage, db);
+            final repo = Provider.of<StoryRepository>(context, listen: false);
+            return StoryPipelineService(repo, llmProvider.activeService, memoryService, db);
+          },
+        ),
         ChangeNotifierProxyProvider<StorageService, WebServerService>(
           create: (context) {
             final chatService = Provider.of<ChatService>(context, listen: false);
@@ -305,31 +330,6 @@ void main(List<String> args) async {
             ws.setStoryRepository(Provider.of<StoryRepository>(context, listen: false));
             ws.setStoryPipelineService(Provider.of<StoryPipelineService>(context, listen: false));
             return ws;
-          },
-        ),
-        // Porch Stories: repository + pipeline
-        ChangeNotifierProvider(create: (context) {
-          final repo = StoryRepository(db);
-          repo.loadProjects();
-          return repo;
-        }),
-        ChangeNotifierProxyProvider2<LLMProvider, StorageService, StoryPipelineService>(
-          create: (context) {
-            final llmProvider = Provider.of<LLMProvider>(context, listen: false);
-            final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
-            final storage = Provider.of<StorageService>(context, listen: false);
-            final embeddingService = EmbeddingService(sidecar);
-            final memoryService = MemoryService(embeddingService, storage, db);
-            final repo = Provider.of<StoryRepository>(context, listen: false);
-            return StoryPipelineService(repo, llmProvider.activeService, memoryService, db);
-          },
-          update: (context, llmProvider, storage, previous) {
-            if (previous != null) return previous;
-            final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
-            final embeddingService = EmbeddingService(sidecar);
-            final memoryService = MemoryService(embeddingService, storage, db);
-            final repo = Provider.of<StoryRepository>(context, listen: false);
-            return StoryPipelineService(repo, llmProvider.activeService, memoryService, db);
           },
         ),
       ],
