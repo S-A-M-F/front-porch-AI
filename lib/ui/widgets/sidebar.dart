@@ -39,24 +39,16 @@ class Sidebar extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                const Icon(Icons.menu, color: Colors.white70),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'FRONT PORCH AI',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'FRONT PORCH AI',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
                 ),
-              ],
+              ),
             ),
           ),
           _SidebarItem(

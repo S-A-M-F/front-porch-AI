@@ -35,6 +35,37 @@ enum ImageGenMode {
   userAvatar,
 }
 
+/// Local image-generation backend options.
+enum ImageGenBackend {
+  remote,
+  a1111,
+  drawThings;
+
+  static ImageGenBackend fromKey(String key) {
+    switch (key) {
+      case 'a1111':      return ImageGenBackend.a1111;
+      case 'drawthings': return ImageGenBackend.drawThings;
+      default:           return ImageGenBackend.remote;
+    }
+  }
+
+  String get key {
+    switch (this) {
+      case ImageGenBackend.a1111:      return 'a1111';
+      case ImageGenBackend.drawThings: return 'drawthings';
+      case ImageGenBackend.remote:     return 'remote';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case ImageGenBackend.a1111:      return 'AUTOMATIC1111';
+      case ImageGenBackend.drawThings: return 'Draw Things';
+      case ImageGenBackend.remote:     return 'Remote API';
+    }
+  }
+}
+
 /// Metadata for an image model available via the remote API.
 class ImageModelInfo {
   final String id;
@@ -66,10 +97,16 @@ class ImageGenService extends ChangeNotifier {
   String? get lastSavedPath => _lastSavedPath;
 
   /// Whether image gen is configured and ready to use.
-  /// Needs imageGenEnabled + API key + remote image model.
   bool get isConfigured {
     if (!_storage.imageGenEnabled) return false;
-    return _storage.remoteApiKey.isNotEmpty && _storage.imageGenModel.isNotEmpty;
+    final backend = ImageGenBackend.fromKey(_storage.imageGenBackend);
+    switch (backend) {
+      case ImageGenBackend.remote:
+        return _storage.remoteApiKey.isNotEmpty && _storage.imageGenModel.isNotEmpty;
+      case ImageGenBackend.a1111:
+      case ImageGenBackend.drawThings:
+        return _storage.localImageGenUrl.isNotEmpty;
+    }
   }
 
   ImageGenService(this._storage);
@@ -99,42 +136,63 @@ class ImageGenService extends ChangeNotifier {
     try {
       Uint8List imageBytes;
 
-      if (_storage.remoteApiKey.isEmpty) {
-        _statusMessage = 'No API key configured.';
-        _isGenerating = false;
-        notifyListeners();
-        return null;
-      }
+      final backend = ImageGenBackend.fromKey(_storage.imageGenBackend);
 
-      final imageModel = model ?? _storage.imageGenModel;
-      if (imageModel.isEmpty) {
-        _statusMessage = 'No image model selected.';
-        _isGenerating = false;
-        notifyListeners();
-        return null;
-      }
-
-      final imageSize = size ?? _storage.imageGenSize;
-      final apiUrl = _storage.remoteApiUrl;
-      final apiKey = _storage.remoteApiKey;
-
-      if (_isOpenRouterStyle(apiUrl)) {
-        imageBytes = await _generateViaOpenRouter(
-          apiUrl: apiUrl,
-          apiKey: apiKey,
-          model: imageModel,
-          prompt: prompt,
-          size: imageSize,
-        );
-      } else {
-        imageBytes = await _generateViaOpenAICompat(
-          apiUrl: apiUrl,
-          apiKey: apiKey,
-          model: imageModel,
+      if (backend == ImageGenBackend.a1111 || backend == ImageGenBackend.drawThings) {
+        // ── Local A1111 / Draw Things ──────────────────────────────────
+        final localUrl = _storage.localImageGenUrl;
+        if (localUrl.isEmpty) {
+          _statusMessage = 'No local server URL configured.';
+          _isGenerating = false;
+          notifyListeners();
+          return null;
+        }
+        final imageSize = size ?? _storage.imageGenSize;
+        imageBytes = await _generateViaA1111(
+          baseUrl: localUrl,
           prompt: prompt,
           negativePrompt: negativePrompt,
           size: imageSize,
         );
+      } else {
+        // ── Remote API ─────────────────────────────────────────────────
+        if (_storage.remoteApiKey.isEmpty) {
+          _statusMessage = 'No API key configured.';
+          _isGenerating = false;
+          notifyListeners();
+          return null;
+        }
+
+        final imageModel = model ?? _storage.imageGenModel;
+        if (imageModel.isEmpty) {
+          _statusMessage = 'No image model selected.';
+          _isGenerating = false;
+          notifyListeners();
+          return null;
+        }
+
+        final imageSize = size ?? _storage.imageGenSize;
+        final apiUrl = _storage.remoteApiUrl;
+        final apiKey = _storage.remoteApiKey;
+
+        if (_isOpenRouterStyle(apiUrl)) {
+          imageBytes = await _generateViaOpenRouter(
+            apiUrl: apiUrl,
+            apiKey: apiKey,
+            model: imageModel,
+            prompt: prompt,
+            size: imageSize,
+          );
+        } else {
+          imageBytes = await _generateViaOpenAICompat(
+            apiUrl: apiUrl,
+            apiKey: apiKey,
+            model: imageModel,
+            prompt: prompt,
+            negativePrompt: negativePrompt,
+            size: imageSize,
+          );
+        }
       }
 
       _lastGeneratedImage = imageBytes;
@@ -604,6 +662,118 @@ class ImageGenService extends ChangeNotifier {
   }
 
   // ── Private helpers ────────────────────────────────────────────────
+
+  /// Parse a "WxH" size string into width and height integers.
+  static (int width, int height) _parseSize(String size) {
+    final parts = size.split('x');
+    if (parts.length == 2) {
+      final w = int.tryParse(parts[0]) ?? 1024;
+      final h = int.tryParse(parts[1]) ?? 1024;
+      return (w, h);
+    }
+    return (1024, 1024);
+  }
+
+  /// Test whether a local image-gen server is reachable.
+  ///
+  /// Returns true on HTTP 200, false otherwise.
+  Future<bool> testLocalConnection(String baseUrl) async {
+    final client = http.Client();
+    try {
+      // A1111 & Draw Things return 200 on GET /
+      final uri = Uri.parse('${baseUrl.trimRight()}/sdapi/v1/sd-models');
+      final response = await client
+          .get(uri)
+          .timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Fetch available checkpoints from an A1111 / Draw Things server.
+  ///
+  /// Returns model title strings, e.g. `["v1-5-pruned.safetensors [hash]"]`.
+  Future<List<String>> fetchA1111Models(String baseUrl) async {
+    final client = http.Client();
+    try {
+      final uri = Uri.parse('${baseUrl.trimRight()}/sdapi/v1/sd-models');
+      final response = await client
+          .get(uri)
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return [];
+      final list = jsonDecode(response.body) as List<dynamic>;
+      return list
+          .map((m) => (m as Map<String, dynamic>)['title']?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Generate via AUTOMATIC1111 / Draw Things local server.
+  ///
+  /// Endpoint: POST {baseUrl}/sdapi/v1/txt2img
+  /// Response: { "images": ["<base64>", ...] }
+  Future<Uint8List> _generateViaA1111({
+    required String baseUrl,
+    required String prompt,
+    String negativePrompt = '',
+    String size = '1024x1024',
+  }) async {
+    final (width, height) = _parseSize(size);
+    final uri = Uri.parse('${baseUrl.trimRight()}/sdapi/v1/txt2img');
+    debugPrint('ImageGen: POST $uri (A1111/DrawThings)');
+
+    final payload = <String, dynamic>{
+      'prompt': prompt,
+      'negative_prompt': negativePrompt,
+      'width': width,
+      'height': height,
+      'steps': 20,
+      'cfg_scale': 7,
+      'sampler_name': 'Euler a',
+      'seed': -1,
+      'batch_size': 1,
+    };
+
+    final client = http.Client();
+    try {
+      final response = await client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 180));
+
+      if (response.statusCode != 200) {
+        String errorMsg = 'HTTP ${response.statusCode}';
+        try {
+          final errBody = jsonDecode(response.body);
+          final detail = errBody['detail'];
+          if (detail is String) errorMsg = detail;
+        } catch (_) {}
+        throw Exception(errorMsg);
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final images = body['images'] as List<dynamic>?;
+      if (images == null || images.isEmpty) {
+        throw Exception('No images returned from local server');
+      }
+
+      final b64 = images[0] as String;
+      return base64Decode(b64);
+    } finally {
+      client.close();
+    }
+  }
 
   /// Detect if URL is an OpenRouter-style API (uses chat/completions for images).
   bool _isOpenRouterStyle(String url) {

@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/utils/gguf_parser.dart';
 
 class ModelManager extends ChangeNotifier {
   final StorageService _storageService;
@@ -31,6 +32,9 @@ class ModelManager extends ChangeNotifier {
   String? _currentDownload;
   String _statusMessage = ''; // Added status message
   
+  // Cache for rapid UI rendering of VRAM gauges
+  final Map<String, int> _kvBytesCache = {};
+
   List<FileSystemEntity> get models => List.unmodifiable(_models);
   bool get isDownloading => _isDownloading;
   double get downloadProgress => _downloadProgress;
@@ -41,6 +45,30 @@ class ModelManager extends ChangeNotifier {
   ModelManager(this._storageService) {
     _init();
     _storageService.addListener(_init);
+  }
+
+  /// Retrieves the exact Bytes Per Token required for KV Cache
+  /// by parsing the GGUF file headers natively.
+  Future<int?> getKvCacheBytesPerToken(String filePath) async {
+    if (_kvBytesCache.containsKey(filePath)) {
+      return _kvBytesCache[filePath];
+    }
+    
+    // Parse in background to avoid jank if possible, though it's relatively fast
+    try {
+      final bytes = await GGUFParser.getKvCacheBytesPerToken(filePath);
+      if (bytes != null) {
+        _kvBytesCache[filePath] = bytes;
+      }
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Synchronous fetch for KV bytes from cache. Returns null if not cached yet.
+  int? getCachedKvBytesPerToken(String filePath) {
+    return _kvBytesCache[filePath];
   }
 
   @override

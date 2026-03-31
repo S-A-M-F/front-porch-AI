@@ -131,6 +131,8 @@ class StorageService extends ChangeNotifier {
 
   // Image generation settings
   bool _imageGenEnabled = false;
+  String _imageGenBackend = 'remote'; // 'remote', 'a1111', 'drawthings'
+  String _localImageGenUrl = 'http://127.0.0.1:7860';
   String _imageGenModel = '';
   String _imageGenSize = '1024x1024';
   String _imageGenNegativePrompt = 'blurry, low quality, watermark, text';
@@ -238,6 +240,8 @@ class StorageService extends ChangeNotifier {
   String get cloudSyncPassword => _cloudSyncPassword;
   String get cloudSyncLastTime => _cloudSyncLastTime;
   bool get imageGenEnabled => _imageGenEnabled;
+  String get imageGenBackend => _imageGenBackend;
+  String get localImageGenUrl => _localImageGenUrl;
   String get imageGenModel => _imageGenModel;
   String get imageGenSize => _imageGenSize;
   String get imageGenNegativePrompt => _imageGenNegativePrompt;
@@ -368,6 +372,8 @@ class StorageService extends ChangeNotifier {
 
     // Image generation settings
     _imageGenEnabled = _prefs?.getBool('image_gen_enabled') ?? false;
+    _imageGenBackend = _prefs?.getString('image_gen_backend') ?? 'remote';
+    _localImageGenUrl = _prefs?.getString('local_image_gen_url') ?? 'http://127.0.0.1:7860';
     _imageGenModel = _prefs?.getString('image_gen_model') ?? '';
     _imageGenSize = _prefs?.getString('image_gen_size') ?? '1024x1024';
     _imageGenNegativePrompt = _prefs?.getString('image_gen_negative_prompt') ?? 'blurry, low quality, watermark, text';
@@ -940,6 +946,18 @@ class StorageService extends ChangeNotifier {
   Future<void> setImageGenEnabled(bool value) async {
     _imageGenEnabled = value;
     await _prefs?.setBool('image_gen_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setImageGenBackend(String value) async {
+    _imageGenBackend = value;
+    await _prefs?.setString('image_gen_backend', value);
+    notifyListeners();
+  }
+
+  Future<void> setLocalImageGenUrl(String value) async {
+    _localImageGenUrl = value;
+    await _prefs?.setString('local_image_gen_url', value);
     notifyListeners();
   }
 

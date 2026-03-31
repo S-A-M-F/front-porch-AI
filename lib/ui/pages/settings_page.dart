@@ -364,10 +364,18 @@ class _SettingsPageState extends State<SettingsPage> {
 
     // Respect user's context size — pass it to the optimizer so only GPU layers adjust
     final userContext = int.tryParse(_contextSizeController.text);
+    
+    int? kvBytesPerToken;
+    if (_selectedModelPath != null && mounted) {
+      final modelManager = Provider.of<ModelManager>(context, listen: false);
+      kvBytesPerToken = modelManager.getCachedKvBytesPerToken(_selectedModelPath!);
+    }
+
     final suggestion = OptimizationService.calculateSettings(
       adjustedHw,
       modelSizeMb: modelSize,
       requestedContextSize: userContext,
+      kvBytesPerToken: kvBytesPerToken,
     );
 
     setState(() {
@@ -446,7 +454,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return DefaultTabController(
-      length: 2,
+      length: 4,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -457,15 +465,21 @@ class _SettingsPageState extends State<SettingsPage> {
           bottom: TabBar(
             labelColor: theme.primaryColor,
             unselectedLabelColor: theme.textTheme.bodyMedium?.color,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: const [
               Tab(text: 'General'),
-              Tab(text: 'Advanced / GPU'),
+              Tab(text: 'Voice & Media'),
+              Tab(text: 'Backend'),
+              Tab(text: 'Advanced'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
             _buildGeneralTab(context),
+            _buildVoiceMediaTab(context),
+            _buildBackendTab(context),
             _buildAdvancedTab(context),
           ],
         ),
@@ -475,16 +489,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildGeneralTab(BuildContext context) {
     final storageService = Provider.of<StorageService>(context);
-    final modelManager = Provider.of<ModelManager>(context);
-    final backendManager = Provider.of<BackendManager>(context);
-    final koboldService = Provider.of<KoboldService>(context);
-    final llmProvider = Provider.of<LLMProvider>(context);
     final theme = Theme.of(context);
-
-    // Auto-select first model if none selected and models exist
-    if (_selectedModelPath == null && modelManager.models.isNotEmpty) {
-      _selectedModelPath = modelManager.models.first.path;
-    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -525,7 +530,7 @@ class _SettingsPageState extends State<SettingsPage> {
             context,
             divisions: 13,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           _buildSectionHeader('Model Instructions', context),
           const SizedBox(height: 8),
           // Prompt library row
@@ -607,8 +612,22 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             onChanged: (val) => storageService.setSystemPrompt(val),
           ),
+        ],
+      ),
+    );
+  }
 
-          const SizedBox(height: 24),
+  Widget _buildVoiceMediaTab(BuildContext context) {
+    final storageService = Provider.of<StorageService>(context);
+    final modelManager = Provider.of<ModelManager>(context);
+    final llmProvider = Provider.of<LLMProvider>(context);
+    final theme = Theme.of(context);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           _buildSectionHeader('Text-to-Speech', context),
           const SizedBox(height: 8),
           Container(
@@ -631,14 +650,13 @@ class _SettingsPageState extends State<SettingsPage> {
                             ? () {
                                 final voiceKey = storageService.ttsVoiceModel;
                                 if (voiceKey.isEmpty) return 'Enabled — Voice: Not set';
-                                // Look up friendly name from available voices
                                 final ttsService = Provider.of<TtsService>(context, listen: false);
                                 final match = ttsService.activeVoices.where((v) => v.id == voiceKey);
                                 final displayName = match.isNotEmpty ? match.first.name : voiceKey;
                                 return 'Enabled — Voice: $displayName';
                               }()
                             : 'Disabled',
-                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                        style: const TextStyle(fontSize: 12, color: Colors.white54),
                       ),
                     ],
                   ),
@@ -850,21 +868,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   // Voice call model selector — backend-aware
                   Builder(builder: (context) {
                     final isLocal = llmProvider.activeBackend == BackendType.kobold;
-                    // Build a unified list of model entries: {id, name}
                     final List<Map<String, String>> callModels;
                     if (isLocal) {
-                      // Use local GGUF models from ModelManager
                       callModels = modelManager.models.map((f) {
                         final basename = f.path.split('/').last.split('\\').last;
                         final displayName = basename.replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '');
                         return {'id': f.path, 'name': displayName};
                       }).toList();
                     } else {
-                      // Use remote API models
                       callModels = _availableModels.map((m) => {'id': m.id, 'name': m.name}).toList();
                     }
 
-                    // Recommend small/fast models for voice calls
                     final recommended = callModels.where((m) {
                       final lower = m['name']!.toLowerCase();
                       return lower.contains('mini') ||
@@ -952,7 +966,6 @@ class _SettingsPageState extends State<SettingsPage> {
                             },
                           )
                         else
-                          // Fallback text field if no models available
                           TextFormField(
                             initialValue: storageService.callModelName,
                             decoration: InputDecoration(
@@ -969,15 +982,14 @@ class _SettingsPageState extends State<SettingsPage> {
                             onChanged: (val) => storageService.setCallModelName(val.trim()),
                           ),
                         const SizedBox(height: 4),
-                        Text(
+                        const Text(
                           '💡 Use a smaller, faster model for voice calls.\n'
                           'Reasoning/thinking models add latency — not recommended.',
                           style: TextStyle(fontSize: 11, color: Colors.white38),
                         ),
-                        // Quick-pick chips for recommended fast models
                         if (recommended.isNotEmpty) ...[
                           const SizedBox(height: 6),
-                          Text('⭐ Recommended for voice calls:', style: TextStyle(fontSize: 10, color: Colors.white24)),
+                          const Text('⭐ Recommended for voice calls:', style: TextStyle(fontSize: 10, color: Colors.white24)),
                           const SizedBox(height: 4),
                           Wrap(
                             spacing: 6,
@@ -1023,7 +1035,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           Text('Voice Buffer', style: theme.textTheme.bodySmall),
                           Text(
                             '${storageService.callBufferSentences} sentences',
-                            style: TextStyle(fontSize: 12, color: Colors.white54),
+                            style: const TextStyle(fontSize: 12, color: Colors.white54),
                           ),
                         ],
                       ),
@@ -1035,7 +1047,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         activeColor: Colors.blueAccent,
                         onChanged: (val) => storageService.setCallBufferSentences(val.round()),
                       ),
-                      Text(
+                      const Text(
                         'Sentences to pre-generate before playback starts. '
                         'Auto-expands if generation is slow.',
                         style: TextStyle(fontSize: 11, color: Colors.white38),
@@ -1088,7 +1100,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (val) => storageService.setCallSystemPrompt(val),
                       ),
                       const SizedBox(height: 4),
-                      Text(
+                      const Text(
                         'Appended to the system prompt during voice calls to control response style.',
                         style: TextStyle(fontSize: 11, color: Colors.white38),
                       ),
@@ -1111,7 +1123,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
-                  Text(
+                  const Text(
                     'When enabled, transcribed text is sent automatically instead of being placed in the input field.',
                     style: TextStyle(fontSize: 11, color: Colors.white38),
                   ),
@@ -1134,7 +1146,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header row with enable toggle
                     Row(
                       children: [
                         Icon(
@@ -1167,7 +1178,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ],
                     ),
-
                     if (storage.imageGenEnabled) ...[
                       const Divider(color: Colors.white10),
                       const SizedBox(height: 8),
@@ -1180,7 +1190,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           icon: const Icon(Icons.settings, size: 16),
                           label: const Text('Configure Image Gen'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.purpleAccent,
+                            backgroundColor: Colors.tealAccent,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           ),
@@ -1192,10 +1202,29 @@ class _SettingsPageState extends State<SettingsPage> {
               );
             },
           ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildBackendTab(BuildContext context) {
+    final storageService = Provider.of<StorageService>(context);
+    final modelManager = Provider.of<ModelManager>(context);
+    final backendManager = Provider.of<BackendManager>(context);
+    final koboldService = Provider.of<KoboldService>(context);
+    final llmProvider = Provider.of<LLMProvider>(context);
+    final theme = Theme.of(context);
 
+    // Auto-select first model if none selected and models exist
+    if (_selectedModelPath == null && modelManager.models.isNotEmpty) {
+      _selectedModelPath = modelManager.models.first.path;
+    }
 
-          const SizedBox(height: 24),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           _buildSectionHeader('Backend Mode', context),
           const SizedBox(height: 8),
           // Intel Mac warning banner
@@ -1385,7 +1414,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       onPressed: _isCheckingConnection ? null : () async {
                         setState(() => _isCheckingConnection = true);
                         final openRouter = Provider.of<OpenRouterService>(context, listen: false);
-                        // Ensure service has latest config
                         openRouter.configure(
                           apiUrl: storageService.remoteApiUrl,
                           apiKey: storageService.remoteApiKey,
@@ -1992,7 +2020,7 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
 
-            const SizedBox(height: 24),
+               const SizedBox(height: 24),
            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -2005,12 +2033,12 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
            const SizedBox(height: 16),
-           // Hardware Info
+           // Hardware Info with VRAM Gauge
             Container(
-               padding: const EdgeInsets.all(12),
+               padding: const EdgeInsets.all(16),
                decoration: BoxDecoration(
                  color: theme.cardColor,
-                 borderRadius: BorderRadius.circular(8),
+                 borderRadius: BorderRadius.circular(12),
                ),
               child: hardwareService.isDetecting
                 ? const Center(child: CircularProgressIndicator())
@@ -2019,12 +2047,272 @@ class _SettingsPageState extends State<SettingsPage> {
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildInfoRow('GPU', hardwareService.hardwareInfo!.gpuName, context),
-                        _buildInfoRow('VRAM', '${hardwareService.hardwareInfo!.vramMb} MB', context),
+                        // GPU Name header
+                        Row(
+                          children: [
+                            Icon(Icons.memory, color: Colors.blueAccent, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                hardwareService.hardwareInfo!.gpuName,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // VRAM Gauge
+                        FutureBuilder<int?>(
+                          future: _selectedModelPath != null 
+                              ? Provider.of<ModelManager>(context, listen: false).getKvCacheBytesPerToken(_selectedModelPath!)
+                              : Future.value(null),
+                          builder: (context, snapshot) {
+                            final totalVram = hardwareService.hardwareInfo!.vramMb.toDouble();
+                            if (totalVram <= 0) return const SizedBox.shrink();
+
+                            // Estimate model VRAM usage from model size
+                            final modelSizeMb = _getSelectedModelSizeMb();
+                            final contextSize = int.tryParse(_contextSizeController.text) ?? 4096;
+                            
+                            // Use exact KV cost if parsed, else fallback to 100MB per 1k heuristic
+                            final kvBytesPerToken = snapshot.data;
+                            final contextVramMb = kvBytesPerToken != null 
+                                ? (contextSize * kvBytesPerToken / (1024 * 1024))
+                                : (contextSize / 1024 * 100.0);
+
+                            final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 0;
+                            // If GPU layers < 99, only part of model is on GPU
+                            final modelVramMb = gpuLayers >= 99
+                                ? modelSizeMb.toDouble()
+                                : (modelSizeMb * (gpuLayers / 40.0)).clamp(0, modelSizeMb.toDouble());
+                            final usedVram = modelVramMb + contextVramMb;
+                          final usedRatio = (usedVram / totalVram).clamp(0.0, 1.0);
+                          final modelRatio = (modelVramMb / totalVram).clamp(0.0, 1.0);
+                          final contextRatio = (contextVramMb / totalVram).clamp(0.0, usedRatio);
+                          final freeVram = (totalVram - usedVram).clamp(0, totalVram);
+
+                          Color gaugeColor;
+                          if (usedRatio > 0.95) {
+                            gaugeColor = Colors.redAccent;
+                          } else if (usedRatio > 0.8) {
+                            gaugeColor = Colors.orangeAccent;
+                          } else {
+                            gaugeColor = Colors.greenAccent;
+                          }
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // VRAM bar
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final totalWidth = constraints.maxWidth;
+                                  final modelWidth = totalWidth * modelRatio;
+                                  final contextWidth = totalWidth * contextRatio;
+
+                                  return ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: SizedBox(
+                                      height: 20,
+                                      child: Stack(
+                                        children: [
+                                          // Background (free)
+                                          Container(
+                                            width: double.infinity,
+                                            color: Colors.white.withValues(alpha: 0.08),
+                                          ),
+                                          // Model portion (starts at left)
+                                          Positioned(
+                                            left: 0,
+                                            top: 0,
+                                            bottom: 0,
+                                            width: modelWidth,
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  colors: [Colors.blueAccent, Colors.blue.shade700],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          // Context portion (starts exactly where model ends)
+                                          if (contextWidth > 0)
+                                            Positioned(
+                                              left: modelWidth,
+                                              top: 0,
+                                              bottom: 0,
+                                              width: contextWidth,
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: [Colors.tealAccent, Colors.teal.shade700],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              // Legend
+                              Row(
+                                children: [
+                                  _buildVramLegendDot(Colors.blueAccent, 'Model ~${modelVramMb.round()} MB'),
+                                  const SizedBox(width: 16),
+                                  _buildVramLegendDot(Colors.tealAccent, 'Context ~${contextVramMb.round()} MB'),
+                                  const SizedBox(width: 16),
+                                  _buildVramLegendDot(Colors.white24, 'Free ~${freeVram.round()} MB'),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${usedVram.round()} / ${totalVram.round()} MB used',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: gaugeColor,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
                       ],
                     ),
             ),
+
             const SizedBox(height: 16),
+            // Context Size — slider with presets + text field
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.straighten, color: Colors.tealAccent, size: 18),
+                      const SizedBox(width: 8),
+                      const Text('Context Window', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      const Spacer(),
+                      // Manual text input
+                      SizedBox(
+                        width: 90,
+                        child: TextField(
+                          controller: _contextSizeController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: theme.scaffoldBackgroundColor,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Colors.tealAccent.withValues(alpha: 0.3)),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            isDense: true,
+                          ),
+                          onChanged: (val) {
+                            final parsed = int.tryParse(val);
+                            if (parsed != null && parsed > 0) {
+                              storageService.setContextSize(parsed);
+                              setState(() {}); // refresh VRAM gauge
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Slider
+                  Builder(builder: (context) {
+                    final currentVal = int.tryParse(_contextSizeController.text) ?? 4096;
+                    // Map context size to slider position (log scale)
+                    final presets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072];
+                    int closestIdx = 0;
+                    int closestDist = (presets[0] - currentVal).abs();
+                    for (int i = 1; i < presets.length; i++) {
+                      final dist = (presets[i] - currentVal).abs();
+                      if (dist < closestDist) {
+                        closestDist = dist;
+                        closestIdx = i;
+                      }
+                    }
+
+                    return Column(
+                      children: [
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            activeTrackColor: Colors.tealAccent,
+                            inactiveTrackColor: Colors.tealAccent.withValues(alpha: 0.15),
+                            thumbColor: Colors.tealAccent,
+                            overlayColor: Colors.tealAccent.withValues(alpha: 0.2),
+                          ),
+                          child: Slider(
+                            value: closestIdx.toDouble(),
+                            min: 0,
+                            max: (presets.length - 1).toDouble(),
+                            divisions: presets.length - 1,
+                            onChanged: (val) {
+                              final newSize = presets[val.round()];
+                              _contextSizeController.text = newSize.toString();
+                              storageService.setContextSize(newSize);
+                              setState(() {});
+                            },
+                          ),
+                        ),
+                        // Preset chips
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [512, 2048, 4096, 8192, 16384, 32768, 65536, 131072].map((size) {
+                            final isSelected = currentVal == size;
+                            final label = size >= 1024 ? '${size ~/ 1024}K' : '$size';
+                            return ChoiceChip(
+                              label: Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isSelected ? Colors.white : Colors.white54,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              selected: isSelected,
+                              selectedColor: Colors.tealAccent,
+                              backgroundColor: Colors.white.withValues(alpha: 0.05),
+                              side: BorderSide(
+                                color: isSelected ? Colors.tealAccent : Colors.white12,
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              onSelected: (_) {
+                                _contextSizeController.text = size.toString();
+                                storageService.setContextSize(size);
+                                setState(() {});
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Larger context = more memory per conversation. Auto-configure adjusts GPU layers to fit.',
+                    style: TextStyle(fontSize: 11, color: Colors.white38),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+            // GPU Layers
             Row(
               children: [
                 Expanded(
@@ -2166,6 +2454,34 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  /// Small colored dot + label for the VRAM gauge legend.
+  Widget _buildVramLegendDot(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white54)),
+      ],
+    );
+  }
+
+  /// Estimate the selected model's file size in MB for the VRAM gauge.
+  int _getSelectedModelSizeMb() {
+    if (_selectedModelPath == null) return 0;
+    try {
+      final file = File(_selectedModelPath!);
+      if (file.existsSync()) {
+        return (file.lengthSync() / (1024 * 1024)).round();
+      }
+    } catch (_) {}
+    return 0;
   }
 
   Widget _buildSectionHeader(String title, [BuildContext? context]) {

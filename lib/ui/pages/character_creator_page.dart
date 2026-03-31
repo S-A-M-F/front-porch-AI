@@ -24,6 +24,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/services/lore_extraction_service.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_gen_service.dart';
@@ -37,7 +39,7 @@ import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 
 /// Creator mode selection.
-enum CreatorMode { automated, guided }
+enum CreatorMode { automated, guided, quick }
 
 /// Full-page AI-powered character creator wizard.
 ///
@@ -133,6 +135,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   final _guidedNsfwPersonalityController = TextEditingController();
   bool _isExpandingNarrative = false;
 
+  // Lore Extractors
+  final _loreUrlsController = TextEditingController();
+  List<PlatformFile> _loreFiles = [];
+
   /// Show confirmation dialog, then reset all fields if user confirms.
   Future<void> _confirmReset() async {
     final confirmed = await showDialog<bool>(
@@ -210,6 +216,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       _guidedNsfwKinksController.clear();
       _guidedNsfwClothingController.clear();
       _guidedNsfwPersonalityController.clear();
+      _loreUrlsController.clear();
+      _loreFiles.clear();
 
       // Review controllers
       _descController.clear();
@@ -903,6 +911,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     _guidedNsfwKinksController.dispose();
     _guidedNsfwClothingController.dispose();
     _guidedNsfwPersonalityController.dispose();
+    _loreUrlsController.dispose();
     super.dispose();
   }
 
@@ -947,7 +956,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 : _currentStep == 2
                     ? (_creatorMode == CreatorMode.guided
                         ? _buildGuidedConfigStep()
-                        : _buildConfigStep())
+                        : _creatorMode == CreatorMode.quick
+                            ? _buildQuickConfigStep()
+                            : _buildConfigStep())
                     : _currentStep == 3
                         ? _buildGeneratingStep()
                         : _buildReviewStep(),
@@ -1442,6 +1453,21 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     'guided prompts and suggestions help you express your vision.',
                 features: const ['Free-form text with guided prompts', 'Suggestion chips for inspiration', '"Help me expand this" AI assist'],
               ),
+              const SizedBox(height: 16),
+
+              // Quick Mode Card
+              _modeCard(
+                mode: CreatorMode.quick,
+                icon: Icons.bolt,
+                iconColor: Colors.greenAccent,
+                title: 'Quick Create',
+                subtitle: 'Name it, describe it, done — AI does the rest',
+                description: 'Fastest path to a finished character. '
+                    'Just give a name and a one-liner. The full AI pipeline '
+                    '(interview, lorebook, greetings) runs automatically.',
+                features: const ['Name + concept only', 'NSFW toggle', 'Full pipeline in ~2 min'],
+              ),
+
               const SizedBox(height: 32),
 
               // Navigation
@@ -1470,13 +1496,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         onPressed: () => setState(() => _currentStep = 2),
                         icon: const Icon(Icons.arrow_forward, size: 20),
                         label: Text(
-                          'Next: ${_creatorMode == CreatorMode.guided ? 'Guided' : 'Automated'} Setup',
+                          _creatorMode == CreatorMode.guided
+                              ? 'Next: Guided Setup'
+                              : _creatorMode == CreatorMode.quick
+                                  ? 'Next: Quick Setup'
+                                  : 'Next: Automated Setup',
                           style: const TextStyle(fontSize: 16),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _creatorMode == CreatorMode.guided
                               ? const Color(0xFF0D7377)
-                              : Colors.blueAccent,
+                              : _creatorMode == CreatorMode.quick
+                                  ? const Color(0xFF1B5E20)
+                                  : Colors.blueAccent,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
@@ -1502,9 +1534,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     required List<String> features,
   }) {
     final isSelected = _creatorMode == mode;
-    final borderColor = isSelected
-        ? (mode == CreatorMode.guided ? Colors.tealAccent : Colors.amberAccent)
-        : Colors.white12;
+    Color borderColor;
+    if (isSelected) {
+      borderColor = mode == CreatorMode.guided
+          ? Colors.tealAccent
+          : mode == CreatorMode.quick
+              ? Colors.greenAccent
+              : Colors.amberAccent;
+    } else {
+      borderColor = Colors.white12;
+    }
 
     return InkWell(
       onTap: () {
@@ -1519,7 +1558,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           color: isSelected
               ? (mode == CreatorMode.guided
                   ? Colors.tealAccent.withValues(alpha: 0.06)
-                  : Colors.amberAccent.withValues(alpha: 0.06))
+                  : mode == CreatorMode.quick
+                      ? Colors.greenAccent.withValues(alpha: 0.06)
+                      : Colors.amberAccent.withValues(alpha: 0.06))
               : const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
@@ -1582,6 +1623,418 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         ),
       ),
     );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  STEP 2 (Quick): Quick Create Configuration
+  // ═══════════════════════════════════════════════════════════════
+
+  bool _quickNsfwEnabled = false;
+
+  Widget _buildQuickConfigStep() {
+    final nameEmpty = _nameController.text.trim().isEmpty;
+
+    return Center(
+      key: const ValueKey('quick-config'),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.greenAccent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.bolt, color: Colors.greenAccent, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Quick Create', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                        Text('Two fields and you\'re done.', style: TextStyle(fontSize: 13, color: Colors.white38)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+
+              // Name field
+              const Text('Character Name', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _nameController,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+                onChanged: (_) {
+                  setState(() {});
+                  _saveState();
+                },
+                decoration: InputDecoration(
+                  hintText: 'Morgana, Kaito, Vex...',
+                  hintStyle: const TextStyle(color: Colors.white12, fontSize: 14),
+                  filled: true,
+                  fillColor: const Color(0xFF1E293B),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.greenAccent, width: 2)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Concept field
+              const Text('Describe them (optional)', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 4),
+              const Text(
+                'A sentence or two is plenty. Leave it blank and the AI will invent someone.',
+                style: TextStyle(color: Colors.white24, fontSize: 11),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _conceptController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                maxLines: 4,
+                minLines: 3,
+                onChanged: (_) {
+                  setState(() {});
+                  _saveState();
+                },
+                decoration: InputDecoration(
+                  hintText: 'A gruff dwarven blacksmith who secretly writes poetry...',
+                  hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
+                  filled: true,
+                  fillColor: const Color(0xFF1E293B),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.greenAccent, width: 2)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Lore Input
+              _buildLoreInputSection(Colors.greenAccent),
+              const SizedBox(height: 28),
+
+              // NSFW toggle
+              InkWell(
+                onTap: () => setState(() => _quickNsfwEnabled = !_quickNsfwEnabled),
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: _quickNsfwEnabled
+                        ? Colors.pinkAccent.withValues(alpha: 0.08)
+                        : const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _quickNsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.5) : Colors.white12,
+                      width: _quickNsfwEnabled ? 2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.local_fire_department,
+                        color: _quickNsfwEnabled ? Colors.pinkAccent : Colors.white24,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'NSFW Content',
+                              style: TextStyle(
+                                color: _quickNsfwEnabled ? Colors.pinkAccent.shade100 : Colors.white70,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Enables adult themes in personality, lorebook, and greetings',
+                              style: TextStyle(
+                                color: _quickNsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.6) : Colors.white24,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: _quickNsfwEnabled,
+                        onChanged: (v) => setState(() => _quickNsfwEnabled = v),
+                        activeColor: Colors.pinkAccent,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 36),
+
+              // Buttons
+              Row(
+                children: [
+                  SizedBox(
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () => setState(() => _currentStep = 1),
+                      icon: const Icon(Icons.arrow_back, size: 18),
+                      label: const Text('Back'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white54,
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: nameEmpty ? null : _startQuickGeneration,
+                        icon: const Icon(Icons.bolt, size: 20),
+                        label: Text(
+                          nameEmpty ? 'Enter a name to continue' : 'Create Character',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.greenAccent.shade700,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.white10,
+                          disabledForegroundColor: Colors.white30,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Shared method to extract world lore and respect token budgets.
+  Future<String?> _extractWorldLore(LLMProvider provider) async {
+    final loreUrls = _loreUrlsController.text.split(',').map((e) => e.trim()).toList();
+    if (loreUrls.isEmpty && _loreFiles.isEmpty) return null;
+
+    if (mounted) setState(() => _generationStatus = 'Gathering world lore...');
+    String? worldLore = await LoreExtractionService.extractAll(
+      urls: loreUrls,
+      files: _loreFiles,
+      onProgress: (msg) {
+        if (mounted) setState(() => _generationStatus = msg);
+      },
+    );
+
+    if (worldLore.trim().isNotEmpty) {
+      final estimatedTokens = worldLore.length ~/ 4;
+      
+      int freeContextLimit = 30000;
+      if (provider.activeBackend == BackendType.kobold && provider.koboldService.isReady) {
+         // Using safe default assuming user's KoboldContext isn't readily cached directly here, 
+         // though we can read prefs. But typically Kobold is 8K to 32K.
+         // Wait, the main setting is stored in prefs.
+         final prefs = await SharedPreferences.getInstance();
+         final koboldContext = prefs.getInt('kobold_context_size') ?? 8192;
+         freeContextLimit = koboldContext - 3000; // Leave 3K for generation
+      } else {
+         freeContextLimit = 120000; 
+      }
+      
+      if (estimatedTokens > freeContextLimit) {
+         debugPrint('Lore tokens ($estimatedTokens) exceeds free limit ($freeContextLimit). Truncating.');
+         final charLimit = (freeContextLimit * 4).clamp(0, worldLore.length);
+         worldLore = worldLore.substring(0, charLimit);
+         worldLore += '\n[TRUNCATED DUE TO CONTEXT LIMITS]';
+         
+         if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+             content: Text('World Lore truncated to fit context limits ($estimatedTokens > $freeContextLimit).'),
+             backgroundColor: Colors.orange,
+             behavior: SnackBarBehavior.floating,
+             duration: const Duration(seconds: 5),
+           ));
+         }
+      }
+      return worldLore;
+    }
+    return null;
+  }
+
+  /// Generate a character from Quick mode — uses sensible defaults for
+  /// everything the user didn't fill in, then routes to the shared pipeline.
+  Future<void> _startQuickGeneration() async {
+    final name = _nameController.text.trim();
+    // Concept is optional in quick mode — if blank, let the LLM invent freely
+    final concept = _conceptController.text.trim().isNotEmpty
+        ? _conceptController.text.trim()
+        : 'Create an interesting, unique character for roleplay.';
+
+    setState(() {
+      _currentStep = 3;
+      _isGenerating = true;
+      _generationStatus = 'Crafting character with AI...';
+      _generationPreview = '';
+      _progress = 0.0;
+      // Sync NSFW state back to main flag so review step shows correctly
+      _nsfwEnabled = _quickNsfwEnabled;
+    });
+
+    final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+    final storage = Provider.of<StorageService>(context, listen: false);
+
+    LLMService llmService;
+    if (llmProvider.activeBackend == BackendType.kobold) {
+      final kobold = llmProvider.koboldService;
+      if (!kobold.isReady) {
+        setState(() {
+          _generationStatus = 'Error: KoboldCpp is not running. Start it first.';
+          _isGenerating = false;
+        });
+        return;
+      }
+      llmService = kobold;
+    } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
+      llmService = OpenRouterService(
+        apiUrl: storage.remoteApiUrl,
+        apiKey: storage.remoteApiKey,
+        modelName: _selectedModelId,
+      );
+    } else {
+      final active = llmProvider.activeService;
+      if (active == null || !active.isReady) {
+        setState(() {
+          _generationStatus = 'Error: No LLM service available. Configure a model first.';
+          _isGenerating = false;
+        });
+        return;
+      }
+      llmService = active;
+    }
+
+    // Resolve active persona if any
+    String userPersonaContext = '';
+    if (_selectedPersonaId.isNotEmpty) {
+      final personaService = Provider.of<UserPersonaService>(context, listen: false);
+      final persona = personaService.personas.where((p) => p.id == _selectedPersonaId).firstOrNull;
+      if (persona != null) {
+        final parts = <String>[];
+        if (persona.name.isNotEmpty) parts.add('Name: ${persona.name}');
+        if (persona.description.isNotEmpty) parts.add('Description: ${persona.description}');
+        if (persona.persona.isNotEmpty) parts.add('Persona: ${persona.persona}');
+        userPersonaContext = parts.join('\n');
+      }
+    }
+    
+    // Extract World Lore
+    final worldLore = await _extractWorldLore(llmProvider);
+
+    final genService = CharacterGenService(llmService);
+    String lastRawOutput = '';
+    String? genError;
+
+    // Quick mode defaults — everything the wizard normally asks for
+    final quickConcept = _quickNsfwEnabled
+        ? '$concept. Adult content enabled: include explicit personality traits and sensual details.'
+        : concept;
+
+    final card = await genService.generateCharacter(
+      name: name,
+      concept: quickConcept,
+      personalityKeywords: '',
+      artStyle: 'Anime',
+      greetingLength: 'Medium (2-4 paragraphs)',
+      altGreetingCount: 2,
+      greetingTones: const ['Neutral'],
+      generateLorebook: true,
+      loreCategories: const [],
+      loreDepth: 'Standard',
+      descriptionDetail: '2-3 paragraphs',
+      age: '',
+      sex: '',
+      relationship: '',
+      backstory: '',
+      characterContext: '',
+      userPersonaContext: userPersonaContext,
+      worldLore: worldLore,
+      generateDescription: true,
+      onProgress: (accumulated) {
+        lastRawOutput = accumulated;
+        if (mounted) {
+          setState(() {
+            _generationPreview = accumulated;
+            _progress = (accumulated.length / 3000.0).clamp(0.0, 0.95);
+          });
+        }
+      },
+      onStatus: (status) {
+        if (mounted) setState(() => _generationStatus = status);
+      },
+      onError: (error) {
+        genError = error;
+        if (mounted) setState(() => _generationStatus = 'Error: $error');
+      },
+    );
+
+    if (!mounted) return;
+    if (card == null || genError != null) {
+      setState(() {
+        _isGenerating = false;
+        _generationStatus = genError ?? 'Generation failed. Check your backend connection.';
+      });
+      return;
+    }
+
+    // Try to extract image prompt from raw output if any
+    if (lastRawOutput.isNotEmpty) {
+      _imagePrompt = genService.extractImagePrompt(lastRawOutput, characterName: name);
+    }
+
+    // Populate review-step controllers so the fields aren't blank
+    _lorebookEntryEnabled = {};
+    if (card.lorebook != null) {
+      for (int i = 0; i < card.lorebook!.entries.length; i++) {
+        _lorebookEntryEnabled[i] = true;
+      }
+    }
+    _descController.text = card.description;
+    _personalityController.text = card.personality;
+    _scenarioController.text = card.scenario;
+    _firstMessageController.text = card.firstMessage;
+    _exampleDialogueController.text = card.mesExample;
+    _systemPromptController.text = card.systemPrompt;
+
+    setState(() {
+      _generatedCard = card;
+      _currentStep = 4;
+      _isGenerating = false;
+      _progress = 1.0;
+    });
+
+    // Auto-start avatar generation (API backend only)
+    final llmProvider2 = Provider.of<LLMProvider>(context, listen: false);
+    if (llmProvider2.activeBackend != BackendType.kobold) {
+      _generateAvatar();
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1721,6 +2174,95 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           children: children,
         ),
       ),
+    );
+  }
+
+  Widget _buildLoreInputSection(Color accentColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('World Lore / Wiki URLs (optional)', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 4),
+        const Text(
+          'Paste one or more wiki/lore URLs separated by commas. You can also attach local files below.',
+          style: TextStyle(color: Colors.white24, fontSize: 11),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _loreUrlsController,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          maxLines: 4,
+          minLines: 2,
+          onChanged: (_) => _saveState(),
+          decoration: InputDecoration(
+            hintText: 'https://wowpedia.fandom.com/wiki/Demon_hunter, https://wowpedia.fandom.com/wiki/Illidan_Stormrage',
+            hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
+            filled: true,
+            fillColor: const Color(0xFF1E293B),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: accentColor, width: 2)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (_loreFiles.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              children: _loreFiles.map((f) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                margin: const EdgeInsets.only(bottom: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.description, size: 14, color: Colors.blueAccent),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(f.name, style: const TextStyle(color: Colors.white70, fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    InkWell(
+                      onTap: () {
+                        setState(() => _loreFiles.remove(f));
+                        _saveState();
+                      },
+                      child: const Icon(Icons.close, size: 14, color: Colors.white38),
+                    ),
+                  ],
+                ),
+              )).toList(),
+            ),
+          ),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final result = await FilePicker.platform.pickFiles(
+              type: FileType.custom,
+              allowedExtensions: ['txt', 'md', 'pdf', 'json', 'csv'],
+              allowMultiple: true,
+            );
+            if (result != null) {
+              setState(() {
+                for (var newFile in result.files) {
+                  if (!_loreFiles.any((f) => f.name == newFile.name)) {
+                    _loreFiles.add(newFile);
+                  }
+                }
+              });
+              _saveState();
+            }
+          },
+          icon: const Icon(Icons.upload_file, size: 16),
+          label: const Text('Attach Lore File (.txt, .md, .pdf)'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white54,
+            side: const BorderSide(color: Colors.white24),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1937,6 +2479,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // ══════════════════════════════════════════════
               // Section 6: NSFW Details (Gated + Collapsible)
               // ══════════════════════════════════════════════
+              // Lore Input
+              _buildLoreInputSection(Colors.tealAccent),
+              const SizedBox(height: 32),
+
               // NSFW toggle
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
@@ -3385,6 +3931,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               ),
               const SizedBox(height: 32),
 
+              // Lore Input
+              _buildLoreInputSection(Colors.blueAccent),
+              const SizedBox(height: 32),
 
               // Back + Generate buttons
               Center(
@@ -4339,7 +4888,6 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       loreCategories: _selectedLoreCategories.toList(),
       loreDepth: _loreDepth,
       descriptionDetail: _generationDetailOptions[_generationDetail] ?? '2-3 paragraphs',
-      apiSystemPrompt: storage.systemPrompt,
       age: _ageController.text.trim(),
       sex: _sexController.text.trim(),
       relationship: _guidedRelDynamicController.text.trim(),
@@ -4739,6 +5287,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       }
     }
 
+    // Extract World Lore
+    final worldLore = await _extractWorldLore(llmProvider);
+    
     final genService = CharacterGenService(llmService);
 
     String lastRawOutput = '';
@@ -4791,9 +5342,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       loreCategories: _selectedLoreCategories.toList(),
       loreDepth: _loreDepth,
       descriptionDetail: _generationDetailOptions[_generationDetail] ?? '2-3 paragraphs',
-      apiSystemPrompt: storage.systemPrompt,
       age: _ageController.text.trim(),
       sex: _sexController.text.trim(),
+      worldLore: worldLore,
       relationship: [
         ..._selectedRelationships,
         if (_relationshipController.text.trim().isNotEmpty) _relationshipController.text.trim(),

@@ -13,7 +13,8 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
-DefaultDirName={autopf}\{#MyAppName}
+; Use user-local install directory so no elevation is needed
+DefaultDirName={localappdata}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 LicenseFile={#MyAppLicenseFile}
 OutputBaseFilename=Front_Porch_AI_Setup
@@ -25,11 +26,15 @@ SetupIconFile={#MyAppIconFile}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+; Install per-user — avoids UAC elevation requirement and install failures
+; Users can opt-in to a machine-wide install via the dialog
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 CloseApplications=yes
 RestartApplications=yes
 AppMutex=FrontPorchAI_{{B7E2F8A1-4D3C-4E5B-9F1A-2C8D6E0F3B9A}
+; Require Windows 10 or later (Flutter + ANGLE requires it)
+MinVersion=10.0
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -38,7 +43,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
+; Main application files
 Source: "{#MyAppBuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Bundle VC++ 2015-2022 Redistributable alongside the installer
+; Downloaded by the CI build step before calling ISCC
+Source: "{#MyAppBuildDir}\..\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [INI]
 ; Marker file so the app knows it was installed (not from zip)
@@ -51,4 +60,29 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+; Install Visual C++ 2015-2022 Redistributable silently first.
+; /install /quiet /norestart — suppresses all UI and reboot prompts.
+; The check flag ensures we skip this if it's already installed at the required version.
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; \
+  StatusMsg: "Installing Visual C++ Runtime (required)..."; \
+  Check: VCRedistNeedsInstall; Flags: waituntilterminated
+
+; Launch the app after install (user can uncheck this)
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// Returns true if VC++ 2015-2022 x64 Redistributable is NOT already installed.
+// Checks the registry key that Microsoft documents as the canonical detection method.
+// See: https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files
+function VCRedistNeedsInstall: Boolean;
+var
+  Installed: Cardinal;
+begin
+  // The "Installed" DWORD under this key is set to 1 when VC++ 2022 x64 is present
+  Result := not RegQueryDWordValue(
+    HKLM,
+    'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64',
+    'Installed',
+    Installed
+  ) or (Installed <> 1);
+end;
