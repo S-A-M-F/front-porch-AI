@@ -349,7 +349,9 @@
         if (pageName === 'worlds') loadWorlds();
         if (pageName === 'sync') loadSyncStatus();
         if (pageName === 'creator' && window.ChargenModule) window.ChargenModule.init();
+        if (pageName === 'stories' && window.StoriesModule) window.StoriesModule.init();
     }
+
 
     // Expose switchPage for external modules (chargen save redirect)
     window._fpSwitchPage = switchPage;
@@ -3356,7 +3358,34 @@
     // SETTINGS & SIDEBAR PAGES
     // ═══════════════════════════════════════════════════════════
 
+
+    // ─── Image Gen backend panel helpers ──────────────────────────────
+    function _updateImgenBackendPanels(backend) {
+        const remotePanel = $('#imgen-remote-panel');
+        const localPanel  = $('#imgen-local-panel');
+        const a1111Notice = $('#imgen-a1111-notice');
+        const dtNotice    = $('#imgen-drawthings-notice');
+        if (remotePanel) remotePanel.style.display = backend === 'remote' ? '' : 'none';
+        if (localPanel)  localPanel.style.display  = backend !== 'remote' ? '' : 'none';
+        if (a1111Notice) a1111Notice.style.display  = backend === 'a1111' ? 'block' : 'none';
+        if (dtNotice)    dtNotice.style.display     = backend === 'drawthings' ? 'block' : 'none';
+    }
+
+    async function _fetchLocalImgenModels(url) {
+        const sel = $('#setting-imgen-local-model');
+        if (!sel) return;
+        const res = await apiJson(`/api/image-gen/local-models?url=${encodeURIComponent(url)}`);
+        const models = res?.models || [];
+        sel.innerHTML = '<option value="">— Select a checkpoint —</option>' +
+            models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+        const saved = $('#setting-imgen-model')?.value;
+        if (saved) {
+            for (const opt of sel.options) { if (opt.value === saved) { opt.selected = true; break; } }
+        }
+    }
+
     async function loadSettings() {
+
         const data = await apiJson('/api/settings');
         if (!data) return;
 
@@ -3474,6 +3503,35 @@
         if (igCb) igCb.checked = data.imageGenEnabled ?? false;
         const igModel = $('#setting-imgen-model');
         if (igModel) igModel.value = data.imageGenModel || '';
+
+        // Image Gen backend selector
+        const igBackend = data.imageGenBackend || 'remote';
+        const igRadio = document.querySelector(`input[name="imgen-backend"][value="${igBackend}"]`);
+        if (igRadio) igRadio.checked = true;
+        _updateImgenBackendPanels(igBackend);
+
+        // Local URL
+        const igLocalUrl = $('#setting-imgen-local-url');
+        if (igLocalUrl) igLocalUrl.value = data.localImageGenUrl || 'http://127.0.0.1:7860';
+
+        // Local model restore
+        const igLocalModel = $('#setting-imgen-local-model');
+        if (igLocalModel && data.imageGenModel && igBackend !== 'remote') {
+            const opt = document.createElement('option');
+            opt.value = data.imageGenModel;
+            opt.textContent = data.imageGenModel;
+            opt.selected = true;
+            igLocalModel.innerHTML = '';
+            igLocalModel.appendChild(opt);
+        }
+
+        // Size, style, negative prompt
+        const igSize = $('#setting-imgen-size');
+        if (igSize) igSize.value = data.imageGenSize || '1024x1024';
+        const igStyle = $('#setting-imgen-style');
+        if (igStyle) igStyle.value = data.imageGenStyle || 'photorealistic';
+        const igNeg = $('#setting-imgen-negative-prompt');
+        if (igNeg) igNeg.value = data.imageGenNegativePrompt || '';
 
         // RAG / Memory
         const ragCb = $('#setting-rag-enabled');
@@ -4032,14 +4090,44 @@
 
         // Save Image Gen settings
         $('#btn-save-imgen')?.addEventListener('click', async () => {
+            const backend = document.querySelector('input[name="imgen-backend"]:checked')?.value || 'remote';
+            const model = backend === 'remote'
+                ? ($('#setting-imgen-model')?.value || '')
+                : ($('#setting-imgen-local-model')?.value || '');
             const res = await api('/api/settings', {
                 method: 'POST',
                 body: JSON.stringify({
-                    imageGenEnabled: $('#setting-imgen-enabled')?.checked || false,
-                    imageGenModel: $('#setting-imgen-model')?.value || '',
+                    imageGenEnabled:        $('#setting-imgen-enabled')?.checked || false,
+                    imageGenBackend:        backend,
+                    imageGenModel:          model,
+                    localImageGenUrl:       $('#setting-imgen-local-url')?.value || '',
+                    imageGenSize:           $('#setting-imgen-size')?.value || '1024x1024',
+                    imageGenStyle:          $('#setting-imgen-style')?.value || 'photorealistic',
+                    imageGenNegativePrompt: $('#setting-imgen-negative-prompt')?.value || '',
                 }),
             });
             if (res && res.ok) showInfoModal('Saved', 'Image generation settings saved.');
+        });
+
+        // Backend radio change
+        document.querySelectorAll('input[name="imgen-backend"]').forEach(r =>
+            r.addEventListener('change', e => _updateImgenBackendPanels(e.target.value))
+        );
+
+        // Test local connection
+        $('#btn-test-local-imgen')?.addEventListener('click', async () => {
+            const url = $('#setting-imgen-local-url')?.value?.trim();
+            if (!url) return;
+            const statusEl = $('#imgen-connection-status');
+            if (statusEl) statusEl.textContent = '⏳ Testing...';
+            const res = await apiJson('/api/image-gen/test-connection', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url }),
+            });
+            const ok = res?.ok === true;
+            if (statusEl) statusEl.textContent = ok ? '✅ Connected' : '❌ Connection failed';
+            if (ok) _fetchLocalImgenModels(url);
         });
 
         // RAG / Memory save

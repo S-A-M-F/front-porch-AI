@@ -267,6 +267,8 @@ void main(List<String> args) async {
             ws.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
             ws.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
             ws.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
+            ws.setStoryRepository(Provider.of<StoryRepository>(context, listen: false));
+            ws.setStoryPipelineService(Provider.of<StoryPipelineService>(context, listen: false));
             return ws;
           },
           update: (context, storage, previous) {
@@ -282,6 +284,8 @@ void main(List<String> args) async {
               previous.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
               previous.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
               previous.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
+              previous.setStoryRepository(Provider.of<StoryRepository>(context, listen: false));
+              previous.setStoryPipelineService(Provider.of<StoryPipelineService>(context, listen: false));
               return previous;
             }
             final chatService = Provider.of<ChatService>(context, listen: false);
@@ -298,6 +302,8 @@ void main(List<String> args) async {
             ws.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
             ws.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
             ws.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
+            ws.setStoryRepository(Provider.of<StoryRepository>(context, listen: false));
+            ws.setStoryPipelineService(Provider.of<StoryPipelineService>(context, listen: false));
             return ws;
           },
         ),

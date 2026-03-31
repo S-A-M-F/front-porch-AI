@@ -93,6 +93,12 @@
           </svg>
           Cloud Sync
         </a>
+        <a class="nav-item" data-page="stories">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 14H8v-2h8v2zm0-4H8v-2h8v2zm0-4H8V6h8v2z"/>
+          </svg>
+          Porch Stories
+        </a>
         <a class="nav-item" href="https://ko-fi.com/sosukeaizen37411" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="#FF5E5B">
             <path
@@ -633,13 +639,90 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
-              <div class="settings-field" style="margin-top:8px">
-                <label class="field-label">Model</label>
-                <input type="text" id="setting-imgen-model" class="settings-input"
-                  placeholder="Image generation model name">
+
+              <!-- Backend Source Selector -->
+              <div class="settings-field" style="margin-top:14px">
+                <label class="field-label">Image Source</label>
+                <div class="radio-group" id="imgen-backend-group">
+                  <label class="radio-option">
+                    <input type="radio" name="imgen-backend" id="setting-imgen-backend-remote" value="remote" checked>
+                    <span>☁️ Remote API</span>
+                  </label>
+                  <label class="radio-option">
+                    <input type="radio" name="imgen-backend" id="setting-imgen-backend-a1111" value="a1111">
+                    <span>🖥 AUTOMATIC1111</span>
+                  </label>
+                  <label class="radio-option">
+                    <input type="radio" name="imgen-backend" id="setting-imgen-backend-drawthings" value="drawthings">
+                    <span>🍎 Draw Things</span>
+                  </label>
+                </div>
               </div>
-              <button class="btn btn-primary" id="btn-save-imgen" style="margin-top:8px;width:100%">Save Image Gen
-                Settings</button>
+
+              <!-- Remote panel -->
+              <div id="imgen-remote-panel" class="settings-field" style="margin-top:8px">
+                <label class="field-label">Model Name</label>
+                <input type="text" id="setting-imgen-model" class="settings-input"
+                  placeholder="e.g. dall-e-3, or image model name">
+              </div>
+
+              <!-- Local panel (A1111 / Draw Things) -->
+              <div id="imgen-local-panel" style="display:none;margin-top:8px">
+                <div id="imgen-a1111-notice" style="padding:8px;background:rgba(59,130,246,0.08);border-radius:6px;border-left:3px solid #3B82F6;font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:10px">
+                  🖥 <strong>AUTOMATIC1111:</strong> Launch with <code style="background:rgba(0,0,0,0.3);padding:2px 5px;border-radius:3px">--api</code> flag to enable the REST API.
+                </div>
+                <div id="imgen-drawthings-notice" style="display:none;padding:8px;background:rgba(139,92,246,0.08);border-radius:6px;border-left:3px solid #8B5CF6;font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:10px">
+                  🍎 <strong>Draw Things:</strong> Enable HTTP API in <em>Settings → Web API</em> within the Draw Things app.
+                </div>
+                <div class="settings-field">
+                  <label class="field-label">Server URL</label>
+                  <div style="display:flex;gap:8px;align-items:center">
+                    <input type="text" id="setting-imgen-local-url" class="settings-input" style="flex:1"
+                      placeholder="http://127.0.0.1:7860">
+                    <button class="btn btn-sm" id="btn-test-local-imgen">Test ▶</button>
+                  </div>
+                  <span id="imgen-connection-status" style="font-size:12px;color:var(--text-muted);margin-top:4px;display:block"></span>
+                </div>
+                <div class="settings-field" style="margin-top:8px">
+                  <label class="field-label">Checkpoint Model</label>
+                  <select id="setting-imgen-local-model" class="settings-select">
+                    <option value="">— Test connection to load checkpoints —</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Shared settings -->
+              <div class="settings-field" style="margin-top:12px">
+                <label class="field-label">Image Size</label>
+                <select id="setting-imgen-size" class="settings-select">
+                  <option value="512x512">512 × 512  (fast)</option>
+                  <option value="768x768">768 × 768</option>
+                  <option value="1024x1024" selected>1024 × 1024  (default)</option>
+                  <option value="1536x1024">1536 × 1024  (landscape)</option>
+                  <option value="1024x1536">1024 × 1536  (portrait)</option>
+                </select>
+              </div>
+              <div class="settings-field" style="margin-top:8px">
+                <label class="field-label">Default Style</label>
+                <select id="setting-imgen-style" class="settings-select">
+                  <option value="photorealistic">Photorealistic</option>
+                  <option value="anime">Anime / Manga</option>
+                  <option value="digital_art">Digital Art</option>
+                  <option value="oil_painting">Oil Painting</option>
+                  <option value="watercolor">Watercolor</option>
+                  <option value="sketch">Pencil Sketch</option>
+                  <option value="cinematic">Cinematic</option>
+                  <option value="fantasy">Fantasy Illustration</option>
+                  <option value="none">None (prompt only)</option>
+                </select>
+              </div>
+              <div class="settings-field" style="margin-top:8px">
+                <label class="field-label">Default Negative Prompt</label>
+                <textarea id="setting-imgen-negative-prompt" class="settings-textarea" rows="2"
+                  placeholder="e.g. blurry, low quality, watermark, text"></textarea>
+              </div>
+
+              <button class="btn btn-primary" id="btn-save-imgen" style="margin-top:12px;width:100%">Save Image Gen Settings</button>
             </div>
 
             <div class="settings-section">
@@ -944,6 +1027,25 @@
           </div>
         </div>
       </div>
+
+      <!-- PORCH STORIES PAGE -->
+      <div id="page-stories" class="page">
+        <div class="page-scroll">
+          <div class="page-header">
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="mobile-back-btn" data-back="home">←</button>
+              <div>
+                <h1>📖 Porch Stories</h1>
+                <p class="page-subtitle">Turn your chats into novels — AI-powered story generation</p>
+              </div>
+            </div>
+          </div>
+          <div id="stories-container">
+            <!-- Populated dynamically by stories.js -->
+            <p style="text-align:center;color:var(--text-muted);padding:60px 0">Loading stories...</p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ── Right Panel (chat page only) ── -->
@@ -1042,7 +1144,9 @@
   </div>
 
   <script src="/js/chargen.js"></script>
+  <script src="/js/stories.js"></script>
   <script src="/js/app.js"></script>
 </body>
+
 
 </html>

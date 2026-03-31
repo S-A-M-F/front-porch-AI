@@ -49,6 +49,9 @@ import 'package:front_porch_ai/services/character_gen_service.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/services/embedding_sidecar.dart';
+import 'package:front_porch_ai/services/story_repository.dart';
+import 'package:front_porch_ai/services/story_pipeline_service.dart';
+import 'package:front_porch_ai/models/story_project.dart' as story_model;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:front_porch_ai/database/database.dart';
@@ -89,6 +92,8 @@ class WebServerService extends ChangeNotifier {
   CloudSyncService? _cloudSyncService;
   ImageGenService? _imageGenService;
   EmbeddingSidecar? _embeddingSidecar;
+  StoryRepository? _storyRepository;
+  StoryPipelineService? _storyPipelineService;
 
   // ── Chargen SSE state ──
   final Set<StreamController<List<int>>> _chargenSseClients = {};
@@ -99,6 +104,13 @@ class WebServerService extends ChangeNotifier {
   Map<String, dynamic>? _chargenCompletedCard;
   String? _chargenError;
   bool _isChargenRunning = false;
+
+  // ── Porch Stories SSE state ──
+  final Set<StreamController<List<int>>> _storySseClients = {};
+  String _storyStatus = '';
+  String _storyStreamingText = '';
+  bool _storyPipelineRunning = false;
+  String? _storyCurrentId;
 
   HttpServer? _server;
   bool _isRunning = false;
@@ -134,6 +146,8 @@ class WebServerService extends ChangeNotifier {
   void setCloudSyncService(CloudSyncService css) => _cloudSyncService = css;
   void setImageGenService(ImageGenService igs) => _imageGenService = igs;
   void setEmbeddingSidecar(EmbeddingSidecar es) => _embeddingSidecar = es;
+  void setStoryRepository(StoryRepository sr) => _storyRepository = sr;
+  void setStoryPipelineService(StoryPipelineService sps) => _storyPipelineService = sps;
 
   // ─────────────────────────────────────────────────────────────────────
   // LAN IP detection
@@ -289,6 +303,22 @@ class WebServerService extends ChangeNotifier {
     router.post('/api/chargen/avatar', _handleChargenAvatar);
     router.post('/api/chargen/save', _handleChargenSave);
     router.post('/api/chargen/expand', _handleChargenExpand);
+
+    // ── Image gen local proxy routes ──
+    router.post('/api/image-gen/test-connection', _handleImgenTestConnection);
+    router.get('/api/image-gen/local-models', _handleImgenLocalModels);
+
+    // ── Porch Stories routes ──
+    router.get('/api/stories', _handleGetStories);
+    router.post('/api/stories/create', _handleCreateStory);
+    router.post('/api/stories/update', _handleUpdateStory);
+    router.post('/api/stories/delete', _handleDeleteStory);
+    router.get('/api/stories/<id>', _handleGetStory);
+    router.post('/api/stories/<id>/pipeline/run', _handleRunPipelineStage);
+    router.get('/api/stories/<id>/pipeline/stream', _handlePipelineStream);
+    router.get('/api/stories/<id>/pipeline/status', _handlePipelineStatus);
+    router.post('/api/stories/<id>/prose/edit', _handleProseEdit);
+    router.post('/api/stories/<id>/distill', _handleDistillChatHistory);
 
     // ── Cloud sync routes ──
     router.get('/api/sync/status', _handleGetSyncStatus);
@@ -1507,6 +1537,11 @@ class WebServerService extends ChangeNotifier {
           // Image Gen
           'imageGenEnabled': s.imageGenEnabled,
           'imageGenModel': s.imageGenModel,
+          'imageGenBackend': s.imageGenBackend,
+          'localImageGenUrl': s.localImageGenUrl,
+          'imageGenSize': s.imageGenSize,
+          'imageGenStyle': s.imageGenStyle,
+          'imageGenNegativePrompt': s.imageGenNegativePrompt,
           // Samplers
           'temperature': s.temperature,
           'minP': s.minP,
@@ -1720,6 +1755,11 @@ class WebServerService extends ChangeNotifier {
       // Image Gen
       if (body.containsKey('imageGenEnabled')) await s.setImageGenEnabled(body['imageGenEnabled'] as bool);
       if (body.containsKey('imageGenModel')) await s.setImageGenModel(body['imageGenModel'].toString());
+      if (body.containsKey('imageGenBackend')) await s.setImageGenBackend(body['imageGenBackend'].toString());
+      if (body.containsKey('localImageGenUrl')) await s.setLocalImageGenUrl(body['localImageGenUrl'].toString());
+      if (body.containsKey('imageGenSize')) await s.setImageGenSize(body['imageGenSize'].toString());
+      if (body.containsKey('imageGenStyle')) await s.setImageGenStyle(body['imageGenStyle'].toString());
+      if (body.containsKey('imageGenNegativePrompt')) await s.setImageGenNegativePrompt(body['imageGenNegativePrompt'].toString());
 
       // Samplers
       if (body.containsKey('temperature')) await s.setTemperature((body['temperature'] as num).toDouble());
@@ -4362,9 +4402,390 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // Image Gen proxy routes
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// POST /api/image-gen/test-connection — Test a local SD server connection.
+  Future<shelf.Response> _handleImgenTestConnection(shelf.Request request) async {
+    if (_imageGenService == null) {
+      return _errorResponse(503, 'Image gen service not available');
+    }
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final url = body['url']?.toString() ?? '';
+      if (url.isEmpty) return _errorResponse(400, 'url is required');
+      final ok = await _imageGenService!.testLocalConnection(url);
+      return shelf.Response.ok(
+        jsonEncode({'ok': ok}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Connection test failed: $e');
+    }
+  }
+
+  /// GET /api/image-gen/local-models?url=... — Fetch checkpoint list from local SD.
+  Future<shelf.Response> _handleImgenLocalModels(shelf.Request request) async {
+    if (_imageGenService == null) {
+      return _errorResponse(503, 'Image gen service not available');
+    }
+    try {
+      final url = request.url.queryParameters['url'] ?? '';
+      if (url.isEmpty) return _errorResponse(400, 'url query param is required');
+      final models = await _imageGenService!.fetchA1111Models(url);
+      return shelf.Response.ok(
+        jsonEncode({'models': models}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Failed to fetch models: $e');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Porch Stories handlers
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// Broadcast an SSE event to all connected story pipeline clients.
+  void _storyBroadcast(Map<String, dynamic> eventData) {
+    final eventType = eventData['event']?.toString() ?? 'message';
+    if (eventType == 'status') _storyStatus = eventData['text']?.toString() ?? '';
+    if (eventType == 'token') _storyStreamingText += eventData['text']?.toString() ?? '';
+    if (eventType == 'complete' || eventType == 'error') _storyPipelineRunning = false;
+
+    _storySseClients.removeWhere((c) => c.isClosed);
+    if (_storySseClients.isEmpty) return;
+    final encoded = utf8.encode('data: ${jsonEncode(eventData)}\n\n');
+    for (final client in _storySseClients) {
+      if (!client.isClosed) client.add(encoded);
+    }
+  }
+
+  /// GET /api/stories — List all story projects (summary only).
+  Future<shelf.Response> _handleGetStories(shelf.Request request) async {
+    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    try {
+      await _storyRepository!.loadProjects();
+      final list = _storyRepository!.projects.map((p) => {
+        'id': p.dbId,
+        'title': p.title,
+        'concept': p.concept.length > 120 ? '${p.concept.substring(0, 120)}...' : p.concept,
+        'actCount': p.actCount,
+        'updatedAt': p.updatedAt.toIso8601String(),
+        'wordCount': _countWords(p),
+      }).toList();
+      return shelf.Response.ok(
+        jsonEncode(list),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Failed to list stories: $e');
+    }
+  }
+
+  int _countWords(story_model.StoryProject p) {
+    int count = 0;
+    for (final bp in p.prose.values) {
+      final text = bp.final_ ?? bp.draft ?? '';
+      if (text.isNotEmpty) count += text.split(RegExp(r'\s+')).length;
+    }
+    return count;
+  }
+
+  /// POST /api/stories/create — Create a new empty story project.
+  Future<shelf.Response> _handleCreateStory(shelf.Request request) async {
+    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final title = body['title']?.toString() ?? 'Untitled Story';
+      final project = await _storyRepository!.createProject(title: title);
+      // Apply any additional fields from body
+      if (body.containsKey('concept')) project.concept = body['concept'].toString();
+      if (body['actCount'] != null) project.actCount = (body['actCount'] as num).toInt();
+      if (body['pov'] != null) project.pov = body['pov'].toString();
+      if (body['maturityRating'] != null) project.maturityRating = body['maturityRating'].toString();
+      if (body['proseLength'] != null) project.proseLength = body['proseLength'].toString();
+      if (body['narrativePace'] != null) project.narrativePace = body['narrativePace'].toString();
+      if (body['dialogueDensity'] != null) project.dialogueDensity = body['dialogueDensity'].toString();
+      if (body['writingStyle'] != null) project.writingStyle = body['writingStyle'].toString();
+      if (body['selectedGenres'] != null) {
+        project.selectedGenres = List<String>.from(body['selectedGenres'] as List);
+      }
+      if (body['selectedMoods'] != null) {
+        project.selectedMoods = List<String>.from(body['selectedMoods'] as List);
+      }
+      if (body['characterCardSnapshots'] != null) {
+        project.characterCardSnapshots = (body['characterCardSnapshots'] as List)
+            .map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v.toString())))
+            .toList();
+      }
+      await _storyRepository!.saveProject(project);
+      return shelf.Response.ok(
+        jsonEncode({'id': project.dbId, 'project': project.toJson()}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Failed to create story: $e');
+    }
+  }
+
+  /// POST /api/stories/update — Update an existing story project (full overwrite).
+  Future<shelf.Response> _handleUpdateStory(shelf.Request request) async {
+    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final id = body['id']?.toString() ?? '';
+      if (id.isEmpty) return _errorResponse(400, 'id is required');
+      await _storyRepository!.loadProjects();
+      final existing = _storyRepository!.getById(id);
+      if (existing == null) return _errorResponse(404, 'Story not found');
+      // Deserialize the incoming project JSON
+      final updated = story_model.StoryProject.fromJson(body['project'] as Map<String, dynamic>);
+      updated.dbId = id;
+      await _storyRepository!.saveProject(updated);
+      return shelf.Response.ok(
+        jsonEncode({'status': 'ok'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Failed to update story: $e');
+    }
+  }
+
+  /// POST /api/stories/delete — Delete a story project.
+  Future<shelf.Response> _handleDeleteStory(shelf.Request request) async {
+    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final id = body['id']?.toString() ?? '';
+      if (id.isEmpty) return _errorResponse(400, 'id is required');
+      await _storyRepository!.deleteProject(id);
+      return shelf.Response.ok(
+        jsonEncode({'status': 'ok'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Failed to delete story: $e');
+    }
+  }
+
+  /// GET /api/stories/<id> — Get a full story project.
+  Future<shelf.Response> _handleGetStory(shelf.Request request, String id) async {
+    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    try {
+      await _storyRepository!.loadProjects();
+      final project = _storyRepository!.getById(id);
+      if (project == null) return _errorResponse(404, 'Story not found');
+      return shelf.Response.ok(
+        jsonEncode(project.toJson()..['id'] = id),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Failed to get story: $e');
+    }
+  }
+
+  /// GET /api/stories/<id>/pipeline/stream — SSE stream for pipeline progress.
+  Future<shelf.Response> _handlePipelineStream(shelf.Request request, String id) async {
+    final controller = StreamController<List<int>>();
+    _storySseClients.add(controller);
+    debugPrint('[WebServer] Story SSE client connected (${_storySseClients.length} total)');
+
+    controller.onCancel = () {
+      _storySseClients.remove(controller);
+      debugPrint('[WebServer] Story SSE client disconnected');
+    };
+
+    return shelf.Response.ok(
+      controller.stream,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      },
+    );
+  }
+
+  /// GET /api/stories/<id>/pipeline/status — Polling fallback for pipeline state.
+  Future<shelf.Response> _handlePipelineStatus(shelf.Request request, String id) async {
+    return shelf.Response.ok(
+      jsonEncode({
+        'running': _storyPipelineRunning,
+        'status': _storyStatus,
+        'streamingText': _storyStreamingText,
+        'currentId': _storyCurrentId,
+      }),
+      headers: {'Content-Type': 'application/json'},
+    );
+  }
+
+  /// POST /api/stories/<id>/pipeline/run — Start an async pipeline stage.
+  Future<shelf.Response> _handleRunPipelineStage(shelf.Request request, String id) async {
+    if (_storyRepository == null || _storyPipelineService == null) {
+      return _errorResponse(503, 'Story service not available');
+    }
+    if (_storyPipelineRunning) return _errorResponse(409, 'Pipeline already running');
+
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final stage = body['stage']?.toString() ?? '';
+      if (stage.isEmpty) return _errorResponse(400, 'stage is required');
+
+      await _storyRepository!.loadProjects();
+      final project = _storyRepository!.getById(id);
+      if (project == null) return _errorResponse(404, 'Story not found');
+
+      _storyPipelineRunning = true;
+      _storyCurrentId = id;
+      _storyStatus = 'Starting $stage...';
+      _storyStreamingText = '';
+
+      // Patch the pipeline service's streaming text to broadcast tokens
+      _storyPipelineService!.addListener(_onStoryPipelineUpdate);
+
+      // Run asynchronously
+      () async {
+        try {
+          final actIdx = (body['actIdx'] as num?)?.toInt() ?? 0;
+          final sceneIdx = (body['sceneIdx'] as num?)?.toInt() ?? 0;
+          final beatIdx = (body['beatIdx'] as num?)?.toInt() ?? 0;
+
+          switch (stage) {
+            case 'architect':
+              await _storyPipelineService!.runStoryArchitect(project);
+              break;
+            case 'structure':
+              await _storyPipelineService!.runActStructurer(project);
+              break;
+            case 'scenes':
+              await _storyPipelineService!.runSceneWeaver(project, actIdx);
+              break;
+            case 'beats':
+              await _storyPipelineService!.runBeatDirector(project, actIdx, sceneIdx);
+              break;
+            case 'prose':
+              await _storyPipelineService!.runDraftAndEdit(project, actIdx, sceneIdx, beatIdx);
+              break;
+            case 'archivist':
+              await _storyPipelineService!.runArchivist(project, actIdx, sceneIdx);
+              break;
+            default:
+              throw Exception('Unknown stage: $stage');
+          }
+          // Reload project from repo after pipeline updates it
+          await _storyRepository!.loadProjects();
+          final updated = _storyRepository!.getById(id);
+          final projectJson = updated?.toJson() ?? {};
+          projectJson['id'] = id;
+          _storyBroadcast({'event': 'complete', 'project': projectJson});
+        } catch (e) {
+          debugPrint('[WebServer] Story pipeline error: $e');
+          _storyBroadcast({'event': 'error', 'text': 'Pipeline failed: $e'});
+        } finally {
+          _storyPipelineService!.removeListener(_onStoryPipelineUpdate);
+          _storyPipelineRunning = false;
+        }
+      }();
+
+      return shelf.Response.ok(
+        jsonEncode({'status': 'started', 'stage': stage}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      _storyPipelineRunning = false;
+      return _errorResponse(500, 'Failed to start pipeline: $e');
+    }
+  }
+
+  void _onStoryPipelineUpdate() {
+    if (_storyPipelineService == null) return;
+    final svc = _storyPipelineService!;
+    _storyStatus = svc.statusMessage;
+    // Forward streaming tokens
+    if (svc.streamingText.isNotEmpty) {
+      _storyBroadcast({'event': 'token', 'text': svc.streamingText, 'status': svc.statusMessage});
+    } else {
+      _storyBroadcast({'event': 'status', 'text': svc.statusMessage});
+    }
+  }
+
+  /// POST /api/stories/<id>/prose/edit — Save hand-edited prose for a beat.
+  Future<shelf.Response> _handleProseEdit(shelf.Request request, String id) async {
+    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final actIdx = (body['actIdx'] as num?)?.toInt() ?? 0;
+      final sceneIdx = (body['sceneIdx'] as num?)?.toInt() ?? 0;
+      final beatIdx = (body['beatIdx'] as num?)?.toInt() ?? 0;
+      final prose = body['prose']?.toString() ?? '';
+      final key = '$actIdx-$sceneIdx-$beatIdx';
+
+      await _storyRepository!.loadProjects();
+      final project = _storyRepository!.getById(id);
+      if (project == null) return _errorResponse(404, 'Story not found');
+
+      final existing = project.prose[key] ?? story_model.BeatProse();
+      project.prose[key] = story_model.BeatProse(
+        draft: existing.draft,
+        final_: prose,
+      );
+      await _storyRepository!.saveProject(project);
+
+      return shelf.Response.ok(
+        jsonEncode({'status': 'ok', 'key': key}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      return _errorResponse(500, 'Failed to save prose: $e');
+    }
+  }
+
+  /// POST /api/stories/<id>/distill — Run the chat history distiller.
+  Future<shelf.Response> _handleDistillChatHistory(shelf.Request request, String id) async {
+    if (_storyRepository == null || _storyPipelineService == null) {
+      return _errorResponse(503, 'Story service not available');
+    }
+    if (_storyPipelineRunning) return _errorResponse(409, 'Pipeline already running');
+
+    try {
+      await _storyRepository!.loadProjects();
+      final project = _storyRepository!.getById(id);
+      if (project == null) return _errorResponse(404, 'Story not found');
+
+      _storyPipelineRunning = true;
+      _storyCurrentId = id;
+      _storyPipelineService!.addListener(_onStoryPipelineUpdate);
+
+      () async {
+        try {
+          await _storyPipelineService!.runChatDistiller(project);
+          final pj = project.toJson();
+          pj['id'] = id;
+          _storyBroadcast({'event': 'complete', 'project': pj});
+        } catch (e) {
+          _storyBroadcast({'event': 'error', 'text': 'Distillation failed: $e'});
+        } finally {
+          _storyPipelineService!.removeListener(_onStoryPipelineUpdate);
+          _storyPipelineRunning = false;
+        }
+      }();
+
+      return shelf.Response.ok(
+        jsonEncode({'status': 'started'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      _storyPipelineRunning = false;
+      return _errorResponse(500, 'Failed to start distillation: $e');
+    }
+  }
+
   @override
   void dispose() {
     stop();
     super.dispose();
   }
 }
+
