@@ -3361,14 +3361,26 @@
 
     // ─── Image Gen backend panel helpers ──────────────────────────────
     function _updateImgenBackendPanels(backend) {
-        const remotePanel = $('#imgen-remote-panel');
-        const localPanel  = $('#imgen-local-panel');
-        const a1111Notice = $('#imgen-a1111-notice');
-        const dtNotice    = $('#imgen-drawthings-notice');
+        const remotePanel  = $('#imgen-remote-panel');
+        const localPanel   = $('#imgen-local-panel');
+        const a1111Notice  = $('#imgen-a1111-notice');
+        const dtNotice     = $('#imgen-drawthings-notice');
+        const unloadBtn    = $('#btn-imgen-unload-model');
+        const switchBtn    = $('#btn-imgen-switch-model');
+
         if (remotePanel) remotePanel.style.display = backend === 'remote' ? '' : 'none';
         if (localPanel)  localPanel.style.display  = backend !== 'remote' ? '' : 'none';
         if (a1111Notice) a1111Notice.style.display  = backend === 'a1111' ? 'block' : 'none';
         if (dtNotice)    dtNotice.style.display     = backend === 'drawthings' ? 'block' : 'none';
+
+        // Draw Things doesn't support /sdapi/v1/unload-checkpoint —
+        // hide the Unload button and relabel Switch to be clearer.
+        if (unloadBtn) unloadBtn.style.display = backend === 'drawthings' ? 'none' : '';
+        if (switchBtn) {
+            switchBtn.textContent = backend === 'drawthings'
+                ? '⇄ Load Selected Model in Draw Things'
+                : '⇄ Switch to Selected';
+        }
     }
 
     async function _fetchLocalImgenModels(url, backend) {

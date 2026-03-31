@@ -625,46 +625,79 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
         const SizedBox(height: 16),
 
-        // Model action buttons
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                icon: _unloadingModel
-                    ? const SizedBox(width: 14, height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
-                    : const Icon(Icons.memory, size: 16, color: Colors.redAccent),
-                label: const Text('Unload Model',
-                    style: TextStyle(color: Colors.redAccent, fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.redAccent),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-                onPressed: (_unloadingModel || _switchingModel) ? null : _unloadModel,
+        // Model action buttons.
+        // Draw Things does NOT support /sdapi/v1/unload-checkpoint —
+        // it manages memory itself when a new model is loaded.
+        // Show a single "Load Selected" button for Draw Things;
+        // show Unload + Switch for A1111 which supports both.
+        if (isDrawThings) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: _switchingModel
+                  ? const SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.swap_horiz, size: 16),
+              label: const Text('Load Selected Model in Draw Things',
+                  style: TextStyle(fontSize: 12)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.purpleAccent),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
+              onPressed: (_switchingModel || storage.imageGenModel.isEmpty)
+                  ? null
+                  : _switchModel,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: ElevatedButton.icon(
-                icon: _switchingModel
-                    ? const SizedBox(width: 14, height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.swap_horiz, size: 16),
-                label: const Text('Switch to Selected',
-                    style: TextStyle(fontSize: 12)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.purpleAccent),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Sends the selected checkpoint to Draw Things via POST /sdapi/v1/options. '
+            'Draw Things will replace the current model automatically.',
+            style: TextStyle(color: Colors.white24, fontSize: 10),
+          ),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: _unloadingModel
+                      ? const SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
+                      : const Icon(Icons.memory, size: 16, color: Colors.redAccent),
+                  label: const Text('Unload Model',
+                      style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.redAccent),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  onPressed: (_unloadingModel || _switchingModel) ? null : _unloadModel,
                 ),
-                onPressed: (_unloadingModel || _switchingModel || storage.imageGenModel.isEmpty)
-                    ? null
-                    : _switchModel,
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: _switchingModel
+                      ? const SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.swap_horiz, size: 16),
+                  label: const Text('Switch to Selected',
+                      style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.purpleAccent),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  onPressed: (_unloadingModel || _switchingModel || storage.imageGenModel.isEmpty)
+                      ? null
+                      : _switchModel,
+                ),
+              ),
+            ],
+          ),
+        ],
 
         if (_modelActionStatus.isNotEmpty) ...[
           const SizedBox(height: 8),
