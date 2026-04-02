@@ -132,8 +132,8 @@ Introducing the brand new **Realism Engine**, a backend module designed to give 
 *   **Nuanced Emotion Wheel:** The engine now explicitly rewards the Evaluator LLM for identifying complex emotional states (`yearning, resentful, ecstatic, melancholy, flustered`) rather than sticking strictly to basic emotions like "calm" or "anxious".
 
 **🕰️ Dynamic Time Progression**
-*   **Autonomous Pacing:** The engine no longer requires explicit Out-Of-Character (OOC) prompts to progress time. It actively monitors conversational flow and has authorization to passively phase into subsequent periods of the day as the story naturally unfolds.
-*   **Temporal Guardrails:** Enforced strict backend limits to prevent the AI from rapidly skipping multiple time-slots or erratically triggering entire `new_day` wipes unless temporally appropriate.
+*   **Autonomous Pacing:** The engine actively monitors conversational flow and organically phases into subsequent periods of the day. Characters possess complete temporal awareness and will naturally react to the shift from morning to night as the story unfolds.
+*   **Temporal Guardrails:** Strict backend limits pace the progression organically, ensuring the AI maintains a realistic timeline without rapidly skipping multiple time-slots or erratically triggering new days.
 
 ## 🆕 What's New in V0.9.6.1
 
