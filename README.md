@@ -122,6 +122,19 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
 > **Note:** Versions **0.8.x and earlier** remain licensed under **GPLv3**. The license change applies only to v0.9.0 and all future releases.
 
 
+## 🆕 What's New in V0.9.6.2
+
+This patch drastically expands the backend Realism Engine, giving characters much deeper and more nuanced emotional and physical awareness.
+
+**🎭 Emotional & Physical Realism Upgrades**
+*   **The Lust Tracker:** Added a fully diegetic biological arousal state (ranging from -3 to 10) that dynamically tracks inside the engine when NSFW Cooldown mode is enabled. As characters become more aroused or hit their cooldown Refractory Period, their physiological state is translated into English prose and injected invisibly into their generation prompt, forcing them to physically react and pull/push users completely naturally!
+*   **Visual Lust UI:** Added a discrete `Lust` bar directly inside the Realism sidebar panel, and on individual chat bubbles so you know exactly when your charm is working.
+*   **Nuanced Emotion Wheel:** The engine now explicitly rewards the Evaluator LLM for identifying complex emotional states (`yearning, resentful, ecstatic, melancholy, flustered`) rather than sticking strictly to basic emotions like "calm or anxious".
+
+**🕰️ Dynamic Time Progression**
+*   **Autonomous Pacing:** The engine no longer requires explicit Out-Of-Character (OOC) prompts to progress time. It actively monitors conversational flow and has authorization to passively phase into subsequent periods of the day.
+*   **Temporal Hard-Limits:** Enforced strict guardrails to prevent the AI from rapidly skipping multiple time-slots or erratically triggering entire `new_day` state-wipes unless logically appropriate.
+
 ## 🆕 What's New in V0.9.6.1
 
 This hotfix expands upon the `0.9.6` creator pipeline optimizations, squashing several Linux compiling errors while introducing key visual capabilities.
