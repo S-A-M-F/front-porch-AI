@@ -1522,6 +1522,7 @@ class ChatService extends ChangeNotifier {
     _summaryLastIndex = 0;
     
     _affectionScore = 0;
+    _trustLevel = 0;
     _relationshipTier = 0;
     _longTermScore = 0;
     _longTermTier = 0;
@@ -1693,6 +1694,7 @@ class ChatService extends ChangeNotifier {
           final bondDelta = lastMsg.activeMetadata!['bond_delta'] as int? ?? 0;
           final moodDelta = lastMsg.activeMetadata!['mood_delta'] as int? ?? 0;
           final arousalDelta = lastMsg.activeMetadata!['arousal_delta'] as int? ?? 0;
+          final trustDelta = lastMsg.activeMetadata!['trust_delta'] as int? ?? 0;
           
           if (bondDelta != 0) {
              _affectionScore = (_affectionScore - bondDelta).clamp(-10, 15);
@@ -1708,6 +1710,9 @@ class ChatService extends ChangeNotifier {
           }
           if (arousalDelta != 0 && _nsfwCooldownEnabled) {
              _arousalLevel = (_arousalLevel - arousalDelta).clamp(-3, 10);
+          }
+          if (trustDelta != 0) {
+             _trustLevel = (_trustLevel - trustDelta).clamp(-100, 100);
           }
         }
         
@@ -4602,9 +4607,10 @@ class ChatService extends ChangeNotifier {
         }
       }
 
+      int trustDelta = 0;
       final trustMatch = RegExp(r'"trust_delta"\s*:\s*(-?\d+)').firstMatch(text);
       if (trustMatch != null) {
-        int trustDelta = (int.tryParse(trustMatch.group(1)!) ?? 0).clamp(-2, 2);
+        trustDelta = (int.tryParse(trustMatch.group(1)!) ?? 0).clamp(-2, 2);
         if (trustDelta != 0) {
           _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
           debugPrint('[Realism:Relationship] Trust shifted by $trustDelta -> $_trustLevel');
@@ -4620,12 +4626,13 @@ class ChatService extends ChangeNotifier {
         }
       }
 
-      if (bondDelta != 0 || moodDelta != 0 || arousalDelta != 0) {
+      if (bondDelta != 0 || moodDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
         _pendingRealismMetadata = {
           'bond_delta': bondDelta,
           'mood_delta': moodDelta,
           'mood_label': moodLabel,
           if (arousalDelta != 0) 'arousal_delta': arousalDelta,
+          if (trustDelta != 0) 'trust_delta': trustDelta,
         };
       }
 
@@ -4944,6 +4951,7 @@ class ChatService extends ChangeNotifier {
     _realismEnabled = enabled;
     if (!enabled) {
       _affectionScore = 0;
+      _trustLevel = 0;
       _relationshipTier = 0;
       _longTermScore = 0;
       _longTermTier = 0;
