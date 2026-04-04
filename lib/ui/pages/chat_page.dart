@@ -1131,42 +1131,48 @@ class _ChatPageState extends State<ChatPage> {
                               },
                             ),
                           ),
-                          if (!isCurrent)
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                              tooltip: 'Delete chat',
-                              onPressed: () async {
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    backgroundColor: const Color(0xFF1F2937),
-                                    title: const Text('Delete Chat?'),
-                                    content: Text(
-                                      'This will permanently delete this chat and all its messages.\n\n"${s['preview']}"',
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, false),
-                                        child: const Text('Cancel'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, true),
-                                        style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-                                        child: const Text('Delete'),
-                                      ),
-                                    ],
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                            tooltip: 'Delete chat',
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  backgroundColor: const Color(0xFF1F2937),
+                                  title: const Text('Delete Chat?'),
+                                  content: Text(
+                                    'This will permanently delete this chat and all its messages.\n\n"${s['preview']}"',
+                                    style: const TextStyle(fontSize: 13),
                                   ),
-                                );
-                                if (confirm == true) {
-                                  await chatService.deleteSession(s['id']);
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                await chatService.deleteSession(s['id']);
+                                if (isCurrent) {
+                                  if (context.mounted) Navigator.of(context).pop();
+                                } else {
                                   sessions = await chatService.getSessions();
                                   setDialogState(() {});
                                 }
-                              },
-                            ),
+                              }
+                            },
+                          ),
                           if (isCurrent)
-                            const Icon(Icons.check, color: Colors.greenAccent),
+                            const Padding(
+                              padding: EdgeInsets.only(left: 4.0),
+                              child: Icon(Icons.check, size: 16, color: Colors.greenAccent),
+                            ),
                         ],
                       ),
                       onTap: () {
@@ -3437,15 +3443,15 @@ class _MessageBubbleState extends State<_MessageBubble> {
               Icon(
                 bondDelta > 0 ? Icons.favorite : Icons.heart_broken, 
                 size: 11, 
-                color: bondDelta > 0 ? Colors.pinkAccent : Colors.white38
+                color: bondDelta > 0 ? Colors.pinkAccent : Colors.redAccent
               ),
               const SizedBox(width: 4),
               Text(
-                'Bond: ${bondDelta > 0 ? '+$bondDelta' : '$bondDelta'}', 
+                'Tension: ${bondDelta > 0 ? '+$bondDelta' : '$bondDelta'}', 
                 style: TextStyle(
                   fontSize: 10, 
                   fontWeight: FontWeight.w600,
-                  color: bondDelta > 0 ? Colors.pinkAccent : Colors.white38
+                  color: bondDelta > 0 ? Colors.pinkAccent : Colors.redAccent
                 )
               ),
               if (moodDelta != 0 || arousalDelta != 0) const SizedBox(width: 10),
@@ -5415,15 +5421,25 @@ class _RealismSectionState extends State<_RealismSection> {
         final enabled = chat.realismEnabled;
 
         // Bond colors per tier
-        Color bondColor;
-        switch (chat.relationshipTier) {
-          case 1: bondColor = Colors.blueGrey;
-          case 2: bondColor = Colors.lightBlue;
-          case 3: bondColor = Colors.greenAccent;
-          case 4: bondColor = Colors.orangeAccent;
-          case 5: bondColor = Colors.pinkAccent;
-          default: bondColor = Colors.white30;
+        Color getTierColor(int tier) {
+          switch (tier) {
+            case 5: return Colors.pinkAccent;
+            case 4: return Colors.orangeAccent;
+            case 3: return Colors.greenAccent;
+            case 2: return Colors.lightBlue;
+            case 1: return Colors.blueGrey;
+            case 0: return Colors.white54;
+            case -1: return Colors.orangeAccent.shade100;
+            case -2: return Colors.redAccent.shade100;
+            case -3: return Colors.redAccent;
+            case -4: return Colors.red;
+            case -5: return Colors.red.shade900;
+            default: return Colors.white30;
+          }
         }
+        
+        final shortTermColor = getTierColor(chat.relationshipTier);
+        final longTermColor = getTierColor(chat.longTermTier);
 
         return Container(
           decoration: BoxDecoration(
@@ -5479,18 +5495,18 @@ class _RealismSectionState extends State<_RealismSection> {
                       const Divider(color: Colors.white12, height: 1),
                       const SizedBox(height: 10),
 
-                      // ── Bond ──
+                      // ── Short-Term Tension ──
                       Row(
                         children: [
-                          Icon(Icons.favorite, size: 13, color: bondColor),
+                          Icon(chat.relationshipTier < 0 ? Icons.heart_broken : Icons.favorite, size: 13, color: shortTermColor),
                           const SizedBox(width: 5),
                           Text(
-                            'Bond: ${chat.relationshipTierName}',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: bondColor),
+                            'Tension: ${chat.shortTermTierName}',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: shortTermColor),
                           ),
                           const Spacer(),
                           Text(
-                            '${chat.affectionScore}/15',
+                            '${chat.affectionScore.abs()}/${chat.shortTermProgressTarget}',
                             style: const TextStyle(fontSize: 10, color: Colors.white38),
                           ),
                         ],
@@ -5499,25 +5515,39 @@ class _RealismSectionState extends State<_RealismSection> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(3),
                         child: LinearProgressIndicator(
-                          value: ((chat.affectionScore + 10) / 25).clamp(0.0, 1.0),
+                          value: chat.shortTermProgressPercent,
                           minHeight: 5,
                           backgroundColor: Colors.white10,
-                          valueColor: AlwaysStoppedAnimation<Color>(bondColor),
+                          valueColor: AlwaysStoppedAnimation<Color>(shortTermColor),
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      // Tier dots
+                      const SizedBox(height: 12),
+
+                      // ── Long-Term Bond ──
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: List.generate(5, (i) {
-                          return Container(
-                            width: 7, height: 7,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: (i + 1) <= chat.relationshipTier ? bondColor : Colors.white12,
-                            ),
-                          );
-                        }),
+                        children: [
+                          Icon(chat.longTermTier < 0 ? Icons.heart_broken_sharp : Icons.monitor_heart, size: 13, color: longTermColor),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Bond: ${chat.longTermTierName}',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: longTermColor),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${chat.longTermScore.abs()}/${chat.longTermProgressTarget}',
+                            style: const TextStyle(fontSize: 10, color: Colors.white38),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: chat.longTermProgressPercent,
+                          minHeight: 5,
+                          backgroundColor: Colors.white10,
+                          valueColor: AlwaysStoppedAnimation<Color>(longTermColor),
+                        ),
                       ),
                       const SizedBox(height: 12),
 
@@ -5545,7 +5575,7 @@ class _RealismSectionState extends State<_RealismSection> {
                           ),
                           const Spacer(),
                           Text(
-                            '${chat.shortTermMood}/5',
+                            '${chat.shortTermMood.abs()}/20',
                             style: const TextStyle(fontSize: 10, color: Colors.white38),
                           ),
                         ],
@@ -5554,7 +5584,7 @@ class _RealismSectionState extends State<_RealismSection> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(3),
                         child: LinearProgressIndicator(
-                          value: ((chat.shortTermMood + 5) / 10).clamp(0.0, 1.0),
+                          value: ((chat.shortTermMood + 20) / 40).clamp(0.0, 1.0),
                           minHeight: 4,
                           backgroundColor: Colors.white10,
                           valueColor: AlwaysStoppedAnimation<Color>(

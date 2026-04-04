@@ -63,12 +63,13 @@ class LLMProvider extends ChangeNotifier {
     final typeStr = _storageService.backendType;
     final newType = typeStr == 'openRouter' ? BackendType.openRouter : BackendType.kobold;
 
-    // Update OpenRouter config
+    // Update OpenRouter config with persisted values
     _openRouterService.configure(
       apiUrl: _storageService.remoteApiUrl,
       apiKey: _storageService.remoteApiKey,
       modelName: _storageService.remoteModelName,
     );
+    debugPrint('[LLMProvider] Synced from storage: backend=$typeStr, URL=${_storageService.remoteApiUrl}');
 
     if (newType != _activeBackend) {
       _activeBackend = newType;
