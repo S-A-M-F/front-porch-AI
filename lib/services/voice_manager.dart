@@ -138,6 +138,10 @@ class VoiceManager extends ChangeNotifier {
   bool _isLoadingCatalog = false;
   bool get isLoadingCatalog => _isLoadingCatalog;
 
+  final StorageService _storageService;
+
+  VoiceManager(this._storageService);
+
   // Download progress per voice key
   final Map<String, double> _downloadProgress = {};
   double getDownloadProgress(String voiceKey) => _downloadProgress[voiceKey] ?? 0.0;
@@ -145,8 +149,8 @@ class VoiceManager extends ChangeNotifier {
 
   /// Get the directory where voice models are stored.
   Future<Directory> get voicesDir async {
-    final appDir = await getApplicationSupportDirectory();
-    final dir = Directory(p.join(appDir.path, 'piper_voices'));
+    final root = _storageService.rootPath ?? (await getApplicationDocumentsDirectory()).path;
+    final dir = Directory(p.join(root, 'system', 'piper_voices'));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
