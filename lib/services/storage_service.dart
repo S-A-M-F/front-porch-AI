@@ -295,7 +295,8 @@ class StorageService extends ChangeNotifier {
   Future<void> _init() async {
     _prefs = await SharedPreferences.getInstance();
     final docsDir = await getApplicationDocumentsDirectory();
-    _rootPath = _prefs?.getString('root_path') ?? docsDir.path;
+    final defaultRoot = path.join(docsDir.path, 'FrontPorchAI');
+    _rootPath = _prefs?.getString('root_path') ?? defaultRoot;
     _binDir = Directory(path.join(_rootPath!, 'koboldcpp_bin'));
     
     // Ensure directories exist
