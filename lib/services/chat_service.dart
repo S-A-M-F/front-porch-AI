@@ -277,6 +277,12 @@ class ChatService extends ChangeNotifier {
   bool _nsfwCooldownEnabled = false;
   int _cooldownTurnsRemaining = 0;
   int _arousalLevel = 0; // -3 to 10 scale
+  
+  // ── v3 Behavioral Mechanics ──
+  int _trustLevel = 0; // -100 to 100
+  String _activeFixation = '';
+  int _fixationLifespan = 0; // turns until fixation naturally clears
+  String _spatialStance = '';
 
   // ── Context / Prompt Budget ──
   Map<String, int> _lastPromptBudget = {};
@@ -901,6 +907,10 @@ class ChatService extends ChangeNotifier {
       summaryLastIndex: drift.Value(_summaryLastIndex > 0 ? _summaryLastIndex : null),
       parentSession: drift.Value(_currentSessionId),
       forkIndex: drift.Value(_messages.length - 1),
+      trustLevel: drift.Value(_trustLevel),
+      activeFixation: drift.Value(_activeFixation),
+      fixationLifespan: drift.Value(_fixationLifespan),
+      spatialStance: drift.Value(_spatialStance),
       createdAt: drift.Value(DateTime.now()),
       updatedAt: drift.Value(DateTime.now()),
     ));
@@ -1067,6 +1077,10 @@ class ChatService extends ChangeNotifier {
       nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
       arousalLevel: drift.Value(_arousalLevel),
       cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
+      trustLevel: drift.Value(_trustLevel),
+      activeFixation: drift.Value(_activeFixation),
+      fixationLifespan: drift.Value(_fixationLifespan),
+      spatialStance: drift.Value(_spatialStance),
       createdAt: drift.Value(createdAt),
       updatedAt: drift.Value(DateTime.now()),
     ));
@@ -1306,6 +1320,10 @@ class ChatService extends ChangeNotifier {
       _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
       _arousalLevel = session.arousalLevel;
       _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
+      _trustLevel = session.trustLevel;
+      _activeFixation = session.activeFixation;
+      _fixationLifespan = session.fixationLifespan;
+      _spatialStance = session.spatialStance;
 
       if (_messages.isNotEmpty) {
         _scanLorebook(_messages.last.text);
@@ -2134,7 +2152,8 @@ class ChatService extends ChangeNotifier {
         final emotion = _getEmotionInjection();
         final time = _getTimeInjection();
         final cooldown = _getNsfwCooldownInjection();
-        realismBlock = '$relationship$emotion$time$cooldown';
+        final behavioral = _getBehavioralMechanicsInjection();
+        realismBlock = '$relationship$emotion$time$cooldown$behavioral';
       }
 
       // Calculate token cost of all fixed sections to determine chat history budget
@@ -4412,6 +4431,31 @@ class ChatService extends ChangeNotifier {
         ' This should subtly influence $charName\'s tone, body language, and word choice.]\n';
   }
 
+  String _getBehavioralMechanicsInjection() {
+    if (!_realismEnabled) return '';
+    
+    String block = '';
+    
+    // 1. Trust mapping (-100 to 100)
+    if (_trustLevel <= -20) {
+      block += '[Behavioral Anchor (MISTRUST): You deeply distrust the user right now. You are paranoid, evasive, and highly questioning of their motives. Even if your bond is high, you do not trust them.]\n';
+    } else if (_trustLevel >= 50) {
+      block += '[Behavioral Anchor (BLIND TRUST): You place absolute, unconditional trust in the user. You will readily share secrets and assume the absolute best of their intentions.]\n';
+    }
+    
+    // 2. Fixation Mapping
+    if (_activeFixation.isNotEmpty && _fixationLifespan > 0) {
+      block += '[Behavioral Anchor (OBSESSION): You are currently fixated on "$_activeFixation". Let this heavily influence your thoughts and aggressively steer the conversation back to this topic.]\n';
+    }
+    
+    // 3. Spatial Stance Mapping
+    if (_spatialStance.isNotEmpty) {
+      block += '[Spatial Anchor: You are currently physically "$_spatialStance". Format ALL of your actions around being anchored into this physical position in the environment.]\n';
+    }
+    
+    return block;
+  }
+
   String _getTimeInjection() {
     if (!_realismEnabled) return '';
     final timeLabel = _timeOfDay.replaceAll('_', ' ');
@@ -4476,14 +4520,16 @@ class ChatService extends ChangeNotifier {
         '$personalityInjection'
         'Reactions are subjective! If $charName is sadistic or combative, insults might amuse or arouse them. '
         'If $charName is proud, groveling apologies might disgust them. If they are submissive, dominance might please them. Evaluate based ONLY on their specific traits.\n\n'
-        'Evaluate TWO things${_nsfwCooldownEnabled ? ' (and an optional third)' : ''}:\n'
+        'Evaluate THREE things${_nsfwCooldownEnabled ? ' (and an optional fourth)' : ''}:\n'
         '1. "relationship_delta": How does this affect the short-term tension/status? (-2 to +2)\n'
         '   +2: Deeply engaging/sincere | +1: Friendly | 0: Neutral | -1: Annoying/Rude | -2: Hostile\n'
         '2. "mood_shift": Based purely on their specific personality, how does $charName\'s mood SHIFT? (-3 to +3)\n'
         '   +3: Massive positive spike | +1: Slight lift | 0: Unchanged | -1: Irritated | -3: Deeply hurt/furious\n'
-        '${_nsfwCooldownEnabled ? '3. "arousal_delta": (If flirtatious/NSFW) Does this interaction increase/decrease physical arousal? (-2 to +2)\\n' : ''}\n'
+        '3. "trust_delta": Does $userName\'s action build or destroy TRUTH and TRUST? (-2 to +2)\n'
+        '   Are they lying? Keeping secrets? Or being vulnerable? Trust is SEPARATE from affection.\n'
+        '${_nsfwCooldownEnabled ? '4. "arousal_delta": (If flirtatious/NSFW) Does this interaction increase/decrease physical arousal? (-2 to +2)\\n' : ''}\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a JSON object: {"relationship_delta": <number>, "mood_shift": <number>, ${_nsfwCooldownEnabled ? '"arousal_delta": <number>, ' : ''}"reason": "<brief>"}';
+        'Respond with ONLY a JSON object: {"relationship_delta": <number>, "mood_shift": <number>, "trust_delta": <number>, ${_nsfwCooldownEnabled ? '"arousal_delta": <number>, ' : ''}"reason": "<brief>"}';
 
     try {
       debugPrint('[Realism:Relationship] Evaluating...');
@@ -4508,6 +4554,15 @@ class ChatService extends ChangeNotifier {
           _shortTermMood = (_shortTermMood + moodDelta).clamp(-20, 20);
           _moodDecayCounter = 0;
           debugPrint('[Realism:Relationship] Mood shifted by $moodDelta -> $_shortTermMood ($moodLabel)');
+        }
+      }
+
+      final trustMatch = RegExp(r'"trust_delta"\s*:\s*(-?\d+)').firstMatch(text);
+      if (trustMatch != null) {
+        int trustDelta = (int.tryParse(trustMatch.group(1)!) ?? 0).clamp(-2, 2);
+        if (trustDelta != 0) {
+          _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
+          debugPrint('[Realism:Relationship] Trust shifted by $trustDelta -> $_trustLevel');
         }
       }
 
@@ -4558,10 +4613,12 @@ class ChatService extends ChangeNotifier {
         '2. "emotion_intensity": How strong? (mild, moderate, or strong)\n'
         '3. "time_of_day": Current time? (dawn, morning, late_morning, afternoon, evening, night)\n'
         '   Pacing: Do not jump forward drastically. Advance natively when sensible, otherwise default to: $_timeOfDay\n'
-        '   "new_day": Has a new day explicitly started? (true/false)$nsfwInstr\n\n'
+        '   "new_day": Has a new day explicitly started? (true/false)\n'
+        '4. "posture": What is their current spatial/physical stance? (e.g. "Cornered against the wall", "Sitting on the edge of the bed", "Pacing angrily"). If neutral, use "none".\n'
+        '5. "fixation_topic": Is there a severe emotional topic they are obsessing over right now? If no, or if resolved, output "none".$nsfwInstr\n\n'
         'Recent conversation:\n$recent\n\n'
         'Respond with ONLY a JSON object: {"emotion": "<word>", "emotion_intensity": "<level>", '
-        '"time_of_day": "<period>", "new_day": <bool>$nsfwField, "reason": "<brief>"}';
+        '"time_of_day": "<period>", "new_day": <bool>, "posture": "<brief>", "fixation_topic": "<brief>"$nsfwField, "reason": "<brief>"}';
 
     try {
       debugPrint('[Realism:Scene] Evaluating...');
@@ -4613,7 +4670,33 @@ class ChatService extends ChangeNotifier {
         }
       }
 
-      // climax detection is handled post-generation in _checkClimaxInResponse
+      final postureMatch = RegExp(r'"posture"\s*:\s*"([^"]+)"').firstMatch(text);
+      if (postureMatch != null) {
+        String p = postureMatch.group(1)!.trim();
+        _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
+      }
+
+      // Decrement the fixation lifespan natively
+      if (_fixationLifespan > 0) {
+        _fixationLifespan--;
+        if (_fixationLifespan == 0) {
+          _activeFixation = '';
+          debugPrint('[Realism:Scene] Fixation naturally decayed and cleared.');
+        }
+      }
+
+      final fixationMatch = RegExp(r'"fixation_topic"\s*:\s*"([^"]+)"').firstMatch(text);
+      if (fixationMatch != null) {
+        String f = fixationMatch.group(1)!.trim();
+        if (f.toLowerCase() == 'none' || f.isEmpty) {
+          _activeFixation = '';
+          _fixationLifespan = 0;
+        } else if (f != _activeFixation) {
+          _activeFixation = f;
+          _fixationLifespan = 3; // Harcoded guardrail decay
+          debugPrint('[Realism:Scene] New obsession registered: $f (3 turns)');
+        }
+      }
 
       debugPrint('[Realism:Scene] Emotion: $_characterEmotion ($_emotionIntensity), '
           'Time: $_timeOfDay, Day: $_dayCount');
@@ -4645,6 +4728,10 @@ class ChatService extends ChangeNotifier {
       'dayCount': _dayCount,
       'arousalLevel': _arousalLevel,
       'cooldownTurnsRemaining': _cooldownTurnsRemaining,
+      'trustLevel': _trustLevel,
+      'activeFixation': _activeFixation,
+      'fixationLifespan': _fixationLifespan,
+      'spatialStance': _spatialStance,
     };
   }
 
@@ -4673,6 +4760,12 @@ class ChatService extends ChangeNotifier {
     _dayCount = state['dayCount'] as int? ?? _dayCount;
     _arousalLevel = state['arousalLevel'] as int? ?? _arousalLevel;
     _cooldownTurnsRemaining = state['cooldownTurnsRemaining'] as int? ?? _cooldownTurnsRemaining;
+    
+    // v3.0 Restorations
+    _trustLevel = state['trustLevel'] as int? ?? _trustLevel;
+    _activeFixation = state['activeFixation'] as String? ?? _activeFixation;
+    _fixationLifespan = state['fixationLifespan'] as int? ?? _fixationLifespan;
+    _spatialStance = state['spatialStance'] as String? ?? _spatialStance;
     
     debugPrint('[Realism] Engine state successfully rolled back to match timeline.');
   }
