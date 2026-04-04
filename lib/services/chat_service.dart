@@ -4831,8 +4831,8 @@ class ChatService extends ChangeNotifier {
     final charName = _activeCharacter!.name;
 
     String personalityInjection = '';
-    if (_activeCharacter.personality.isNotEmpty) {
-      final p = _activeCharacter.personality.length > 600 ? _activeCharacter.personality.substring(0, 600) : _activeCharacter.personality;
+    if (_activeCharacter!.personality.isNotEmpty) {
+      final p = _activeCharacter!.personality.length > 600 ? _activeCharacter!.personality.substring(0, 600) : _activeCharacter!.personality;
       personalityInjection = 'Character Personality Traits:\n"$p"\n\n';
     }
 
