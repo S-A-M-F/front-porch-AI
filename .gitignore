@@ -88,6 +88,8 @@ front_porch_ai.png
 .antigravity/
 .agent/
 .gemini/
+.claw/
+.sandbox-*/
 aur/src/
 aur/pkg/
 aur/*.pkg.tar*
