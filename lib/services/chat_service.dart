@@ -4830,8 +4830,15 @@ class ChatService extends ChangeNotifier {
     if (_activeCharacter == null) return;
     final charName = _activeCharacter!.name;
 
+    String personalityInjection = '';
+    if (_activeCharacter.personality.isNotEmpty) {
+      final p = _activeCharacter.personality.length > 600 ? _activeCharacter.personality.substring(0, 600) : _activeCharacter.personality;
+      personalityInjection = 'Character Personality Traits:\n"$p"\n\n';
+    }
+
     final prompt =
         'Read the following character response and answer ONE question.\n\n'
+        '$personalityInjection'
         'RESPONSE:\n$responseText\n\n'
         'Question: Did $charName (and ONLY $charName) PHYSICALLY reach climax/orgasm in this response? '
         'This must be an event actively occurring or just occurred in the text — '
@@ -4839,8 +4846,10 @@ class ChatService extends ChangeNotifier {
         'If the response describes the user climaxing, but NOT $charName, you MUST answer false.\n'
         'Do NOT answer true for: dirty talk, innuendo, arousal build-up, '
         'sexual activity that has not yet reached completion, or casual use of words like "cum". '
-        'ONLY answer true if $charName\'s orgasm/climax is unambiguously depicted as actively happening.\n\n'
-        'Respond with ONLY a JSON object: {"climax_detected": <true|false>, "reason": "<brief>"}';
+        'ONLY answer true if $charName\'s orgasm/climax is unambiguously depicted as actively happening.\n'
+        'If true, ALSO estimate their "refractory_turns" (recovery time before they can be aroused again). '
+        'A normal character might take 5-7 turns. A highly sexual/nympho character takes 1-2 turns. Use their personality traits to decide.\n\n'
+        'Respond with ONLY a JSON object: {"climax_detected": <true|false>, "refractory_turns": <number 1-8>, "reason": "<brief>"}';
 
     try {
       debugPrint('[Realism:Climax] Checking AI response for climax...');
@@ -4852,9 +4861,14 @@ class ChatService extends ChangeNotifier {
 
       final match = RegExp(r'"climax_detected"\s*:\s*(true|false)').firstMatch(text);
       if (match != null && match.group(1) == 'true') {
-        _cooldownTurnsRemaining = 5;
+        int turns = 5;
+        final turnMatch = RegExp(r'"refractory_turns"\s*:\s*(\d+)').firstMatch(text);
+        if (turnMatch != null) {
+          turns = (int.tryParse(turnMatch.group(1)!) ?? 5).clamp(1, 10);
+        }
+        _cooldownTurnsRemaining = turns;
         _arousalLevel = -3;
-        debugPrint('[Realism:Climax] Confirmed — refractory cooldown started (5 turns), arousal → -3');
+        debugPrint('[Realism:Climax] Confirmed — refractory cooldown started ($turns turns), arousal → -3');
         _saveChat();
         notifyListeners();
       } else {
