@@ -4577,7 +4577,7 @@ class ChatService extends ChangeNotifier {
         '   +3: Massive positive spike | +1: Slight lift | 0: Unchanged | -1: Irritated | -3: Deeply hurt/furious\n'
         '3. "trust_delta": Does $userName\'s action build or destroy TRUTH and TRUST? (-2 to +2)\n'
         '   Are they lying? Keeping secrets? Or being vulnerable? Trust is SEPARATE from affection.\n'
-        '${_nsfwCooldownEnabled ? '4. "arousal_delta": (If flirtatious/NSFW) Does this interaction increase/decrease physical arousal? (-2 to +2)\\n' : ''}\n'
+        '${_nsfwCooldownEnabled ? '4. "arousal_delta": Does this interaction increase/decrease physical arousal? (-2 to +2)\n   Base this heavily on their personality. Highly sexual/dominant characters should gain arousal (+1/+2) very easily from slight teasing, submission, or power dynamics.\n' : ''}\n'
         'Recent conversation:\n$recent\n\n'
         'Respond with ONLY a JSON object: {"relationship_delta": <number>, "mood_shift": <number>, "trust_delta": <number>, ${_nsfwCooldownEnabled ? '"arousal_delta": <number>, ' : ''}"reason": "<brief>"}';
 
