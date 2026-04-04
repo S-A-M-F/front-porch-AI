@@ -5496,20 +5496,23 @@ class _RealismSectionState extends State<_RealismSection> {
                       const SizedBox(height: 10),
 
                       // ── Short-Term Tension ──
-                      Row(
-                        children: [
-                          Icon(chat.relationshipTier < 0 ? Icons.heart_broken : Icons.favorite, size: 13, color: shortTermColor),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Tension: ${chat.shortTermTierName}',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: shortTermColor),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${chat.affectionScore.abs()}/${chat.shortTermProgressTarget}',
-                            style: const TextStyle(fontSize: 10, color: Colors.white38),
-                          ),
-                        ],
+                      Tooltip(
+                        message: 'Short-term Dynamic: The immediate "tension in the room" or how they feel about you right now. Evolves quickly based on recent events.',
+                        child: Row(
+                          children: [
+                            Icon(chat.relationshipTier < 0 ? Icons.heart_broken : Icons.favorite, size: 13, color: shortTermColor),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Short-Term Bond: ${chat.shortTermTierName}',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: shortTermColor),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '${chat.affectionScore.abs()}/${chat.shortTermProgressTarget}',
+                              style: const TextStyle(fontSize: 10, color: Colors.white38),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 4),
                       ClipRRect(
@@ -5524,20 +5527,23 @@ class _RealismSectionState extends State<_RealismSection> {
                       const SizedBox(height: 12),
 
                       // ── Long-Term Bond ──
-                      Row(
-                        children: [
-                          Icon(chat.longTermTier < 0 ? Icons.heart_broken_sharp : Icons.monitor_heart, size: 13, color: longTermColor),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Bond: ${chat.longTermTierName}',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: longTermColor),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${chat.longTermScore.abs()}/${chat.longTermProgressTarget}',
-                            style: const TextStyle(fontSize: 10, color: Colors.white38),
-                          ),
-                        ],
+                      Tooltip(
+                        message: 'Long-term Relationship: Your deep, overarching history together. Evolves slowly and sets the foundation for your interactions.',
+                        child: Row(
+                          children: [
+                            Icon(chat.longTermTier < 0 ? Icons.heart_broken_sharp : Icons.monitor_heart, size: 13, color: longTermColor),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Long-Term Bond: ${chat.longTermTierName}',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: longTermColor),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '${chat.longTermScore.abs()}/${chat.longTermProgressTarget}',
+                              style: const TextStyle(fontSize: 10, color: Colors.white38),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 4),
                       ClipRRect(
@@ -5860,9 +5866,9 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                 child: Row(
                   children: [
                     Icon(
-                      _expanded ? Icons.expand_less : Icons.expand_more,
-                      size: 18,
-                      color: Colors.white54,
+                      _expanded ? Icons.expand_more : Icons.chevron_right,
+                      size: 16,
+                      color: Colors.white38,
                     ),
                     const SizedBox(width: 4),
                     const Icon(Icons.flag, size: 14, color: Colors.orangeAccent),
