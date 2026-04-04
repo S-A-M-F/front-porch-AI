@@ -251,9 +251,15 @@ class ChatService extends ChangeNotifier {
   // ── Realism Mode ──
   bool _realismEnabled = false; // master toggle
 
-  // Relationship
-  int _affectionScore = 0; // long-term bond (-10 to +15)
-  int _relationshipTier = 2; // 1=Stranger, 2=Acquaintance, 3=Friend, 4=Close Friend, 5=Intimate
+  // Relationship (Short-Term / Tension)
+  int _affectionScore = 0; 
+  int _relationshipTier = 0; 
+
+  // Long-Term Bond
+  int _longTermScore = 0;
+  int _longTermTier = 0;
+  int _turnsSinceLongTermCheck = 0;
+  int _shortTermDeltasSummary = 0;
 
   // Short-term mood
   int _shortTermMood = 0; // -5 to +5
@@ -430,6 +436,8 @@ class ChatService extends ChangeNotifier {
   bool get isSummaryGenerating => _isSummaryGenerating;
   int get affectionScore => _affectionScore;
   int get relationshipTier => _relationshipTier;
+  int get longTermScore => _longTermScore;
+  int get longTermTier => _longTermTier;
   bool get realismEnabled => _realismEnabled;
   int get shortTermMood => _shortTermMood;
   String get characterEmotion => _characterEmotion;
@@ -440,25 +448,123 @@ class ChatService extends ChangeNotifier {
   int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
   int get arousalLevel => _arousalLevel;
 
+  int get shortTermProgressTarget {
+    final absScore = _affectionScore.abs();
+    if (absScore < 10) return 10;
+    if (absScore < 25) return 25;
+    if (absScore < 45) return 45;
+    if (absScore < 70) return 70;
+    if (absScore < 100) return 100;
+    return 150; // max
+  }
+
+  int get shortTermProgressBase {
+    final absScore = _affectionScore.abs();
+    if (absScore < 10) return 0;
+    if (absScore < 25) return 10;
+    if (absScore < 45) return 25;
+    if (absScore < 70) return 45;
+    if (absScore < 100) return 70;
+    return 100;
+  }
+
+  double get shortTermProgressPercent {
+    final current = _affectionScore.abs() - shortTermProgressBase;
+    final total = shortTermProgressTarget - shortTermProgressBase;
+    return (current / total).clamp(0.0, 1.0);
+  }
+
+  int get longTermProgressTarget {
+    final absScore = _longTermScore.abs();
+    if (absScore < 10) return 10;
+    if (absScore < 25) return 25;
+    if (absScore < 45) return 45;
+    if (absScore < 70) return 70;
+    if (absScore < 100) return 100;
+    return 150; // max
+  }
+
+  int get longTermProgressBase {
+    final absScore = _longTermScore.abs();
+    if (absScore < 10) return 0;
+    if (absScore < 25) return 10;
+    if (absScore < 45) return 25;
+    if (absScore < 70) return 45;
+    if (absScore < 100) return 70;
+    return 100;
+  }
+
+  double get longTermProgressPercent {
+    final current = _longTermScore.abs() - longTermProgressBase;
+    final total = longTermProgressTarget - longTermProgressBase;
+    return (current / total).clamp(0.0, 1.0);
+  }
+
   /// Human-readable tier name for the current relationship level.
-  String get relationshipTierName {
+  int _calculateTier(int score) {
+    final absScore = score.abs();
+    if (absScore < 10) return 0;
+    if (absScore < 25) return score > 0 ? 1 : -1;
+    if (absScore < 45) return score > 0 ? 2 : -2;
+    if (absScore < 70) return score > 0 ? 3 : -3;
+    if (absScore < 100) return score > 0 ? 4 : -4;
+    return score > 0 ? 5 : -5;
+  }
+
+  String get shortTermTierName {
     switch (_relationshipTier) {
-      case 1: return 'Stranger';
-      case 2: return 'Acquaintance';
-      case 3: return 'Friend';
-      case 4: return 'Close Friend';
       case 5: return 'Intimate';
+      case 4: return 'Close Friend';
+      case 3: return 'Friend';
+      case 2: return 'Acquaintance';
+      case 1: return 'Friendly';
+      case 0: return 'Stranger / Neutral';
+      case -1: return 'Annoyed';
+      case -2: return 'Frustrated';
+      case -3: return 'Disliked';
+      case -4: return 'Hostile';
+      case -5: return 'Bitter Enemy';
       default: return 'Unknown';
     }
   }
 
-  /// Human-readable mood label.
+  String get longTermTierName {
+    switch (_longTermTier) {
+      case 5: return 'Soulmate / Devoted';
+      case 4: return 'Unbreakable Bond';
+      case 3: return 'Deep Connection';
+      case 2: return 'Growing Trust';
+      case 1: return 'Establishing Trust';
+      case 0: return 'No Deep Ties';
+      case -1: return 'Distant';
+      case -2: return 'Fractured';
+      case -3: return 'Broken Trust';
+      case -4: return 'Deep Resentment';
+      case -5: return 'Nemesis';
+      default: return 'Unknown';
+    }
+  }
+
+  /// Human-readable mood label containing exact emotion string and valence direction.
   String get moodLabel {
-    if (_shortTermMood >= 3) return 'Delighted';
-    if (_shortTermMood >= 1) return 'Pleased';
-    if (_shortTermMood == 0) return 'Neutral';
-    if (_shortTermMood >= -2) return 'Annoyed';
-    return 'Upset';
+    String directionalLabel;
+    if (_shortTermMood >= 12) directionalLabel = 'Elated';
+    else if (_shortTermMood >= 5) directionalLabel = 'Pleased';
+    else if (_shortTermMood > 0) directionalLabel = 'Positive';
+    else if (_shortTermMood == 0) directionalLabel = 'Neutral';
+    else if (_shortTermMood > -5) directionalLabel = 'Negative';
+    else if (_shortTermMood > -12) directionalLabel = 'Hostile';
+    else directionalLabel = 'Furious';
+
+    if (_characterEmotion.isEmpty) {
+      return directionalLabel;
+    }
+    
+    // Capitalize explicitly defined emotion string
+    final capEmotion = _characterEmotion.substring(0, 1).toUpperCase() + _characterEmotion.substring(1);
+    
+    // In Neutral, maybe don't append bracketed text if there is an explicit emotion
+    return '$capEmotion [$directionalLabel]';
   }
 
   void setAuthorNote(String note, {int? strength}) {
@@ -947,6 +1053,10 @@ class ChatService extends ChangeNotifier {
       forkIndex: drift.Value(_forkIndex),
       affectionScore: drift.Value(_affectionScore),
       relationshipTier: drift.Value(_relationshipTier),
+      longTermScore: drift.Value(_longTermScore),
+      longTermTier: drift.Value(_longTermTier),
+      turnsSinceLongTermCheck: drift.Value(_turnsSinceLongTermCheck),
+      shortTermDeltasSummary: drift.Value(_shortTermDeltasSummary),
       realismEnabled: drift.Value(_realismEnabled),
       shortTermMood: drift.Value(_shortTermMood),
       moodDecayCounter: drift.Value(_moodDecayCounter),
@@ -1012,6 +1122,10 @@ class ChatService extends ChangeNotifier {
     _forkIndex = lastSession.forkIndex;
     _affectionScore = lastSession.affectionScore;
     _relationshipTier = lastSession.relationshipTier;
+    _longTermScore = lastSession.longTermScore;
+    _longTermTier = lastSession.longTermTier;
+    _turnsSinceLongTermCheck = lastSession.turnsSinceLongTermCheck;
+    _shortTermDeltasSummary = lastSession.shortTermDeltasSummary;
     _realismEnabled = lastSession.realismEnabled;
     _shortTermMood = lastSession.shortTermMood;
     _moodDecayCounter = lastSession.moodDecayCounter;
@@ -1163,6 +1277,25 @@ class ChatService extends ChangeNotifier {
       _forkIndex = session.forkIndex;
       _affectionScore = session.affectionScore;
       _relationshipTier = session.relationshipTier;
+      _longTermScore = session.longTermScore;
+      _longTermTier = session.longTermTier;
+      
+      // Realism Engine 2.0 Compatibility Migration
+      // Old scale was 0-15. New scale is 0-150.
+      // If we see an old chat that was Tier 5 but score 15, we scale it to match the new engine.
+      if (_affectionScore > 0 && _affectionScore <= 15 && _relationshipTier >= 3) {
+        _affectionScore = _affectionScore * 10;
+        // Old high-tier bonds convert immediately into solid Long-Term bounds as well.
+        if (_longTermScore == 0) {
+           _longTermScore = _affectionScore;
+           _longTermTier = _calculateTier(_longTermScore);
+        }
+        _relationshipTier = _calculateTier(_affectionScore);
+        debugPrint('[Realism] Legacy session migrated to REv2 scales.');
+      }
+      
+      _turnsSinceLongTermCheck = session.turnsSinceLongTermCheck;
+      _shortTermDeltasSummary = session.shortTermDeltasSummary;
       _realismEnabled = session.realismEnabled;
       _shortTermMood = session.shortTermMood;
       _moodDecayCounter = session.moodDecayCounter;
@@ -1235,6 +1368,10 @@ class ChatService extends ChangeNotifier {
         swipes: List.from(m.swipes),
         swipeIndex: m.swipeIndex,
         swipeDurations: List.from(m.swipeDurations),
+        metadata: m.metadata != null ? Map<String, dynamic>.from(m.metadata!) : null,
+        swipeMetadata: m.swipeMetadata != null 
+            ? m.swipeMetadata!.map((e) => e != null ? Map<String, dynamic>.from(e) : null).toList() 
+            : null,
       )
     ).toList();
 
@@ -1246,6 +1383,11 @@ class ChatService extends ChangeNotifier {
     _forkIndex = messageIndex;
     _summary = '';
     _summaryLastIndex = 0;
+
+    // Time-Travel Restoration
+    if (_messages.isNotEmpty) {
+      _restoreRealismStateFromMessage(_messages.last);
+    }
 
     await _saveChat();
     notifyListeners();
@@ -1315,6 +1457,13 @@ class ChatService extends ChangeNotifier {
     _greetingIndex = 0;
     _summary = '';
     _summaryLastIndex = 0;
+    
+    _affectionScore = 0;
+    _relationshipTier = 0;
+    _longTermScore = 0;
+    _longTermTier = 0;
+    _turnsSinceLongTermCheck = 0;
+    _shortTermDeltasSummary = 0;
 
     if (_activeGroup != null && _groupCharacters.isNotEmpty) {
       // Group mode: greeting from first character
@@ -1491,7 +1640,8 @@ class ChatService extends ChangeNotifier {
              else _relationshipTier = 5;
           }
           if (moodDelta != 0) {
-             _shortTermMood = (_shortTermMood - moodDelta).clamp(-5, 5);
+             _shortTermMood = (_shortTermMood - moodDelta).clamp(-20, 20);
+             _moodDecayCounter = 0;
           }
           if (arousalDelta != 0 && _nsfwCooldownEnabled) {
              _arousalLevel = (_arousalLevel - arousalDelta).clamp(-3, 10);
@@ -1558,41 +1708,8 @@ class ChatService extends ChangeNotifier {
   void _syncRealismStateForSwipe(ChatMessage msg, int oldIndex, int newIndex) {
     if (!_realismEnabled) return;
     
-    final oldMeta = (oldIndex >= 0 && oldIndex < msg.swipeMetadata.length) 
-        ? (msg.swipeMetadata[oldIndex] ?? msg.metadata) 
-        : msg.metadata;
-        
-    final newMeta = (newIndex >= 0 && newIndex < msg.swipeMetadata.length) 
-        ? (msg.swipeMetadata[newIndex] ?? msg.metadata) 
-        : msg.metadata;
-        
-    final oldBond = oldMeta != null ? (oldMeta['bond_delta'] as int? ?? 0) : 0;
-    final oldMood = oldMeta != null ? (oldMeta['mood_delta'] as int? ?? 0) : 0;
-    final oldArousal = oldMeta != null ? (oldMeta['arousal_delta'] as int? ?? 0) : 0;
-    
-    final newBond = newMeta != null ? (newMeta['bond_delta'] as int? ?? 0) : 0;
-    final newMood = newMeta != null ? (newMeta['mood_delta'] as int? ?? 0) : 0;
-    final newArousal = newMeta != null ? (newMeta['arousal_delta'] as int? ?? 0) : 0;
-    
-    if (oldBond != newBond) {
-      final diff = newBond - oldBond;
-      _affectionScore = (_affectionScore + diff).clamp(-10, 15);
-      if (_affectionScore < 0) _relationshipTier = 1;
-      else if (_affectionScore <= 3) _relationshipTier = 2;
-      else if (_affectionScore <= 7) _relationshipTier = 3;
-      else if (_affectionScore <= 11) _relationshipTier = 4;
-      else _relationshipTier = 5;
-    }
-    
-    if (oldMood != newMood) {
-      final diff = newMood - oldMood;
-      _shortTermMood = (_shortTermMood + diff).clamp(-5, 5);
-    }
-    
-    if (oldArousal != newArousal && _nsfwCooldownEnabled) {
-      final diff = newArousal - oldArousal;
-      _arousalLevel = (_arousalLevel + diff).clamp(-3, 10);
-    }
+    // Natively restore the frozen runtime variables for the selected alternate timeline
+    _restoreRealismStateFromMessage(msg);
   }
 
   Future<void> continueGeneration() async {
@@ -2468,6 +2585,12 @@ class ChatService extends ChangeNotifier {
         // Save session after AI message is complete
         await _saveChat();
 
+        // Post-generation climax check — runs against the AI's actual response
+        // so the character can climax naturally before the refractory cooldown applies
+        if (_realismEnabled && _nsfwCooldownEnabled && _cooldownTurnsRemaining <= 0 && _activeGroup == null) {
+          _checkClimaxInResponse(finalResponse); // fire-and-forget
+        }
+
         // Check if summary needs updating (fire-and-forget)
         _maybeUpdateSummary();
 
@@ -2810,7 +2933,14 @@ class ChatService extends ChangeNotifier {
 
   void deleteMessage(int index) async {
     if (index >= 0 && index < _messages.length) {
+      bool isLastNode = index == _messages.length - 1;
       _messages.removeAt(index);
+      
+      // If we deleted the most recent message, time-travel rollback to the new latest node
+      if (isLastNode && _messages.isNotEmpty) {
+        _restoreRealismStateFromMessage(_messages.last);
+      }
+      
       await _saveChat();
       notifyListeners();
     }
@@ -4225,35 +4355,51 @@ class ChatService extends ChangeNotifier {
     }
 
     String bondGuidance;
+    if (_longTermTier >= 4) {
+      bondGuidance = 'Their Long-Term Commitment is unbreakable: $charName fully trusts {{user}} and views them as a soulmate/life partner.';
+    } else if (_longTermTier >= 2) {
+      bondGuidance = 'Their Long-Term Trust is strong: $charName feels a deepening, stable connection and sees a real future with {{user}}.';
+    } else if (_longTermTier <= -2) {
+      bondGuidance = 'Their Long-Term Trust is broken: $charName holds deep-seated resentment and fundamentally distrusts {{user}}. Even if short-term mood improves, the underlying hostility remains.';
+    } else {
+      bondGuidance = 'Their Long-Term Bond is developing normally.';
+    }
+
+    String tensionGuidance;
     switch (_relationshipTier) {
-      case 1:
-        bondGuidance = '$charName is guarded and formal with {{user}}. '
-            'They keep conversations surface-level and deflect personal questions. '
-            'They are NOT open to flirting, romance, or provocative content.';
-      case 2:
-        bondGuidance = '$charName is polite and friendly with {{user}} but maintains clear boundaries. '
-            'Small talk and casual conversation are natural. '
-            'They are NOT open to romance or provocative content.';
-      case 3:
-        bondGuidance = '$charName is warm and friendly with {{user}}. '
-            'They enjoy conversations and share personal thoughts freely. '
-            'Light teasing and playful banter are natural. '
-            'However, they are NOT ready for romantic advances.';
-      case 4:
-        bondGuidance = '$charName is emotionally open and vulnerable with {{user}}. '
-            'They trust {{user}} deeply. Playful flirting and romantic tension are natural. '
-            'They are receptive to deeper emotional connection.';
       case 5:
-        bondGuidance = '$charName fully trusts {{user}} and is completely open. '
-            'All forms of emotional and romantic expression are natural.';
+        tensionGuidance = 'Short-Term Tension is Intimate: $charName is exceptionally close, vulnerable, and completely open right now.';
+        break;
+      case 4:
+      case 3:
+        tensionGuidance = 'Short-Term Tension is Friendly: $charName is warm, playful, and shares personal thoughts freely.';
+        break;
+      case 2:
+      case 1:
+        tensionGuidance = 'Short-Term Tension is Acquaintance: $charName is polite but keeps a safe emotional distance.';
+        break;
+      case 0:
+        tensionGuidance = 'Short-Term Tension is Neutral/Stranger: $charName is guarded, formal, and deflects personal subjects.';
+        break;
+      case -1:
+      case -2:
+        tensionGuidance = 'Short-Term Tension is Frustrated: $charName is actively annoyed, short-tempered, and likely to snap or withdraw.';
+        break;
+      case -3:
+      case -4:
+      case -5:
+        tensionGuidance = 'Short-Term Tension is Hostile: $charName actively dislikes {{user}} right now, responding with venom, sarcasm, or pure spite.';
+        break;
       default:
-        bondGuidance = '';
+        tensionGuidance = '';
     }
 
     return '[OOC Note regarding Relationship:\n'
-        ' Long-Term Bond: $relationshipTierName\n'
+        ' Long-Term Status: $longTermTierName ($_longTermScore points)\n'
+        ' Short-Term Tension: $shortTermTierName\n'
         ' Current Mood: $moodLabel\n'
         ' $bondGuidance\n'
+        ' $tensionGuidance\n'
         ' $moodNote\n'
         ' CRITICAL: Do NOT mention out-of-character terms or UI logic like tiers, scores, levels, or relationship states in your dialogue. Show, do not tell.]\n';
   }
@@ -4319,15 +4465,25 @@ class ChatService extends ChangeNotifier {
     final charName = _activeCharacter!.name;
     final userName = _userPersonaService.persona.name;
 
-    final prompt = 'Analyze the user\'s behavior in this recent conversation between $userName and $charName.\n\n'
+    String personalityInjection = '';
+    if (_activeCharacter!.personality.isNotEmpty) {
+      // Truncate to save prompt budget if it's exceptionally long (focus on core traits)
+      final p = _activeCharacter!.personality.length > 600 ? _activeCharacter!.personality.substring(0, 600) : _activeCharacter!.personality;
+      personalityInjection = 'Account for $charName\'s specific personality traits:\n"$p"\n\n';
+    }
+
+    final prompt = 'Analyze $userName\'s recent behavior toward $charName.\n\n'
+        '$personalityInjection'
+        'Reactions are subjective! If $charName is sadistic or combative, insults might amuse or arouse them. '
+        'If $charName is proud, groveling apologies might disgust them. If they are submissive, dominance might please them. Evaluate based ONLY on their specific traits.\n\n'
         'Evaluate TWO things${_nsfwCooldownEnabled ? ' (and an optional third)' : ''}:\n'
-        '1. "relationship_delta": How does this affect the long-term bond? (-2 to +2)\n'
-        '   +2: Deeply engaging, sincere | +1: Friendly | 0: Neutral | -1: Rude | -2: Hostile\n'
-        '2. "mood": How would $charName feel RIGHT NOW? (-5 to +5)\n'
-        '   +5: Overjoyed | +3: Very pleased | 0: Neutral | -3: Hurt/angry | -5: Devastated\n'
+        '1. "relationship_delta": How does this affect the short-term tension/status? (-2 to +2)\n'
+        '   +2: Deeply engaging/sincere | +1: Friendly | 0: Neutral | -1: Annoying/Rude | -2: Hostile\n'
+        '2. "mood_shift": Based purely on their specific personality, how does $charName\'s mood SHIFT? (-3 to +3)\n'
+        '   +3: Massive positive spike | +1: Slight lift | 0: Unchanged | -1: Irritated | -3: Deeply hurt/furious\n'
         '${_nsfwCooldownEnabled ? '3. "arousal_delta": (If flirtatious/NSFW) Does this interaction increase/decrease physical arousal? (-2 to +2)\\n' : ''}\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a JSON object: {"relationship_delta": <number>, "mood": <number>, ${_nsfwCooldownEnabled ? '"arousal_delta": <number>, ' : ''}"reason": "<brief>"}';
+        'Respond with ONLY a JSON object: {"relationship_delta": <number>, "mood_shift": <number>, ${_nsfwCooldownEnabled ? '"arousal_delta": <number>, ' : ''}"reason": "<brief>"}';
 
     try {
       debugPrint('[Realism:Relationship] Evaluating...');
@@ -4344,14 +4500,15 @@ class ChatService extends ChangeNotifier {
         _applyScoreDelta(bondDelta);
       }
 
-      final moodMatch = RegExp(r'"mood"\s*:\s*(-?\d+)').firstMatch(text);
+      final moodMatch = RegExp(r'"mood_shift"\s*:\s*(-?\d+)').firstMatch(text);
       int moodDelta = 0;
       if (moodMatch != null) {
-        final parsedMood = (int.tryParse(moodMatch.group(1)!) ?? 0).clamp(-5, 5);
-        moodDelta = parsedMood - _shortTermMood;
-        _shortTermMood = parsedMood;
-        _moodDecayCounter = 0;
-        debugPrint('[Realism:Relationship] Mood: $_shortTermMood ($moodLabel)');
+        moodDelta = (int.tryParse(moodMatch.group(1)!) ?? 0).clamp(-3, 3);
+        if (moodDelta != 0) {
+          _shortTermMood = (_shortTermMood + moodDelta).clamp(-20, 20);
+          _moodDecayCounter = 0;
+          debugPrint('[Realism:Relationship] Mood shifted by $moodDelta -> $_shortTermMood ($moodLabel)');
+        }
       }
 
       int arousalDelta = 0;
@@ -4390,26 +4547,18 @@ class ChatService extends ChangeNotifier {
 
     final charName = _activeCharacter!.name;
 
-    String nsfwField = '';
-    String nsfwInstr = '';
-    // Only ask about climax when cooldown isn't already running
-    if (_nsfwCooldownEnabled && _cooldownTurnsRemaining <= 0) {
-      nsfwField = ', "climax_detected": <true|false>';
-      nsfwInstr = '\n4. "climax_detected": Did a character ACTUALLY reach orgasm/climax in these messages? '
-          'This must be an EVENT that is actively happening or just happened — '
-          'a character physically reaching climax/orgasm in the scene. '
-          'Do NOT set true for: mentions of past events, dirty talk, innuendo, '
-          'arousal, sexual activity that hasn\'t reached completion, or words like "cum" '
-          'used casually. ONLY set true if an orgasm is explicitly occurring right now.';
-    }
+    // climax_detected is intentionally handled post-generation in _checkClimaxInResponse
+    // This evaluator runs pre-generation on the user message — wrong time to detect climax.
+    const String nsfwField = '';
+    const String nsfwInstr = '';
 
     final prompt = 'Analyze the current scene state involving $charName.\n\n'
         'Evaluate:\n'
         '1. "emotion": $charName\'s current emotional state (one word, be nuanced: calm, yearning, resentful, ecstatic, melancholy, flustered, anxious, etc.)\n'
         '2. "emotion_intensity": How strong? (mild, moderate, or strong)\n'
         '3. "time_of_day": Current time? (dawn, morning, late_morning, afternoon, evening, night)\n'
-        '   Pacing: If the conversational flow or scene naturally transitions to a later time period, output the new time period. Otherwise, default back to: $_timeOfDay\n'
-        '   "new_day": Has a new day started? (true/false)$nsfwInstr\n\n'
+        '   Pacing: Do not jump forward drastically. Advance natively when sensible, otherwise default to: $_timeOfDay\n'
+        '   "new_day": Has a new day explicitly started? (true/false)$nsfwInstr\n\n'
         'Recent conversation:\n$recent\n\n'
         'Respond with ONLY a JSON object: {"emotion": "<word>", "emotion_intensity": "<level>", '
         '"time_of_day": "<period>", "new_day": <bool>$nsfwField, "reason": "<brief>"}';
@@ -4443,11 +4592,11 @@ class ChatService extends ChangeNotifier {
 
         if (targetIndex != -1 && targetIndex != currentIndex) {
           if (targetIndex > currentIndex) {
-            // Cap forward progression to exactly +1 slot maximum
-            _timeOfDay = validTimes[currentIndex + 1];
+            int jump = targetIndex - currentIndex;
+            if (jump > 2) jump = 2; // Cap forward jump to 2 periods max per turn (prevents skipping whole days instantly)
+            _timeOfDay = validTimes[currentIndex + jump];
           } else if (targetIndex < currentIndex) {
-            // The LLM jumped backward (e.g. night -> morning), indicating a new day
-            _timeOfDay = validTimes[0]; // Reset to dawn
+            _timeOfDay = validTimes[0];
             _dayCount++;
             dayIncremented = true;
             debugPrint('[Realism:Scene] Time rolled over! Day $_dayCount');
@@ -4457,7 +4606,6 @@ class ChatService extends ChangeNotifier {
 
       if (!dayIncremented) {
         final newDayMatch = RegExp(r'"new_day"\s*:\s*(true|false)').firstMatch(text);
-        // Only allow explicit new_day triggers if the time is already late enough
         if (newDayMatch != null && newDayMatch.group(1) == 'true' && currentIndex >= validTimes.indexOf('evening')) {
           _dayCount++;
           _timeOfDay = validTimes[0];
@@ -4465,17 +4613,15 @@ class ChatService extends ChangeNotifier {
         }
       }
 
-      if (_nsfwCooldownEnabled && _cooldownTurnsRemaining <= 0) {
-        final climaxMatch = RegExp(r'"climax_detected"\s*:\s*(true|false)').firstMatch(text);
-        if (climaxMatch != null && climaxMatch.group(1) == 'true') {
-          _cooldownTurnsRemaining = 5;
-          _arousalLevel = -3; // Refractory period reset
-          debugPrint('[Realism:Scene] Climax detected \u2014 cooldown started (5 turns), arousal reset to -3');
-        }
-      }
+      // climax detection is handled post-generation in _checkClimaxInResponse
 
       debugPrint('[Realism:Scene] Emotion: $_characterEmotion ($_emotionIntensity), '
           'Time: $_timeOfDay, Day: $_dayCount');
+          
+      // Bundle Full Realism State for Time-Travel Forking
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+
       _saveChat();
       notifyListeners();
     } catch (e) {
@@ -4483,44 +4629,174 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  Map<String, dynamic> _captureRealismState() {
+    return {
+      'affectionScore': _affectionScore,
+      'relationshipTier': _relationshipTier,
+      'longTermScore': _longTermScore,
+      'longTermTier': _longTermTier,
+      'turnsSinceLongTermCheck': _turnsSinceLongTermCheck,
+      'shortTermDeltasSummary': _shortTermDeltasSummary,
+      'shortTermMood': _shortTermMood,
+      'moodDecayCounter': _moodDecayCounter,
+      'characterEmotion': _characterEmotion,
+      'emotionIntensity': _emotionIntensity,
+      'timeOfDay': _timeOfDay,
+      'dayCount': _dayCount,
+      'arousalLevel': _arousalLevel,
+      'cooldownTurnsRemaining': _cooldownTurnsRemaining,
+    };
+  }
+
+  void _restoreRealismStateFromMessage(ChatMessage? msg) {
+    if (msg == null) return;
+    
+    // Check if the current visible node has an active swipe metadata array or just the base metadata
+    final meta = msg.activeMetadata;
+    if (meta == null || !meta.containsKey('realism_state')) {
+      debugPrint('[Realism] No time-travel snapshot found in message. Legacy state kept.');
+      return;
+    }
+    
+    final state = meta['realism_state'] as Map<String, dynamic>;
+    _affectionScore = state['affectionScore'] as int? ?? _affectionScore;
+    _relationshipTier = state['relationshipTier'] as int? ?? _relationshipTier;
+    _longTermScore = state['longTermScore'] as int? ?? _longTermScore;
+    _longTermTier = state['longTermTier'] as int? ?? _longTermTier;
+    _turnsSinceLongTermCheck = state['turnsSinceLongTermCheck'] as int? ?? _turnsSinceLongTermCheck;
+    _shortTermDeltasSummary = state['shortTermDeltasSummary'] as int? ?? _shortTermDeltasSummary;
+    _shortTermMood = state['shortTermMood'] as int? ?? _shortTermMood;
+    _moodDecayCounter = state['moodDecayCounter'] as int? ?? _moodDecayCounter;
+    _characterEmotion = state['characterEmotion'] as String? ?? _characterEmotion;
+    _emotionIntensity = state['emotionIntensity'] as String? ?? _emotionIntensity;
+    _timeOfDay = state['timeOfDay'] as String? ?? _timeOfDay;
+    _dayCount = state['dayCount'] as int? ?? _dayCount;
+    _arousalLevel = state['arousalLevel'] as int? ?? _arousalLevel;
+    _cooldownTurnsRemaining = state['cooldownTurnsRemaining'] as int? ?? _cooldownTurnsRemaining;
+    
+    debugPrint('[Realism] Engine state successfully rolled back to match timeline.');
+  }
+
+  /// Fired post-generation against the AI's completed response text.
+  /// The LLM writes the scene first — THEN we detect climax and apply
+  /// the refractory cooldown so the *next* turn's prompt blocks re-escalation.
+  Future<void> _checkClimaxInResponse(String responseText) async {
+    if (responseText.trim().isEmpty) return;
+    if (_activeCharacter == null) return;
+    final charName = _activeCharacter!.name;
+
+    final prompt =
+        'Read the following character response and answer ONE question.\n\n'
+        'RESPONSE:\n$responseText\n\n'
+        'Question: Did $charName PHYSICALLY reach climax/orgasm in this response? '
+        'This must be an event actively occurring or just occurred in the text — '
+        'a character physically reaching orgasm right now. '
+        'Do NOT answer true for: dirty talk, innuendo, arousal build-up, '
+        'sexual activity that has not yet reached completion, or casual use of words like "cum". '
+        'ONLY answer true if an orgasm/climax is unambiguously depicted as actively happening.\n\n'
+        'Respond with ONLY a JSON object: {"climax_detected": <true|false>, "reason": "<brief>"}';
+
+    try {
+      debugPrint('[Realism:Climax] Checking AI response for climax...');
+      final raw = await _fireLLMEval(prompt);
+      if (raw == null) return;
+
+      final searchText = _stripThinkBlocks(raw);
+      final text = searchText.isNotEmpty ? searchText : raw;
+
+      final match = RegExp(r'"climax_detected"\s*:\s*(true|false)').firstMatch(text);
+      if (match != null && match.group(1) == 'true') {
+        _cooldownTurnsRemaining = 5;
+        _arousalLevel = -3;
+        debugPrint('[Realism:Climax] Confirmed — refractory cooldown started (5 turns), arousal → -3');
+        _saveChat();
+        notifyListeners();
+      } else {
+        debugPrint('[Realism:Climax] No climax detected.');
+      }
+    } catch (e) {
+      debugPrint('[Realism:Climax] Check failed: $e');
+    }
+  }
+
   // ── Score / State Helpers ──
 
   void _applyScoreDelta(int delta) {
+    _shortTermDeltasSummary += delta;
+    _turnsSinceLongTermCheck++;
+
+    if (_turnsSinceLongTermCheck >= 5) {
+      _evalLongTermGrowth();
+    }
+
     if (delta == 0) return;
     final oldScore = _affectionScore;
     final oldTier = _relationshipTier;
 
-    _affectionScore = (_affectionScore + delta).clamp(-10, 15);
-
-    if (_affectionScore < 0) {
-      _relationshipTier = 1;
-    } else if (_affectionScore <= 3) {
-      _relationshipTier = 2;
-    } else if (_affectionScore <= 7) {
-      _relationshipTier = 3;
-    } else if (_affectionScore <= 11) {
-      _relationshipTier = 4;
-    } else {
-      _relationshipTier = 5;
-    }
+    _affectionScore = (_affectionScore + delta).clamp(-150, 150);
+    _relationshipTier = _calculateTier(_affectionScore);
 
     if (_affectionScore != oldScore || _relationshipTier != oldTier) {
-      debugPrint('[Realism] Bond: $oldScore \u2192 $_affectionScore, '
-          'Tier: $oldTier \u2192 $_relationshipTier ($relationshipTierName)');
+      debugPrint('[Realism] Short-Term Bond: $oldScore \u2192 $_affectionScore, '
+          'Tier: $oldTier \u2192 $_relationshipTier ($shortTermTierName)');
+    }
+  }
+
+  void _evalLongTermGrowth() {
+    final oldLTScore = _longTermScore;
+    final oldLTTier = _longTermTier;
+
+    if (_shortTermDeltasSummary >= 2 && _relationshipTier >= 0) {
+      _longTermScore = (_longTermScore + 1).clamp(-150, 150);
+    } else if (_shortTermDeltasSummary <= -2 && _relationshipTier <= 0) {
+      _longTermScore = (_longTermScore - 1).clamp(-150, 150);
+    }
+
+    _longTermTier = _calculateTier(_longTermScore);
+    _turnsSinceLongTermCheck = 0;
+    _shortTermDeltasSummary = 0;
+
+    if (_longTermScore != oldLTScore || _longTermTier != oldLTTier) {
+      debugPrint('[Realism] Long-Term Bond updated: $oldLTScore \u2192 $_longTermScore, '
+          'Tier: $oldLTTier \u2192 $_longTermTier ($longTermTierName)');
+    } else {
+      debugPrint('[Realism] Long-Term Bond check (No change) - Status: $_longTermScore ($longTermTierName)');
     }
   }
 
   void _applyMoodDecay() {
     if (_shortTermMood == 0) return;
     _moodDecayCounter++;
-    if (_moodDecayCounter >= 3) {
+    
+    // Base turns to decay 1 point
+    int targetTurns = 3;
+    
+    if (_shortTermMood > 0) {
+      // Good mood: Friends hold onto good moods longer. Enemies lose good moods fast.
+      targetTurns += _relationshipTier; // Rank 5 -> decays every 8 turns. Rank -5 -> decays every 1 turn.
+    } else {
+      // Bad mood: Friends lose bad moods fast. Enemies hold grudges longer.
+      targetTurns -= _relationshipTier; // Rank 5 -> decays every 1 turn. Rank -5 -> decays every 8 turns.
+    }
+    
+    // Subtle long-term influence
+    if (_shortTermMood > 0) {
+      targetTurns += (_longTermTier / 2).floor();
+    } else {
+      targetTurns -= (_longTermTier / 2).floor();
+    }
+    
+    // Clamp target turns so it never goes below 1 or absurdly high
+    targetTurns = targetTurns.clamp(1, 10);
+    
+    if (_moodDecayCounter >= targetTurns) {
       _moodDecayCounter = 0;
       if (_shortTermMood > 0) {
         _shortTermMood--;
       } else {
         _shortTermMood++;
       }
-      debugPrint('[Realism] Mood decay: $_shortTermMood ($moodLabel)');
+      debugPrint('[Realism] Mood decay (-1 point limit over $targetTurns turns): $_shortTermMood ($moodLabel)');
     }
   }
 
@@ -4530,7 +4806,11 @@ class ChatService extends ChangeNotifier {
     _realismEnabled = enabled;
     if (!enabled) {
       _affectionScore = 0;
-      _relationshipTier = 2;
+      _relationshipTier = 0;
+      _longTermScore = 0;
+      _longTermTier = 0;
+      _turnsSinceLongTermCheck = 0;
+      _shortTermDeltasSummary = 0;
       _shortTermMood = 0;
       _moodDecayCounter = 0;
       _characterEmotion = '';

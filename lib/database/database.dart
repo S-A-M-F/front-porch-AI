@@ -77,8 +77,12 @@ class Sessions extends Table {
   IntColumn get summaryLastIndex => integer().nullable()(); // message index at last summary update
   TextColumn get parentSession => text().nullable()();
   IntColumn get forkIndex => integer().nullable()();
-  IntColumn get affectionScore => integer().withDefault(const Constant(0))(); // long-term bond score
-  IntColumn get relationshipTier => integer().withDefault(const Constant(2))(); // 1-5, default Acquaintance
+  IntColumn get affectionScore => integer().withDefault(const Constant(0))(); // short-term tension points
+  IntColumn get relationshipTier => integer().withDefault(const Constant(0))(); // short-term tier
+  IntColumn get longTermScore => integer().withDefault(const Constant(0))(); // slowly accumulating bond
+  IntColumn get longTermTier => integer().withDefault(const Constant(0))(); // long-term rank
+  IntColumn get turnsSinceLongTermCheck => integer().withDefault(const Constant(0))(); // 5-turn counter
+  IntColumn get shortTermDeltasSummary => integer().withDefault(const Constant(0))(); // trends over 5 turns
   BoolColumn get realismEnabled => boolean().withDefault(const Constant(false))(); // master realism toggle
   IntColumn get shortTermMood => integer().withDefault(const Constant(0))(); // -5 to +5
   IntColumn get moodDecayCounter => integer().withDefault(const Constant(0))(); // msgs since last mood change
@@ -361,7 +365,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -550,6 +554,21 @@ class AppDatabase extends _$AppDatabase {
         // v14→v15: add arousal tracker to sessions
         try {
           await customStatement('ALTER TABLE sessions ADD COLUMN arousal_level INTEGER NOT NULL DEFAULT 0');
+        } catch (_) {}
+      }
+      if (from < 16) {
+        // v15→v16: add long term relationship tracking fields
+        try {
+          await customStatement('ALTER TABLE sessions ADD COLUMN long_term_score INTEGER NOT NULL DEFAULT 0');
+        } catch (_) {}
+        try {
+          await customStatement('ALTER TABLE sessions ADD COLUMN long_term_tier INTEGER NOT NULL DEFAULT 0');
+        } catch (_) {}
+        try {
+          await customStatement('ALTER TABLE sessions ADD COLUMN turns_since_long_term_check INTEGER NOT NULL DEFAULT 0');
+        } catch (_) {}
+        try {
+          await customStatement('ALTER TABLE sessions ADD COLUMN short_term_deltas_summary INTEGER NOT NULL DEFAULT 0');
         } catch (_) {}
       }
     },

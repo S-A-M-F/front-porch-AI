@@ -1421,6 +1421,53 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     requiredDuringInsert: false,
     defaultValue: const Constant(2),
   );
+  static const VerificationMeta _longTermScoreMeta = const VerificationMeta(
+    'longTermScore',
+  );
+  @override
+  late final GeneratedColumn<int> longTermScore = GeneratedColumn<int>(
+    'long_term_score',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _longTermTierMeta = const VerificationMeta(
+    'longTermTier',
+  );
+  @override
+  late final GeneratedColumn<int> longTermTier = GeneratedColumn<int>(
+    'long_term_tier',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _turnsSinceLongTermCheckMeta =
+      const VerificationMeta('turnsSinceLongTermCheck');
+  @override
+  late final GeneratedColumn<int> turnsSinceLongTermCheck =
+      GeneratedColumn<int>(
+        'turns_since_long_term_check',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      );
+  static const VerificationMeta _shortTermDeltasSummaryMeta =
+      const VerificationMeta('shortTermDeltasSummary');
+  @override
+  late final GeneratedColumn<int> shortTermDeltasSummary = GeneratedColumn<int>(
+    'short_term_deltas_summary',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _realismEnabledMeta = const VerificationMeta(
     'realismEnabled',
   );
@@ -1595,6 +1642,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     forkIndex,
     affectionScore,
     relationshipTier,
+    longTermScore,
+    longTermTier,
+    turnsSinceLongTermCheck,
+    shortTermDeltasSummary,
     realismEnabled,
     shortTermMood,
     moodDecayCounter,
@@ -1716,6 +1767,42 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         relationshipTier.isAcceptableOrUnknown(
           data['relationship_tier']!,
           _relationshipTierMeta,
+        ),
+      );
+    }
+    if (data.containsKey('long_term_score')) {
+      context.handle(
+        _longTermScoreMeta,
+        longTermScore.isAcceptableOrUnknown(
+          data['long_term_score']!,
+          _longTermScoreMeta,
+        ),
+      );
+    }
+    if (data.containsKey('long_term_tier')) {
+      context.handle(
+        _longTermTierMeta,
+        longTermTier.isAcceptableOrUnknown(
+          data['long_term_tier']!,
+          _longTermTierMeta,
+        ),
+      );
+    }
+    if (data.containsKey('turns_since_long_term_check')) {
+      context.handle(
+        _turnsSinceLongTermCheckMeta,
+        turnsSinceLongTermCheck.isAcceptableOrUnknown(
+          data['turns_since_long_term_check']!,
+          _turnsSinceLongTermCheckMeta,
+        ),
+      );
+    }
+    if (data.containsKey('short_term_deltas_summary')) {
+      context.handle(
+        _shortTermDeltasSummaryMeta,
+        shortTermDeltasSummary.isAcceptableOrUnknown(
+          data['short_term_deltas_summary']!,
+          _shortTermDeltasSummaryMeta,
         ),
       );
     }
@@ -1882,6 +1969,22 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.int,
         data['${effectivePrefix}relationship_tier'],
       )!,
+      longTermScore: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}long_term_score'],
+      )!,
+      longTermTier: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}long_term_tier'],
+      )!,
+      turnsSinceLongTermCheck: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}turns_since_long_term_check'],
+      )!,
+      shortTermDeltasSummary: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}short_term_deltas_summary'],
+      )!,
       realismEnabled: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}realism_enabled'],
@@ -1957,6 +2060,10 @@ class Session extends DataClass implements Insertable<Session> {
   final int? forkIndex;
   final int affectionScore;
   final int relationshipTier;
+  final int longTermScore;
+  final int longTermTier;
+  final int turnsSinceLongTermCheck;
+  final int shortTermDeltasSummary;
   final bool realismEnabled;
   final int shortTermMood;
   final int moodDecayCounter;
@@ -1984,6 +2091,10 @@ class Session extends DataClass implements Insertable<Session> {
     this.forkIndex,
     required this.affectionScore,
     required this.relationshipTier,
+    required this.longTermScore,
+    required this.longTermTier,
+    required this.turnsSinceLongTermCheck,
+    required this.shortTermDeltasSummary,
     required this.realismEnabled,
     required this.shortTermMood,
     required this.moodDecayCounter,
@@ -2030,6 +2141,10 @@ class Session extends DataClass implements Insertable<Session> {
     }
     map['affection_score'] = Variable<int>(affectionScore);
     map['relationship_tier'] = Variable<int>(relationshipTier);
+    map['long_term_score'] = Variable<int>(longTermScore);
+    map['long_term_tier'] = Variable<int>(longTermTier);
+    map['turns_since_long_term_check'] = Variable<int>(turnsSinceLongTermCheck);
+    map['short_term_deltas_summary'] = Variable<int>(shortTermDeltasSummary);
     map['realism_enabled'] = Variable<bool>(realismEnabled);
     map['short_term_mood'] = Variable<int>(shortTermMood);
     map['mood_decay_counter'] = Variable<int>(moodDecayCounter);
@@ -2077,6 +2192,10 @@ class Session extends DataClass implements Insertable<Session> {
           : Value(forkIndex),
       affectionScore: Value(affectionScore),
       relationshipTier: Value(relationshipTier),
+      longTermScore: Value(longTermScore),
+      longTermTier: Value(longTermTier),
+      turnsSinceLongTermCheck: Value(turnsSinceLongTermCheck),
+      shortTermDeltasSummary: Value(shortTermDeltasSummary),
       realismEnabled: Value(realismEnabled),
       shortTermMood: Value(shortTermMood),
       moodDecayCounter: Value(moodDecayCounter),
@@ -2114,6 +2233,14 @@ class Session extends DataClass implements Insertable<Session> {
       forkIndex: serializer.fromJson<int?>(json['forkIndex']),
       affectionScore: serializer.fromJson<int>(json['affectionScore']),
       relationshipTier: serializer.fromJson<int>(json['relationshipTier']),
+      longTermScore: serializer.fromJson<int>(json['longTermScore']),
+      longTermTier: serializer.fromJson<int>(json['longTermTier']),
+      turnsSinceLongTermCheck: serializer.fromJson<int>(
+        json['turnsSinceLongTermCheck'],
+      ),
+      shortTermDeltasSummary: serializer.fromJson<int>(
+        json['shortTermDeltasSummary'],
+      ),
       realismEnabled: serializer.fromJson<bool>(json['realismEnabled']),
       shortTermMood: serializer.fromJson<int>(json['shortTermMood']),
       moodDecayCounter: serializer.fromJson<int>(json['moodDecayCounter']),
@@ -2150,6 +2277,12 @@ class Session extends DataClass implements Insertable<Session> {
       'forkIndex': serializer.toJson<int?>(forkIndex),
       'affectionScore': serializer.toJson<int>(affectionScore),
       'relationshipTier': serializer.toJson<int>(relationshipTier),
+      'longTermScore': serializer.toJson<int>(longTermScore),
+      'longTermTier': serializer.toJson<int>(longTermTier),
+      'turnsSinceLongTermCheck': serializer.toJson<int>(
+        turnsSinceLongTermCheck,
+      ),
+      'shortTermDeltasSummary': serializer.toJson<int>(shortTermDeltasSummary),
       'realismEnabled': serializer.toJson<bool>(realismEnabled),
       'shortTermMood': serializer.toJson<int>(shortTermMood),
       'moodDecayCounter': serializer.toJson<int>(moodDecayCounter),
@@ -2180,6 +2313,10 @@ class Session extends DataClass implements Insertable<Session> {
     Value<int?> forkIndex = const Value.absent(),
     int? affectionScore,
     int? relationshipTier,
+    int? longTermScore,
+    int? longTermTier,
+    int? turnsSinceLongTermCheck,
+    int? shortTermDeltasSummary,
     bool? realismEnabled,
     int? shortTermMood,
     int? moodDecayCounter,
@@ -2211,6 +2348,12 @@ class Session extends DataClass implements Insertable<Session> {
     forkIndex: forkIndex.present ? forkIndex.value : this.forkIndex,
     affectionScore: affectionScore ?? this.affectionScore,
     relationshipTier: relationshipTier ?? this.relationshipTier,
+    longTermScore: longTermScore ?? this.longTermScore,
+    longTermTier: longTermTier ?? this.longTermTier,
+    turnsSinceLongTermCheck:
+        turnsSinceLongTermCheck ?? this.turnsSinceLongTermCheck,
+    shortTermDeltasSummary:
+        shortTermDeltasSummary ?? this.shortTermDeltasSummary,
     realismEnabled: realismEnabled ?? this.realismEnabled,
     shortTermMood: shortTermMood ?? this.shortTermMood,
     moodDecayCounter: moodDecayCounter ?? this.moodDecayCounter,
@@ -2257,6 +2400,18 @@ class Session extends DataClass implements Insertable<Session> {
       relationshipTier: data.relationshipTier.present
           ? data.relationshipTier.value
           : this.relationshipTier,
+      longTermScore: data.longTermScore.present
+          ? data.longTermScore.value
+          : this.longTermScore,
+      longTermTier: data.longTermTier.present
+          ? data.longTermTier.value
+          : this.longTermTier,
+      turnsSinceLongTermCheck: data.turnsSinceLongTermCheck.present
+          ? data.turnsSinceLongTermCheck.value
+          : this.turnsSinceLongTermCheck,
+      shortTermDeltasSummary: data.shortTermDeltasSummary.present
+          ? data.shortTermDeltasSummary.value
+          : this.shortTermDeltasSummary,
       realismEnabled: data.realismEnabled.present
           ? data.realismEnabled.value
           : this.realismEnabled,
@@ -2305,6 +2460,10 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('forkIndex: $forkIndex, ')
           ..write('affectionScore: $affectionScore, ')
           ..write('relationshipTier: $relationshipTier, ')
+          ..write('longTermScore: $longTermScore, ')
+          ..write('longTermTier: $longTermTier, ')
+          ..write('turnsSinceLongTermCheck: $turnsSinceLongTermCheck, ')
+          ..write('shortTermDeltasSummary: $shortTermDeltasSummary, ')
           ..write('realismEnabled: $realismEnabled, ')
           ..write('shortTermMood: $shortTermMood, ')
           ..write('moodDecayCounter: $moodDecayCounter, ')
@@ -2337,6 +2496,10 @@ class Session extends DataClass implements Insertable<Session> {
     forkIndex,
     affectionScore,
     relationshipTier,
+    longTermScore,
+    longTermTier,
+    turnsSinceLongTermCheck,
+    shortTermDeltasSummary,
     realismEnabled,
     shortTermMood,
     moodDecayCounter,
@@ -2368,6 +2531,10 @@ class Session extends DataClass implements Insertable<Session> {
           other.forkIndex == this.forkIndex &&
           other.affectionScore == this.affectionScore &&
           other.relationshipTier == this.relationshipTier &&
+          other.longTermScore == this.longTermScore &&
+          other.longTermTier == this.longTermTier &&
+          other.turnsSinceLongTermCheck == this.turnsSinceLongTermCheck &&
+          other.shortTermDeltasSummary == this.shortTermDeltasSummary &&
           other.realismEnabled == this.realismEnabled &&
           other.shortTermMood == this.shortTermMood &&
           other.moodDecayCounter == this.moodDecayCounter &&
@@ -2397,6 +2564,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<int?> forkIndex;
   final Value<int> affectionScore;
   final Value<int> relationshipTier;
+  final Value<int> longTermScore;
+  final Value<int> longTermTier;
+  final Value<int> turnsSinceLongTermCheck;
+  final Value<int> shortTermDeltasSummary;
   final Value<bool> realismEnabled;
   final Value<int> shortTermMood;
   final Value<int> moodDecayCounter;
@@ -2425,6 +2596,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.forkIndex = const Value.absent(),
     this.affectionScore = const Value.absent(),
     this.relationshipTier = const Value.absent(),
+    this.longTermScore = const Value.absent(),
+    this.longTermTier = const Value.absent(),
+    this.turnsSinceLongTermCheck = const Value.absent(),
+    this.shortTermDeltasSummary = const Value.absent(),
     this.realismEnabled = const Value.absent(),
     this.shortTermMood = const Value.absent(),
     this.moodDecayCounter = const Value.absent(),
@@ -2454,6 +2629,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.forkIndex = const Value.absent(),
     this.affectionScore = const Value.absent(),
     this.relationshipTier = const Value.absent(),
+    this.longTermScore = const Value.absent(),
+    this.longTermTier = const Value.absent(),
+    this.turnsSinceLongTermCheck = const Value.absent(),
+    this.shortTermDeltasSummary = const Value.absent(),
     this.realismEnabled = const Value.absent(),
     this.shortTermMood = const Value.absent(),
     this.moodDecayCounter = const Value.absent(),
@@ -2483,6 +2662,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<int>? forkIndex,
     Expression<int>? affectionScore,
     Expression<int>? relationshipTier,
+    Expression<int>? longTermScore,
+    Expression<int>? longTermTier,
+    Expression<int>? turnsSinceLongTermCheck,
+    Expression<int>? shortTermDeltasSummary,
     Expression<bool>? realismEnabled,
     Expression<int>? shortTermMood,
     Expression<int>? moodDecayCounter,
@@ -2512,6 +2695,12 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (forkIndex != null) 'fork_index': forkIndex,
       if (affectionScore != null) 'affection_score': affectionScore,
       if (relationshipTier != null) 'relationship_tier': relationshipTier,
+      if (longTermScore != null) 'long_term_score': longTermScore,
+      if (longTermTier != null) 'long_term_tier': longTermTier,
+      if (turnsSinceLongTermCheck != null)
+        'turns_since_long_term_check': turnsSinceLongTermCheck,
+      if (shortTermDeltasSummary != null)
+        'short_term_deltas_summary': shortTermDeltasSummary,
       if (realismEnabled != null) 'realism_enabled': realismEnabled,
       if (shortTermMood != null) 'short_term_mood': shortTermMood,
       if (moodDecayCounter != null) 'mood_decay_counter': moodDecayCounter,
@@ -2545,6 +2734,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<int?>? forkIndex,
     Value<int>? affectionScore,
     Value<int>? relationshipTier,
+    Value<int>? longTermScore,
+    Value<int>? longTermTier,
+    Value<int>? turnsSinceLongTermCheck,
+    Value<int>? shortTermDeltasSummary,
     Value<bool>? realismEnabled,
     Value<int>? shortTermMood,
     Value<int>? moodDecayCounter,
@@ -2574,6 +2767,12 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       forkIndex: forkIndex ?? this.forkIndex,
       affectionScore: affectionScore ?? this.affectionScore,
       relationshipTier: relationshipTier ?? this.relationshipTier,
+      longTermScore: longTermScore ?? this.longTermScore,
+      longTermTier: longTermTier ?? this.longTermTier,
+      turnsSinceLongTermCheck:
+          turnsSinceLongTermCheck ?? this.turnsSinceLongTermCheck,
+      shortTermDeltasSummary:
+          shortTermDeltasSummary ?? this.shortTermDeltasSummary,
       realismEnabled: realismEnabled ?? this.realismEnabled,
       shortTermMood: shortTermMood ?? this.shortTermMood,
       moodDecayCounter: moodDecayCounter ?? this.moodDecayCounter,
@@ -2633,6 +2832,22 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     }
     if (relationshipTier.present) {
       map['relationship_tier'] = Variable<int>(relationshipTier.value);
+    }
+    if (longTermScore.present) {
+      map['long_term_score'] = Variable<int>(longTermScore.value);
+    }
+    if (longTermTier.present) {
+      map['long_term_tier'] = Variable<int>(longTermTier.value);
+    }
+    if (turnsSinceLongTermCheck.present) {
+      map['turns_since_long_term_check'] = Variable<int>(
+        turnsSinceLongTermCheck.value,
+      );
+    }
+    if (shortTermDeltasSummary.present) {
+      map['short_term_deltas_summary'] = Variable<int>(
+        shortTermDeltasSummary.value,
+      );
     }
     if (realismEnabled.present) {
       map['realism_enabled'] = Variable<bool>(realismEnabled.value);
@@ -2697,6 +2912,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('forkIndex: $forkIndex, ')
           ..write('affectionScore: $affectionScore, ')
           ..write('relationshipTier: $relationshipTier, ')
+          ..write('longTermScore: $longTermScore, ')
+          ..write('longTermTier: $longTermTier, ')
+          ..write('turnsSinceLongTermCheck: $turnsSinceLongTermCheck, ')
+          ..write('shortTermDeltasSummary: $shortTermDeltasSummary, ')
           ..write('realismEnabled: $realismEnabled, ')
           ..write('shortTermMood: $shortTermMood, ')
           ..write('moodDecayCounter: $moodDecayCounter, ')
@@ -8418,6 +8637,10 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<int?> forkIndex,
       Value<int> affectionScore,
       Value<int> relationshipTier,
+      Value<int> longTermScore,
+      Value<int> longTermTier,
+      Value<int> turnsSinceLongTermCheck,
+      Value<int> shortTermDeltasSummary,
       Value<bool> realismEnabled,
       Value<int> shortTermMood,
       Value<int> moodDecayCounter,
@@ -8448,6 +8671,10 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<int?> forkIndex,
       Value<int> affectionScore,
       Value<int> relationshipTier,
+      Value<int> longTermScore,
+      Value<int> longTermTier,
+      Value<int> turnsSinceLongTermCheck,
+      Value<int> shortTermDeltasSummary,
       Value<bool> realismEnabled,
       Value<int> shortTermMood,
       Value<int> moodDecayCounter,
@@ -8535,6 +8762,26 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<int> get relationshipTier => $composableBuilder(
     column: $table.relationshipTier,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get longTermScore => $composableBuilder(
+    column: $table.longTermScore,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get longTermTier => $composableBuilder(
+    column: $table.longTermTier,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get turnsSinceLongTermCheck => $composableBuilder(
+    column: $table.turnsSinceLongTermCheck,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get shortTermDeltasSummary => $composableBuilder(
+    column: $table.shortTermDeltasSummary,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8678,6 +8925,26 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get longTermScore => $composableBuilder(
+    column: $table.longTermScore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get longTermTier => $composableBuilder(
+    column: $table.longTermTier,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get turnsSinceLongTermCheck => $composableBuilder(
+    column: $table.turnsSinceLongTermCheck,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get shortTermDeltasSummary => $composableBuilder(
+    column: $table.shortTermDeltasSummary,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get realismEnabled => $composableBuilder(
     column: $table.realismEnabled,
     builder: (column) => ColumnOrderings(column),
@@ -8808,6 +9075,26 @@ class $$SessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get longTermScore => $composableBuilder(
+    column: $table.longTermScore,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get longTermTier => $composableBuilder(
+    column: $table.longTermTier,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get turnsSinceLongTermCheck => $composableBuilder(
+    column: $table.turnsSinceLongTermCheck,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get shortTermDeltasSummary => $composableBuilder(
+    column: $table.shortTermDeltasSummary,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get realismEnabled => $composableBuilder(
     column: $table.realismEnabled,
     builder: (column) => column,
@@ -8905,6 +9192,10 @@ class $$SessionsTableTableManager
                 Value<int?> forkIndex = const Value.absent(),
                 Value<int> affectionScore = const Value.absent(),
                 Value<int> relationshipTier = const Value.absent(),
+                Value<int> longTermScore = const Value.absent(),
+                Value<int> longTermTier = const Value.absent(),
+                Value<int> turnsSinceLongTermCheck = const Value.absent(),
+                Value<int> shortTermDeltasSummary = const Value.absent(),
                 Value<bool> realismEnabled = const Value.absent(),
                 Value<int> shortTermMood = const Value.absent(),
                 Value<int> moodDecayCounter = const Value.absent(),
@@ -8933,6 +9224,10 @@ class $$SessionsTableTableManager
                 forkIndex: forkIndex,
                 affectionScore: affectionScore,
                 relationshipTier: relationshipTier,
+                longTermScore: longTermScore,
+                longTermTier: longTermTier,
+                turnsSinceLongTermCheck: turnsSinceLongTermCheck,
+                shortTermDeltasSummary: shortTermDeltasSummary,
                 realismEnabled: realismEnabled,
                 shortTermMood: shortTermMood,
                 moodDecayCounter: moodDecayCounter,
@@ -8963,6 +9258,10 @@ class $$SessionsTableTableManager
                 Value<int?> forkIndex = const Value.absent(),
                 Value<int> affectionScore = const Value.absent(),
                 Value<int> relationshipTier = const Value.absent(),
+                Value<int> longTermScore = const Value.absent(),
+                Value<int> longTermTier = const Value.absent(),
+                Value<int> turnsSinceLongTermCheck = const Value.absent(),
+                Value<int> shortTermDeltasSummary = const Value.absent(),
                 Value<bool> realismEnabled = const Value.absent(),
                 Value<int> shortTermMood = const Value.absent(),
                 Value<int> moodDecayCounter = const Value.absent(),
@@ -8991,6 +9290,10 @@ class $$SessionsTableTableManager
                 forkIndex: forkIndex,
                 affectionScore: affectionScore,
                 relationshipTier: relationshipTier,
+                longTermScore: longTermScore,
+                longTermTier: longTermTier,
+                turnsSinceLongTermCheck: turnsSinceLongTermCheck,
+                shortTermDeltasSummary: shortTermDeltasSummary,
                 realismEnabled: realismEnabled,
                 shortTermMood: shortTermMood,
                 moodDecayCounter: moodDecayCounter,
