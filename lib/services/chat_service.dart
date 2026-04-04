@@ -4571,8 +4571,8 @@ class ChatService extends ChangeNotifier {
         'Reactions are subjective! If $charName is sadistic or combative, insults might amuse or arouse them. '
         'If $charName is proud, groveling apologies might disgust them. If they are submissive, dominance might please them. Evaluate based ONLY on their specific traits.\n\n'
         'Evaluate THREE things${_nsfwCooldownEnabled ? ' (and an optional fourth)' : ''}:\n'
-        '1. "relationship_delta": How does this affect the short-term tension/status? (-2 to +2)\n'
-        '   +2: Deeply engaging/sincere | +1: Friendly | 0: Neutral | -1: Annoying/Rude | -2: Hostile\n'
+        '1. "relationship_delta": How does this affect the short-term tension/status? (-5 to +5)\n'
+        '   +5: Incredible immediate chemistry | +2: Friendly | 0: Neutral | -2: Annoyed/Rude | -5: Deeply Hostile/Violent\n'
         '2. "mood_shift": Based purely on their specific personality, how does $charName\'s mood SHIFT? (-3 to +3)\n'
         '   +3: Massive positive spike | +1: Slight lift | 0: Unchanged | -1: Irritated | -3: Deeply hurt/furious\n'
         '3. "trust_delta": Does $userName\'s action build or destroy TRUTH and TRUST? (-2 to +2)\n'
@@ -4592,7 +4592,7 @@ class ChatService extends ChangeNotifier {
       final deltaMatch = RegExp(r'"relationship_delta"\s*:\s*(-?\d+)').firstMatch(text);
       int bondDelta = 0;
       if (deltaMatch != null) {
-        bondDelta = (int.tryParse(deltaMatch.group(1)!) ?? 0).clamp(-2, 2);
+        bondDelta = (int.tryParse(deltaMatch.group(1)!) ?? 0).clamp(-5, 5);
         _applyScoreDelta(bondDelta);
       }
 
