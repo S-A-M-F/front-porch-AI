@@ -4,7 +4,7 @@
 
 #include "flutter/generated_plugin_registrant.h"
 #include "spell_check_plugin.h"
-#include <flutter/plugin_registrar_manager.h>
+#include <flutter/plugin_registrar_windows.h>
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
