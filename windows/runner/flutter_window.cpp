@@ -4,6 +4,7 @@
 
 #include "flutter/generated_plugin_registrant.h"
 #include "spell_check_plugin.h"
+#include <flutter/plugin_registrar_manager.h>
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -27,7 +28,9 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SpellCheckPlugin::RegisterWithRegistrar(
-      flutter_controller_->engine()->GetRegistrarForPlugin("SpellCheckPlugin"));
+      flutter::PluginRegistrarManager::GetInstance()
+          ->GetRegistrar<flutter::PluginRegistrarWindows>(
+              flutter_controller_->engine()->GetRegistrarForPlugin("SpellCheckPlugin")));
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
