@@ -121,20 +121,40 @@ Starting with **v0.9.0**, Front Porch AI is licensed under the **GNU Affero Gene
 
 > **Note:** Versions **0.8.x and earlier** remain licensed under **GPLv3**. The license change applies only to v0.9.0 and all future releases.
 
-## 🆕 What's New in V0.9.6.4
+## 🆕 What's New in V0.9.6.5
 
-This update brings critical quality-of-life enhancements to the text input experience and visualizes the complex inner workings of the Realism Engine.
+This update deepens the Realism Engine with genuine emotional continuity, trust-aware behavioral calibration, and real-world time awareness — making characters feel less scripted and more like actual people.
 
-**🖥️ Realism Engine Streaming UI**
-*   **Live Evaluation Overlay:** The Realism Engine no longer thinks in the dark! During deeply complex emotional and timeline evaluations, a stunning, glassmorphic processing overlay now streams the LLM's raw JSON tokens live to your screen. This transparent, auto-scrolling terminal window cleanly visualizes exactly how the engine is weighting the character's internal state in real-time.
-*   **Fixation Tuning:** We gracefully lowered the priority of the *Fixation Engine* prompt, ensuring characters treat their active fixations as a subtle, ambient background thought rather than aggressively hijacking every conversation.
+**🧠 Realism Engine 2.1 — Behavioral Depth**
+- **Emotion Inertia:** Characters no longer snap between moods turn-by-turn. The engine now passes the current emotional state as a prior baseline to each evaluation — minor or neutral exchanges produce small natural drift, while large emotional shifts require genuine narrative cause.
+- **Trust-Based Behavioral Calibration:** A new per-turn behavioral injection tells the model how much of the character's inner self to surface, scaled to the current trust tier. Crucially, it avoids prescribing specific behaviors — an INTJ won't suddenly become jokey at trust tier 3; they'll become precise and candid in ways that are *authentic to their persona*.
+- **Narrative Day-of-Week Tracking:** Scene time now reads `Wednesday Evening (Day 3)` instead of a generic day number. The story's weekday is anchored to the real-world day when Realism was first enabled and advances naturally with the story — no database schema change required.
+- **Post-Greeting Baseline Eval:** The engine now evaluates emotion and relationship state immediately after the first message loads, not after the user's first reply. Characters that open with an implied pre-existing relationship (e.g. *"My love, it's been so long..."*) will correctly register a warm baseline bond and emotional state before any interaction begins. Cycling alternate greetings re-triggers the eval automatically.
 
-**✍️ Native Desktop Spell Checking**
-*   **True Native Integration:** Completely bypassed Flutter's notoriously unreliable desktop spell check defaults. Front Porch AI now utilizes a custom native method channel to directly invoke **`NSSpellChecker` on macOS** and **`ISpellChecker` on Windows**.
-*   **Flawless Corrections:** Expect flawless, system-level accurate red underlines and right-click context menu spelling corrections across the Chat Input, Character Creator, and Settings pages.
+**🖥️ Realism Engine Processing Overlay — Redesigned**
+- **Animated Pulsing Orb:** The old static spinner is gone. A glowing orb breathes in/out with a spinning ring halo behind it.
+- **Smooth Entry Transition:** The overlay fades in cleanly instead of snapping into view.
+- **Animated Eval Pills:** Labeled chips for each active evaluation pass (Relationship, Emotion, Scene, Trust) pulse in sync with the orb.
+- **Two Distinct Modes:** Regular evals use a **cyan** theme with a live stream readout. The new greeting baseline eval uses a **purple** *"Reading the room..."* mode with a sparkle icon and explanatory text — no raw stream needed since it runs silently in the background.
+
+**📊 Sidebar**
+- **Day-of-Week Visible:** The time-of-day row now shows `Sun · Day 1` format so the narrative weekday is always visible at a glance.
+- **Fixation Card Promoted:** The Active Fixation display is now a standalone always-visible card in the sidebar, above Realism Mode, so it stays visible even when sections are collapsed.
+- **Layout Reordered:** RAG Memory → Active Fixation → Realism Mode → Objectives → Author's Note → Character Evolution (collapsed by default) → Chat Summary → Scenario → Lorebook Triggers.
+- **Smarter Defaults:** Realism Mode, NSFW Enhancements, and Objectives default to expanded on first open.
 
 <details>
 <summary><strong>📦 Previous Releases</strong></summary>
+
+### What's New in V0.9.6.4
+
+**🖥️ Realism Engine Streaming UI**
+- **Live Evaluation Overlay:** A glassmorphic processing overlay now streams the LLM's raw eval tokens live during complex emotional evaluations.
+- **Fixation Tuning:** Lowered Fixation Engine prompt priority so active fixations feel like ambient background thoughts rather than aggressively overriding every response.
+
+**✍️ Native Desktop Spell Checking**
+- **macOS:** Integrated directly with `NSSpellChecker` via a native method channel — system-level red underlines and right-click corrections in Chat Input, Character Creator, and Settings.
+- **Windows:** Integrated with `ISpellChecker` (Windows 8+) via a custom C++ plugin — same system-level accuracy. Fixed a plugin registration crash that affected some Windows users reported by the community.
 
 ### What's New in V0.9.6.3
 
