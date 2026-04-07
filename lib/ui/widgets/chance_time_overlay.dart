@@ -24,7 +24,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
   late AnimationController _spinController;
   late Animation<double> _spinAnimation;
 
-  late List<String> _segments; // 8 events for this spin
+  List<String> _segments = const []; // 8 events for this spin
   bool _spinning = false;
   bool _landed = false;
   int _landedIndex = 0;
@@ -50,8 +50,10 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final svc = context.read<ChatService>();
       svc.consumeChanceTimeTrigger();
-      _segments = svc.spinWheelEvents();
-      _charName = svc.activeCharacter?.name ?? 'Character';
+      setState(() {
+        _segments = svc.spinWheelEvents();
+        _charName = svc.activeCharacter?.name ?? 'Character';
+      });
     });
   }
 
