@@ -190,17 +190,17 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildHeader(),
-            const SizedBox(height: 16),
-            _buildWheel(),
-            const SizedBox(height: 16),
-            if (_landed) _buildResultCard() else _buildSpinButton(),
             const SizedBox(height: 12),
+            _buildWheel(),
+            const SizedBox(height: 12),
+            if (_landed) _buildResultCard() else _buildSpinButton(),
+            const SizedBox(height: 10),
             _buildPressureRow(),
           ],
         ),
@@ -228,7 +228,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         const Text(
           'CHANCE TIME!',
           style: TextStyle(
-            fontSize: 32,
+            fontSize: 26,
             fontWeight: FontWeight.w900,
             color: Color(0xFFFFD166),
             letterSpacing: 2,
@@ -258,16 +258,22 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
   }
 
   Widget _buildWheel() {
-    return SizedBox(
-      width: 320,
-      height: 320,
+    // Shrink wheel after landing to give the result card more room
+    final wheelPx = _landed ? 190.0 : 290.0;
+    final paintPx = _landed ? 174.0 : 274.0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOut,
+      width: wheelPx,
+      height: wheelPx,
       child: Stack(
         alignment: Alignment.center,
         children: [
           // Outer glow ring
-          Container(
-            width: 334,
-            height: 334,
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 600),
+            width: wheelPx + 14,
+            height: wheelPx + 14,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(
@@ -293,7 +299,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
               return Transform.rotate(
                 angle: angle,
                 child: CustomPaint(
-                  size: const Size(310, 310),
+                  size: Size(paintPx, paintPx),
                   painter: _WheelPainter(
                     segments: _segments,
                     colors: _segmentColors,
@@ -376,7 +382,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
       children: [
         // ── Reveal splash ───────────────────────────────────────────────
         _buildRevealSplash(cat, catColor),
-        const SizedBox(height: 12),
+        const SizedBox(height: 6),
 
         // ── Category banner ─────────────────────────────────────────────
         AnimatedBuilder(
@@ -486,7 +492,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
       builder: (context, _) {
         final t = _revealAnimation.value;
         return SizedBox(
-          height: 64,
+          height: 56,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -545,13 +551,13 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
               // Big bouncing category emoji
               Transform.scale(
                 scale: t < 0.4
-                    ? (t / 0.4) * 1.3   // overshoot
-                    : 1.3 - ((t - 0.4) / 0.6) * 0.3, // settle to 1.0
+                    ? (t / 0.4) * 1.2
+                    : 1.2 - ((t - 0.4) / 0.6) * 0.2,
                 child: Text(
                   cat == _EventCategory.fortune    ? '🎉' :
                   cat == _EventCategory.misfortune ? '💀' :
                   cat == _EventCategory.chaos      ? '⚡' : '🔮',
-                  style: const TextStyle(fontSize: 48),
+                  style: const TextStyle(fontSize: 36),
                 ),
               ),
             ],
