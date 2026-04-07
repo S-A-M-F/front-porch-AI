@@ -579,7 +579,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         final color = Color.lerp(
           const Color(0xFF2EC4B6),
           const Color(0xFFE63946),
-          pressure / 80,
+          pressure / 100,
         )!;
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
