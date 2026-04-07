@@ -349,7 +349,7 @@ class ChatService extends ChangeNotifier {
 
   /// Base chance % per turn. Grows by [_chaosGrowthPerTurn] each turn.
   static const int _chaosBaseChance = 5;
-  static const int _chaosGrowthPerTurn = 3;
+  static const int _chaosGrowthPerTurn = 5;
   static const int _chaosPressureCap = 100;
 
   // ── v3 Behavioral Mechanics ──
