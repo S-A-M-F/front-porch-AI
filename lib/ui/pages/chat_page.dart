@@ -6474,7 +6474,33 @@ class _ChaosModeSection extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  // Manual spin button
+                  // NSFW spicy events toggle
+                  Row(
+                    children: [
+                      const Text('🌶️', style: TextStyle(fontSize: 12)),
+                      const SizedBox(width: 6),
+                      const Expanded(
+                        child: Text(
+                          'Include spicy events',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white60,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 24,
+                        child: Switch(
+                          value: chat.chaosNsfwEnabled,
+                          onChanged: (v) => chat.setChaosNsfwEnabled(v),
+                          activeColor: const Color(0xFFFF6B9D),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   GestureDetector(
                     onTap: onSpinRequested,
                     child: Container(
