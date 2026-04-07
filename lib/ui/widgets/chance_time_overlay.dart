@@ -236,7 +236,6 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                   painter: _WheelPainter(
                     segments: _segments,
                     colors: _segmentColors,
-                    charName: _charName ?? 'Character',
                   ),
                 ),
               );
@@ -397,110 +396,84 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
 class _WheelPainter extends CustomPainter {
   final List<String> segments;
   final List<Color> colors;
-  final String charName;
+
+  // Fixed fun emojis per slot — visually interesting while spinning,
+  // no text that goes upside-down. Event text revealed in result card.
+  static const List<String> _slotEmojis = [
+    '🎲', '⚡', '🎯', '🔮', '🎪', '💎', '🌈', '🎭',
+  ];
 
   const _WheelPainter({
     required this.segments,
     required this.colors,
-    required this.charName,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
-    final segmentAngle = (2 * pi) / segments.length;
-    final paint = Paint()..style = PaintingStyle.fill;
+    final n = segments.length;
+    final segmentAngle = (2 * pi) / n;
+    final fillPaint = Paint()..style = PaintingStyle.fill;
 
-    for (int i = 0; i < segments.length; i++) {
+    for (int i = 0; i < n; i++) {
       final startAngle = i * segmentAngle - pi / 2;
+
       // Segment fill
-      paint.color = colors[i % colors.length];
+      fillPaint.color = colors[i % colors.length];
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius - 4),
         startAngle,
         segmentAngle,
         true,
-        paint,
-      );
-      // Divider lines
-      final borderPaint = Paint()
-        ..color = Colors.black38
-        ..strokeWidth = 1.5
-        ..style = PaintingStyle.stroke;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius - 4),
-        startAngle,
-        segmentAngle,
-        true,
-        borderPaint,
+        fillPaint,
       );
 
-      // ── Label ──────────────────────────────────────────────────────────
+      // Segment border
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius - 4),
+        startAngle,
+        segmentAngle,
+        true,
+        Paint()
+          ..color = Colors.black45
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke,
+      );
+
+      // Emoji centered in segment — drawn horizontally (not rotated),
+      // so it always faces the same direction regardless of spin angle.
       final midAngle = startAngle + segmentAngle / 2;
+      final emojiRadius = radius * 0.60;
+      final ex = center.dx + emojiRadius * cos(midAngle);
+      final ey = center.dy + emojiRadius * sin(midAngle);
 
-      // Raw label: replace {{char}} and keep only first 3 words
-      final rawLabel = segments[i].replaceAll('{{char}}', charName);
-      final words = rawLabel.split(' ');
-      // Split into two lines of ~3 words each for readability
-      final line1 = words.take(3).join(' ');
-      final line2 = words.length > 3 ? words.skip(3).take(3).join(' ') : '';
-      final labelText = line2.isEmpty ? line1 : '$line1\n$line2';
-
-      // Position: 55% of the way from centre to rim
-      final labelRadius = radius * 0.58;
-      final lx = center.dx + labelRadius * cos(midAngle);
-      final ly = center.dy + labelRadius * sin(midAngle);
-
-      canvas.save();
-      canvas.translate(lx, ly);
-      // Rotate so text reads from centre outward (along the radius)
-      canvas.rotate(midAngle + pi / 2);
-
+      final emoji = _slotEmojis[i % _slotEmojis.length];
       final tp = TextPainter(
         text: TextSpan(
-          text: labelText,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            height: 1.25,
-          ),
+          text: emoji,
+          style: const TextStyle(fontSize: 26, height: 1),
         ),
-        textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
       );
-      tp.layout(maxWidth: 80);
-
-      // Dark pill behind the text for contrast
-      final pillRect = RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset.zero,
-          width: tp.width + 8,
-          height: tp.height + 6,
-        ),
-        const Radius.circular(5),
-      );
-      canvas.drawRRect(
-        pillRect,
-        Paint()..color = Colors.black.withOpacity(0.45),
-      );
-
-      tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
-      canvas.restore();
+      tp.layout();
+      tp.paint(canvas, Offset(ex - tp.width / 2, ey - tp.height / 2));
     }
 
-    // Outer ring
-    paint
-      ..color = const Color(0xFFFFD166)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5;
-    canvas.drawCircle(center, radius - 2, paint);
+    // Gold outer rim
+    canvas.drawCircle(
+      center,
+      radius - 2,
+      Paint()
+        ..color = const Color(0xFFFFD166)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 6,
+    );
   }
 
   @override
   bool shouldRepaint(covariant _WheelPainter old) =>
-      old.segments != segments || old.charName != charName;
+      old.segments != segments;
 }
 
 class _PointerPainter extends CustomPainter {
