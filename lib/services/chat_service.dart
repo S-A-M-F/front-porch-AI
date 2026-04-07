@@ -305,6 +305,7 @@ class ChatService extends ChangeNotifier {
   bool _realismEnabled = false; // master toggle
   bool _isEvaluatingRealism = false;
   bool _isProcessingGreeting = false; // true while post-greeting baseline eval runs
+  bool _greetingEvalPending = false; // greeting placed but baseline eval not yet run
   String _realismEvalStreamText = '';
 
   // Relationship (Short-Term / Tension)
@@ -531,6 +532,11 @@ class ChatService extends ChangeNotifier {
     final idx = (_startDayOfWeek - 1 + (_dayCount - 1)) % 7;
     return days[idx];
   }
+
+  /// True if the realism engine has already captured a meaningful baseline
+  /// (emotion or bond score). Used to avoid redundant retroactive scans.
+  bool get _hasRealismBaseline => _characterEmotion.isNotEmpty || _affectionScore != 0;
+
   bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
   int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
   int get arousalLevel => _arousalLevel;
@@ -1849,12 +1855,14 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
 
     // ── Post-Greeting Realism Baseline ──────────────────────────────────
-    // If Realism is on and the character has an opening message, run a
-    // lightweight eval so the engine captures the emotional register and
-    // any implied pre-existing relationship embedded in the first message.
-    // This runs in the background so the UI isn't blocked.
-    if (_realismEnabled && _activeGroup == null && _messages.isNotEmpty) {
-      _runPostGreetingEval();
+    // Always mark that a greeting was placed — even if Realism is currently off.
+    // If Realism is already on, fire immediately. Otherwise the flag will be
+    // consumed the moment the user enables Realism.
+    if (_activeGroup == null && _messages.isNotEmpty) {
+      _greetingEvalPending = true;
+      if (_realismEnabled) {
+        _runPostGreetingEval();
+      }
     }
   }
 
@@ -1862,6 +1870,7 @@ class ChatService extends ChangeNotifier {
   /// Runs once per new session, silently in the background.
   Future<void> _runPostGreetingEval() async {
     if (!_realismEnabled || _activeCharacter == null) return;
+    _greetingEvalPending = false; // consume the pending flag
     debugPrint('[Realism] Running post-greeting baseline eval...');
     _isProcessingGreeting = true;
     notifyListeners();
@@ -1883,6 +1892,43 @@ class ChatService extends ChangeNotifier {
       debugPrint('[Realism] Post-greeting baseline: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel');
     } catch (e) {
       debugPrint('[Realism] Post-greeting eval failed: $e');
+    } finally {
+      _isProcessingGreeting = false;
+      notifyListeners();
+    }
+  }
+
+  /// Retroactive baseline eval — fires when Realism is enabled mid-conversation
+  /// with no prior state captured. Evaluates the full visible message history
+  /// so the engine catches up on emotion, bond, and scene state.
+  Future<void> _runRetroactiveBaselineEval() async {
+    if (!_realismEnabled || _activeCharacter == null) return;
+    debugPrint('[Realism] Running retroactive baseline scan (${_messages.length} messages)...');
+    _isProcessingGreeting = true; // reuse the greeting overlay
+    notifyListeners();
+    try {
+      if (_storageService.realismOneShotEval) {
+        await _evaluateOneShotCall();
+      } else {
+        await Future.wait([
+          _evaluateRelationshipCall(),
+          _evaluateEmotionalStateCall(),
+          _evaluatePhysicalStateCall(),
+          _evaluateNarrativeCall(),
+        ]);
+      }
+
+      // Stamp the baseline on the most recent message so it persists
+      if (_messages.isNotEmpty) {
+        _messages.last.activeMetadata ??= {};
+        _messages.last.activeMetadata!['emotion_label'] = _characterEmotion;
+        _messages.last.activeMetadata!['realism_state'] = _captureRealismState();
+      }
+      await _saveChat();
+      notifyListeners();
+      debugPrint('[Realism] Retroactive scan complete: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel');
+    } catch (e) {
+      debugPrint('[Realism] Retroactive baseline scan failed: $e');
     } finally {
       _isProcessingGreeting = false;
       notifyListeners();
@@ -6396,6 +6442,25 @@ class ChatService extends ChangeNotifier {
     _realismEnabled = enabled;
     // Anchor the narrative weekday to the real-world day when realism first turns on
     if (enabled) _startDayOfWeek = DateTime.now().weekday;
+
+    if (enabled && _activeGroup == null && _activeCharacter != null) {
+      // ── Solution 1: Pending greeting flag ────────────────────────────
+      // The greeting was placed while realism was off. Fire the baseline
+      // eval now that the user has explicitly enabled it.
+      if (_greetingEvalPending) {
+        debugPrint('[Realism] Consuming pending greeting eval (user enabled realism after load).');
+        _runPostGreetingEval();
+      }
+      // ── Solution 3: Retroactive scan on enable ────────────────────────
+      // Realism was enabled mid-conversation with no baseline captured yet
+      // (emotion is blank, affection is zero, multiple messages exist).
+      // Run a full retrospective eval against all visible messages.
+      else if (!_hasRealismBaseline && _messages.isNotEmpty) {
+        debugPrint('[Realism] No baseline detected — running retroactive scan on enable.');
+        _runRetroactiveBaselineEval();
+      }
+    }
+
     if (!enabled) {
       _affectionScore = 0;
       _trustLevel = 0;
