@@ -54,6 +54,7 @@ import 'package:front_porch_ai/ui/dialogs/image_gen_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/data_bank_dialog.dart';
 import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/ui/widgets/call_overlay.dart';
+import 'package:front_porch_ai/ui/widgets/chance_time_overlay.dart';
 import 'package:file_picker/file_picker.dart';
 
 class _StyledTextController extends TextEditingController {
@@ -151,6 +152,28 @@ class _ChatPageState extends State<ChatPage> {
     final tts = Provider.of<TtsService>(context, listen: false);
     _ttsService = tts;
     tts.addListener(_onTtsChanged);
+
+    // Listen for Chaos Mode auto-triggers
+    final chat = Provider.of<ChatService>(context, listen: false);
+    chat.addListener(_onChatServiceChanged);
+  }
+
+  void _onChatServiceChanged() {
+    final chat = Provider.of<ChatService>(context, listen: false);
+    if (chat.chanceTimePendingTrigger && mounted) {
+      chat.consumeChanceTimeTrigger();
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showChanceTimeOverlay(context),
+      );
+    }
+  }
+
+  void _showChanceTimeOverlay(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const ChanceTimeOverlay(),
+    );
   }
 
   void _onTtsChanged() {
@@ -183,6 +206,8 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void dispose() {
     _ttsService?.removeListener(_onTtsChanged);
+    Provider.of<ChatService>(context, listen: false)
+        .removeListener(_onChatServiceChanged);
     _chatFocusNode.dispose();
     _scrollController.dispose();
     _controller.dispose();
@@ -2097,7 +2122,16 @@ class _ChatPageState extends State<ChatPage> {
 
                 // ── Realism Mode ──
                 _RealismSection(chatService: chatService),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+
+                // ── Chaos Mode ──
+                Consumer<ChatService>(
+                  builder: (context, chat, _) => _ChaosModeSection(
+                    chat: chat,
+                    onSpinRequested: () => _showChanceTimeOverlay(context),
+                  ),
+                ),
+                const SizedBox(height: 8),
 
                 // ── Objective ──
                 _ObjectiveSection(chatService: chatService),
@@ -3487,8 +3521,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final timeSkipPeriods = metadata['time_skip_periods'] as int? ?? 0;
     final timeSkipNextDay = metadata['time_skip_next_day'] as bool? ?? false;
     final timeSkipTo = metadata['time_skip_to'] as String? ?? '';
+    final chanceTimeEvent = metadata['chance_time_event'] as String? ?? '';
 
-    if (bondDelta == 0 && emotionLabel.isEmpty && arousalDelta == 0 && trustDelta == 0 && timeSkipTo.isEmpty) return const SizedBox.shrink();
+    if (bondDelta == 0 && emotionLabel.isEmpty && arousalDelta == 0 && trustDelta == 0 && timeSkipTo.isEmpty && chanceTimeEvent.isEmpty) return const SizedBox.shrink();
 
     Widget maybeTooltip(Widget child, String tip) {
       if (tip.isEmpty) return child;
@@ -3566,6 +3601,31 @@ class _MessageBubbleState extends State<_MessageBubble> {
         Text('Time skip: $timeSkipTo',
             style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.amber)),
       ]));
+    }
+
+    if (chanceTimeEvent.isNotEmpty) {
+      chips.add(Tooltip(
+        message: chanceTimeEvent,
+        preferBelow: false,
+        textStyle: const TextStyle(fontSize: 12, color: Colors.white),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1F2937),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Text('🎰', style: TextStyle(fontSize: 11)),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Text(
+              'Chance Time: ${chanceTimeEvent.length > 30 ? chanceTimeEvent.substring(0, 30) + '…' : chanceTimeEvent}',
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFFFD166)),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ]),
+      ));
     }
 
     return Padding(
@@ -6283,6 +6343,154 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
           ),
         ],
       ],
+    );
+  }
+}
+
+
+// ── Chaos Mode Section ─────────────────────────────────────────────────
+
+class _ChaosModeSection extends StatelessWidget {
+  final ChatService chat;
+  final VoidCallback onSpinRequested;
+  const _ChaosModeSection({required this.chat, required this.onSpinRequested});
+
+  Color get _pressureColor => Color.lerp(
+        const Color(0xFF2EC4B6),
+        const Color(0xFFE63946),
+        (chat.chaosPressure / 80).clamp(0.0, 1.0),
+      )!;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: chat.chaosModeEnabled
+              ? _pressureColor.withOpacity(0.5)
+              : Colors.white12,
+        ),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: chat.chaosModeEnabled,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+          leading: Text(
+            '🎰',
+            style: TextStyle(
+              fontSize: 16,
+              shadows: chat.chaosModeEnabled
+                  ? [Shadow(color: _pressureColor, blurRadius: 10)]
+                  : null,
+            ),
+          ),
+          title: Row(
+            children: [
+              const Text(
+                'Chaos Mode',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const Spacer(),
+              Switch(
+                value: chat.chaosModeEnabled,
+                onChanged: (v) => chat.setChaosModeEnabled(v),
+                activeColor: const Color(0xFFFFD166),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Pressure bar
+                  Row(
+                    children: [
+                      Icon(Icons.casino_rounded, size: 12, color: _pressureColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Pressure: ${chat.chaosPressure}%',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _pressureColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: (chat.chaosPressure / 80).clamp(0.0, 1.0),
+                      minHeight: 5,
+                      backgroundColor: Colors.white10,
+                      valueColor: AlwaysStoppedAnimation<Color>(_pressureColor),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Manual spin button
+                  GestureDetector(
+                    onTap: onSpinRequested,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFD166), Color(0xFFFFC233)],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFFFD166).withOpacity(0.3),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('🎰', style: TextStyle(fontSize: 14)),
+                          SizedBox(width: 6),
+                          Text(
+                            'SPIN NOW',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF1A1200),
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Auto-triggers grow more likely each turn.\nBase: 5% · +3% per turn · cap: 80%',
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: Colors.white38,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

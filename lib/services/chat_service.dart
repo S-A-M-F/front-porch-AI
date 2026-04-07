@@ -340,6 +340,17 @@ class ChatService extends ChangeNotifier {
   int _cooldownTurnsRemaining = 0;
   int _arousalLevel = 0; // -3 to 10 scale
 
+  // ── Chaos Mode / Chance Time ──
+  bool _chaosModeEnabled = false;
+  int _chaosPressure = 0; // 0–100; grows each turn without a trigger
+  String? _pendingChanceTimeEvent; // set when wheel lands; cleared after UI reads it
+  bool _chanceTimePendingTrigger = false; // true for one cycle to pop the overlay
+
+  /// Base chance % per turn. Grows by [_chaosGrowthPerTurn] each turn.
+  static const int _chaosBaseChance = 5;
+  static const int _chaosGrowthPerTurn = 3;
+  static const int _chaosPressureCap = 80;
+
   // ── v3 Behavioral Mechanics ──
   int _trustLevel = 0; // -100 to 100
   String _activeFixation = '';
@@ -544,6 +555,18 @@ class ChatService extends ChangeNotifier {
 
   bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
   int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
+
+  // Chaos Mode
+  bool get chaosModeEnabled => _chaosModeEnabled;
+  int get chaosPressure => _chaosPressure;
+  /// Non-null for exactly one notification cycle. UI reads then calls clearChanceTimeEvent().
+  String? get pendingChanceTimeEvent => _pendingChanceTimeEvent;
+  /// True when auto-trigger fires. UI reads then calls consumeChanceTimeTrigger().
+  bool get chanceTimePendingTrigger => _chanceTimePendingTrigger;
+
+  /// Called by the overlay once it has opened. Clears the auto-trigger flag.
+  void consumeChanceTimeTrigger() => _chanceTimePendingTrigger = false;
+
   int get arousalLevel => _arousalLevel;
   String get activeFixation => _activeFixation;
 
@@ -1317,6 +1340,8 @@ class ChatService extends ChangeNotifier {
         activeFixation: drift.Value(_activeFixation),
         fixationLifespan: drift.Value(_fixationLifespan),
         spatialStance: drift.Value(_spatialStance),
+        chaosModeEnabled: drift.Value(_chaosModeEnabled),
+        chaosPressure: drift.Value(_chaosPressure),
         trustRepairPending: drift.Value(_pendingTrustRepair),
         createdAt: drift.Value(createdAt),
         updatedAt: drift.Value(DateTime.now()),
@@ -1395,6 +1420,8 @@ class ChatService extends ChangeNotifier {
     _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
     _arousalLevel = lastSession.arousalLevel;
     _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
+    _chaosModeEnabled = lastSession.chaosModeEnabled;
+    _chaosPressure = lastSession.chaosPressure;
 
     // Load per-session evolution (1:1 mode only — group is handled by _loadGroupEvolvedFields)
     if (_activeCharacter != null) {
@@ -1999,6 +2026,14 @@ class ChatService extends ChangeNotifier {
     // ── OOC Time-Skip Detection ───────────────────────────────────────────
     if (_realismEnabled && _activeGroup == null) {
       _detectOocTimeSkip(text);
+    }
+
+    // ── Chaos Mode: escalating pressure check ─────────────────────────────
+    if (_chaosModeEnabled && _activeGroup == null) {
+      if (checkAndTickChaosPressure()) {
+        _chanceTimePendingTrigger = true;
+        notifyListeners(); // UI observes this to show the wheel
+      }
     }
 
     // User message counts as a message towards depth
@@ -6593,4 +6628,178 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
     debugPrint('[Realism:OOC] Time-skip: +$periods period(s) → $_timeOfDay (Day $_dayCount)');
   }
+
+  // ── Chaos Mode / Chance Time ──────────────────────────────────────────────
+
+  Future<void> setChaosModeEnabled(bool enabled) async {
+    _chaosModeEnabled = enabled;
+    if (!enabled) _chaosPressure = 0;
+    await _saveChat();
+    notifyListeners();
+  }
+
+  /// Clear the pending event after the UI has consumed it.
+  void clearChanceTimeEvent() {
+    _pendingChanceTimeEvent = null;
+    // no notifyListeners — avoids rebuild storms; UI already consumed it
+  }
+
+  /// Returns 8 randomly-sampled events for the wheel UI to display.
+  List<String> spinWheelEvents() {
+    final pool = List<String>.from(_chanceTimeEventPool)..shuffle();
+    return pool.take(8).toList();
+  }
+
+  /// Called by the wheel overlay once the animation lands on an event.
+  Future<void> applyChanceTimeResult(String event, String charName) async {
+    final display = event.replaceAll('{{char}}', charName);
+    _pendingChanceTimeEvent = display;
+    _chaosPressure = 0;
+    _pendingRealismMetadata ??= {};
+    _pendingRealismMetadata!['chance_time_event'] = display;
+    await _saveChat();
+    notifyListeners();
+    debugPrint('[ChanceTime] Applied: $display');
+  }
+
+  /// Per-turn auto-trigger check. Returns true if the wheel should pop this turn.
+  bool checkAndTickChaosPressure() {
+    if (!_chaosModeEnabled) return false;
+    _chaosPressure = (_chaosPressure + _chaosGrowthPerTurn).clamp(0, _chaosPressureCap);
+    final effectiveChance = (_chaosBaseChance + _chaosPressure).clamp(0, _chaosPressureCap);
+    // Use microseconds for better entropy than milliseconds
+    final roll = (DateTime.now().microsecondsSinceEpoch % 100);
+    final fires = roll < effectiveChance;
+    if (fires) debugPrint('[ChanceTime] Auto-trigger! pressure=$_chaosPressure% roll=$roll');
+    return fires;
+  }
+
+  // ── Chance Time Event Pool (120 events) ───────────────────────────────────
+
+  static const List<String> _chanceTimeEventPool = [
+    // 🟢 Fortune
+    '{{char}} just won the lottery',
+    '{{char}} received a surprise inheritance from a distant relative',
+    '{{char}} went viral on social media today',
+    '{{char}} just got offered their dream job',
+    '{{char}} found a wallet containing \$2,000 in cash',
+    '{{char}} got an unexpected promotion at work',
+    '{{char}} received a mysterious gift with no return address',
+    '{{char}} just got a book deal out of nowhere',
+    '{{char}}\'s crush just asked them out',
+    '{{char}} received a massive unexpected tax refund',
+    '{{char}}\'s landlord just forgave this month\'s rent for no reason',
+    '{{char}} got upgraded to first class on their last flight',
+    '{{char}} just won front-row concert tickets to their favorite artist',
+    '{{char}} found out they\'re receiving an all-expenses-paid vacation',
+    '{{char}} was just told they\'re getting a large surprise bonus',
+    '{{char}} discovered an old investment of theirs paid off enormously',
+    '{{char}} received flowers from an anonymous admirer today',
+    '{{char}} was publicly recognized and praised for something they did',
+    '{{char}} got a call saying their work is being featured somewhere major',
+    '{{char}} just learned a debt they owed was paid off by someone else',
+    '{{char}} was approached about being in a documentary',
+    '{{char}} received a sincere apology from someone who wronged them years ago',
+    '{{char}}\'s doctor called with unexpectedly great test results',
+    '{{char}} discovered they have more savings than they realized',
+    '{{char}} received a scholarship they applied for and completely forgot about',
+    '{{char}} just got a five-star review that genuinely moved them',
+    '{{char}} was told by a stranger that they changed their life',
+    '{{char}}\'s old friend just paid back a long-forgotten debt',
+    '{{char}} just got cast in something they auditioned for months ago',
+    '{{char}} found out they\'re receiving a prestigious award',
+    // 🔴 Misfortune
+    '{{char}} is currently dealing with explosive diarrhea',
+    '{{char}}\'s car was just totaled in a parking lot',
+    '{{char}} just got fired without any warning',
+    '{{char}} woke up with severe food poisoning',
+    '{{char}} is having a serious allergic reaction right now',
+    '{{char}} received an IRS audit notice today',
+    '{{char}}\'s pipes burst and flooded part of their home',
+    '{{char}} dropped their phone in water and it\'s completely dead',
+    '{{char}} slipped and fell in a very public place',
+    '{{char}} is locked out of their home and car simultaneously',
+    '{{char}} has the worst toothache of their life right now',
+    '{{char}} just discovered a massive spider in their personal space',
+    '{{char}}\'s identity was stolen',
+    '{{char}} ran into a swarm of bees today',
+    '{{char}} sent a deeply embarrassing message to the wrong person',
+    '{{char}} is dealing with a gut-wrenching public wardrobe malfunction',
+    '{{char}} has jury duty and just found out it\'s a very long trial',
+    '{{char}} just discovered a serious bug infestation at home',
+    '{{char}}\'s flight got cancelled and they\'re stranded',
+    '{{char}} accidentally burned something irreplaceable',
+    '{{char}}\'s bank account was inexplicably frozen',
+    '{{char}} just found out their landlord is selling the building',
+    '{{char}} received a collections notice for a bill they thought was paid',
+    '{{char}} woke up with a mystery rash that won\'t go away',
+    '{{char}} stepped on something extremely painful in the dark',
+    '{{char}} spilled something all over an item they can\'t replace',
+    '{{char}} just found out a secret they were keeping got leaked',
+    '{{char}} had their wallet stolen in a crowded place',
+    '{{char}} got a parking ticket on a day they were already having a terrible time',
+    '{{char}} just found out someone close to them has been lying for months',
+    // 💛 Chaos
+    'A mild earthquake just hit {{char}}\'s location',
+    'The power went out everywhere {{char}} is right now',
+    'A UFO was just spotted in the sky outside {{char}}\'s window',
+    'A flash mob erupted in the exact space {{char}} is currently in',
+    'A celebrity just walked into the same space as {{char}}',
+    'A tornado warning was just issued for {{char}}\'s area',
+    'A reality TV crew just showed up claiming they\'re filming {{char}}',
+    'Breaking news is reporting something happening right near {{char}}',
+    '{{char}}\'s entire city just lost cell service for an unknown reason',
+    'A rogue food truck exploded nearby — chaos everywhere, no injuries',
+    'A wild animal was spotted loose in {{char}}\'s neighborhood',
+    'A gas leak was detected in {{char}}\'s building',
+    'A news helicopter has been circling {{char}}\'s location for hours',
+    'Social media went down globally right when {{char}} needed it most',
+    'A strange unexplained crowd has gathered outside {{char}}\'s location',
+    '{{char}}\'s building was evacuated due to a false alarm',
+    'An airport near {{char}} shut down for mysterious reasons',
+    '{{char}} is caught in an unexpected severe weather warning',
+    'Every alarm in {{char}}\'s vicinity went off at the same moment',
+    'A single enormous bird will not stop staring directly at {{char}}',
+    'A clown appeared nearby and keeps waving specifically at {{char}}',
+    '{{char}} is experiencing the most intense déjà vu of their entire life',
+    'A street performer outside is inexplicably playing {{char}}\'s favorite song',
+    'The ground near {{char}} shook once and no one can explain why',
+    'A complete stranger ran up to {{char}}, said something cryptic, and vanished',
+    'Every screen near {{char}} is suddenly showing the same strange broadcast',
+    '{{char}} just witnessed something they genuinely cannot explain',
+    'Someone fainted dramatically right next to {{char}}',
+    'A fire alarm keeps going off only when {{char}} is in the room',
+    '{{char}}\'s town is trending on social media for something bizarre',
+    // 💜 Wild Cards
+    '{{char}} has been keeping a serious secret and is close to breaking',
+    '{{char}} is secretly in love and trying desperately not to show it',
+    '{{char}} received devastating news right before this conversation',
+    '{{char}} has a secret identity that almost no one knows about',
+    '{{char}} is currently being blackmailed',
+    '{{char}} has a twin that almost no one knows exists',
+    '{{char}} was once proposed to and said no — and regrets it deeply',
+    '{{char}} is hiding a significant injury and trying not to let it show',
+    '{{char}} overheard something they were never supposed to know',
+    '{{char}} is protecting someone dangerous and cannot explain why',
+    '{{char}} knows something bad is about to happen and is quietly bracing',
+    '{{char}} made a promise they cannot keep and it\'s eating them alive',
+    '{{char}} is secretly counting down to a decision they\'ve already made',
+    '{{char}} once did something they deeply regret and never told anyone',
+    '{{char}} is not entirely who they claim to be',
+    '{{char}} recognized someone recently from a past they don\'t talk about',
+    '{{char}} is forcing themselves to be present and it\'s taking everything',
+    '{{char}} is secretly furious about something and barely holding it together',
+    '{{char}} received a message today that changed everything for them',
+    '{{char}} has been lying about something small for so long it\'s now a problem',
+    '{{char}} is jealous of something specific and refuses to admit it',
+    '{{char}} has feelings they\'ve suppressed for a very long time',
+    '{{char}} is silently grieving something they haven\'t told anyone',
+    '{{char}} has had a recurring nightmare that\'s been affecting their mood',
+    '{{char}} just made a decision that will change the course of their life',
+    '{{char}} is being followed and is unsure whether to say anything',
+    '{{char}} has a phobia that was triggered within the last hour',
+    '{{char}} just had a realization about themselves they cannot un-know',
+    '{{char}} is holding back tears and hoping no one notices',
+    '{{char}} is keeping a secret that would completely change how others see them',
+  ];
 }
