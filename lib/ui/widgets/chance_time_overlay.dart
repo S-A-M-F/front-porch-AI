@@ -475,11 +475,12 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
             ),
             onPressed: () {
               final svc = context.read<ChatService>();
-              svc.applyChanceTimeResult(
-                _segments[_landedIndex],
-                _charName ?? 'Character',
-              );
+              final seg = _segments[_landedIndex];
+              final name = _charName ?? 'Character';
+              // Pop FIRST so the overlay is fully disposed before
+              // _generateResponse fires notifyListeners.
               Navigator.of(context).pop();
+              svc.applyChanceTimeResult(seg, name);
             },
             child: const Text(
               'Accept Your Fate 🎲',
