@@ -101,6 +101,10 @@ class Sessions extends Table {
   TextColumn get spatialStance => text().withDefault(const Constant(''))(); // physical anchor
   BoolColumn get trustRepairPending => boolean().withDefault(const Constant(false))(); // repair window armed after severe trust drop
 
+  // Chance Time / Chaos Mode (v21)
+  BoolColumn get chaosModeEnabled => boolean().withDefault(const Constant(false))();
+  IntColumn get chaosPressure => integer().withDefault(const Constant(0))(); // 0-100 escalating trigger chance
+
   // Per-session character evolution (v19)
   // 1:1 chats: plain evolved text
   TextColumn get evolvedPersonality => text().withDefault(const Constant(''))();
@@ -383,7 +387,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -658,6 +662,15 @@ class AppDatabase extends _$AppDatabase {
         try {
           // Defaulting to 1 so any previously active goal becomes the primary goal
           await customStatement('ALTER TABLE objectives ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 1');
+        } catch (_) {}
+      }
+      if (from < 21) {
+        // v20→v21: Chaos Mode / Chance Time system
+        try {
+          await customStatement('ALTER TABLE sessions ADD COLUMN chaos_mode_enabled INTEGER NOT NULL DEFAULT 0');
+        } catch (_) {}
+        try {
+          await customStatement('ALTER TABLE sessions ADD COLUMN chaos_pressure INTEGER NOT NULL DEFAULT 0');
         } catch (_) {}
       }
     },
