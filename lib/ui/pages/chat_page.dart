@@ -5947,10 +5947,28 @@ class _RealismSectionState extends State<_RealismSection> {
                             style: const TextStyle(fontSize: 12, color: Colors.white54),
                           ),
                           const Spacer(),
+                          // Manual time nudge: back
+                          if (chat.realismEnabled)
+                            GestureDetector(
+                              onTap: () => chat.nudgeTimePeriod(-1),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 4),
+                                child: Icon(Icons.chevron_left, size: 16, color: Colors.white30),
+                              ),
+                            ),
                           Text(
                             '${chat.narrativeWeekday.substring(0, 3)} · Day ${chat.dayCount}',
                             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white38),
                           ),
+                          // Manual time nudge: forward
+                          if (chat.realismEnabled)
+                            GestureDetector(
+                              onTap: () => chat.nudgeTimePeriod(1),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 4),
+                                child: Icon(Icons.chevron_right, size: 16, color: Colors.white30),
+                              ),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -5982,6 +6000,8 @@ class _RealismSectionState extends State<_RealismSection> {
                             ),
                         ],
                       ),
+                      // OOC time-skip toast
+                      if (chat.lastTimeSkipPeriods != 0) ..._buildTimeSkipToast(chat),
                       const SizedBox(height: 12),
 
                       // ── NSFW Enhancements Submenu ──
@@ -6094,6 +6114,32 @@ class _RealismSectionState extends State<_RealismSection> {
       default: return '';
     }
   }
+
+  List<Widget> _buildTimeSkipToast(ChatService chat) {
+    // Auto-dismiss after 3.5s
+    Future.delayed(const Duration(milliseconds: 3500), () {
+      if (mounted) chat.clearTimeSkipNotification();
+    });
+    final isNextDay = chat.lastTimeSkipPeriods == -1;
+    final label = isNextDay
+        ? '⏭  Time skip · Next day'
+        : '⏭  Time skip · +${chat.lastTimeSkipPeriods} period${chat.lastTimeSkipPeriods == 1 ? '' : 's'}';
+    return [
+      const SizedBox(height: 6),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.amber.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.amber.withOpacity(0.25)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: Colors.amber, fontWeight: FontWeight.w600, letterSpacing: 0.3),
+        ),
+      ),
+    ];
+  }
 }
 
 // ── NSFW Enhancements Section ──────────────────────────────────────────
@@ -6129,20 +6175,23 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                 const SizedBox(width: 4),
                 const Icon(Icons.warning_amber_rounded, size: 14, color: Colors.deepOrangeAccent),
                 const SizedBox(width: 5),
-                const Text(
-                  'NSFW Enhancements',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.deepOrangeAccent),
+                const Flexible(
+                  child: Text(
+                    'NSFW Enhancements',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.deepOrangeAccent),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 if (widget.chat.nsfwCooldownEnabled && widget.chat.cooldownTurnsRemaining > 0) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Colors.deepOrange.withOpacity(0.2),
+                      color: Colors.deepOrange.withOpacity(0.18),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      '⏳ Refractory: ${widget.chat.cooldownTurnsRemaining} turns',
+                      '⏳ ${widget.chat.cooldownTurnsRemaining}t',
                       style: const TextStyle(fontSize: 10, color: Colors.deepOrangeAccent, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -6228,13 +6277,19 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
 
 
                 if (widget.chat.nsfwCooldownEnabled && widget.chat.cooldownTurnsRemaining > 0) ...[
-                  const SizedBox(height: 4),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '⏳ Refractory Period: ${widget.chat.cooldownTurnsRemaining} turns remaining',
-                      style: const TextStyle(fontSize: 11, color: Colors.deepOrangeAccent),
-                    ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.hourglass_bottom, size: 12, color: Colors.deepOrangeAccent),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'Refractory: ${widget.chat.cooldownTurnsRemaining} turn${widget.chat.cooldownTurnsRemaining == 1 ? '' : 's'} remaining',
+                          style: const TextStyle(fontSize: 11, color: Colors.deepOrangeAccent),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],
