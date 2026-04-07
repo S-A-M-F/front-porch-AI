@@ -6393,7 +6393,7 @@ class _ChaosModeSection extends StatelessWidget {
   Color get _pressureColor => Color.lerp(
         const Color(0xFF2EC4B6),
         const Color(0xFFE63946),
-        (chat.chaosPressure / 80).clamp(0.0, 1.0),
+        (chat.chaosPressure / 100).clamp(0.0, 1.0),
       )!;
 
   @override
@@ -6467,7 +6467,7 @@ class _ChaosModeSection extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(3),
                     child: LinearProgressIndicator(
-                      value: (chat.chaosPressure / 80).clamp(0.0, 1.0),
+                      value: (chat.chaosPressure / 100).clamp(0.0, 1.0),
                       minHeight: 5,
                       backgroundColor: Colors.white10,
                       valueColor: AlwaysStoppedAnimation<Color>(_pressureColor),
@@ -6538,7 +6538,7 @@ class _ChaosModeSection extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Auto-triggers grow more likely each turn.\nBase: 5% · +3% per turn · cap: 80%',
+                    'Auto-triggers grow more likely each turn.\nBase: 5% · +3% per turn · cap: 100%',
                     style: const TextStyle(
                       fontSize: 9,
                       color: Colors.white38,
