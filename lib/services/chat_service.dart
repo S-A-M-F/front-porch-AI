@@ -329,6 +329,11 @@ class ChatService extends ChangeNotifier {
   String _timeOfDay = 'morning';
   int _dayCount = 1;
   int _startDayOfWeek = DateTime.now().weekday; // 1=Mon ... 7=Sun, set when session starts
+  int _turnsSinceLastTimeAdvance = 0; // deterministic pacing counter
+
+  /// How many AI turns must pass before time is eligible to advance.
+  /// 6 turns ≈ a meaningful scene chunk without forcing constant time-skips.
+  static const int _turnsPerTimePeriod = 6;
 
   // NSFW cooldown & lust
   bool _nsfwCooldownEnabled = false;
@@ -5809,57 +5814,89 @@ class ChatService extends ChangeNotifier {
     final recentCount = _messages.length < 4 ? _messages.length : 4;
     final recent = _messages.reversed.take(recentCount).toList().reversed.map((m) => '${m.sender}: ${m.displayText}').join('\n');
     final charName = _activeCharacter!.name;
-    final prompt = 'You are evaluating the physical/environment state for $charName.\n\n'
-        '1. "time_of_day": dawn, morning, late_morning, afternoon, evening, or night\n'
-        '   The current underlying time is $_timeOfDay. ONLY advance the time if the scene clearly moves forward!\n'
-        '2. "new_day": true or false. Only true if the scene jumps significantly into tomorrow.\n'
-        '3. "posture": Their overarching spatial/physical stance (a brief phrase like "leaning against the wall"), or "none"\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "time_of_day", "new_day", and "posture".';
-    try {
-      final raw = await _fireLLMEval(prompt, grammar: _buildKoboldGrammar(_kGbnfJsonObject), onChunk: onChunk);
-      if (raw == null) return;
-      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+    final validTimes = ['dawn', 'morning', 'late_morning', 'afternoon', 'evening', 'night'];
+    final currentIndex = validTimes.indexOf(_timeOfDay);
 
-      bool dayIncremented = false;
-      final validTimes = ['dawn', 'morning', 'late_morning', 'afternoon', 'evening', 'night'];
-      final currentIndex = validTimes.indexOf(_timeOfDay);
+    // ── Deterministic Time Clock ──────────────────────────────────────────────
+    // Increment every AI turn. Time only advances when the threshold is reached —
+    // the LLM can only veto (hold) the advance, never skip multiple periods.
+    _turnsSinceLastTimeAdvance++;
+    final bool timeEligible = _turnsSinceLastTimeAdvance >= _turnsPerTimePeriod;
 
-      final timeMatch = RegExp(r'"time_of_day"\s*:\s*"([^"]+)"').firstMatch(text);
-      if (timeMatch != null) {
-        final t = timeMatch.group(1)!.toLowerCase().trim();
-        final targetIndex = validTimes.indexOf(t);
-        if (targetIndex != -1 && targetIndex != currentIndex) {
-          if (targetIndex > currentIndex) {
-            int jump = targetIndex - currentIndex;
-            if (jump > 2) jump = 2; // Cap forward jump logically
-            _timeOfDay = validTimes[currentIndex + jump];
-          } else if (targetIndex < currentIndex) {
-            _timeOfDay = validTimes[0];
+    if (timeEligible) {
+      final holdPrompt = 'You are evaluating physical state for $charName.\n\n'
+          'Enough turns have passed that time should advance from "$_timeOfDay" to the next period.\n'
+          '1. "hold_time": true ONLY if the scene is visibly mid-action (e.g. mid-fight, actively doing something). false otherwise — let time advance normally.\n'
+          '2. "new_day": true ONLY if the conversation explicitly transitioned to the next day (slept, woke up, scene break). Only valid when current time is "night".\n'
+          '3. "posture": $charName\'s current physical stance (brief phrase), or "none"\n\n'
+          'Recent conversation:\n$recent\n\n'
+          'Respond with ONLY a flat JSON object containing "hold_time", "new_day", and "posture".';
+      try {
+        final raw = await _fireLLMEval(holdPrompt, grammar: _buildKoboldGrammar(_kGbnfJsonObject), onChunk: onChunk);
+        if (raw != null) {
+          final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+          final holdMatch = RegExp(r'"hold_time"\s*:\s*(true|false)').firstMatch(text);
+          final shouldHold = holdMatch?.group(1) == 'true';
+
+          if (!shouldHold) {
+            if (currentIndex < validTimes.length - 1) {
+              _timeOfDay = validTimes[currentIndex + 1];
+            } else {
+              _timeOfDay = validTimes[0];
+              _dayCount++;
+              debugPrint('[Realism:Time] Day rolled over! Day $_dayCount');
+            }
+            _turnsSinceLastTimeAdvance = 0;
+            debugPrint('[Realism:Time] Advanced to $_timeOfDay (Day $_dayCount)');
+          } else {
+            debugPrint('[Realism:Time] Held — scene mid-action, time stays at $_timeOfDay');
+          }
+
+          // Explicit new-day override (e.g. woke up after night)
+          final newDayMatch = RegExp(r'"new_day"\s*:\s*(true|false)').firstMatch(text);
+          if (newDayMatch?.group(1) == 'true' && _timeOfDay == 'night' && !shouldHold) {
+            // already handled by rollover above
+          } else if (newDayMatch?.group(1) == 'true' && currentIndex >= validTimes.indexOf('evening')) {
             _dayCount++;
-            dayIncremented = true;
+            _timeOfDay = validTimes[0];
+            _turnsSinceLastTimeAdvance = 0;
+            debugPrint('[Realism:Time] Explicit new-day transition. Day $_dayCount');
+          }
+
+          final postureMatch = RegExp(r'"posture"\s*:\s*"([^"]+)"').firstMatch(text);
+          if (postureMatch != null) {
+            final p = postureMatch.group(1)!.trim();
+            _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
           }
         }
-      }
-
-      if (!dayIncremented) {
-        final newDayMatch = RegExp(r'"new_day"\s*:\s*(true|false)').firstMatch(text);
-        if (newDayMatch != null && newDayMatch.group(1) == 'true' && currentIndex >= validTimes.indexOf('evening')) {
-          _dayCount++;
+      } catch (e) {
+        // Eval failed — still advance so time never freezes
+        if (currentIndex < validTimes.length - 1) {
+          _timeOfDay = validTimes[currentIndex + 1];
+        } else {
           _timeOfDay = validTimes[0];
+          _dayCount++;
         }
+        _turnsSinceLastTimeAdvance = 0;
+        debugPrint('[Realism:Time] Eval error, auto-advanced to $_timeOfDay: $e');
       }
-
-      final postureMatch = RegExp(r'"posture"\s*:\s*"([^"]+)"').firstMatch(text);
-      if (postureMatch != null) {
-        String p = postureMatch.group(1)!.trim();
-        _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
-      }
-      debugPrint('[Realism:Physical] Posture: $_spatialStance | Time: $_timeOfDay (Day $_dayCount)');
-      notifyListeners();
-    } catch (e) {
-      debugPrint('[Realism:Physical] Failed: $e');
+    } else {
+      // Not yet eligible — grab posture only
+      final posturePrompt = 'In one brief phrase, what is $charName\'s current physical stance based on:\n$recent\n\nRespond with ONLY: {"posture": "<phrase or none>"}';
+      try {
+        final raw = await _fireLLMEval(posturePrompt, grammar: _buildKoboldGrammar(_kGbnfJsonObject), onChunk: onChunk);
+        if (raw != null) {
+          final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+          final postureMatch = RegExp(r'"posture"\s*:\s*"([^"]+)"').firstMatch(text);
+          if (postureMatch != null) {
+            final p = postureMatch.group(1)!.trim();
+            _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
+          }
+        }
+      } catch (_) {}
     }
+    debugPrint('[Realism:Physical] Posture: $_spatialStance | Time: $_timeOfDay (Day $_dayCount) | TurnsToNext: ${_turnsPerTimePeriod - _turnsSinceLastTimeAdvance}');
+    notifyListeners();
   }
 
   Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) async {
@@ -5961,8 +5998,6 @@ class ChatService extends ChangeNotifier {
         '   +2: Honest | 0: Neutral | -5: Lie | -200: Massive unforgivable betrayal\n'
         '4. "emotion": $charName\'s current emotional state (one word, nuanced)\n'
         '5. "emotion_intensity": mild, moderate, or strong\n'
-        '6. "time_of_day": dawn, morning, late_morning, afternoon, evening, or night\n'
-        '   Current time: $_timeOfDay — advance only if the scene clearly moves forward\n'
         '7. "posture": $charName\'s spatial/physical stance (brief phrase), or "none"\n'
         '$arousalInstr'
         '${primaryObjective != null ? '9. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Must be a significant personal, social, or narrative goal triggered by recent events. Think hidden agendas, emotional needs, personal conflicts, moral dilemmas. NOT a trivial step, and NOT a restatement of the primary quest. Use "none" if nothing meaningful emerges.\n' : '9. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue, triggered by recent events — significant hidden agenda, emotional need, personal conflict, or moral dilemma. NOT trivial. Use "none" if nothing meaningful emerges.\n'}'
@@ -6081,33 +6116,6 @@ class ChatService extends ChangeNotifier {
         _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
       }
 
-      final validTimes = [
-        'dawn',
-        'morning',
-        'late_morning',
-        'afternoon',
-        'evening',
-        'night',
-      ];
-      final currentIndex = validTimes.indexOf(_timeOfDay);
-      final timeMatch = RegExp(
-        r'"time_of_day"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (timeMatch != null) {
-        final t = timeMatch.group(1)!.toLowerCase().trim();
-        final targetIndex = validTimes.indexOf(t);
-        if (targetIndex != -1 && targetIndex != currentIndex) {
-          if (targetIndex > currentIndex) {
-            int jump = targetIndex - currentIndex;
-            if (jump > 2) jump = 2;
-            _timeOfDay = validTimes[currentIndex + jump];
-          } else {
-            _timeOfDay = validTimes[0];
-            _dayCount++;
-            debugPrint('[Realism:OneShot] Time rolled over! Day $_dayCount');
-          }
-        }
-      }
 
       final postureMatch = RegExp(
         r'"posture"\s*:\s*"([^"]+)"',
