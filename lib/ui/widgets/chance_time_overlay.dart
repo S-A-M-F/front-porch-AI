@@ -178,12 +178,15 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: _segments.isEmpty
-          ? const SizedBox.shrink()
-          : _buildContent(),
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: _segments.isEmpty
+            ? const SizedBox.shrink()
+            : _buildContent(),
+      ),
     );
   }
 
@@ -253,21 +256,6 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
               Shadow(color: Color(0xFFFFD166), blurRadius: 20),
               Shadow(color: Colors.black, blurRadius: 4, offset: Offset(2, 2)),
             ],
-          ),
-        ),
-        Positioned(
-          right: 0,
-          top: 0,
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white12,
-              ),
-              padding: const EdgeInsets.all(6),
-              child: const Icon(Icons.close, color: Colors.white54, size: 18),
-            ),
           ),
         ),
       ],
