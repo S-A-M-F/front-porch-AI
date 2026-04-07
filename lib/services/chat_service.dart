@@ -342,6 +342,7 @@ class ChatService extends ChangeNotifier {
 
   // ── Chaos Mode / Chance Time ──
   bool _chaosModeEnabled = false;
+  bool _chaosNsfwEnabled = false; // include spicy/NSFW events in the pool
   int _chaosPressure = 0; // 0–100; grows each turn without a trigger
   String? _pendingChanceTimeEvent; // set when wheel lands; cleared after UI reads it
   bool _chanceTimePendingTrigger = false; // true for one cycle to pop the overlay
@@ -558,6 +559,7 @@ class ChatService extends ChangeNotifier {
 
   // Chaos Mode
   bool get chaosModeEnabled => _chaosModeEnabled;
+  bool get chaosNsfwEnabled => _chaosNsfwEnabled;
   int get chaosPressure => _chaosPressure;
   /// Non-null for exactly one notification cycle. UI reads then calls clearChanceTimeEvent().
   String? get pendingChanceTimeEvent => _pendingChanceTimeEvent;
@@ -6638,6 +6640,12 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setChaosNsfwEnabled(bool enabled) async {
+    _chaosNsfwEnabled = enabled;
+    await _saveChat();
+    notifyListeners();
+  }
+
   /// Clear the pending event after the UI has consumed it.
   void clearChanceTimeEvent() {
     _pendingChanceTimeEvent = null;
@@ -6646,7 +6654,9 @@ class ChatService extends ChangeNotifier {
 
   /// Returns 8 randomly-sampled events for the wheel UI to display.
   List<String> spinWheelEvents() {
-    final pool = List<String>.from(_chanceTimeEventPool)..shuffle();
+    final pool = List<String>.from(_chanceTimeEventPool);
+    if (_chaosNsfwEnabled) pool.addAll(_chanceTimeNsfwPool);
+    pool.shuffle();
     return pool.take(8).toList();
   }
 
@@ -6826,6 +6836,67 @@ class ChatService extends ChangeNotifier {
     '{{char}} just finished something they were putting off for a long time and feels unreasonably good',
     '{{char}} is distracted by an extremely irrelevant but very interesting thing happening nearby',
     '{{char}} is holding a very strong opinion hostage and it is getting increasingly difficult',
+    // 🎪 Slapstick — physical comedy, chaotic energy
+    'Someone set off a stink bomb nearby and {{char}} is directly in the blast zone',
+    '{{char}}\'s pants, skirt, or equivalent just fell down in the most public setting imaginable',
+    '{{char}} has been glitter-bombed and is now sparkling uncontrollably from every surface',
+    '{{char}} got completely and thoroughly soaked by something falling, splashing, or bursting nearby',
+    '{{char}} sat on something that made an extremely loud and unfortunate noise in a silent room',
+    '{{char}} walked into a door, a pole, or a wall that was extremely clearly there',
+    '{{char}} got tangled in something — a rope, a curtain, their own clothing — and is now stuck',
+    '{{char}} accidentally flung food at someone important while trying to eat normally',
+    '{{char}} sneezed so violently they knocked something over, fell backwards, or both',
+    '{{char}} slipped on something wet and went down in slow motion in front of everyone',
+    '{{char}} tried to lean casually on something and it moved, sending them stumbling',
+    '{{char}} just ripped something open far too aggressively and the contents went everywhere',
+    '{{char}} attempted to catch something thrown to them and missed so badly it hit someone else',
+    '{{char}}\'s chair, stool, or seat just collapsed underneath them with maximum noise',
+    '{{char}} tried to open a container and the lid popped off, launching the contents directly at them',
+    '{{char}} walked confidently forward and stepped directly into a puddle, hole, or ditch',
+    '{{char}} got hit in the face by something soft, harmless, and deeply undignified',
+    'A bucket, bag, or container of something has tipped directly onto {{char}}\'s head',
+    '{{char}} grabbed something sticky and now cannot let go without making things worse',
+    '{{char}} accidentally knocked over a chain reaction of objects like a line of dominoes',
+    '{{char}} tried to do something athletic and it went spectacularly wrong in front of an audience',
+    '{{char}} got their hand, foot, or head stuck in something and is now committed to this situation',
+    'Someone threw something at {{char}} as a prank and their reaction made everything funnier',
+    '{{char}}\'s belt, strap, or buckle just snapped at the worst possible moment',
+    '{{char}} is covered in something — paint, mud, ink, flour — and cannot explain how it happened',
+  ];
+
+  // ── Chance Time NSFW Pool (only included when 🌶️ toggle is on) ──────────
+
+  static const List<String> _chanceTimeNsfwPool = [
+    '{{char}} just received an extremely personal delivery in front of other people',
+    'A stranger on the street just propositioned {{char}} loudly and confidently in public',
+    '{{char}}\'s most private undergarment is now visible and they have not yet realized it',
+    '{{char}} accidentally opened something very explicit on a shared or public surface',
+    '{{char}} just made a noise that sounded extremely suggestive and now everyone is staring',
+    'Someone mistook {{char}} for a worker at a very adult-themed establishment',
+    '{{char}} found something very intimate that does not belong to them in their belongings',
+    '{{char}} walked into the wrong room and what they saw cannot be unseen',
+    '{{char}} scratched somewhere inappropriate and someone absolutely noticed',
+    '{{char}} is visibly aroused at the most inconvenient moment imaginable and is scrambling',
+    'A stranger just described {{char}} in extremely flattering and very explicit physical terms within earshot',
+    '{{char}}\'s clothing has shifted in a way that is revealing something they very much did not intend to share',
+    '{{char}} just discovered that a private intimate item of theirs has been on display this whole time',
+    'A love letter or extremely personal note written about {{char}} has just been read aloud to the room',
+    '{{char}} was caught very obviously checking someone out and both parties know it',
+    '{{char}} accidentally grabbed someone in a place that was very much not where they intended',
+    'Something {{char}} said came out sounding incredibly dirty and everyone heard it',
+    '{{char}} has just received a gift that is unmistakably sexual and has to open it in front of people',
+    '{{char}} is trying extremely hard to hide a visible physical reaction to someone attractive nearby',
+    '{{char}} walked in on something they desperately wish they had not walked in on',
+    'Someone just loudly and publicly asked {{char}} about their love life in excruciating detail',
+    '{{char}} realized their private journal or personal writing has been read by someone else',
+    '{{char}} is wearing something under their clothes that they would be mortified for anyone to discover',
+    'An ex-lover of {{char}} has just appeared and is being very loud about their shared history',
+    '{{char}} was dared to do something embarrassingly intimate and is now trapped by their own pride',
+    '{{char}} made eye contact with someone attractive at exactly the wrong moment and froze',
+    '{{char}} was mistaken for someone\'s lover and the misunderstanding is escalating fast',
+    '{{char}} just got caught practicing a flirtatious or seductive pose in what they thought was privacy',
+    'A very personal garment belonging to {{char}} has just fallen out of their bag in a crowded space',
+    '{{char}} accidentally moaned, groaned, or made a compromising sound while stretching or sitting down',
   ];
 
 }
