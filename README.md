@@ -7,6 +7,8 @@
 
 **A privacy-first, fully offline AI companion for Windows, Linux, and macOS.** Chat with AI characters using local LLMs, manage your character library, and keep everything running on your own hardware — no subscriptions, no cloud, no one pulling the rug out from under you.
 
+💬 **[Join the Discord](https://discord.gg/e4tET6rpdv)** — questions, feedback, and hanging out welcome. Also on **[Matrix](https://matrix.dreamersai.art)**.
+
 <p align="center">
   <img src="docs/screenshots/home_new.png" width="800" alt="Front Porch AI — Character Library">
 </p>
@@ -285,8 +287,6 @@ Starting with **v0.9.0**, this project is licensed under **AGPL-3.0** — meanin
 ---
 
 ## 💬 Community
-
-Have questions, found a bug, or just want to hang out?
 
 - **Discord**: [Join our server](https://discord.gg/e4tET6rpdv)
 - **Matrix**: [matrix.dreamersai.art](https://matrix.dreamersai.art)
