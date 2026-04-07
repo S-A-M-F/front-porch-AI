@@ -131,6 +131,13 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
     'rash', 'sting', 'wardrobe', 'jury', 'bug infestation', 'stranded',
     'burned', 'frozen', 'selling the building', 'parking ticket',
     'collections notice', 'painful', 'spilled', 'secret they were keeping got leaked',
+    'humiliated', 'food stuck', 'wrong group chat', 'emotional breakdown',
+    'ghosted', 'found a lump', 'ex just announced', 'sprawling',
+    'computer crashed', 'devastating rejection', 'overslept', 'full bladder',
+    'deeply private', 'passed away', 'bill that is twice', 'burned their mouth',
+    'bitten by', 'publicly called out', 'debit card got declined', 'car was towed',
+    'accidentally liked', 'salary is significantly lower', 'threw up',
+    'walking around with a wardrobe', 'dead phone battery',
   ];
   static const _chaosKeywords = [
     'earthquake', 'power went out', 'ufo', 'flash mob', 'celebrity',
@@ -443,38 +450,31 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         ),
         const SizedBox(height: 16),
 
-        // ── Buttons ─────────────────────────────────────────────────────
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Skip', style: TextStyle(color: Colors.white38)),
-            ),
-            const SizedBox(width: 12),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFD166),
-                foregroundColor: const Color(0xFF1A1200),
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(50),
-                ),
-              ),
-              onPressed: () {
-                final svc = context.read<ChatService>();
-                svc.applyChanceTimeResult(
-                  _segments[_landedIndex],
-                  _charName ?? 'Character',
-                );
-                Navigator.of(context).pop();
-              },
-              child: const Text(
-                'Apply Event',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+        // ── No skip — you enabled Chaos, you live with the consequences ──
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFD166),
+              foregroundColor: const Color(0xFF1A1200),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(50),
               ),
             ),
-          ],
+            onPressed: () {
+              final svc = context.read<ChatService>();
+              svc.applyChanceTimeResult(
+                _segments[_landedIndex],
+                _charName ?? 'Character',
+              );
+              Navigator.of(context).pop();
+            },
+            child: const Text(
+              'Accept Your Fate 🎲',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.5),
+            ),
+          ),
         ),
       ],
     );
