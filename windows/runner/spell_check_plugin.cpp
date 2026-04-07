@@ -121,7 +121,7 @@ class SpellCheckPluginImpl {
       const ComPtr<ISpellChecker>& checker = it->second;
 
       ComPtr<IEnumSpellingError> errors;
-      hr = checker->Check(w_text.c_str(), &errors);
+      HRESULT hr = checker->Check(w_text.c_str(), &errors);
       if (FAILED(hr) || !errors) {
         result->Success(flutter::EncodableValue());
         return;
