@@ -6538,7 +6538,7 @@ class _ChaosModeSection extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Auto-triggers grow more likely each turn.\nBase: 5% · +3% per turn · cap: 100%',
+                    'Auto-triggers grow more likely each turn.\nBase: 5% · +5% per turn · cap: 100%',
                     style: const TextStyle(
                       fontSize: 9,
                       color: Colors.white38,
