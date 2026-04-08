@@ -32,6 +32,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
   final StorageService _storageService;
   Process? _process;
   bool _isRunning = false;
+  bool _isStarting = false;
   final List<String> _logs = [];
   String _modelLoadingStatus = '';
   bool _modelReady = false;
@@ -153,10 +154,12 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     bool useMetal = false,
     bool useRocm = false,
   }) async {
-    if (_isRunning) return;
+    if (_isRunning || _isStarting) return;
+    _isStarting = true;
 
-    // Store the executable path for cleanup
-    _executablePath = executablePath;
+    try {
+      // Store the executable path for cleanup
+      _executablePath = executablePath;
 
     final args = [
       '--model', modelPath,
@@ -236,6 +239,8 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
       _isRunning = false;
       notifyListeners();
       rethrow;
+    } finally {
+      _isStarting = false;
     }
   }
 

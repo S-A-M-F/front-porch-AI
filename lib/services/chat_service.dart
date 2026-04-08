@@ -2093,18 +2093,35 @@ class ChatService extends ChangeNotifier {
       if (_pendingTrustRepair) {
         _pendingTrustRepair = false; // consume — resets for next drop
         await _evaluateTrustRepairCall(text, onChunk: handleChunk);
-      } else if (_storageService.realismOneShotEval) {
-        await _evaluateOneShotCall(onChunk: handleChunk);
       } else {
-        // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
-        // HTTP requests being dropped before headers are received.
-        await _evaluateRelationshipCall(onChunk: handleChunk);
-        await _evaluateEmotionalStateCall(onChunk: handleChunk);
-        await _evaluatePhysicalStateCall(onChunk: handleChunk);
-        await _evaluateNarrativeCall(onChunk: handleChunk);
+        final isLocalKobold = _llmProvider == null || _llmProvider!.isLocal;
 
+        if (isLocalKobold) {
+          if (_storageService.realismOneShotEval) {
+            await _evaluateOneShotCall(onChunk: handleChunk);
+          } else {
+            // KoboldCPP is single-threaded — run sequentially
+            await _evaluateRelationshipCall(onChunk: handleChunk);
+            await _evaluateEmotionalStateCall(onChunk: handleChunk);
+            await _evaluatePhysicalStateCall(onChunk: handleChunk);
+            await _evaluateNarrativeCall(onChunk: handleChunk);
+          }
+        } else {
+          // API (Remote Backends)
+          if (_storageService.realismOneShotEval) {
+            await _evaluateOneShotCall(onChunk: handleChunk);
+          } else {
+            // API backends handle concurrent requests fine
+            await Future.wait([
+              _evaluateRelationshipCall(onChunk: handleChunk),
+              _evaluateEmotionalStateCall(onChunk: handleChunk),
+              _evaluatePhysicalStateCall(onChunk: handleChunk),
+              _evaluateNarrativeCall(onChunk: handleChunk),
+            ]);
+          }
+        }
 
-        // Synthesize metadata safely post-parallel
+        // Synthesize metadata after all evals complete
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
         _pendingRealismMetadata!['realism_state'] = _captureRealismState();
