@@ -98,7 +98,7 @@ This release brings **community-contributed fixes and features** alongside Reali
 - **pubspec.yaml version format** ([#8](https://github.com/linux4life1/front-porch-AI/pull/8)): Corrected an invalid semver string in `pubspec.yaml` that caused `flutter pub get` to warn on strict tooling setups.
 
 **🧠 Realism Engine — Evaluation Tuning**
-- Expanded the short-term bond and arousal delta ranges so the engine can reflect larger emotional shifts in a single turn when the narrative warrants it.
+- Expanded the short-term emotional delta ranges so the engine can reflect larger mood and relationship shifts in a single turn when the narrative warrants it.
 - Strengthened the justification guidance in evaluation prompts, requiring the model to ground large deltas in concrete story evidence rather than general sentiment.
 
 **⚙️ Stability**
