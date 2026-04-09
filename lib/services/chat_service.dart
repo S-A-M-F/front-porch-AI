@@ -304,8 +304,10 @@ class ChatService extends ChangeNotifier {
   // ── Realism Mode ──
   bool _realismEnabled = false; // master toggle
   bool _isEvaluatingRealism = false;
-  bool _isProcessingGreeting = false; // true while post-greeting baseline eval runs
-  bool _greetingEvalPending = false; // greeting placed but baseline eval not yet run
+  bool _isProcessingGreeting =
+      false; // true while post-greeting baseline eval runs
+  bool _greetingEvalPending =
+      false; // greeting placed but baseline eval not yet run
   String _realismEvalStreamText = '';
   // Debounce timer — batches rapid per-chunk notifyListeners() calls during
   // eval streaming into a single rebuild every 150 ms. Without this, a
@@ -333,7 +335,8 @@ class ChatService extends ChangeNotifier {
   // Passage of time
   String _timeOfDay = 'morning';
   int _dayCount = 1;
-  int _startDayOfWeek = DateTime.now().weekday; // 1=Mon ... 7=Sun, set when session starts
+  int _startDayOfWeek =
+      DateTime.now().weekday; // 1=Mon ... 7=Sun, set when session starts
   int _turnsSinceLastTimeAdvance = 0; // deterministic pacing counter
 
   /// How many AI turns must pass before time is eligible to advance.
@@ -343,17 +346,22 @@ class ChatService extends ChangeNotifier {
   // NSFW cooldown & lust
   bool _nsfwCooldownEnabled = false;
   int _cooldownTurnsRemaining = 0;
-  int _arousalLevel = 0; // -3 to 10 scale
+  int _arousalLevel = 0; // -10 to +10 scale
 
   // ── Chaos Mode / Chance Time ──
   bool _chaosModeEnabled = false;
   bool _chaosNsfwEnabled = false; // include spicy/NSFW events in the pool
   int _chaosPressure = 0; // 0–100; grows each turn without a trigger
-  String? _pendingChanceTimeEvent; // set when wheel lands; cleared after UI reads it
-  bool _chanceTimePendingTrigger = false; // true for one cycle to pop the overlay
-  String? _pendingChaosInjection; // event text to inject into the next response prompt
-  bool _chaosEventDelivered = false; // true after the event has been used in at least one generation
-  Completer<void>? _chanceTimeCompleter; // pauses sendMessage while wheel is active
+  String?
+  _pendingChanceTimeEvent; // set when wheel lands; cleared after UI reads it
+  bool _chanceTimePendingTrigger =
+      false; // true for one cycle to pop the overlay
+  String?
+  _pendingChaosInjection; // event text to inject into the next response prompt
+  bool _chaosEventDelivered =
+      false; // true after the event has been used in at least one generation
+  Completer<void>?
+  _chanceTimeCompleter; // pauses sendMessage while wheel is active
 
   /// Base chance % per turn. Grows by [_chaosGrowthPerTurn] each turn.
   static const int _chaosBaseChance = 5;
@@ -553,14 +561,23 @@ class ChatService extends ChangeNotifier {
   /// The current narrative day of the week (e.g. 'Monday'), computed from
   /// the session's anchor weekday plus elapsed in-story days.
   String get narrativeWeekday {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
     final idx = (_startDayOfWeek - 1 + (_dayCount - 1)) % 7;
     return days[idx];
   }
 
   /// True if the realism engine has already captured a meaningful baseline
   /// (emotion or bond score). Used to avoid redundant retroactive scans.
-  bool get _hasRealismBaseline => _characterEmotion.isNotEmpty || _affectionScore != 0;
+  bool get _hasRealismBaseline =>
+      _characterEmotion.isNotEmpty || _affectionScore != 0;
 
   bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
   int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
@@ -569,10 +586,13 @@ class ChatService extends ChangeNotifier {
   bool get chaosModeEnabled => _chaosModeEnabled;
   bool get chaosNsfwEnabled => _chaosNsfwEnabled;
   int get chaosPressure => _chaosPressure;
+
   /// Non-null for exactly one notification cycle. UI reads then calls clearChanceTimeEvent().
   String? get pendingChanceTimeEvent => _pendingChanceTimeEvent;
+
   /// True when auto-trigger fires. UI reads then calls consumeChanceTimeTrigger().
   bool get chanceTimePendingTrigger => _chanceTimePendingTrigger;
+
   /// True when a chaos event is queued for the next response (blocks manual spin + auto-trigger).
   bool get hasPendingChaosEvent => _pendingChaosInjection != null;
 
@@ -1893,7 +1913,6 @@ class ChatService extends ChangeNotifier {
       }
     }
 
-
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
     await _saveChat();
     notifyListeners();
@@ -1929,12 +1948,15 @@ class ChatService extends ChangeNotifier {
         _messages.first.activeMetadata ??= {};
         if (_characterEmotion.isNotEmpty) {
           _messages.first.activeMetadata!['emotion_label'] = _characterEmotion;
-          _messages.first.activeMetadata!['realism_state'] = _captureRealismState();
+          _messages.first.activeMetadata!['realism_state'] =
+              _captureRealismState();
         }
       }
       await _saveChat();
       notifyListeners();
-      debugPrint('[Realism] Post-greeting baseline: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel');
+      debugPrint(
+        '[Realism] Post-greeting baseline: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel',
+      );
     } catch (e) {
       debugPrint('[Realism] Post-greeting eval failed: $e');
     } finally {
@@ -1948,7 +1970,9 @@ class ChatService extends ChangeNotifier {
   /// so the engine catches up on emotion, bond, and scene state.
   Future<void> _runRetroactiveBaselineEval() async {
     if (!_realismEnabled || _activeCharacter == null) return;
-    debugPrint('[Realism] Running retroactive baseline scan (${_messages.length} messages)...');
+    debugPrint(
+      '[Realism] Running retroactive baseline scan (${_messages.length} messages)...',
+    );
     _isProcessingGreeting = true; // reuse the greeting overlay
     notifyListeners();
     try {
@@ -1961,18 +1985,20 @@ class ChatService extends ChangeNotifier {
         await _evaluateEmotionalStateCall();
         await _evaluatePhysicalStateCall();
         await _evaluateNarrativeCall();
-
       }
 
       // Stamp the baseline on the most recent message so it persists
       if (_messages.isNotEmpty) {
         _messages.last.activeMetadata ??= {};
         _messages.last.activeMetadata!['emotion_label'] = _characterEmotion;
-        _messages.last.activeMetadata!['realism_state'] = _captureRealismState();
+        _messages.last.activeMetadata!['realism_state'] =
+            _captureRealismState();
       }
       await _saveChat();
       notifyListeners();
-      debugPrint('[Realism] Retroactive scan complete: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel');
+      debugPrint(
+        '[Realism] Retroactive scan complete: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel',
+      );
     } catch (e) {
       debugPrint('[Realism] Retroactive baseline scan failed: $e');
     } finally {
@@ -1980,7 +2006,6 @@ class ChatService extends ChangeNotifier {
       notifyListeners();
     }
   }
-
 
   /// Cycle the first message through alternate greetings
   Future<void> cycleGreeting(int direction) async {
@@ -2051,7 +2076,9 @@ class ChatService extends ChangeNotifier {
     }
 
     // ── Chaos Mode: check + pause for wheel if triggered ─────────────────
-    if (_chaosModeEnabled && _activeGroup == null && _pendingChaosInjection == null) {
+    if (_chaosModeEnabled &&
+        _activeGroup == null &&
+        _pendingChaosInjection == null) {
       if (checkAndTickChaosPressure()) {
         // Create a completer so sendMessage pauses here until the wheel resolves
         _chanceTimeCompleter = Completer<void>();
@@ -2084,7 +2111,10 @@ class ChatService extends ChangeNotifier {
         _realismEvalStreamText += chunk;
         // Debounce: coalesce rapid token arrivals into one rebuild per 150 ms
         _evalChunkTimer?.cancel();
-        _evalChunkTimer = Timer(const Duration(milliseconds: 150), notifyListeners);
+        _evalChunkTimer = Timer(
+          const Duration(milliseconds: 150),
+          notifyListeners,
+        );
       }
 
       // ── Trust repair intercept ───────────────────────────────────────
@@ -2244,7 +2274,10 @@ class ChatService extends ChangeNotifier {
           _realismEvalStreamText += chunk;
           // Debounce: coalesce rapid token arrivals into one rebuild per 150 ms
           _evalChunkTimer?.cancel();
-          _evalChunkTimer = Timer(const Duration(milliseconds: 150), notifyListeners);
+          _evalChunkTimer = Timer(
+            const Duration(milliseconds: 150),
+            notifyListeners,
+          );
         }
 
         if (_storageService.realismOneShotEval) {
@@ -2263,10 +2296,10 @@ class ChatService extends ChangeNotifier {
           _saveChat();
         }
 
-      // Cancel any pending debounce notify before closing the overlay
-      _evalChunkTimer?.cancel();
-      _evalChunkTimer = null;
-      await Future.delayed(const Duration(milliseconds: 500));
+        // Cancel any pending debounce notify before closing the overlay
+        _evalChunkTimer?.cancel();
+        _evalChunkTimer = null;
+        await Future.delayed(const Duration(milliseconds: 500));
         _isEvaluatingRealism = false;
         notifyListeners();
       }
@@ -2829,7 +2862,8 @@ class ChatService extends ChangeNotifier {
         final trustBehavior = _getTrustBehaviorInjection();
         final cooldown = _getNsfwCooldownInjection();
         final behavioral = _getBehavioralMechanicsInjection();
-        realismBlock = '$relationship$emotion$time$trustBehavior$cooldown$behavioral';
+        realismBlock =
+            '$relationship$emotion$time$trustBehavior$cooldown$behavioral';
       }
 
       // Chance Time injection — independent of realism mode
@@ -3450,9 +3484,10 @@ class ChatService extends ChangeNotifier {
       // when the HTTP client is closed mid-stream (either by abortGeneration() or a process
       // crash/restart). Treat it the same as a user cancel — keep the partial response.
       final errStr = e.toString();
-      final isConnectionClosed = errStr.contains('Connection closed before full header') ||
+      final isConnectionClosed =
+          errStr.contains('Connection closed before full header') ||
           errStr.contains('Connection refused') ||
-          errStr.contains('errno = 61') ||   // macOS ECONNREFUSED
+          errStr.contains('errno = 61') || // macOS ECONNREFUSED
           errStr.contains('SocketException') ||
           (errStr.contains('ClientException') && errStr.contains('closed'));
       final treatAsCancel = wasCancelled || isConnectionClosed;
@@ -3500,7 +3535,8 @@ class ChatService extends ChangeNotifier {
         errorMsg =
             'Request timed out. The model may be too large or the server too slow.';
       } else if (errorMsg.contains('Connection closed before full header') ||
-          (errorMsg.contains('ClientException') && errorMsg.contains('closed'))) {
+          (errorMsg.contains('ClientException') &&
+              errorMsg.contains('closed'))) {
         errorMsg =
             'The connection to the backend was closed unexpectedly. '
             'The model may still be loading — wait for the green ready indicator and try again. '
@@ -4258,25 +4294,32 @@ class ChatService extends ChangeNotifier {
         final numbered = RegExp(r'^\d+[\.\)\-]?\s*(.+)').firstMatch(trimmed);
         if (numbered != null) {
           final desc = numbered.group(1)!.trim();
-          if (desc.isNotEmpty && !desc.startsWith('[')) genTasks.add({'description': desc, 'completed': false});
+          if (desc.isNotEmpty && !desc.startsWith('['))
+            genTasks.add({'description': desc, 'completed': false});
           continue;
         }
         // Try bullet: "- ...", "• ...", "* ..."
         final bullet = RegExp(r'^[-•*]\s+(.+)').firstMatch(trimmed);
         if (bullet != null) {
           final desc = bullet.group(1)!.trim();
-          if (desc.isNotEmpty) genTasks.add({'description': desc, 'completed': false});
+          if (desc.isNotEmpty)
+            genTasks.add({'description': desc, 'completed': false});
           continue;
         }
         // Plain sentence fallback (skip very short lines or header-like lines)
-        if (trimmed.length > 15 && !trimmed.endsWith(':') && genTasks.length < taskCount) {
+        if (trimmed.length > 15 &&
+            !trimmed.endsWith(':') &&
+            genTasks.length < taskCount) {
           genTasks.add({'description': trimmed, 'completed': false});
         }
       }
 
       // De-duplicate and cap
       final seen = <String>{};
-      final uniqueTasks = genTasks.where((t) => seen.add(t['description'] as String)).take(taskCount).toList();
+      final uniqueTasks = genTasks
+          .where((t) => seen.add(t['description'] as String))
+          .take(taskCount)
+          .toList();
 
       if (uniqueTasks.isNotEmpty) {
         await _db.updateObjective(
@@ -4429,7 +4472,10 @@ class ChatService extends ChangeNotifier {
       return;
 
     _messagesSinceLastCheck++;
-    final freq = _realismEnabled ? 1 : (primaryObjective?.checkFrequency ?? _activeObjectives.first.checkFrequency);
+    final freq = _realismEnabled
+        ? 1
+        : (primaryObjective?.checkFrequency ??
+              _activeObjectives.first.checkFrequency);
     if (_messagesSinceLastCheck < freq) return;
     _messagesSinceLastCheck = 0;
 
@@ -4440,7 +4486,10 @@ class ChatService extends ChangeNotifier {
     if (_activeObjectives.isEmpty) return;
     _messagesSinceLastCheck++;
 
-    final freq = _realismEnabled ? 1 : (primaryObjective?.checkFrequency ?? _activeObjectives.first.checkFrequency);
+    final freq = _realismEnabled
+        ? 1
+        : (primaryObjective?.checkFrequency ??
+              _activeObjectives.first.checkFrequency);
     if (_messagesSinceLastCheck < freq) return;
     _messagesSinceLastCheck = 0;
 
@@ -4471,9 +4520,10 @@ class ChatService extends ChangeNotifier {
             .map((t) => t['description'] as String)
             .firstOrNull;
 
-        if (currentTask == null && tasks.isNotEmpty) continue; // All tasks finished but objective not manually resolved
+        if (currentTask == null && tasks.isNotEmpty)
+          continue; // All tasks finished but objective not manually resolved
 
-        final evalTarget = currentTask != null 
+        final evalTarget = currentTask != null
             ? 'Task to evaluate: "$currentTask"\n'
             : 'Objective to evaluate: "${obj.objective}"\n';
         final promptType = currentTask != null ? 'task' : 'objective';
@@ -4532,7 +4582,9 @@ class ChatService extends ChangeNotifier {
               ),
             );
             await _loadActiveObjectives();
-            debugPrint('[Objective] Taskless objective naturally completed: ${obj.objective}');
+            debugPrint(
+              '[Objective] Taskless objective naturally completed: ${obj.objective}',
+            );
           }
         }
       }
@@ -5546,7 +5598,6 @@ class ChatService extends ChangeNotifier {
       if (!llm.isReady) return null;
     }
 
-
     // Thinking models (e.g. QwQ, Deepseek-R1 via KoboldCPP) output a
     // <think>…</think> block before the JSON answer. That block contains
     // countless '}' characters, so we must NOT use '}' as a stop sequence
@@ -5586,7 +5637,6 @@ class ChatService extends ChangeNotifier {
       //    the first visible tokens when they happen to match a template stop
       banEosToken: isThinkingModel && _llmProvider!.isLocal,
       trimStop: !(isThinkingModel && _llmProvider!.isLocal),
-
     );
 
     String response = '';
@@ -5595,7 +5645,9 @@ class ChatService extends ChangeNotifier {
     // pause is enough to recover without user-visible impact.
     for (int attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {
-        debugPrint('[Realism:Eval] Retrying after connection drop (attempt ${attempt + 1})...');
+        debugPrint(
+          '[Realism:Eval] Retrying after connection drop (attempt ${attempt + 1})...',
+        );
         await Future.delayed(const Duration(seconds: 3));
         if (_llmProvider!.isLocal) {
           await _llmProvider!.koboldService.ensureServerIdle();
@@ -5609,7 +5661,8 @@ class ChatService extends ChangeNotifier {
           if (response.contains('}')) {
             final stripped = _stripThinkBlocks(response);
             if (stripped.isNotEmpty &&
-                (stripped.trimRight().endsWith('}') || stripped.contains('}\n'))) {
+                (stripped.trimRight().endsWith('}') ||
+                    stripped.contains('}\n'))) {
               break;
             }
           }
@@ -5627,11 +5680,14 @@ class ChatService extends ChangeNotifier {
 
     // Log raw eval response for diagnostics
     if (_llmProvider?.isLocal == true) {
-      final preview = response.length > 300 ? response.substring(0, 300) : response;
-      debugPrint('[Realism:RawEval] len=${response.length} | ${preview.replaceAll('\n', '↵')}');
+      final preview = response.length > 300
+          ? response.substring(0, 300)
+          : response;
+      debugPrint(
+        '[Realism:RawEval] len=${response.length} | ${preview.replaceAll('\n', '↵')}',
+      );
     }
     return response.isEmpty ? null : response;
-
   }
 
   // ── Prompt Injection Builders ──
@@ -5747,7 +5803,15 @@ class ChatService extends ChangeNotifier {
     final cap =
         timeLabel.substring(0, 1).toUpperCase() + timeLabel.substring(1);
     // Compute narrative weekday from session start day + elapsed days
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
     final narrativeDayIndex = (_startDayOfWeek - 1 + (_dayCount - 1)) % 7;
     final weekdayName = days[narrativeDayIndex];
     return '[Scene Time: $cap, $weekdayName (Day $_dayCount)\n'
@@ -5765,27 +5829,33 @@ class ChatService extends ChangeNotifier {
 
     String frame;
     if (tier <= -3) {
-      frame = 'has closed off completely. They are guarded, deflect personal questions, '
+      frame =
+          'has closed off completely. They are guarded, deflect personal questions, '
           'keep responses short, and maintain maximum emotional distance. '
           'They do not volunteer anything personal and do not engage beyond necessity.';
     } else if (tier <= -1) {
-      frame = 'is wary and on guard. They keep things surface-level, avoid anything vulnerable, '
+      frame =
+          'is wary and on guard. They keep things surface-level, avoid anything vulnerable, '
           'and are subtly defensive. They may cooperate but remain emotionally unavailable.';
     } else if (tier == 0) {
-      frame = 'is neutral — neither open nor closed. They engage normally but do not '
+      frame =
+          'is neutral — neither open nor closed. They engage normally but do not '
           'volunteer personal feelings or lower their social mask. Default baseline behavior.';
     } else if (tier <= 2) {
-      frame = 'is beginning to feel comfortable. They may let small authentic moments through — '
+      frame =
+          'is beginning to feel comfortable. They may let small authentic moments through — '
           'a glimpse of their real opinion, a slightly less guarded tone. Do not force warmth; '
           'let it emerge naturally in ways consistent with ${charName}\'s specific personality.';
     } else if (tier <= 4) {
-      frame = 'genuinely trusts this person. Their social mask is down. They share real feelings, '
+      frame =
+          'genuinely trusts this person. Their social mask is down. They share real feelings, '
           'admit uncertainty, and speak more candidly than they would with most people. '
           'What this looks like depends entirely on ${charName}\'s own character — an introverted '
           'character might simply hold eye contact longer or say one true thing; an expressive one '
           'might open up more dramatically. Follow ${charName}\'s persona.';
     } else {
-      frame = 'has reached a level of deep trust that is rare for them. They are fully themselves — '
+      frame =
+          'has reached a level of deep trust that is rare for them. They are fully themselves — '
           'no performance, no guard. They may say things they have never said to anyone, '
           'show vulnerability in whatever form is authentic to ${charName}\'s personality.';
     }
@@ -5795,8 +5865,8 @@ class ChatService extends ChangeNotifier {
         'define exactly how this trust level manifests in behavior.]\n';
   }
 
+  /// Returns a prompt fragment that enforces the refractory period and adds personality‑aware tone and reflection.
   String _getNsfwCooldownInjection() {
-
     if (!_realismEnabled || !_nsfwCooldownEnabled) return '';
 
     final charName = _activeCharacter?.name ?? 'the character';
@@ -5841,7 +5911,8 @@ class ChatService extends ChangeNotifier {
   /// Placed AFTER the character name suffix for maximum recency weight.
   /// Consumed after one use (cleared after response generation).
   String _getChanceTimeInjection() {
-    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty) return '';
+    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty)
+      return '';
     final charName = _activeCharacter?.name ?? 'the character';
     final event = _pendingChaosInjection!;
     // Mark as delivered so it can be cleared on the NEXT sendMessage.
@@ -5964,36 +6035,51 @@ class ChatService extends ChangeNotifier {
       if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
         _pendingRealismMetadata ??= {};
         if (bondDelta != 0) _pendingRealismMetadata!['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-        if (trustDelta != 0) _pendingRealismMetadata!['trust_delta'] = trustDelta;
+        if (arousalDelta != 0)
+          _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
+        if (trustDelta != 0)
+          _pendingRealismMetadata!['trust_delta'] = trustDelta;
       }
 
       // Extract and store per-chip reasons
-      final bondReasonMatch = RegExp(r'"bond_reason"\s*:\s*"([^"]*)"').firstMatch(text);
+      final bondReasonMatch = RegExp(
+        r'"bond_reason"\s*:\s*"([^"]*)"',
+      ).firstMatch(text);
       final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
       if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['bond_reason'] = bondReason;
       }
 
-      final trustReasonMatch = RegExp(r'"trust_reason"\s*:\s*"([^"]*)"').firstMatch(text);
+      final trustReasonMatch = RegExp(
+        r'"trust_reason"\s*:\s*"([^"]*)"',
+      ).firstMatch(text);
       final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
       if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['trust_reason'] = trustReason;
       }
 
-      debugPrint('[Realism:Relationship] Bond: $bondDelta (${bondReason.isNotEmpty ? bondReason : 'no reason'}) | Trust: $trustDelta (${trustReason.isNotEmpty ? trustReason : 'no reason'})');
+      debugPrint(
+        '[Realism:Relationship] Bond: $bondDelta (${bondReason.isNotEmpty ? bondReason : 'no reason'}) | Trust: $trustDelta (${trustReason.isNotEmpty ? trustReason : 'no reason'})',
+      );
       notifyListeners();
     } catch (e) {
       debugPrint('[Realism:Relationship] Failed: $e');
     }
   }
 
-  Future<void> _evaluateEmotionalStateCall({void Function(String)? onChunk}) async {
+  Future<void> _evaluateEmotionalStateCall({
+    void Function(String)? onChunk,
+  }) async {
     if (!_realismEnabled || _activeCharacter == null) return;
     final recentCount = _messages.length < 4 ? _messages.length : 4;
-    final recent = _messages.reversed.take(recentCount).toList().reversed.map((m) => '${m.sender}: ${m.displayText}').join('\n');
+    final recent = _messages.reversed
+        .take(recentCount)
+        .toList()
+        .reversed
+        .map((m) => '${m.sender}: ${m.displayText}')
+        .join('\n');
     final charName = _activeCharacter!.name;
 
     // ── Personality injection (same as relationship eval) ──
@@ -6011,24 +6097,27 @@ class ChatService extends ChangeNotifier {
         'Current relationship tension: $shortTermTierName | Trust level: $_trustLevel\n';
 
     // ── Arousal instruction (enriched with current level + diminishing returns) ──
-    final arousalField = _nsfwCooldownEnabled ? ', "arousal_delta": <number -2 to +2>' : '';
+    final arousalField = _nsfwCooldownEnabled
+        ? ', "arousal_delta": <number -10 to +10>'
+        : '';
     final arousalInstr = _nsfwCooldownEnabled
         ? '3. "arousal_delta": Physical arousal shift this turn. (-2 to +2)\n'
-          '   Current arousal: $_arousalLevel/10. '
-          'High arousal naturally limits further increase — at 8+ only the most intense stimuli warrant +1.\n'
+              '   Current arousal: $_arousalLevel/10. '
+              'High arousal naturally limits further increase — at 8+ only the most intense stimuli warrant +1.\n'
         : '';
 
     // ── Emotion inertia context ──
     final currentEmotionCtx = _characterEmotion.isNotEmpty
         ? 'Current emotional state: $_characterEmotion${_emotionIntensity.isNotEmpty ? ' ($_emotionIntensity)' : ''}.\n'
-          'Emotions have natural inertia — only shift meaningfully if something in the conversation genuinely warrants it. '
-          'Minor or neutral exchanges should produce small drift, not sudden jumps.\n'
-          'BUT: after intense events (fights, confessions, betrayals, intimate moments), '
-          'emotions naturally LINGER for several turns — do NOT rush back to baseline. '
-          'Only drift toward settled during truly mundane exchanges.\n\n'
+              'Emotions have natural inertia — only shift meaningfully if something in the conversation genuinely warrants it. '
+              'Minor or neutral exchanges should produce small drift, not sudden jumps.\n'
+              'BUT: after intense events (fights, confessions, betrayals, intimate moments), '
+              'emotions naturally LINGER for several turns — do NOT rush back to baseline. '
+              'Only drift toward settled during truly mundane exchanges.\n\n'
         : '';
 
-    final prompt = 'You are evaluating the emotional state for $charName.\n\n'
+    final prompt =
+        'You are evaluating the emotional state for $charName.\n\n'
         '$personalityInjection'
         '$relationshipCtx'
         '$currentEmotionCtx'
@@ -6043,40 +6132,71 @@ class ChatService extends ChangeNotifier {
         'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField.';
 
     try {
-      final raw = await _fireLLMEval(prompt, grammar: _buildKoboldGrammar(_kGbnfJsonObject), onChunk: onChunk);
+      final raw = await _fireLLMEval(
+        prompt,
+        grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+        onChunk: onChunk,
+      );
       if (raw == null) return;
-      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+      final text = _stripThinkBlocks(raw).isNotEmpty
+          ? _stripThinkBlocks(raw)
+          : raw;
 
-      final emotionMatch = RegExp(r'"emotion"\s*:\s*"([^"]+)"').firstMatch(text);
-      if (emotionMatch != null) _characterEmotion = emotionMatch.group(1)!.toLowerCase().trim();
+      final emotionMatch = RegExp(
+        r'"emotion"\s*:\s*"([^"]+)"',
+      ).firstMatch(text);
+      if (emotionMatch != null)
+        _characterEmotion = emotionMatch.group(1)!.toLowerCase().trim();
 
-      final intensityMatch = RegExp(r'"emotion_intensity"\s*:\s*"([^"]+)"').firstMatch(text);
-      if (intensityMatch != null) _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
+      final intensityMatch = RegExp(
+        r'"emotion_intensity"\s*:\s*"([^"]+)"',
+      ).firstMatch(text);
+      if (intensityMatch != null)
+        _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
 
       if (_nsfwCooldownEnabled) {
-          final arousalMatch = RegExp(r'"arousal_delta"\s*:\s*(-?\d+)').firstMatch(text);
-          if (arousalMatch != null) {
-              final arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0).clamp(-2, 2);
-              _arousalLevel = (_arousalLevel + arousalDelta).clamp(-3, 10);
-              if (arousalDelta != 0) {
-                 _pendingRealismMetadata ??= {};
-                 _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-              }
+        final arousalMatch = RegExp(
+          r'"arousal_delta"\s*:\s*(-?\d+)',
+        ).firstMatch(text);
+        if (arousalMatch != null) {
+          final arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0)
+              .clamp(-2, 2);
+          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-3, 10);
+          if (arousalDelta != 0) {
+            _pendingRealismMetadata ??= {};
+            _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
           }
+        }
       }
-      debugPrint('[Realism:Emotion] Emotion: $_characterEmotion ($_emotionIntensity)');
+      debugPrint(
+        '[Realism:Emotion] Emotion: $_characterEmotion ($_emotionIntensity)',
+      );
       notifyListeners();
     } catch (e) {
       debugPrint('[Realism:Emotion] Failed: $e');
     }
   }
 
-  Future<void> _evaluatePhysicalStateCall({void Function(String)? onChunk}) async {
+  Future<void> _evaluatePhysicalStateCall({
+    void Function(String)? onChunk,
+  }) async {
     if (!_realismEnabled || _activeCharacter == null) return;
     final recentCount = _messages.length < 4 ? _messages.length : 4;
-    final recent = _messages.reversed.take(recentCount).toList().reversed.map((m) => '${m.sender}: ${m.displayText}').join('\n');
+    final recent = _messages.reversed
+        .take(recentCount)
+        .toList()
+        .reversed
+        .map((m) => '${m.sender}: ${m.displayText}')
+        .join('\n');
     final charName = _activeCharacter!.name;
-    final validTimes = ['dawn', 'morning', 'late_morning', 'afternoon', 'evening', 'night'];
+    final validTimes = [
+      'dawn',
+      'morning',
+      'late_morning',
+      'afternoon',
+      'evening',
+      'night',
+    ];
     final currentIndex = validTimes.indexOf(_timeOfDay);
 
     // ── Deterministic Time Clock ──────────────────────────────────────────────
@@ -6088,10 +6208,11 @@ class ChatService extends ChangeNotifier {
     if (timeEligible) {
       final currentPostureCtx = _spatialStance.isNotEmpty
           ? '$charName is currently: "$_spatialStance".\n'
-            'Maintain spatial continuity — only change position if the conversation describes them moving. '
-            'Do NOT teleport them to a new location or stance without narrative cause.\n\n'
+                'Maintain spatial continuity — only change position if the conversation describes them moving. '
+                'Do NOT teleport them to a new location or stance without narrative cause.\n\n'
           : '';
-      final holdPrompt = 'You are evaluating physical state for $charName.\n\n'
+      final holdPrompt =
+          'You are evaluating physical state for $charName.\n\n'
           '$currentPostureCtx'
           'Enough turns have passed that time should advance from "$_timeOfDay" to the next period.\n'
           '1. "hold_time": true ONLY if the scene is visibly mid-action (e.g. mid-fight, actively doing something). false otherwise — let time advance normally.\n'
@@ -6100,10 +6221,18 @@ class ChatService extends ChangeNotifier {
           'Recent conversation:\n$recent\n\n'
           'Respond with ONLY a flat JSON object containing "hold_time", "new_day", and "posture".';
       try {
-        final raw = await _fireLLMEval(holdPrompt, grammar: _buildKoboldGrammar(_kGbnfJsonObject), onChunk: onChunk);
+        final raw = await _fireLLMEval(
+          holdPrompt,
+          grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+          onChunk: onChunk,
+        );
         if (raw != null) {
-          final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
-          final holdMatch = RegExp(r'"hold_time"\s*:\s*(true|false)').firstMatch(text);
+          final text = _stripThinkBlocks(raw).isNotEmpty
+              ? _stripThinkBlocks(raw)
+              : raw;
+          final holdMatch = RegExp(
+            r'"hold_time"\s*:\s*(true|false)',
+          ).firstMatch(text);
           final shouldHold = holdMatch?.group(1) == 'true';
 
           if (!shouldHold) {
@@ -6115,23 +6244,36 @@ class ChatService extends ChangeNotifier {
               debugPrint('[Realism:Time] Day rolled over! Day $_dayCount');
             }
             _turnsSinceLastTimeAdvance = 0;
-            debugPrint('[Realism:Time] Advanced to $_timeOfDay (Day $_dayCount)');
+            debugPrint(
+              '[Realism:Time] Advanced to $_timeOfDay (Day $_dayCount)',
+            );
           } else {
-            debugPrint('[Realism:Time] Held — scene mid-action, time stays at $_timeOfDay');
+            debugPrint(
+              '[Realism:Time] Held — scene mid-action, time stays at $_timeOfDay',
+            );
           }
 
           // Explicit new-day override (e.g. woke up after night)
-          final newDayMatch = RegExp(r'"new_day"\s*:\s*(true|false)').firstMatch(text);
-          if (newDayMatch?.group(1) == 'true' && _timeOfDay == 'night' && !shouldHold) {
+          final newDayMatch = RegExp(
+            r'"new_day"\s*:\s*(true|false)',
+          ).firstMatch(text);
+          if (newDayMatch?.group(1) == 'true' &&
+              _timeOfDay == 'night' &&
+              !shouldHold) {
             // already handled by rollover above
-          } else if (newDayMatch?.group(1) == 'true' && currentIndex >= validTimes.indexOf('evening')) {
+          } else if (newDayMatch?.group(1) == 'true' &&
+              currentIndex >= validTimes.indexOf('evening')) {
             _dayCount++;
             _timeOfDay = validTimes[0];
             _turnsSinceLastTimeAdvance = 0;
-            debugPrint('[Realism:Time] Explicit new-day transition. Day $_dayCount');
+            debugPrint(
+              '[Realism:Time] Explicit new-day transition. Day $_dayCount',
+            );
           }
 
-          final postureMatch = RegExp(r'"posture"\s*:\s*"([^"]+)"').firstMatch(text);
+          final postureMatch = RegExp(
+            r'"posture"\s*:\s*"([^"]+)"',
+          ).firstMatch(text);
           if (postureMatch != null) {
             final p = postureMatch.group(1)!.trim();
             _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
@@ -6146,7 +6288,9 @@ class ChatService extends ChangeNotifier {
           _dayCount++;
         }
         _turnsSinceLastTimeAdvance = 0;
-        debugPrint('[Realism:Time] Eval error, auto-advanced to $_timeOfDay: $e');
+        debugPrint(
+          '[Realism:Time] Eval error, auto-advanced to $_timeOfDay: $e',
+        );
       }
     } else {
       // Not yet eligible — grab posture only
@@ -6156,7 +6300,8 @@ class ChatService extends ChangeNotifier {
       final currentPostureCtx = _spatialStance.isNotEmpty
           ? 'Current position: "$_spatialStance". '
           : '';
-      final posturePrompt = '${emotionCtx}${currentPostureCtx}Relationship tension: $shortTermTierName.\n\n'
+      final posturePrompt =
+          '${emotionCtx}${currentPostureCtx}Relationship tension: $shortTermTierName.\n\n'
           'Based on the emotional context and recent exchange, what is $charName\'s '
           'current physical position and stance? Maintain spatial continuity — only '
           'change if the conversation describes them moving. Do NOT teleport them to a '
@@ -6165,10 +6310,18 @@ class ChatService extends ChangeNotifier {
           'Respond with ONLY: {"posture": "<phrase or none>"}';
 
       try {
-        final raw = await _fireLLMEval(posturePrompt, grammar: _buildKoboldGrammar(_kGbnfJsonObject), onChunk: onChunk);
+        final raw = await _fireLLMEval(
+          posturePrompt,
+          grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+          onChunk: onChunk,
+        );
         if (raw != null) {
-          final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
-          final postureMatch = RegExp(r'"posture"\s*:\s*"([^"]+)"').firstMatch(text);
+          final text = _stripThinkBlocks(raw).isNotEmpty
+              ? _stripThinkBlocks(raw)
+              : raw;
+          final postureMatch = RegExp(
+            r'"posture"\s*:\s*"([^"]+)"',
+          ).firstMatch(text);
           if (postureMatch != null) {
             final p = postureMatch.group(1)!.trim();
             _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
@@ -6176,36 +6329,52 @@ class ChatService extends ChangeNotifier {
         }
       } catch (_) {}
     }
-    debugPrint('[Realism:Physical] Posture: $_spatialStance | Time: $_timeOfDay (Day $_dayCount) | TurnsToNext: ${_turnsPerTimePeriod - _turnsSinceLastTimeAdvance}');
+    debugPrint(
+      '[Realism:Physical] Posture: $_spatialStance | Time: $_timeOfDay (Day $_dayCount) | TurnsToNext: ${_turnsPerTimePeriod - _turnsSinceLastTimeAdvance}',
+    );
     notifyListeners();
   }
 
   Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) async {
     if (!_realismEnabled || _activeCharacter == null) return;
     final recentCount = _messages.length < 4 ? _messages.length : 4;
-    final recent = _messages.reversed.take(recentCount).toList().reversed.map((m) => '${m.sender}: ${m.displayText}').join('\n');
+    final recent = _messages.reversed
+        .take(recentCount)
+        .toList()
+        .reversed
+        .map((m) => '${m.sender}: ${m.displayText}')
+        .join('\n');
     final charName = _activeCharacter!.name;
     final oPrompt = primaryObjective != null
         ? '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Must be a significant personal, social, or narrative goal triggered by a STRONG, specific event THIS turn. NOT a trivial step, and NOT a restatement of the primary quest.\n'
-          '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n'
+              '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n'
         : '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue, triggered by a strong specific event THIS turn — a significant hidden agenda, emotional need, personal conflict, or moral dilemma.\n'
-          '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n';
-    final prompt = 'You are an autonomous story engine evaluating narrative progression for $charName.\n\n'
+              '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n';
+    final prompt =
+        'You are an autonomous story engine evaluating narrative progression for $charName.\n\n'
         '$oPrompt'
         '2. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — something that haunts them across multiple scenes, not a temporary reaction to this turn. Must be significant enough to color their behavior unprompted. Default: "none".\n\n'
         'Recent conversation:\n$recent\n\n'
         'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic".';
 
     try {
-      final raw = await _fireLLMEval(prompt, grammar: _buildKoboldGrammar(_kGbnfJsonObject), onChunk: onChunk);
+      final raw = await _fireLLMEval(
+        prompt,
+        grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+        onChunk: onChunk,
+      );
       if (raw == null) return;
-      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+      final text = _stripThinkBlocks(raw).isNotEmpty
+          ? _stripThinkBlocks(raw)
+          : raw;
 
       if (_fixationLifespan > 0) {
         _fixationLifespan--;
         if (_fixationLifespan == 0) _activeFixation = '';
       }
-      final fixationMatch = RegExp(r'"fixation_topic"\s*:\s*"([^"]+)"').firstMatch(text);
+      final fixationMatch = RegExp(
+        r'"fixation_topic"\s*:\s*"([^"]+)"',
+      ).firstMatch(text);
       if (fixationMatch != null) {
         String f = fixationMatch.group(1)!.trim();
         if (f.toLowerCase() == 'none' || f.isEmpty) {
@@ -6217,16 +6386,31 @@ class ChatService extends ChangeNotifier {
         }
       }
 
-      final objectiveMatch = RegExp(r'"proposed_objective"\s*:\s*"([^"]+)"').firstMatch(text);
+      final objectiveMatch = RegExp(
+        r'"proposed_objective"\s*:\s*"([^"]+)"',
+      ).firstMatch(text);
       if (objectiveMatch != null) {
         final newObj = objectiveMatch.group(1)!.trim();
         if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          final isDuplicate = _activeObjectives.any((o) => o.objective.toLowerCase() == newObj.toLowerCase());
+          final isDuplicate = _activeObjectives.any(
+            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
+          );
           if (!isDuplicate) {
-            debugPrint('[Realism:Narrative] Autonomous objective proposed: $newObj');
+            debugPrint(
+              '[Realism:Narrative] Autonomous objective proposed: $newObj',
+            );
             await setObjective(newObj, isPrimary: false);
-            final addedObj = _activeObjectives.where((o) => o.objective.toLowerCase() == newObj.toLowerCase() && !o.isPrimary).firstOrNull;
-            if (addedObj != null) unawaited(generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false));
+            final addedObj = _activeObjectives
+                .where(
+                  (o) =>
+                      o.objective.toLowerCase() == newObj.toLowerCase() &&
+                      !o.isPrimary,
+                )
+                .firstOrNull;
+            if (addedObj != null)
+              unawaited(
+                generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
+              );
           }
         }
       }
@@ -6276,12 +6460,12 @@ class ChatService extends ChangeNotifier {
         '${emotionCtx}Current relationship tension: $shortTermTierName | Trust level: $_trustLevel\n\n';
 
     final arousalField = _nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -2 to +2>'
+        ? ', "arousal_delta": <number -10 to +10>'
         : '';
     // Arousal is field 7 (after posture), objective is 8, fixation 9, reason 10
     final arousalInstr = _nsfwCooldownEnabled
         ? '7. "arousal_delta": Physical arousal shift this turn. (-2 to +2)\n'
-          '   Current arousal: $_arousalLevel/10. High arousal limits further increase — at 8+ only the most intense stimuli warrant +1.\n'
+              '   Current arousal: $_arousalLevel/10. High arousal limits further increase — at 8+ only the most intense stimuli warrant +1.\n'
         : '';
 
     // Determine the next field number after arousal (or after posture if arousal disabled)
@@ -6317,7 +6501,6 @@ class ChatService extends ChangeNotifier {
         '$reasonNum. "reason": One brief sentence explaining the key relationship change, or "none"\n\n'
         'Recent conversation:\n$recent\n\n'
         'Respond with ONLY a JSON object containing all fields above$arousalField.';
-
 
     try {
       debugPrint('[Realism:OneShot] Evaluating (fused call)...');
@@ -6404,11 +6587,17 @@ class ChatService extends ChangeNotifier {
             // Auto objectives are strictly secondary (isPrimary = false)
             await setObjective(newObj, isPrimary: false);
             // Auto-generate tasks for the new side quest (3 tasks)
-            final addedObj = _activeObjectives.where(
-              (o) => o.objective.toLowerCase() == newObj.toLowerCase() && !o.isPrimary,
-            ).firstOrNull;
+            final addedObj = _activeObjectives
+                .where(
+                  (o) =>
+                      o.objective.toLowerCase() == newObj.toLowerCase() &&
+                      !o.isPrimary,
+                )
+                .firstOrNull;
             if (addedObj != null) {
-              unawaited(generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false));
+              unawaited(
+                generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
+              );
             }
           }
         }
@@ -6428,7 +6617,6 @@ class ChatService extends ChangeNotifier {
       if (intensityMatch != null) {
         _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
       }
-
 
       final postureMatch = RegExp(
         r'"posture"\s*:\s*"([^"]+)"',
@@ -6769,7 +6957,9 @@ class ChatService extends ChangeNotifier {
       // The greeting was placed while realism was off. Fire the baseline
       // eval now that the user has explicitly enabled it.
       if (_greetingEvalPending) {
-        debugPrint('[Realism] Consuming pending greeting eval (user enabled realism after load).');
+        debugPrint(
+          '[Realism] Consuming pending greeting eval (user enabled realism after load).',
+        );
         _runPostGreetingEval();
       }
       // ── Solution 3: Retroactive scan on enable ────────────────────────
@@ -6777,7 +6967,9 @@ class ChatService extends ChangeNotifier {
       // (emotion is blank, affection is zero, multiple messages exist).
       // Run a full retrospective eval against all visible messages.
       else if (!_hasRealismBaseline && _messages.isNotEmpty) {
-        debugPrint('[Realism] No baseline detected — running retroactive scan on enable.');
+        debugPrint(
+          '[Realism] No baseline detected — running retroactive scan on enable.',
+        );
         _runRetroactiveBaselineEval();
       }
     }
@@ -6816,13 +7008,21 @@ class ChatService extends ChangeNotifier {
   /// Called by the sidebar chevron buttons. delta = +1 (forward) or -1 (back).
   Future<void> nudgeTimePeriod(int delta) async {
     if (!_realismEnabled) return;
-    final validTimes = ['dawn', 'morning', 'late_morning', 'afternoon', 'evening', 'night'];
+    final validTimes = [
+      'dawn',
+      'morning',
+      'late_morning',
+      'afternoon',
+      'evening',
+      'night',
+    ];
     int idx = validTimes.indexOf(_timeOfDay);
     idx = (idx + delta) % validTimes.length;
     if (idx < 0) {
       idx = validTimes.length - 1;
       _dayCount = (_dayCount - 1).clamp(1, 9999);
-    } else if (delta > 0 && validTimes.indexOf(_timeOfDay) == validTimes.length - 1) {
+    } else if (delta > 0 &&
+        validTimes.indexOf(_timeOfDay) == validTimes.length - 1) {
       // wrapped forward past night
       _dayCount++;
     }
@@ -6841,7 +7041,9 @@ class ChatService extends ChangeNotifier {
     final lower = text.toLowerCase();
 
     // Only fire on OOC-style markers or explicit timeskip language
-    final hasOocMarker = RegExp(r'\(ooc[:\s]|\[ooc|\*ooc\b|ooc:').hasMatch(lower);
+    final hasOocMarker = RegExp(
+      r'\(ooc[:\s]|\[ooc|\*ooc\b|ooc:',
+    ).hasMatch(lower);
     final hasSkipPhrase = RegExp(
       r'\b(time.?skip|fast.?forward|skip ahead|several hours|a few hours|hours? later|'
       r'the next (morning|day|evening|afternoon|night|dawn)|'
@@ -6856,9 +7058,13 @@ class ChatService extends ChangeNotifier {
     int periods = 1;
     bool isNextDay = false;
 
-    if (RegExp(r'\b(all day|entire day|full day|day passes|the (whole|entire) day)\b').hasMatch(lower)) {
+    if (RegExp(
+      r'\b(all day|entire day|full day|day passes|the (whole|entire) day)\b',
+    ).hasMatch(lower)) {
       periods = 4;
-    } else if (RegExp(r'\b(next (morning|day)|the following (morning|day)|wake up|woke up|overnight)\b').hasMatch(lower)) {
+    } else if (RegExp(
+      r'\b(next (morning|day)|the following (morning|day)|wake up|woke up|overnight)\b',
+    ).hasMatch(lower)) {
       isNextDay = true;
       _dayCount++;
       _timeOfDay = 'dawn';
@@ -6868,11 +7074,17 @@ class ChatService extends ChangeNotifier {
       notifyListeners();
       debugPrint('[Realism:OOC] Next-day transition → Day $_dayCount, dawn');
       return;
-    } else if (RegExp(r'\b(several hours|many hours|a long time|hours? pass)\b').hasMatch(lower)) {
+    } else if (RegExp(
+      r'\b(several hours|many hours|a long time|hours? pass)\b',
+    ).hasMatch(lower)) {
       periods = 3;
-    } else if (RegExp(r'\b(a few hours|couple.{0,5}hours|2.{0,5}hours|two hours)\b').hasMatch(lower)) {
+    } else if (RegExp(
+      r'\b(a few hours|couple.{0,5}hours|2.{0,5}hours|two hours)\b',
+    ).hasMatch(lower)) {
       periods = 2;
-    } else if (RegExp(r'\b(an hour|1 hour|one hour|a while|some time)\b').hasMatch(lower)) {
+    } else if (RegExp(
+      r'\b(an hour|1 hour|one hour|a while|some time)\b',
+    ).hasMatch(lower)) {
       periods = 1;
     } else if (hasOocMarker) {
       periods = 1;
@@ -6880,7 +7092,14 @@ class ChatService extends ChangeNotifier {
 
     if (periods <= 0) return;
 
-    final validTimes = ['dawn', 'morning', 'late_morning', 'afternoon', 'evening', 'night'];
+    final validTimes = [
+      'dawn',
+      'morning',
+      'late_morning',
+      'afternoon',
+      'evening',
+      'night',
+    ];
     int idx = validTimes.indexOf(_timeOfDay);
     for (int i = 0; i < periods; i++) {
       idx++;
@@ -6899,7 +7118,9 @@ class ChatService extends ChangeNotifier {
         .join(' ');
     _pendingRealismMetadata!['time_skip_to'] = displayTime;
     notifyListeners();
-    debugPrint('[Realism:OOC] Time-skip: +$periods period(s) → $_timeOfDay (Day $_dayCount)');
+    debugPrint(
+      '[Realism:OOC] Time-skip: +$periods period(s) → $_timeOfDay (Day $_dayCount)',
+    );
   }
 
   // ── Chaos Mode / Chance Time ──────────────────────────────────────────────
@@ -6959,12 +7180,21 @@ class ChatService extends ChangeNotifier {
   /// Per-turn auto-trigger check. Returns true if the wheel should pop this turn.
   bool checkAndTickChaosPressure() {
     if (!_chaosModeEnabled) return false;
-    _chaosPressure = (_chaosPressure + _chaosGrowthPerTurn).clamp(0, _chaosPressureCap);
-    final effectiveChance = (_chaosBaseChance + _chaosPressure).clamp(0, _chaosPressureCap);
+    _chaosPressure = (_chaosPressure + _chaosGrowthPerTurn).clamp(
+      0,
+      _chaosPressureCap,
+    );
+    final effectiveChance = (_chaosBaseChance + _chaosPressure).clamp(
+      0,
+      _chaosPressureCap,
+    );
     // Use microseconds for better entropy than milliseconds
     final roll = (DateTime.now().microsecondsSinceEpoch % 100);
     final fires = roll < effectiveChance;
-    if (fires) debugPrint('[ChanceTime] Auto-trigger! pressure=$_chaosPressure% roll=$roll');
+    if (fires)
+      debugPrint(
+        '[ChanceTime] Auto-trigger! pressure=$_chaosPressure% roll=$roll',
+      );
     return fires;
   }
 
@@ -7169,5 +7399,4 @@ class ChatService extends ChangeNotifier {
     'A very personal garment belonging to {{char}} has just fallen out of their bag in a crowded space',
     '{{char}} accidentally moaned, groaned, or made a compromising sound while stretching or sitting down',
   ];
-
 }
