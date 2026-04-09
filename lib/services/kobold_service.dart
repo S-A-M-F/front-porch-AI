@@ -28,7 +28,9 @@ import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:path/path.dart' as path;
 
-class KoboldService extends ChangeNotifier with WidgetsBindingObserver implements LLMService {
+class KoboldService extends ChangeNotifier
+    with WidgetsBindingObserver
+    implements LLMService {
   final StorageService _storageService;
   Process? _process;
   bool _isRunning = false;
@@ -42,6 +44,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
   List<String> get logs => List.unmodifiable(_logs);
   String get modelLoadingStatus => _modelLoadingStatus;
   bool get modelReady => _modelReady;
+
   /// Consume the modelReady flag (resets to false after reading).
   bool consumeModelReady() {
     if (_modelReady) {
@@ -50,6 +53,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     }
     return false;
   }
+
   String _baseUrl = 'http://127.0.0.1:5001';
   String get baseUrl => _baseUrl;
   http.Client? _activeClient;
@@ -71,7 +75,6 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     // Best-effort fast path: probe on construction so hot restarts pick up
     // existing KoboldCPP instances before the first eval call.
     reconnectIfAlive();
-
   }
 
   /// Probe the KoboldCPP server. If it responds, mark the service as running
@@ -86,7 +89,9 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
           .get(uri)
           .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
-        debugPrint('[KoboldService] Reconnected to existing KoboldCPP instance.');
+        debugPrint(
+          '[KoboldService] Reconnected to existing KoboldCPP instance.',
+        );
         _isRunning = true;
         _modelReady = true;
         notifyListeners();
@@ -123,7 +128,9 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     notifyListeners();
   }
 
-  File get _logFile => File(path.join(_storageService.rootPath!, 'characters', 'session_log.txt'));
+  File get _logFile => File(
+    path.join(_storageService.rootPath!, 'characters', 'session_log.txt'),
+  );
 
   void _purgeLogs() {
     try {
@@ -145,7 +152,9 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     }
   }
 
-  Future<void> startKobold(String executablePath, String modelPath, {
+  Future<void> startKobold(
+    String executablePath,
+    String modelPath, {
     int port = 5001,
     int gpuLayers = 0,
     int contextSize = 4096,
@@ -157,25 +166,30 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     if (_isRunning || _isStarting) return;
     _isStarting = true;
 
-    try {
-      // Store the executable path for cleanup
-      _executablePath = executablePath;
+    // Store the executable path for cleanup
+    _executablePath = executablePath;
 
     final args = [
-      '--model', modelPath,
-      '--port', port.toString(),
-      '--contextsize', contextSize.toString(),
-      '--gpulayers', gpuLayers.toString(),
+      '--model',
+      modelPath,
+      '--port',
+      port.toString(),
+      '--contextsize',
+      contextSize.toString(),
+      '--gpulayers',
+      gpuLayers.toString(),
     ];
 
     if (useVulkan) args.add('--usevulkan');
     if (useCublas) args.add('--usecublas');
     if (useRocm) {
       args.add('--usehipblas');
-      args.add('--noflashattention');  // Flash attention kernel crashes on many AMD GPUs
+      args.add(
+        '--noflashattention',
+      ); // Flash attention kernel crashes on many AMD GPUs
     }
     // Note: Metal is used automatically on macOS Apple Silicon, no flag needed
-    
+
     // Add KV Cache Quantization if enabled
     if (_storageService.kvQuantizationLevel > 0) {
       args.add('--quantkv');
@@ -193,7 +207,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
       print('AG_DEBUG: Working dir: ${path.dirname(executablePath)}');
       print('AG_DEBUG: File exists: ${File(executablePath).existsSync()}');
       print('AG_DEBUG: Model exists: ${File(modelPath).existsSync()}');
-      
+
       _process = await Process.start(
         executablePath,
         args,
@@ -207,23 +221,29 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
       _addLog('Command: $executablePath ${args.join(' ')}');
       notifyListeners();
 
-      _process!.stdout.transform(const Utf8Decoder(allowMalformed: true)).listen((data) {
-        _addLog(data.trim());
-        _parseLoadingStatus(data);
-      });
+      _process!.stdout
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .listen((data) {
+            _addLog(data.trim());
+            _parseLoadingStatus(data);
+          });
 
-      _process!.stderr.transform(const Utf8Decoder(allowMalformed: true)).listen((data) {
-        // Many backends log everything to stderr even if not an error.
-        var cleanData = data.trim();
-        if (cleanData.isNotEmpty) {
-           // Strip ALL occurrences of ERR: and filter out progress dots
-           cleanData = cleanData.replaceAll('ERR: ', '').replaceAll('ERR:', '');
-           if (cleanData != '.' && cleanData != '..' && cleanData != '...') {
-             _addLog(cleanData);
-             _parseLoadingStatus(cleanData);
-           }
-        }
-      });
+      _process!.stderr
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .listen((data) {
+            // Many backends log everything to stderr even if not an error.
+            var cleanData = data.trim();
+            if (cleanData.isNotEmpty) {
+              // Strip ALL occurrences of ERR: and filter out progress dots
+              cleanData = cleanData
+                  .replaceAll('ERR: ', '')
+                  .replaceAll('ERR:', '');
+              if (cleanData != '.' && cleanData != '..' && cleanData != '...') {
+                _addLog(cleanData);
+                _parseLoadingStatus(cleanData);
+              }
+            }
+          });
 
       _process!.exitCode.then((code) {
         _isRunning = false;
@@ -244,7 +264,8 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     }
   }
 
-  Stream<String> _generateStreamInternal(String prompt, {
+  Stream<String> _generateStreamInternal(
+    String prompt, {
     int maxLength = 80,
     int minLength = 0,
     double temp = 0.7,
@@ -304,7 +325,9 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     request.headers['Content-Type'] = 'application/json';
     request.body = jsonEncode(payload);
 
-    debugPrint('[KoboldCpp] Streaming request: prompt=${prompt.length} chars, max_length=$maxLength, stop_sequences=${stopSequences?.length ?? 0}');
+    debugPrint(
+      '[KoboldCpp] Streaming request: prompt=${prompt.length} chars, max_length=$maxLength, stop_sequences=${stopSequences?.length ?? 0}',
+    );
 
     final client = http.Client();
     _activeClient = client;
@@ -313,35 +336,46 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
       // minutes during the prefill phase before the first token is generated.
       // 60 s was too aggressive — raise to 5 minutes so long-context eval
       // calls don't time out before the model even starts streaming.
-      final response = await client.send(request).timeout(const Duration(minutes: 5));
+      final response = await client
+          .send(request)
+          .timeout(const Duration(minutes: 5));
 
       if (response.statusCode != 200) {
         if (response.statusCode == 405) {
-          throw Exception('STREAMING_NOT_SUPPORTED: The server returned HTTP 405. Streaming may not be supported by this backend.');
+          throw Exception(
+            'STREAMING_NOT_SUPPORTED: The server returned HTTP 405. Streaming may not be supported by this backend.',
+          );
         }
         throw Exception('HTTP ${response.statusCode}');
       }
 
       try {
         int _sseDataEvents = 0;
-        await for (final line in response.stream
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())) {
+        await for (final line
+            in response.stream
+                .transform(utf8.decoder)
+                .transform(const LineSplitter())) {
           if (line.startsWith('data: ')) {
             _sseDataEvents++;
             final data = line.substring(6);
             try {
               final json = jsonDecode(data);
               // Check for alternate field names thinking models may use
-              final token = (json['token'] ?? json['text'] ?? json['thinking_token'] ?? '') as String;
+              final token =
+                  (json['token'] ??
+                          json['text'] ??
+                          json['thinking_token'] ??
+                          '')
+                      as String;
               yield token;
             } catch (e) {
               // Skip malformed SSE events (e.g. data: [DONE])
             }
           }
         }
-        debugPrint('[KoboldCpp:SSE] Stream closed — data_events=$_sseDataEvents');
-
+        debugPrint(
+          '[KoboldCpp:SSE] Stream closed — data_events=$_sseDataEvents',
+        );
       } on ClientException catch (e) {
         // The HTTP client was closed mid-stream. This happens in two cases:
         //   1. User hit Stop → abortGeneration() called client.close() intentionally.
@@ -353,7 +387,9 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
           // Client still set means abortGeneration() hasn't run — genuine error.
           rethrow;
         }
-        debugPrint('[KoboldCpp] Stream ended by client close (abort or process exit): $e');
+        debugPrint(
+          '[KoboldCpp] Stream ended by client close (abort or process exit): $e',
+        );
         // Fall through — generator returns normally.
       }
     } finally {
@@ -405,8 +441,10 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
       final client = http.Client();
       try {
         await client
-            .post(Uri.parse('$_baseUrl/api/extra/abort'),
-                headers: {'Content-Type': 'application/json'})
+            .post(
+              Uri.parse('$_baseUrl/api/extra/abort'),
+              headers: {'Content-Type': 'application/json'},
+            )
             .timeout(const Duration(seconds: 30));
       } finally {
         client.close();
@@ -423,7 +461,8 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     ensureServerIdle().catchError((_) {});
   }
 
-  Future<String> generate(String prompt, {
+  Future<String> generate(
+    String prompt, {
     int maxLength = 80,
     int minLength = 0,
     double temp = 0.7,
@@ -438,7 +477,9 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     List<String>? bannedPhrases,
   }) async {
     if (!_isRunning && !Platform.environment.containsKey('FLUTTER_TEST')) {
-       _addLog('Warning: internal backend not running, trying to connect anyway...');
+      _addLog(
+        'Warning: internal backend not running, trying to connect anyway...',
+      );
     }
 
     int retryCount = 0;
@@ -446,22 +487,22 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
       final client = http.Client();
       try {
         final uri = Uri.parse('$_baseUrl/api/v1/generate');
-        
+
         final Map<String, dynamic> payload = {
-            'prompt': prompt,
-            'max_length': maxLength,
-            'min_length': minLength,
-            'temperature': temp,
-            'rep_pen': repPenalty,
-            'top_p': topP,
-            'min_p': minP,
-            'rep_pen_range': repPenTokens,
-            'singleline': false,
-            'trim_stop': true,
+          'prompt': prompt,
+          'max_length': maxLength,
+          'min_length': minLength,
+          'temperature': temp,
+          'rep_pen': repPenalty,
+          'top_p': topP,
+          'min_p': minP,
+          'rep_pen_range': repPenTokens,
+          'singleline': false,
+          'trim_stop': true,
         };
 
         if (dynatempRange != null && dynatempRange > 0) {
-           payload['dynatemp_range'] = dynatempRange;
+          payload['dynatemp_range'] = dynatempRange;
         }
 
         if (xtcThreshold > 0 && xtcProbability > 0) {
@@ -470,66 +511,74 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
         }
 
         if (stopSequences != null && stopSequences.isNotEmpty) {
-           payload['stop_sequence'] = stopSequences;
+          payload['stop_sequence'] = stopSequences;
         }
 
         // Anti-slop phrase banning (KoboldCpp-specific)
         if (bannedPhrases != null && bannedPhrases.isNotEmpty) {
           payload['banned_tokens'] = bannedPhrases;
         }
-        
+
         final body = jsonEncode(payload);
-        
-        final response = await client.post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: body,
-        ).timeout(const Duration(seconds: 60));
-        
+
+        final response = await client
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: body,
+            )
+            .timeout(const Duration(seconds: 60));
+
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           final text = data['results'][0]['text'] as String;
           return text;
         } else {
           if (response.statusCode == 503) {
-             _addLog('Server returned 503 (Busy/Loading), retrying...');
-             await Future.delayed(const Duration(seconds: 2));
-             throw const SocketException('Service Unavailable'); 
+            _addLog('Server returned 503 (Busy/Loading), retrying...');
+            await Future.delayed(const Duration(seconds: 2));
+            throw const SocketException('Service Unavailable');
           }
           if (response.statusCode == 405) {
-             // 405 won't succeed on retry — break immediately
-             throw Exception('The server returned HTTP 405 (Method Not Allowed). Check that your API URL is correct and the backend supports this endpoint.');
+            // 405 won't succeed on retry — break immediately
+            throw Exception(
+              'The server returned HTTP 405 (Method Not Allowed). Check that your API URL is correct and the backend supports this endpoint.',
+            );
           }
           if (response.statusCode == 408) {
-             throw Exception('Request timed out (HTTP 408). The model may be too slow for the configured timeout.');
+            throw Exception(
+              'Request timed out (HTTP 408). The model may be too slow for the configured timeout.',
+            );
           }
           if (response.statusCode == 422) {
-             throw Exception('Invalid request (HTTP 422). The prompt may be too long for the model\'s context window.');
+            throw Exception(
+              'Invalid request (HTTP 422). The prompt may be too long for the model\'s context window.',
+            );
           }
           if (response.statusCode >= 500) {
-             _addLog('Server error ${response.statusCode}, retrying...');
-             await Future.delayed(const Duration(seconds: 2));
-             throw Exception('Server error (HTTP ${response.statusCode})');
+            _addLog('Server error ${response.statusCode}, retrying...');
+            await Future.delayed(const Duration(seconds: 2));
+            throw Exception('Server error (HTTP ${response.statusCode})');
           }
           throw Exception('API error: HTTP ${response.statusCode}');
         }
       } catch (e) {
         if (!isProcessAlive && _isRunning) {
-           _addLog('Backend process crashed during generation! (Likely OOM)');
-           throw Exception('Backend process crashed. This usually happens when the GPU runs out of VRAM.');
+          _addLog('Backend process crashed during generation! (Likely OOM)');
+          throw Exception(
+            'Backend process crashed. This usually happens when the GPU runs out of VRAM.',
+          );
         }
 
         retryCount++;
-        
+
         if (retryCount >= 5) {
-           _addLog('Generation error after 5 attempts: $e');
-           rethrow;
+          _addLog('Generation error after 5 attempts: $e');
+          rethrow;
         }
-        
+
         _addLog('Connection failed ($e), retrying in 2s...');
-        await Future.delayed(const Duration(seconds: 2)); 
+        await Future.delayed(const Duration(seconds: 2));
       } finally {
         client.close();
       }
@@ -555,10 +604,12 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     if (lower.contains('loading model')) {
       _modelLoadingStatus = 'Loading model into device memory...';
       notifyListeners();
-    } else if (lower.contains('loading hf model') || lower.contains('loading gguf')) {
+    } else if (lower.contains('loading hf model') ||
+        lower.contains('loading gguf')) {
       _modelLoadingStatus = 'Loading model file...';
       notifyListeners();
-    } else if (lower.contains('mapping model') || lower.contains('ggml_backend')) {
+    } else if (lower.contains('mapping model') ||
+        lower.contains('ggml_backend')) {
       _modelLoadingStatus = 'Mapping model to memory...';
       notifyListeners();
     } else if (lower.contains('warming up')) {
@@ -585,11 +636,13 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
       final uri = Uri.parse('$_baseUrl/api/extra/tokencount');
       final client = http.Client();
       try {
-        final response = await client.post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'prompt': text}),
-        ).timeout(const Duration(seconds: 5));
+        final response = await client
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'prompt': text}),
+            )
+            .timeout(const Duration(seconds: 5));
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           return (data['value'] as num?)?.toInt() ?? (text.length / 4).ceil();
@@ -607,7 +660,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
     if (_process != null) {
       final pid = _process!.pid;
       _addLog('Stopping Backend (PID: $pid)...');
-      
+
       if (Platform.isWindows) {
         try {
           // Force kill process tree on Windows
@@ -629,7 +682,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
           // Step 2: Kill the parent process itself
           _process?.kill(ProcessSignal.sigterm);
           _addLog('Sent SIGTERM to parent and children.');
-          
+
           // Wait up to 3 seconds for graceful shutdown
           bool exited = false;
           for (int i = 0; i < 6; i++) {
@@ -645,7 +698,7 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
               break;
             }
           }
-          
+
           if (!exited) {
             // Force kill with SIGKILL — children first, then parent
             _addLog('Process did not exit gracefully, sending SIGKILL...');
@@ -673,14 +726,14 @@ class KoboldService extends ChangeNotifier with WidgetsBindingObserver implement
           }
         }
       }
-      
+
       // Wait briefly for process to fully exit before clearing state
       try {
         await _process?.exitCode.timeout(const Duration(seconds: 2));
       } catch (_) {
         // Timeout is fine — we've already sent kill signals
       }
-      
+
       _process = null;
       _isRunning = false;
       _modelLoadingStatus = '';
