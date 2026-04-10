@@ -1583,61 +1583,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  // ── Reasoning Settings ──
-                  Row(
-                    children: [
-                      const Icon(Icons.psychology, size: 16, color: Colors.blueAccent),
-                      const SizedBox(width: 6),
-                      Text('Request Reasoning', style: theme.textTheme.bodyMedium),
-                      const Spacer(),
-                      Switch(
-                        value: storageService.reasoningEnabled,
-                        onChanged: (val) => storageService.setReasoningEnabled(val),
-                        activeTrackColor: Colors.blueAccent,
-                      ),
-                    ],
-                  ),
-                  if (storageService.reasoningEnabled)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 22, bottom: 8),
-                      child: Row(
-                        children: [
-                          Text('Effort Level', style: theme.textTheme.bodySmall),
-                          const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            decoration: BoxDecoration(
-                              color: theme.scaffoldBackgroundColor,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: theme.dividerColor),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: storageService.reasoningEffort,
-                                isDense: true,
-                                items: const [
-                                  DropdownMenuItem(value: 'low', child: Text('Low')),
-                                  DropdownMenuItem(value: 'medium', child: Text('Medium')),
-                                  DropdownMenuItem(value: 'high', child: Text('High')),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) storageService.setReasoningEffort(val);
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  if (!storageService.reasoningEnabled)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 22, bottom: 8),
-                      child: Text(
-                        'Enable to request thinking/reasoning from compatible models',
-                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
-                      ),
-                    ),
+
                 ],
               ),
             ),
