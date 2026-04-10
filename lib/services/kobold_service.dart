@@ -80,6 +80,10 @@ class KoboldService extends ChangeNotifier
   /// Probe the KoboldCPP server. If it responds, mark the service as running
   /// and model-ready so hot restarts and app reconnections don't silently skip evals.
   /// Uses /api/extra/version which is always present in KoboldCPP.
+  ///
+  /// IMPORTANT: This deliberately does NOT reconnect if we have no _process
+  /// reference, because that means the server was started by a previous app
+  /// instance (zombie after update). In that case it kills the orphan instead.
   Future<void> reconnectIfAlive() async {
     if (_isRunning) return; // Already known-good — skip.
     final client = http.Client();
@@ -89,12 +93,22 @@ class KoboldService extends ChangeNotifier
           .get(uri)
           .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
-        debugPrint(
-          '[KoboldService] Reconnected to existing KoboldCPP instance.',
-        );
-        _isRunning = true;
-        _modelReady = true;
-        notifyListeners();
+        if (_process != null) {
+          // We started this process — safe to reconnect (hot restart path).
+          debugPrint(
+            '[KoboldService] Reconnected to existing KoboldCPP instance.',
+          );
+          _isRunning = true;
+          _modelReady = true;
+          notifyListeners();
+        } else {
+          // Orphaned zombie from a previous app instance (e.g. after update).
+          // Kill it so we can start fresh on the same port.
+          debugPrint(
+            '[KoboldService] Found orphaned KoboldCPP on $_baseUrl — killing it.',
+          );
+          await killOrphanedBackend();
+        }
       }
     } catch (_) {
       // Not running — normal on first launch, ignore silently.
@@ -102,6 +116,27 @@ class KoboldService extends ChangeNotifier
       client.close();
     }
   }
+
+  /// Kill any KoboldCPP processes that were left behind by a previous app
+  /// instance (e.g. after an update where exit(0) bypassed cleanup).
+  /// This is a best-effort cleanup — it won't fail if nothing is found.
+  Future<void> killOrphanedBackend() async {
+    try {
+      if (Platform.isWindows) {
+        // Kill all koboldcpp.exe processes — there should only be zombies.
+        await Process.run('taskkill', ['/F', '/IM', 'koboldcpp.exe']);
+        await Process.run('taskkill', ['/F', '/IM', 'koboldcpp_nocuda.exe']);
+        _addLog('Killed orphaned KoboldCPP processes.');
+      } else {
+        // macOS/Linux: kill by process name
+        await Process.run('pkill', ['-KILL', '-f', 'koboldcpp']);
+        _addLog('Killed orphaned KoboldCPP processes.');
+      }
+    } catch (e) {
+      debugPrint('[KoboldService] killOrphanedBackend failed (OK): $e');
+    }
+  }
+
 
   @override
   void dispose() {

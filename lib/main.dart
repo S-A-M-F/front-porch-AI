@@ -479,6 +479,26 @@ class _MyAppState extends State<MyApp> with WindowListener {
                     final tts = Provider.of<TtsService>(context, listen: false);
                     chatService.setTtsService(tts);
                   } catch (_) {}
+                  // Wire UpdateService shutdown callback so child processes
+                  // (KoboldCPP, web server, embedding sidecar) are stopped
+                  // before exit(0) in installNow(), which bypasses onWindowClose.
+                  try {
+                    final updateService = Provider.of<UpdateService>(context, listen: false);
+                    updateService.setShutdownCallback(() async {
+                      try {
+                        final kobold = Provider.of<KoboldService>(context, listen: false);
+                        if (kobold.isRunning) await kobold.stopKobold();
+                      } catch (_) {}
+                      try {
+                        final webServer = Provider.of<WebServerService>(context, listen: false);
+                        if (webServer.isRunning) await webServer.stop();
+                      } catch (_) {}
+                      try {
+                        final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+                        if (sidecar.isRunning) await sidecar.stopServer();
+                      } catch (_) {}
+                    });
+                  } catch (_) {}
                 });
               }
 

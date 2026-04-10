@@ -1741,6 +1741,17 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         requiredDuringInsert: false,
         defaultValue: const Constant('{}'),
       );
+  static const VerificationMeta _generationSettingsMeta =
+      const VerificationMeta('generationSettings');
+  @override
+  late final GeneratedColumn<String> generationSettings =
+      GeneratedColumn<String>(
+        'generation_settings',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1817,6 +1828,7 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     evolutionCount,
     groupEvolvedPersonalities,
     groupEvolvedScenarios,
+    generationSettings,
     createdAt,
     updatedAt,
     deletedAt,
@@ -2156,6 +2168,15 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         ),
       );
     }
+    if (data.containsKey('generation_settings')) {
+      context.handle(
+        _generationSettingsMeta,
+        generationSettings.isAcceptableOrUnknown(
+          data['generation_settings']!,
+          _generationSettingsMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -2339,6 +2360,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.string,
         data['${effectivePrefix}group_evolved_scenarios'],
       )!,
+      generationSettings: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}generation_settings'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2400,6 +2425,7 @@ class Session extends DataClass implements Insertable<Session> {
   final int evolutionCount;
   final String groupEvolvedPersonalities;
   final String groupEvolvedScenarios;
+  final String? generationSettings;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -2443,6 +2469,7 @@ class Session extends DataClass implements Insertable<Session> {
     required this.evolutionCount,
     required this.groupEvolvedPersonalities,
     required this.groupEvolvedScenarios,
+    this.generationSettings,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -2507,6 +2534,9 @@ class Session extends DataClass implements Insertable<Session> {
       groupEvolvedPersonalities,
     );
     map['group_evolved_scenarios'] = Variable<String>(groupEvolvedScenarios);
+    if (!nullToAbsent || generationSettings != null) {
+      map['generation_settings'] = Variable<String>(generationSettings);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -2570,6 +2600,9 @@ class Session extends DataClass implements Insertable<Session> {
       evolutionCount: Value(evolutionCount),
       groupEvolvedPersonalities: Value(groupEvolvedPersonalities),
       groupEvolvedScenarios: Value(groupEvolvedScenarios),
+      generationSettings: generationSettings == null && nullToAbsent
+          ? const Value.absent()
+          : Value(generationSettings),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -2637,6 +2670,9 @@ class Session extends DataClass implements Insertable<Session> {
       groupEvolvedScenarios: serializer.fromJson<String>(
         json['groupEvolvedScenarios'],
       ),
+      generationSettings: serializer.fromJson<String?>(
+        json['generationSettings'],
+      ),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -2689,6 +2725,7 @@ class Session extends DataClass implements Insertable<Session> {
         groupEvolvedPersonalities,
       ),
       'groupEvolvedScenarios': serializer.toJson<String>(groupEvolvedScenarios),
+      'generationSettings': serializer.toJson<String?>(generationSettings),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -2735,6 +2772,7 @@ class Session extends DataClass implements Insertable<Session> {
     int? evolutionCount,
     String? groupEvolvedPersonalities,
     String? groupEvolvedScenarios,
+    Value<String?> generationSettings = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
@@ -2786,6 +2824,9 @@ class Session extends DataClass implements Insertable<Session> {
     groupEvolvedPersonalities:
         groupEvolvedPersonalities ?? this.groupEvolvedPersonalities,
     groupEvolvedScenarios: groupEvolvedScenarios ?? this.groupEvolvedScenarios,
+    generationSettings: generationSettings.present
+        ? generationSettings.value
+        : this.generationSettings,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -2895,6 +2936,9 @@ class Session extends DataClass implements Insertable<Session> {
       groupEvolvedScenarios: data.groupEvolvedScenarios.present
           ? data.groupEvolvedScenarios.value
           : this.groupEvolvedScenarios,
+      generationSettings: data.generationSettings.present
+          ? data.generationSettings.value
+          : this.generationSettings,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -2943,6 +2987,7 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('evolutionCount: $evolutionCount, ')
           ..write('groupEvolvedPersonalities: $groupEvolvedPersonalities, ')
           ..write('groupEvolvedScenarios: $groupEvolvedScenarios, ')
+          ..write('generationSettings: $generationSettings, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -2991,6 +3036,7 @@ class Session extends DataClass implements Insertable<Session> {
     evolutionCount,
     groupEvolvedPersonalities,
     groupEvolvedScenarios,
+    generationSettings,
     createdAt,
     updatedAt,
     deletedAt,
@@ -3038,6 +3084,7 @@ class Session extends DataClass implements Insertable<Session> {
           other.evolutionCount == this.evolutionCount &&
           other.groupEvolvedPersonalities == this.groupEvolvedPersonalities &&
           other.groupEvolvedScenarios == this.groupEvolvedScenarios &&
+          other.generationSettings == this.generationSettings &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -3083,6 +3130,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<int> evolutionCount;
   final Value<String> groupEvolvedPersonalities;
   final Value<String> groupEvolvedScenarios;
+  final Value<String?> generationSettings;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -3127,6 +3175,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.evolutionCount = const Value.absent(),
     this.groupEvolvedPersonalities = const Value.absent(),
     this.groupEvolvedScenarios = const Value.absent(),
+    this.generationSettings = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3172,6 +3221,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.evolutionCount = const Value.absent(),
     this.groupEvolvedPersonalities = const Value.absent(),
     this.groupEvolvedScenarios = const Value.absent(),
+    this.generationSettings = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3217,6 +3267,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<int>? evolutionCount,
     Expression<String>? groupEvolvedPersonalities,
     Expression<String>? groupEvolvedScenarios,
+    Expression<String>? generationSettings,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -3269,6 +3320,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
         'group_evolved_personalities': groupEvolvedPersonalities,
       if (groupEvolvedScenarios != null)
         'group_evolved_scenarios': groupEvolvedScenarios,
+      if (generationSettings != null) 'generation_settings': generationSettings,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -3316,6 +3368,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<int>? evolutionCount,
     Value<String>? groupEvolvedPersonalities,
     Value<String>? groupEvolvedScenarios,
+    Value<String?>? generationSettings,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
@@ -3366,6 +3419,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           groupEvolvedPersonalities ?? this.groupEvolvedPersonalities,
       groupEvolvedScenarios:
           groupEvolvedScenarios ?? this.groupEvolvedScenarios,
+      generationSettings: generationSettings ?? this.generationSettings,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -3503,6 +3557,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
         groupEvolvedScenarios.value,
       );
     }
+    if (generationSettings.present) {
+      map['generation_settings'] = Variable<String>(generationSettings.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3560,6 +3617,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('evolutionCount: $evolutionCount, ')
           ..write('groupEvolvedPersonalities: $groupEvolvedPersonalities, ')
           ..write('groupEvolvedScenarios: $groupEvolvedScenarios, ')
+          ..write('generationSettings: $generationSettings, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -9346,6 +9404,7 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<int> evolutionCount,
       Value<String> groupEvolvedPersonalities,
       Value<String> groupEvolvedScenarios,
+      Value<String?> generationSettings,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -9392,6 +9451,7 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<int> evolutionCount,
       Value<String> groupEvolvedPersonalities,
       Value<String> groupEvolvedScenarios,
+      Value<String?> generationSettings,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -9599,6 +9659,11 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<String> get groupEvolvedScenarios => $composableBuilder(
     column: $table.groupEvolvedScenarios,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get generationSettings => $composableBuilder(
+    column: $table.generationSettings,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9822,6 +9887,11 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get generationSettings => $composableBuilder(
+    column: $table.generationSettings,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -10028,6 +10098,11 @@ class $$SessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get generationSettings => $composableBuilder(
+    column: $table.generationSettings,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -10105,6 +10180,7 @@ class $$SessionsTableTableManager
                 Value<int> evolutionCount = const Value.absent(),
                 Value<String> groupEvolvedPersonalities = const Value.absent(),
                 Value<String> groupEvolvedScenarios = const Value.absent(),
+                Value<String?> generationSettings = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -10149,6 +10225,7 @@ class $$SessionsTableTableManager
                 evolutionCount: evolutionCount,
                 groupEvolvedPersonalities: groupEvolvedPersonalities,
                 groupEvolvedScenarios: groupEvolvedScenarios,
+                generationSettings: generationSettings,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -10195,6 +10272,7 @@ class $$SessionsTableTableManager
                 Value<int> evolutionCount = const Value.absent(),
                 Value<String> groupEvolvedPersonalities = const Value.absent(),
                 Value<String> groupEvolvedScenarios = const Value.absent(),
+                Value<String?> generationSettings = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -10239,6 +10317,7 @@ class $$SessionsTableTableManager
                 evolutionCount: evolutionCount,
                 groupEvolvedPersonalities: groupEvolvedPersonalities,
                 groupEvolvedScenarios: groupEvolvedScenarios,
+                generationSettings: generationSettings,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
