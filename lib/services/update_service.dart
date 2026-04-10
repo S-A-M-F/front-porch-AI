@@ -57,6 +57,14 @@ class UpdateService extends ChangeNotifier {
   bool get autoCheckEnabled => _autoCheckEnabled;
   bool get hasPendingInstaller => _pendingInstallerPath != null;
 
+  /// Callback invoked before the update installer runs.
+  /// Gives the host app a chance to stop child processes (e.g. KoboldCPP)
+  /// because exit(0) in installNow() bypasses the window close handler.
+  Future<void> Function()? _shutdownCallback;
+  void setShutdownCallback(Future<void> Function() callback) {
+    _shutdownCallback = callback;
+  }
+
   /// Whether this platform supports self-update.
   /// Windows: true when installed via the Inno Setup installer (.installed marker).
   /// Linux: true when running as an AppImage ($APPIMAGE env var is set).
@@ -209,6 +217,11 @@ class UpdateService extends ChangeNotifier {
   Future<void> installNow() async {
     if (_pendingInstallerPath == null) return;
     try {
+      // Stop child processes (KoboldCPP, etc.) before exit(0) which
+      // bypasses the window close handler entirely.
+      if (_shutdownCallback != null) {
+        await _shutdownCallback!();
+      }
       if (Platform.isLinux) {
         await _replaceAppImage(_pendingInstallerPath!);
         await _relaunchAppImage();
@@ -230,6 +243,11 @@ class UpdateService extends ChangeNotifier {
   Future<void> installOnClose() async {
     if (_pendingInstallerPath == null) return;
     try {
+      // Ensure child processes are stopped even if onWindowClose didn't
+      // reach stopKobold() (e.g. crash or early return).
+      if (_shutdownCallback != null) {
+        await _shutdownCallback!();
+      }
       if (Platform.isLinux) {
         await _replaceAppImage(_pendingInstallerPath!);
       } else if (Platform.isMacOS) {
