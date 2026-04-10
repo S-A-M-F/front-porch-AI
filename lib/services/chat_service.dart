@@ -30,6 +30,7 @@ import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/cloud_sync_service.dart';
@@ -387,6 +388,9 @@ class ChatService extends ChangeNotifier {
   String? _sessionName;
   String? _sessionDescription;
 
+  // ── Per-session generation overrides ──
+  ChatGenerationSettings _sessionGenSettings = ChatGenerationSettings();
+
   // ── Chat Branching ──
   String? _parentSessionId;
   int? _forkIndex;
@@ -536,7 +540,15 @@ class ChatService extends ChangeNotifier {
   int get authorNoteStrength => _authorNoteStrength;
   Map<String, int> get lastPromptBudget => _lastPromptBudget;
   String get lastAssembledPrompt => _lastAssembledPrompt;
-  int get contextSize => _storageService.contextSize;
+  int get contextSize => _sessionGenSettings.resolveContextSize(_storageService);
+
+  /// Per-session generation parameter overrides. The dialog reads/writes this.
+  ChatGenerationSettings get sessionGenSettings => _sessionGenSettings;
+  set sessionGenSettings(ChatGenerationSettings value) {
+    _sessionGenSettings = value;
+    _saveChat();
+    notifyListeners();
+  }
   String? get parentSessionId => _parentSessionId;
   int? get forkIndex => _forkIndex;
   String? get sessionName => _sessionName;
@@ -1380,6 +1392,17 @@ class ChatService extends ChangeNotifier {
       ),
     );
 
+    // Per-session generation overrides (v22) — saved via raw SQL so this
+    // works even before build_runner regenerates database.g.dart.
+    await _db.customUpdate(
+      'UPDATE sessions SET generation_settings = ? WHERE id = ?',
+      variables: [
+        drift.Variable(_sessionGenSettings.toJsonString()),
+        drift.Variable(_currentSessionId!),
+      ],
+      updates: {_db.sessions},
+    );
+
     // Replace all messages for this session using the snapshot
     await _db.deleteMessagesForSession(_currentSessionId!);
     final messageBatch = <MessagesCompanion>[];
@@ -1699,6 +1722,21 @@ class ChatService extends ChangeNotifier {
         _groupEvolutionCounts[charId] = session.evolutionCount;
       }
 
+      // Per-session generation parameter overrides (v22) — loaded via raw SQL
+      // so this works even before build_runner regenerates database.g.dart.
+      try {
+        final genRows = await _db.customSelect(
+          'SELECT generation_settings FROM sessions WHERE id = ?',
+          variables: [drift.Variable(sessionId)],
+        ).get();
+        final genJson = genRows.isNotEmpty
+            ? genRows.first.read<String?>('generation_settings')
+            : null;
+        _sessionGenSettings = ChatGenerationSettings.fromJsonString(genJson);
+      } catch (_) {
+        _sessionGenSettings = ChatGenerationSettings();
+      }
+
       if (_messages.isNotEmpty) {
         _scanLorebook(_messages.last.text);
       }
@@ -1793,6 +1831,7 @@ class ChatService extends ChangeNotifier {
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
     _parentSessionId = oldSessionId;
     _forkIndex = messageIndex;
+    _sessionGenSettings = _sessionGenSettings.copy(); // inherit parent's overrides
     _summary = '';
     _summaryLastIndex = 0;
 
@@ -2539,8 +2578,8 @@ class ChatService extends ChangeNotifier {
           "$impersonateInstruction"
           "$suffix";
       final fixedTokens = await _countTokens(fixedContent);
-      final contextBudget = _storageService.contextSize;
-      final generationReserve = _storageService.maxLength + 50;
+      final contextBudget = _sessionGenSettings.resolveContextSize(_storageService);
+      final generationReserve = _sessionGenSettings.resolveMaxLength(_storageService) + 50;
       final historyBudget = contextBudget - fixedTokens - generationReserve;
 
       if (historyBudget > 0) {
@@ -2568,7 +2607,8 @@ class ChatService extends ChangeNotifier {
           "$suffix";
 
       // Stop sequences: character names only (not user — we ARE the user)
-      final stopSequences = {..._storageService.stopSequences};
+      final g = _sessionGenSettings;
+      final stopSequences = {...g.resolveStopSequences(_storageService).toSet()};
       if (_activeGroup != null) {
         for (final ch in _groupCharacters) {
           stopSequences.add('\n${ch.name}:');
@@ -2580,22 +2620,22 @@ class ChatService extends ChangeNotifier {
       final llmService = _llmProvider?.activeService ?? _koboldService;
       final genParams = GenerationParams(
         prompt: prompt,
-        maxLength: _storageService.maxLength,
-        minLength: _storageService.minLength,
-        minP: _storageService.minP,
-        temperature: _storageService.temperature,
-        repeatPenalty: _storageService.repeatPenalty,
-        repPenTokens: _storageService.repeatPenaltyTokens,
-        dynatempRange: _storageService.dynamicTempEnabled
-            ? _storageService.dynamicTempRange
+        maxLength: g.resolveMaxLength(_storageService),
+        minLength: g.resolveMinLength(_storageService),
+        minP: g.resolveMinP(_storageService),
+        temperature: g.resolveTemperature(_storageService),
+        repeatPenalty: g.resolveRepeatPenalty(_storageService),
+        repPenTokens: g.resolveRepeatPenaltyTokens(_storageService),
+        dynatempRange: g.resolveDynamicTempEnabled(_storageService)
+            ? g.resolveDynamicTempRange(_storageService)
             : null,
-        xtcThreshold: _storageService.xtcThreshold,
-        xtcProbability: _storageService.xtcProbability,
+        xtcThreshold: g.resolveXtcThreshold(_storageService),
+        xtcProbability: g.resolveXtcProbability(_storageService),
         stopSequences: stopSequences.toList(),
         reasoningEnabled: false,
-        reasoningEffort: _storageService.reasoningEffort,
-        bannedPhrases: _storageService.bannedPhrases.isNotEmpty
-            ? _storageService.bannedPhrases
+        reasoningEffort: g.resolveReasoningEffort(_storageService),
+        bannedPhrases: g.resolveBannedPhrases(_storageService).isNotEmpty
+            ? g.resolveBannedPhrases(_storageService)
             : null,
       );
 
@@ -2659,7 +2699,7 @@ class ChatService extends ChangeNotifier {
     _isGenerating = true;
     _generationProgress = 0.0;
     _tokensGenerated = 0;
-    _maxTokens = _storageService.maxLength;
+    _maxTokens = _sessionGenSettings.resolveMaxLength(_storageService);
     _generationStartTime = DateTime.now();
     _isBuffering = true;
     _sentenceBuffer = '';
@@ -2890,9 +2930,9 @@ class ChatService extends ChangeNotifier {
           "$suffix"
           "$chanceTimeBlock";
       final fixedTokens = await _countTokens(fixedContent);
-      final contextBudget = _storageService.contextSize;
+      final contextBudget = _sessionGenSettings.resolveContextSize(_storageService);
       final generationReserve =
-          _storageService.maxLength + 50; // +50 safety margin
+          _sessionGenSettings.resolveMaxLength(_storageService) + 50; // +50 safety margin
       final historyBudget = contextBudget - fixedTokens - generationReserve;
 
       int droppedMessages = 0;
@@ -3044,7 +3084,8 @@ class ChatService extends ChangeNotifier {
       _lastPromptBudget.removeWhere((_, v) => v == 0);
 
       // Stop sequences: include character names, and user name (except when impersonating)
-      final stopSequences = {..._storageService.stopSequences};
+      final g2 = _sessionGenSettings;
+      final stopSequences = {...g2.resolveStopSequences(_storageService).toSet()};
 
       // In impersonate mode the model IS the user, so don't stop on user name
       if (mode != GenerationMode.impersonate) {
@@ -3077,24 +3118,24 @@ class ChatService extends ChangeNotifier {
       final genParams = GenerationParams(
         prompt: prompt,
         systemPrompt: chatSystemPrompt,
-        maxLength: _storageService.maxLength,
-        minLength: _storageService.minLength,
-        minP: _storageService.minP,
-        temperature: _storageService.temperature,
-        repeatPenalty: _storageService.repeatPenalty,
-        repPenTokens: _storageService.repeatPenaltyTokens,
-        dynatempRange: _storageService.dynamicTempEnabled
-            ? _storageService.dynamicTempRange
+        maxLength: g2.resolveMaxLength(_storageService),
+        minLength: g2.resolveMinLength(_storageService),
+        minP: g2.resolveMinP(_storageService),
+        temperature: g2.resolveTemperature(_storageService),
+        repeatPenalty: g2.resolveRepeatPenalty(_storageService),
+        repPenTokens: g2.resolveRepeatPenaltyTokens(_storageService),
+        dynatempRange: g2.resolveDynamicTempEnabled(_storageService)
+            ? g2.resolveDynamicTempRange(_storageService)
             : null,
-        xtcThreshold: _storageService.xtcThreshold,
-        xtcProbability: _storageService.xtcProbability,
+        xtcThreshold: g2.resolveXtcThreshold(_storageService),
+        xtcProbability: g2.resolveXtcProbability(_storageService),
         stopSequences: stopList,
         reasoningEnabled: (_callMode || mode == GenerationMode.continue_)
             ? false
-            : _storageService.reasoningEnabled,
-        reasoningEffort: _storageService.reasoningEffort,
-        bannedPhrases: _storageService.bannedPhrases.isNotEmpty
-            ? _storageService.bannedPhrases
+            : g2.resolveReasoningEnabled(_storageService),
+        reasoningEffort: g2.resolveReasoningEffort(_storageService),
+        bannedPhrases: g2.resolveBannedPhrases(_storageService).isNotEmpty
+            ? g2.resolveBannedPhrases(_storageService)
             : null,
       );
 

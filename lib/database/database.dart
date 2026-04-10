@@ -114,6 +114,9 @@ class Sessions extends Table {
   TextColumn get groupEvolvedPersonalities => text().withDefault(const Constant('{}'))();
   TextColumn get groupEvolvedScenarios => text().withDefault(const Constant('{}'))();
 
+  // Per-session generation parameter overrides (v22)
+  TextColumn get generationSettings => text().nullable()(); // JSON blob, null = use global defaults
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
@@ -387,7 +390,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -671,6 +674,12 @@ class AppDatabase extends _$AppDatabase {
         } catch (_) {}
         try {
           await customStatement('ALTER TABLE sessions ADD COLUMN chaos_pressure INTEGER NOT NULL DEFAULT 0');
+        } catch (_) {}
+      }
+      if (from < 22) {
+        // v21→v22: per-session generation parameter overrides
+        try {
+          await customStatement('ALTER TABLE sessions ADD COLUMN generation_settings TEXT');
         } catch (_) {}
       }
     },

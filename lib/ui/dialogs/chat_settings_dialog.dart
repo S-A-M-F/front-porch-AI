@@ -19,7 +19,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/models/chat_generation_settings.dart';
 
 class ChatSettingsDialog extends StatefulWidget {
   const ChatSettingsDialog({super.key});
@@ -31,15 +33,21 @@ class ChatSettingsDialog extends StatefulWidget {
 class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
   final TextEditingController _stopSequenceController = TextEditingController();
   late final TextEditingController _bannedPhrasesController;
+  late ChatGenerationSettings _gen;
+  bool _initialised = false;
 
   @override
-  void initState() {
-    super.initState();
-    // Read once at dialog open — avoids recreation on every rebuild
-    final storageService = Provider.of<StorageService>(context, listen: false);
-    _bannedPhrasesController = TextEditingController(
-      text: storageService.bannedPhrases.join('\n'),
-    );
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialised) {
+      final chatService = Provider.of<ChatService>(context, listen: false);
+      final storage = Provider.of<StorageService>(context, listen: false);
+      _gen = chatService.sessionGenSettings;
+      _bannedPhrasesController = TextEditingController(
+        text: _gen.resolveBannedPhrases(storage).join('\n'),
+      );
+      _initialised = true;
+    }
   }
 
   @override
@@ -49,12 +57,19 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
     super.dispose();
   }
 
+  /// Write the mutated [_gen] back to ChatService (which persists to DB).
+  void _save() {
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    chatService.sessionGenSettings = _gen;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final storageService = Provider.of<StorageService>(context);
+    final storage = Provider.of<StorageService>(context);
     final llmProvider = Provider.of<LLMProvider>(context);
     final isRemote = !llmProvider.isLocal;
-    
+    final hasOverrides = _gen.hasOverrides;
+
     return Dialog(
         backgroundColor: const Color(0xFF1F2937),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -68,12 +83,56 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                Row(
                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                  children: [
-                   const Text('Chat Settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                   IconButton(icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.pop(context)),
+                   Row(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                       const Text('Chat Settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                       if (hasOverrides) ...[
+                         const SizedBox(width: 8),
+                         Container(
+                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                           decoration: BoxDecoration(
+                             color: Colors.amber.withValues(alpha: 0.15),
+                             borderRadius: BorderRadius.circular(4),
+                             border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                           ),
+                           child: const Text('Custom', style: TextStyle(fontSize: 10, color: Colors.amber, fontWeight: FontWeight.bold)),
+                         ),
+                       ],
+                     ],
+                   ),
+                   Row(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                       if (hasOverrides)
+                         Tooltip(
+                           message: 'Reset to global defaults',
+                           child: IconButton(
+                             icon: const Icon(Icons.restart_alt, color: Colors.amber, size: 20),
+                             onPressed: () {
+                               setState(() {
+                                 _gen = ChatGenerationSettings();
+                                 _bannedPhrasesController.text = storage.bannedPhrases.join('\n');
+                               });
+                               _save();
+                             },
+                           ),
+                         ),
+                       IconButton(icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.pop(context)),
+                     ],
+                   ),
                  ],
                ),
-               const SizedBox(height: 16),
-               
+               if (hasOverrides)
+                 Padding(
+                   padding: const EdgeInsets.only(bottom: 8),
+                   child: Text(
+                     'This chat has custom generation settings that override global defaults.',
+                     style: TextStyle(color: Colors.amber.withValues(alpha: 0.7), fontSize: 11),
+                   ),
+                 ),
+               const SizedBox(height: 8),
+
                Expanded(
                  child: SingleChildScrollView(
                    child: Column(
@@ -88,13 +147,16 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                              const Text('Request Reasoning', style: TextStyle(color: Colors.white)),
                              const Spacer(),
                              Switch(
-                               value: storageService.reasoningEnabled,
-                               onChanged: (val) => storageService.setReasoningEnabled(val),
+                               value: _gen.resolveReasoningEnabled(storage),
+                               onChanged: (val) {
+                                 setState(() => _gen.reasoningEnabled = val);
+                                 _save();
+                               },
                                activeTrackColor: Colors.blueAccent,
                              ),
                            ],
                          ),
-                         if (storageService.reasoningEnabled)
+                         if (_gen.resolveReasoningEnabled(storage))
                            Padding(
                              padding: const EdgeInsets.only(bottom: 8),
                              child: Row(
@@ -109,7 +171,7 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                                    ),
                                    child: DropdownButtonHideUnderline(
                                      child: DropdownButton<String>(
-                                       value: storageService.reasoningEffort,
+                                       value: _gen.resolveReasoningEffort(storage),
                                        dropdownColor: const Color(0xFF374151),
                                        style: const TextStyle(color: Colors.white),
                                        items: const [
@@ -118,7 +180,10 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                                          DropdownMenuItem(value: 'high', child: Text('High')),
                                        ],
                                        onChanged: (val) {
-                                         if (val != null) storageService.setReasoningEffort(val);
+                                         if (val != null) {
+                                           setState(() => _gen.reasoningEffort = val);
+                                           _save();
+                                         }
                                        },
                                      ),
                                    ),
@@ -126,7 +191,7 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                                ],
                              ),
                            ),
-                         if (!storageService.reasoningEnabled)
+                         if (!_gen.resolveReasoningEnabled(storage))
                            Padding(
                              padding: const EdgeInsets.only(bottom: 8),
                              child: Text(
@@ -142,15 +207,42 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                        // Generation
                        const Text('Generation', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                        const SizedBox(height: 8),
-                       _buildSlider('Temperature', storageService.temperature, 0.0, 2.0, (val) => storageService.setTemperature(val), divisions: 20, tooltip: 'Controls randomness. Low = predictable and focused. High = creative and surprising. 0.7 is a good default.'),
-                       _buildSlider('Min-P', storageService.minP, 0.0, 1.0, (val) => storageService.setMinP(val), divisions: 100, tooltip: 'Filters out unlikely words. Higher = only the most probable words are kept. Start around 0.05–0.1.'),
-                       _buildSlider('Repeat Penalty', storageService.repeatPenalty, 1.0, 3.0, (val) => storageService.setRepeatPenalty(val), divisions: 200, tooltip: 'Discourages the AI from repeating the same words. Higher = less repetition. 1.1 is a safe default.'),
-                       _buildSlider('Rep Pen Tokens', storageService.repeatPenaltyTokens.toDouble(), 0, 512, (val) => storageService.setRepeatPenaltyTokens(val.toInt()), divisions: 512, tooltip: 'How far back the AI checks for repetition (in tokens). Higher = checks more of the conversation history.'),
-                       _buildSlider('XTC Threshold', storageService.xtcThreshold, 0.0, 0.5, (val) => storageService.setXtcThreshold(val), divisions: 50, tooltip: 'Exclude Top Choices — removes the most obvious/cliché word choices. Lower = stronger effect. Try 0.1 for more creative writing.'),
-                       _buildSlider('XTC Probability', storageService.xtcProbability, 0.0, 1.0, (val) => storageService.setXtcProbability(val), divisions: 20, tooltip: 'How often XTC activates. 0 = never, 1 = always. Try 0.5 for a balance between creativity and coherence.'),
-                       _buildSlider('Max Output Tokens', storageService.maxLength.toDouble(), 16, 16384, (val) => storageService.setMaxLength(val.toInt()), divisions: null, tooltip: 'Maximum number of tokens the AI can write in one response. Thinking models need higher values since reasoning tokens count toward this limit.'),
-                       _buildSlider('Min Output Tokens', storageService.minLength.toDouble(), 0, 512, (val) => storageService.setMinLength(val.toInt()), divisions: 512, tooltip: 'Minimum tokens the AI must write before it can stop. Increase for longer responses.'),
-                       _buildIntSlider('Context Size', storageService.contextSize.toDouble().clamp(512, isRemote ? 500000 : 15000), 512, isRemote ? 500000.0 : 15000.0, (val) => storageService.setContextSize(val.toInt()), step: 512),
+                       _buildSlider('Temperature', _gen.resolveTemperature(storage), 0.0, 2.0, (val) {
+                         setState(() => _gen.temperature = val);
+                         _save();
+                       }, divisions: 20, tooltip: 'Controls randomness. Low = predictable and focused. High = creative and surprising. 0.7 is a good default.'),
+                       _buildSlider('Min-P', _gen.resolveMinP(storage), 0.0, 1.0, (val) {
+                         setState(() => _gen.minP = val);
+                         _save();
+                       }, divisions: 100, tooltip: 'Filters out unlikely words. Higher = only the most probable words are kept. Start around 0.05–0.1.'),
+                       _buildSlider('Repeat Penalty', _gen.resolveRepeatPenalty(storage), 1.0, 3.0, (val) {
+                         setState(() => _gen.repeatPenalty = val);
+                         _save();
+                       }, divisions: 200, tooltip: 'Discourages the AI from repeating the same words. Higher = less repetition. 1.1 is a safe default.'),
+                       _buildSlider('Rep Pen Tokens', _gen.resolveRepeatPenaltyTokens(storage).toDouble(), 0, 512, (val) {
+                         setState(() => _gen.repeatPenaltyTokens = val.toInt());
+                         _save();
+                       }, divisions: 512, tooltip: 'How far back the AI checks for repetition (in tokens). Higher = checks more of the conversation history.'),
+                       _buildSlider('XTC Threshold', _gen.resolveXtcThreshold(storage), 0.0, 0.5, (val) {
+                         setState(() => _gen.xtcThreshold = val);
+                         _save();
+                       }, divisions: 50, tooltip: 'Exclude Top Choices — removes the most obvious/cliché word choices. Lower = stronger effect. Try 0.1 for more creative writing.'),
+                       _buildSlider('XTC Probability', _gen.resolveXtcProbability(storage), 0.0, 1.0, (val) {
+                         setState(() => _gen.xtcProbability = val);
+                         _save();
+                       }, divisions: 20, tooltip: 'How often XTC activates. 0 = never, 1 = always. Try 0.5 for a balance between creativity and coherence.'),
+                       _buildSlider('Max Output Tokens', _gen.resolveMaxLength(storage).toDouble(), 16, 16384, (val) {
+                         setState(() => _gen.maxLength = val.toInt());
+                         _save();
+                       }, divisions: null, tooltip: 'Maximum number of tokens the AI can write in one response. Thinking models need higher values since reasoning tokens count toward this limit.'),
+                       _buildSlider('Min Output Tokens', _gen.resolveMinLength(storage).toDouble(), 0, 512, (val) {
+                         setState(() => _gen.minLength = val.toInt());
+                         _save();
+                       }, divisions: 512, tooltip: 'Minimum tokens the AI must write before it can stop. Increase for longer responses.'),
+                       _buildIntSlider('Context Size', _gen.resolveContextSize(storage).toDouble().clamp(512, isRemote ? 500000 : 15000), 512, isRemote ? 500000.0 : 15000.0, (val) {
+                         setState(() => _gen.contextSize = val.toInt());
+                         _save();
+                       }, step: 512),
 
                        const SizedBox(height: 16),
                        Row(
@@ -165,15 +257,22 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                            ),
                            const Spacer(),
                            Switch(
-                             value: storageService.dynamicTempEnabled,
-                             onChanged: (val) => storageService.setDynamicTempEnabled(val),
+                             value: _gen.resolveDynamicTempEnabled(storage),
+                             onChanged: (val) {
+                               setState(() => _gen.dynamicTempEnabled = val);
+                               _save();
+                             },
                              activeTrackColor: Colors.blueAccent,
                            ),
                          ],
                        ),
-                       if (storageService.dynamicTempEnabled)
-                         _buildSlider('Dynatemp Range', storageService.dynamicTempRange, 0.0, 2.0, (val) => storageService.setDynamicTempRange(val), divisions: 20, tooltip: 'How much the temperature can vary around the base temperature.'),
+                       if (_gen.resolveDynamicTempEnabled(storage))
+                         _buildSlider('Dynatemp Range', _gen.resolveDynamicTempRange(storage), 0.0, 2.0, (val) {
+                           setState(() => _gen.dynamicTempRange = val);
+                           _save();
+                         }, divisions: 20, tooltip: 'How much the temperature can vary around the base temperature.'),
 
+                        const SizedBox(height: 24),
                         const Text('Stop Sequences', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                         const SizedBox(height: 8),
                          Container(
@@ -198,8 +297,12 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                                          ),
                                          onSubmitted: (val) {
                                             if (val.isNotEmpty) {
-                                              storageService.addStopSequence(val);
+                                              setState(() {
+                                                final resolved = _gen.resolveStopSequences(storage);
+                                                _gen.stopSequences = [...resolved, val];
+                                              });
                                               _stopSequenceController.clear();
+                                              _save();
                                             }
                                          },
                                        ),
@@ -208,8 +311,12 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                                        icon: const Icon(Icons.add_circle, color: Colors.blueAccent),
                                        onPressed: () {
                                          if (_stopSequenceController.text.isNotEmpty) {
-                                           storageService.addStopSequence(_stopSequenceController.text);
+                                           setState(() {
+                                             final resolved = _gen.resolveStopSequences(storage);
+                                             _gen.stopSequences = [...resolved, _stopSequenceController.text];
+                                           });
                                            _stopSequenceController.clear();
+                                           _save();
                                          }
                                        },
                                      ),
@@ -217,11 +324,18 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                                  ),
                                ),
                                const Divider(height: 1, color: Colors.white10),
-                               ...storageService.stopSequences.map((seq) => ListTile(
+                               ..._gen.resolveStopSequences(storage).map((seq) => ListTile(
                                  title: Text(seq.replaceAll('\n', '\\n'), style: const TextStyle(color: Colors.white)),
                                  trailing: IconButton(
                                    icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
-                                   onPressed: () => storageService.removeStopSequence(seq),
+                                   onPressed: () {
+                                     setState(() {
+                                       final resolved = _gen.resolveStopSequences(storage).toList();
+                                       resolved.remove(seq);
+                                       _gen.stopSequences = resolved;
+                                     });
+                                     _save();
+                                   },
                                  ),
                                  dense: true,
                                )),
@@ -267,15 +381,16 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                              ),
                              onChanged: (val) {
                                final phrases = val.split('\n').where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
-                               storageService.setBannedPhrases(phrases);
+                               _gen.bannedPhrases = phrases;
+                               _save();
                              },
                            ),
                          ),
-                         if (storageService.bannedPhrases.isNotEmpty)
+                         if (_gen.resolveBannedPhrases(storage).isNotEmpty)
                            Padding(
                              padding: const EdgeInsets.only(top: 6),
                              child: Text(
-                               '${storageService.bannedPhrases.length} phrase${storageService.bannedPhrases.length == 1 ? '' : 's'} banned',
+                               '${_gen.resolveBannedPhrases(storage).length} phrase${_gen.resolveBannedPhrases(storage).length == 1 ? '' : 's'} banned',
                                style: TextStyle(color: Colors.amber.shade300, fontSize: 11),
                              ),
                            ),
