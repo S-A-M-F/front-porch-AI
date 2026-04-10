@@ -77,7 +77,7 @@ class StorageService extends ChangeNotifier {
   bool? _useVulkan;
   bool? _useMetal;
   bool? _useRocm;
-  int _maxLength = 200;
+  int _maxLength = 1024;
   int _minLength = 0;
   bool _autostartBackend = true;
   String? _lastUsedModelPath;
