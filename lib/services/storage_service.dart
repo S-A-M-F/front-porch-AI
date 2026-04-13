@@ -323,7 +323,6 @@ class StorageService extends ChangeNotifier {
     _repeatPenalty = _prefs?.getDouble('repeat_penalty') ?? _repeatPenalty;
     _repeatPenaltyTokens = _prefs?.getInt('repeat_penalty_tokens') ?? _repeatPenaltyTokens;
     _dynamicTempEnabled = _prefs?.getBool('dynamic_temp_enabled') ?? _dynamicTempEnabled;
-    _dynamicTempEnabled = _prefs?.getBool('dynamic_temp_enabled') ?? _dynamicTempEnabled;
     _dynamicTempRange = _prefs?.getDouble('dynamic_temp_range') ?? _dynamicTempRange;
     _xtcThreshold = _prefs?.getDouble('xtc_threshold') ?? _xtcThreshold;
     _xtcProbability = _prefs?.getDouble('xtc_probability') ?? _xtcProbability;

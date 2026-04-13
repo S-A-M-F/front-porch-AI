@@ -333,6 +333,8 @@ class HardwareService extends ChangeNotifier {
       }
 
       // Method 2: WMI (Fallback if Registry failed or returned 0)
+      // WARNING: Win32_VideoController.AdapterRAM is uint32 — overflows to 0
+      // for GPUs with VRAM that is an exact multiple of 4GB (8GB, 16GB, 24GB, etc.)
       if (vramMb == 0) {
         final gpuResult = await Process.run('powershell', [
           '-command',
@@ -356,8 +358,32 @@ class HardwareService extends ChangeNotifier {
               json = topGpu;
             }
             if (gpuName == 'Unknown GPU') gpuName = json['Name'] ?? 'Unknown';
-            vramMb = ((json['AdapterRAM'] ?? 0) / (1024 * 1024)).round();
+            final adapterRam = json['AdapterRAM'] ?? 0;
+            if (adapterRam > 0) {
+              vramMb = (adapterRam / (1024 * 1024)).round();
+            }
           }
+        }
+      }
+
+      // Method 3: nvidia-smi (Fallback for Nvidia GPUs — reliable, no uint32 overflow)
+      if (vramMb == 0) {
+        try {
+          final smiResult = await Process.run('nvidia-smi', [
+            '--query-gpu=name,memory.total',
+            '--format=csv,noheader,nounits'
+          ]);
+          if (smiResult.exitCode == 0) {
+            final line = smiResult.stdout.toString().trim().split('\n').first;
+            final parts = line.split(',').map((s) => s.trim()).toList();
+            if (parts.length >= 2) {
+              if (gpuName == 'Unknown GPU') gpuName = parts[0];
+              vramMb = int.tryParse(parts[1]) ?? 0;
+              debugPrint('[Hardware] nvidia-smi fallback: $gpuName, ${vramMb}MB');
+            }
+          }
+        } catch (_) {
+          // nvidia-smi not available
         }
       }
 

@@ -30,6 +30,7 @@ import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
+import 'package:front_porch_ai/providers/app_state.dart';
 
 /// Manual character creator — 6-step wizard.
 ///
@@ -81,6 +82,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   String _realismEmotionIntensity = 'mild';
   bool _realismNsfwCooldown = false;
   bool _realismChaosMode = false;
+  String _realismCurrentTask = '';
 
   // ── Token counter ──
   int _totalTokenEstimate = 0;
@@ -1004,6 +1006,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 onNsfwCooldownChanged: (v) => setState(() => _realismNsfwCooldown = v),
                 chaosModeEnabled: _realismChaosMode,
                 onChaosModeChanged: (v) => setState(() => _realismChaosMode = v),
+                currentTask: _realismCurrentTask,
+                onCurrentTaskChanged: (v) => setState(() => _realismCurrentTask = v),
               ),
 
               _buildNavButtons(currentStep: 4),
@@ -1291,6 +1295,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           emotionIntensity: _realismEmotionIntensity,
           nsfwCooldownEnabled: _realismNsfwCooldown,
           chaosModeEnabled: _realismChaosMode,
+          currentTask: _realismCurrentTask,
         );
       }
 
@@ -1348,7 +1353,38 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.of(context).pop();
+        // CreateCharacterPage lives as a tab in MainLayout (not pushed as a
+        // route), so Navigator.pop() would pop the entire scaffold → black
+        // screen. Instead navigate back to the home tab and reset the form.
+        Provider.of<AppState>(context, listen: false).setIndex(0);
+        setState(() {
+          _currentStep = 0;
+          _nameController.clear();
+          _descriptionController.clear();
+          _personalityController.clear();
+          _scenarioController.clear();
+          _firstMessageController.clear();
+          _exampleDialogueController.clear();
+          _systemPromptController.clear();
+          _postHistoryController.clear();
+          for (final c in _altGreetingControllers) { c.dispose(); }
+          _altGreetingControllers.clear();
+          _lorebookEntries.clear();
+          _avatarBytes = null;
+          _tags.clear();
+          _realismEnabled = false;
+          _realismTimeOfDay = 'morning';
+          _realismDayCount = 1;
+          _realismShortTermBond = 0;
+          _realismLongTermBond = 0;
+          _realismTrustLevel = 0;
+          _realismEmotion = '';
+          _realismEmotionIntensity = 'mild';
+          _realismNsfwCooldown = false;
+          _realismChaosMode = false;
+          _realismCurrentTask = '';
+          _totalTokenEstimate = 0;
+        });
       }
     } catch (e) {
       if (mounted) {

@@ -34,6 +34,7 @@ class FrontPorchExtensions {
   String emotionIntensity; // mild/moderate/strong
   bool nsfwCooldownEnabled;
   bool chaosModeEnabled;
+  String currentTask;         // initial quest/task for the character
 
   FrontPorchExtensions({
     this.realismEnabled = false,
@@ -46,6 +47,7 @@ class FrontPorchExtensions {
     this.emotionIntensity = 'mild',
     this.nsfwCooldownEnabled = false,
     this.chaosModeEnabled = false,
+    this.currentTask = '',
   });
 
   Map<String, dynamic> toJson() {
@@ -62,6 +64,7 @@ class FrontPorchExtensions {
         'emotion_intensity': emotionIntensity,
         'nsfw_cooldown_enabled': nsfwCooldownEnabled,
         'chaos_mode_enabled': chaosModeEnabled,
+        'current_task': currentTask,
       },
     };
   }
@@ -79,6 +82,7 @@ class FrontPorchExtensions {
       emotionIntensity: realism['emotion_intensity'] as String? ?? 'mild',
       nsfwCooldownEnabled: realism['nsfw_cooldown_enabled'] as bool? ?? false,
       chaosModeEnabled: realism['chaos_mode_enabled'] as bool? ?? false,
+      currentTask: realism['current_task'] as String? ?? '',
     );
   }
 }

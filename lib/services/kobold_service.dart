@@ -38,17 +38,24 @@ class KoboldService extends ChangeNotifier
   final List<String> _logs = [];
   String _modelLoadingStatus = '';
   bool _modelReady = false;
+  /// One-shot flag for UI notifications (e.g. snackbar). Set to true when the
+  /// model finishes loading, consumed once by the home page. Unlike _modelReady,
+  /// this is reset after reading so it only triggers the notification once.
+  bool _modelJustLoaded = false;
   String? _executablePath;
+  Timer? _readinessProbe;
 
   bool get isRunning => _isRunning;
   List<String> get logs => List.unmodifiable(_logs);
   String get modelLoadingStatus => _modelLoadingStatus;
   bool get modelReady => _modelReady;
 
-  /// Consume the modelReady flag (resets to false after reading).
+  /// Consume the one-shot "model just loaded" notification flag.
+  /// Returns true exactly once after each model load, for UI notifications
+  /// (e.g. snackbar). Does NOT affect [isReady] or [modelReady].
   bool consumeModelReady() {
-    if (_modelReady) {
-      _modelReady = false;
+    if (_modelJustLoaded) {
+      _modelJustLoaded = false;
       return true;
     }
     return false;
@@ -100,6 +107,7 @@ class KoboldService extends ChangeNotifier
           );
           _isRunning = true;
           _modelReady = true;
+          _modelJustLoaded = true;
           notifyListeners();
         } else {
           // Orphaned zombie from a previous app instance (e.g. after update).
@@ -140,6 +148,7 @@ class KoboldService extends ChangeNotifier
 
   @override
   void dispose() {
+    _stopReadinessProbe();
     WidgetsBinding.instance.removeObserver(this);
     stopKobold();
     super.dispose();
@@ -198,7 +207,17 @@ class KoboldService extends ChangeNotifier
     bool useMetal = false,
     bool useRocm = false,
   }) async {
-    if (_isRunning || _isStarting) return;
+    if (_isStarting) return;
+    // If the previous process is still alive (e.g. stopKobold was not awaited
+    // or the stop is racing with start), kill it first to prevent zombie
+    // processes from accumulating — especially on Windows where port reuse
+    // isn't immediate.
+    if (_isRunning || _process != null) {
+      debugPrint('[KoboldService] startKobold called while still running — stopping first.');
+      await stopKobold();
+      // Give the OS a moment to release the port
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
     _isStarting = true;
 
     // Store the executable path for cleanup
@@ -255,6 +274,9 @@ class KoboldService extends ChangeNotifier
       _addLog('Starting Koboldcpp...');
       _addLog('Command: $executablePath ${args.join(' ')}');
       notifyListeners();
+
+      // Start periodic readiness probe — more reliable than log-watching.
+      _startReadinessProbe();
 
       _process!.stdout
           .transform(const Utf8Decoder(allowMalformed: true))
@@ -360,8 +382,9 @@ class KoboldService extends ChangeNotifier
     request.headers['Content-Type'] = 'application/json';
     request.body = jsonEncode(payload);
 
+    final estimatedTokens = (prompt.length / 4).ceil();
     debugPrint(
-      '[KoboldCpp] Streaming request: prompt=${prompt.length} chars, max_length=$maxLength, stop_sequences=${stopSequences?.length ?? 0}',
+      '[KoboldCpp] Streaming request: prompt=${prompt.length} chars (~$estimatedTokens tokens), max_length=$maxLength, stop_sequences=${stopSequences?.length ?? 0}',
     );
 
     final client = http.Client();
@@ -386,6 +409,7 @@ class KoboldService extends ChangeNotifier
 
       try {
         int _sseDataEvents = 0;
+        bool _inThinkPhase = false; // Track thinking model state
         await for (final line
             in response.stream
                 .transform(utf8.decoder)
@@ -395,14 +419,38 @@ class KoboldService extends ChangeNotifier
             final data = line.substring(6);
             try {
               final json = jsonDecode(data);
-              // Check for alternate field names thinking models may use
-              final token =
-                  (json['token'] ??
-                          json['text'] ??
-                          json['thinking_token'] ??
-                          '')
-                      as String;
-              yield token;
+              final rawToken = (json['token'] as String?) ?? '';
+              final thinkToken = (json['thinking_token'] as String?) ?? '';
+              final textToken = (json['text'] as String?) ?? '';
+
+              // Log first few events and any unexpected patterns for debugging
+              if (_sseDataEvents <= 3 || (rawToken.isEmpty && thinkToken.isEmpty && textToken.isEmpty)) {
+                debugPrint('[KoboldCpp:SSE] Event #$_sseDataEvents — '
+                    'token=${rawToken.length}ch, '
+                    'thinking_token=${thinkToken.length}ch, '
+                    'text=${textToken.length}ch');
+              }
+
+              // KoboldCPP thinking models send reasoning in 'thinking_token'
+              // while 'token' is "" during the think phase. We emit synthetic
+              // <think>/<think> tags at boundaries but skip the actual content.
+              if (thinkToken.isNotEmpty && rawToken.isEmpty && textToken.isEmpty) {
+                if (!_inThinkPhase) {
+                  _inThinkPhase = true;
+                  yield '<think>';
+                }
+                continue;
+              }
+
+              // Real output token — prefer 'token', fall back to 'text'
+              final token = rawToken.isNotEmpty ? rawToken : textToken;
+              if (token.isNotEmpty) {
+                if (_inThinkPhase) {
+                  _inThinkPhase = false;
+                  yield '</think>';
+                }
+                yield token;
+              }
             } catch (e) {
               // Skip malformed SSE events (e.g. data: [DONE])
             }
@@ -621,35 +669,102 @@ class KoboldService extends ChangeNotifier
     throw Exception('Failed to generate after retries');
   }
 
-  /// Parse KoboldCPP process output to determine model loading status.
-  void _parseLoadingStatus(String data) {
-    final lower = data.toLowerCase();
+  // ── Readiness probe ───────────────────────────────────────────────────
+  // Instead of relying solely on log-string matching (which is fragile
+  // across KoboldCPP versions), poll /api/extra/version every 5 s.
+  // If 200 OK → model is ready.  Log-parsing is kept as a fast-path so
+  // the UI can update the moment the log line appears.
 
-    // Model is ready when server starts listening
-    if (lower.contains('please connect to') ||
-        lower.contains('server listening') ||
-        lower.contains('starting server')) {
+  static final RegExp _readyPattern = RegExp(
+    r'(please connect|server listen|starting server|ready to)',
+    caseSensitive: false,
+  );
+  static final RegExp _loadModelPattern = RegExp(
+    r'loading (the )?model',
+    caseSensitive: false,
+  );
+  static final RegExp _loadFilePattern = RegExp(
+    r'loading (hf|gguf|safetensors|model file)',
+    caseSensitive: false,
+  );
+  static final RegExp _mappingPattern = RegExp(
+    r'(mapping model|ggml_backend|allocat)',
+    caseSensitive: false,
+  );
+  static final RegExp _warmupPattern = RegExp(
+    r'warm(ing)? up',
+    caseSensitive: false,
+  );
+
+  void _startReadinessProbe() {
+    _stopReadinessProbe(); // Cancel any prior timer.
+    _readinessProbe = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _probeVersion(),
+    );
+  }
+
+  void _stopReadinessProbe() {
+    _readinessProbe?.cancel();
+    _readinessProbe = null;
+  }
+
+  Future<void> _probeVersion() async {
+    if (_modelReady) {
+      _stopReadinessProbe();
+      return;
+    }
+    final client = http.Client();
+    try {
+      final uri = Uri.parse('$_baseUrl/api/extra/version');
+      final response = await client
+          .get(uri)
+          .timeout(const Duration(seconds: 3));
+      if (response.statusCode == 200) {
+        debugPrint('[KoboldService] Readiness probe: 200 OK — model ready.');
+        _modelLoadingStatus = '';
+        _modelReady = true;
+        _modelJustLoaded = true;
+        _stopReadinessProbe();
+        notifyListeners();
+      }
+    } catch (_) {
+      // Not ready yet — silently retry on the next tick.
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Parse KoboldCPP process output to determine model loading status.
+  /// Kept as a secondary fast-path alongside the periodic readiness probe.
+  void _parseLoadingStatus(String data) {
+    // Model is ready when server starts listening (fast-path).
+    if (_readyPattern.hasMatch(data)) {
       _modelLoadingStatus = '';
       _modelReady = true;
+      _modelJustLoaded = true;
+      _stopReadinessProbe();
       notifyListeners();
       return;
     }
 
-    // Track loading phases from KoboldCPP output
-    if (lower.contains('loading model')) {
-      _modelLoadingStatus = 'Loading model into device memory...';
-      notifyListeners();
-    } else if (lower.contains('loading hf model') ||
-        lower.contains('loading gguf')) {
-      _modelLoadingStatus = 'Loading model file...';
-      notifyListeners();
-    } else if (lower.contains('mapping model') ||
-        lower.contains('ggml_backend')) {
-      _modelLoadingStatus = 'Mapping model to memory...';
-      notifyListeners();
-    } else if (lower.contains('warming up')) {
-      _modelLoadingStatus = 'Warming up model...';
-      notifyListeners();
+    // Track loading phases from KoboldCPP output — but only before the model
+    // has finished loading. After _modelReady is true, ignore these patterns
+    // (KoboldCPP can output "warm up" during normal operation, e.g. large prefills).
+    if (!_modelReady) {
+      if (_loadModelPattern.hasMatch(data)) {
+        _modelLoadingStatus = 'Loading model into device memory...';
+        notifyListeners();
+      } else if (_loadFilePattern.hasMatch(data)) {
+        _modelLoadingStatus = 'Loading model file...';
+        notifyListeners();
+      } else if (_mappingPattern.hasMatch(data)) {
+        _modelLoadingStatus = 'Mapping model to memory...';
+        notifyListeners();
+      } else if (_warmupPattern.hasMatch(data)) {
+        _modelLoadingStatus = 'Warming up model...';
+        notifyListeners();
+      }
     }
   }
 
@@ -662,6 +777,28 @@ class KoboldService extends ChangeNotifier
   }
 
   bool get isProcessAlive => _process != null && _isRunning;
+
+  /// Poll KoboldCPP's /api/extra/perf endpoint for real-time performance data.
+  /// Returns a map with fields like last_process_speed, last_eval_speed,
+  /// last_input_count, idle (0=busy, 1=idle), queue, etc.
+  /// Returns null if the endpoint is unreachable or the response is invalid.
+  Future<Map<String, dynamic>?> fetchPerf() async {
+    final client = http.Client();
+    try {
+      final uri = Uri.parse('$_baseUrl/api/extra/perf');
+      final response = await client
+          .get(uri)
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (_) {
+      // Connection refused / timeout — server unreachable
+    } finally {
+      client.close();
+    }
+    return null;
+  }
 
   /// Count tokens using the loaded model's actual tokenizer.
   /// Falls back to chars/4 estimate if the endpoint is unavailable.
@@ -773,6 +910,7 @@ class KoboldService extends ChangeNotifier
       _isRunning = false;
       _modelLoadingStatus = '';
       _modelReady = false;
+      _stopReadinessProbe();
       notifyListeners();
     }
   }

@@ -9,9 +9,12 @@ class JsonSanitizer {
     var cleaned = input;
     
     // 1. Strip markdown fences and thought blocks
+    // Fuzzy matching: models misspell <think> at high temp (e.g. <ink>, <hink>)
+    final _tOpen = r'<(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
+    final _tClose = r'</(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
     cleaned = cleaned
-        .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
-        .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
+        .replaceAll(RegExp(_tOpen + r'[\s\S]*?' + _tClose, caseSensitive: false), '')
+        .replaceAll(RegExp(_tOpen + r'[\s\S]*', caseSensitive: false), '')
         .replaceAll(RegExp(r'^```json\s*', multiLine: true), '')
         .replaceAll(RegExp(r'^```\s*$', multiLine: true), '');
         

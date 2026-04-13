@@ -22,6 +22,7 @@ import 'package:front_porch_ai/utils/json_sanitizer.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/kobold_service.dart';
 
 /// Service for AI-powered character generation.
 ///
@@ -38,6 +39,21 @@ class CharacterGenService {
   /// The raw LLM output from the last base card generation, for image prompt extraction.
   String? lastRawOutput;
   String? generatedImagePrompt;
+
+  int _generationEpoch = 0;
+  bool _aborted = false;
+  bool _reasoningEnabled = false;
+
+  bool get isAborted => _aborted;
+
+  /// Abort the current generation. Signals the LLM service to close its
+  /// HTTP connection and sets a flag so inter-step checks bail out.
+  void abort() {
+    _aborted = true;
+    _generationEpoch++; // Invalidate any in-flight retry loops
+    _llmService.abortGeneration();
+    debugPrint('CharacterGen: Abort requested by user');
+  }
 
   /// Per-category descriptions for lorebook generation prompts.
   static const _loreCategoryDescriptions = {
@@ -80,6 +96,8 @@ class CharacterGenService {
     String userPersonaContext = '',
     String? worldLore,
     bool generateDescription = false,
+    bool nsfwEnabled = false,
+    bool reasoningEnabled = false,
     void Function(String accumulated)? onProgress,
     void Function(String error)? onError,
     void Function(String status)? onStatus,
@@ -103,12 +121,18 @@ class CharacterGenService {
       worldLore: worldLore,
     );
 
-    debugPrint('CharacterGen: Starting generation for "$name"');
+    debugPrint('CharacterGen: Starting generation for "$name" (reasoning: $reasoningEnabled)');
+    _generationEpoch++;
+    final int currentEpoch = _generationEpoch;
+    _aborted = false;
+    _llmService.abortGeneration(); // clear stuck state just in case
+    _reasoningEnabled = reasoningEnabled;
 
     int attempts = 0;
     CharacterCard? card;
 
-    while (attempts < 2 && card == null) {
+    while (attempts < 3 && card == null) {
+      if (_aborted || _generationEpoch != currentEpoch) return null;
       if (attempts > 0) {
         onStatus?.call('JSON Parse failed. Retrying generation...');
         debugPrint('CharacterGen: Retrying generation (Attempt ${attempts + 1})');
@@ -118,16 +142,28 @@ class CharacterGenService {
       lastRawOutput = baseOutput; // Store for image prompt extraction
       
       if (baseOutput == null) {
-        if (attempts == 1) {
-          onError?.call('LLM returned empty response for base card.');
-          return null;
-        }
+        attempts++;
+        continue;
+      }
+
+      // Reject suspiciously short output (model warm-up / placeholder)
+      final strippedLen = baseOutput
+          .replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '').trim().length;
+      if (strippedLen < 100) {
+        debugPrint('CharacterGen: Output too short ($strippedLen chars) — likely placeholder, retrying');
         attempts++;
         continue;
       }
 
       final cleaned = JsonSanitizer.sanitize(baseOutput);
       debugPrint('CharacterGen: Base output cleaned (${cleaned.length} chars)');
+
+      // Detect literal "..." placeholder values (some models output skeleton JSON)
+      if (cleaned.contains('"..."') || cleaned.contains('"…"')) {
+        debugPrint('CharacterGen: Detected placeholder "..." values — retrying');
+        attempts++;
+        continue;
+      }
 
       card = _parseCharacterJson(cleaned, name);
       attempts++;
@@ -136,6 +172,13 @@ class CharacterGenService {
     if (card == null) {
       onError?.call('Failed to parse base card JSON after multiple attempts. Try a different model or prompt.');
       return null;
+    }
+
+    // If the user provided a specific scenario, use it verbatim —
+    // don't let the LLM summarize or rewrite it.
+    if (scenario.trim().isNotEmpty) {
+      card.scenario = scenario.trim();
+      debugPrint('CharacterGen: Using user-provided scenario verbatim');
     }
 
     // ── Step 1b: (system_prompt intentionally left blank) ────────────
@@ -180,8 +223,9 @@ class CharacterGenService {
         ].length} fields');
       }
     }
+    if (_aborted || _generationEpoch != currentEpoch) return null;
 
-    // ── Step 2: Character Interview (voice enrichment) ────────
+    // ── Step 2: Character Interview (voice enrichment) ────────────
     // Run 5 in-character Q&A turns to establish authentic voice.
     // Use the accumulated answers to rewrite description + personality,
     // enrich lorebook entries, and pass the transcript into greeting prompts.
@@ -190,6 +234,7 @@ class CharacterGenService {
     final interviewTranscript = await _runCharacterInterview(
       card: card,
       name: name,
+      nsfwEnabled: nsfwEnabled,
       onStatus: onStatus,
       onProgress: onProgress,
       worldLore: worldLore,
@@ -206,8 +251,9 @@ class CharacterGenService {
         onProgress: onProgress,
       );
     }
+    if (_aborted || _generationEpoch != currentEpoch) return null;
 
-    // ── Step 2b: Lorebook generation (after interview) ──────────
+    // ── Step 2b: Lorebook generation (after interview) ────────────
     // Runs after interview so transcript context makes entries richer.
     // Only fires if lorebook was requested and not yet generated inline.
     if (generateLorebook && (card.lorebook == null || card.lorebook!.entries.isEmpty)) {
@@ -225,6 +271,7 @@ class CharacterGenService {
         onProgress: onProgress,
       );
     }
+    if (_aborted || _generationEpoch != currentEpoch) return null;
 
     // ── Step 3: Generate first message ────────────────────────
     onStatus?.call('Writing first message...');
@@ -248,6 +295,7 @@ class CharacterGenService {
     if (firstMsgOutput != null && firstMsgOutput.trim().isNotEmpty) {
       card.firstMessage = _cleanGreeting(firstMsgOutput);
     }
+    if (_aborted || _generationEpoch != currentEpoch) return null;
 
     // ── Step 4: Generate alternate greetings ──────────────────
     if (altGreetingCount > 0) {
@@ -299,6 +347,7 @@ class CharacterGenService {
       }
       card.alternateGreetings = alts;
     }
+    if (_aborted || _generationEpoch != currentEpoch) return null;
 
     // ── Step 5: Generate Tailored Image Prompt ────────────────
     onStatus?.call('Drafting illustration prompt...');
@@ -398,12 +447,18 @@ Respond with ONLY the JSON:''';
     'How do you treat people who have just met you versus people you trust completely?',
   ];
 
+  static const _nsfwInterviewQuestion =
+      'Describe your sex life — how often do you fuck, what\'s your favorite position, '
+      'are you dominant or submissive, what kinks are you into, and what gets you off the hardest?';
+
   /// Run a cumulative in-character interview, returning the full transcript.
   /// Each answer is folded back into the next question's context — exactly as
   /// EllipsisLM does — so the model's "voice" deepens with each turn.
+  /// When [nsfwEnabled] is true, an explicit sexual preference question is appended.
   Future<String> _runCharacterInterview({
     required CharacterCard card,
     required String name,
+    bool nsfwEnabled = false,
     void Function(String)? onStatus,
     void Function(String)? onProgress,
     String? worldLore,
@@ -418,9 +473,14 @@ Respond with ONLY the JSON:''';
         'Be specific, vivid, and emotionally honest. Respond as ${name} would speak — '
         'use their vocabulary, cadence, and emotional register.';
 
-    for (int i = 0; i < _interviewQuestions.length; i++) {
-      final q = _interviewQuestions[i];
-      onStatus?.call('Character interview (${i + 1}/${_interviewQuestions.length})...');
+    final questions = [
+      ..._interviewQuestions,
+      if (nsfwEnabled) _nsfwInterviewQuestion,
+    ];
+
+    for (int i = 0; i < questions.length; i++) {
+      final q = questions[i];
+      onStatus?.call('Character interview (${i + 1}/${questions.length})...');
       onProgress?.call('');
 
       final prompt = '$seed\n\n'
@@ -490,27 +550,36 @@ Respond with ONLY the JSON:''';
     }
 
     final cleaned = _stripContent(output);
-    try {
-      final data = json.decode(cleaned) as Map<String, dynamic>;
-      final newDesc = data['description']?.toString().trim() ?? '';
-      final newPers = data['personality']?.toString().trim() ?? '';
-      final newExamples = data['example_dialogue']?.toString().trim() ?? '';
+    debugPrint('CharacterGen: Enrichment output cleaned (${cleaned.length} chars)');
 
-      // Only update if the enriched versions are substantively longer/different
-      if (newDesc.isNotEmpty && newDesc.length >= card.description.length * 0.5) {
-        card.description = newDesc;
-        debugPrint('CharacterGen: Description enriched (${newDesc.length} chars)');
-      }
-      if (newPers.isNotEmpty && newPers.length >= card.personality.length * 0.5) {
-        card.personality = newPers;
-        debugPrint('CharacterGen: Personality enriched (${newPers.length} chars)');
-      }
-      if (newExamples.isNotEmpty && newExamples.length > 50) {
-        card.mesExample = newExamples;
-        debugPrint('CharacterGen: Example dialogue generated (${newExamples.length} chars)');
-      }
-    } catch (e) {
-      debugPrint('CharacterGen: Interview enrichment parse failed: $e — keeping original fields');
+    // Use regex extraction instead of json.decode — models routinely output
+    // unescaped quotes (5'9", etc.) that break strict JSON parsing. The regex
+    // extractor finds values by key boundaries, handling all malformed output.
+    final data = _regexExtract(cleaned);
+    debugPrint('CharacterGen: Enrichment extracted keys: ${data.keys.toList()}');
+
+    final newDesc = (data['description']?.toString() ?? '').trim();
+    final newPers = (data['personality']?.toString() ?? '').trim();
+    final newExamples = (data['example_dialogue'] ??
+            data['mes_example'] ??
+            data['example_messages'] ??
+            data['examples'])
+        ?.toString().trim() ?? '';
+
+    if (newDesc.isNotEmpty && newDesc.length >= card.description.length * 0.5) {
+      card.description = newDesc;
+      debugPrint('CharacterGen: Description enriched (${newDesc.length} chars)');
+    }
+    if (newPers.isNotEmpty && newPers.length >= card.personality.length * 0.5) {
+      card.personality = newPers;
+      debugPrint('CharacterGen: Personality enriched (${newPers.length} chars)');
+    }
+    if (newExamples.isNotEmpty && newExamples.length > 50) {
+      card.mesExample = newExamples;
+      debugPrint('CharacterGen: Example dialogue generated (${newExamples.length} chars)');
+    } else {
+      debugPrint('CharacterGen: No example dialogue in enrichment '
+          '(keys: ${data.keys.toList()}, example len: ${newExamples.length})');
     }
   }
 
@@ -531,61 +600,131 @@ Respond with ONLY the JSON:''';
     int minLen = 64,
     int maxRetries = 3,
     bool isJsonMode = false,
-    String? grammar,
     void Function(String accumulated)? onProgress,
   }) async {
+    final int myEpoch = _generationEpoch;
     final promptEstTokens = (prompt.length / 4).ceil();
     debugPrint('CharacterGen: Prompt size: ${prompt.length} chars (~$promptEstTokens tokens), maxLen: $maxLen');
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      if (_aborted || _generationEpoch != myEpoch) {
+        debugPrint('CharacterGen: Aborting before attempt $attempt');
+        return null;
+      }
+
       String accumulated = '';
       int tokenCount = 0;
       bool repetitionDetected = false;
       try {
-        // JSON calls add `}\n` as a stop sequence so the model terminates the
-        // moment it closes the object — the large maxLen is still the safety net.
-        final stops = ['<END>', '</END>'];
-        if (isJsonMode) {
-          stops.addAll(['}\n', '}']);
+        if (_llmService is KoboldService) {
+          await (_llmService as KoboldService).ensureServerIdle();
         }
+        if (_aborted || _generationEpoch != myEpoch) return null;
+
+        final stops = ['<END>', '</END>'];
+        // NOTE: We intentionally do NOT add '}\n' as a stop sequence for
+        // JSON mode. Character cards use {{char}} and {{user}} template
+        // markers — the API matches }\n inside }}\n and truncates the
+        // output. JSON completion is handled by the balanced brace checker.
 
         await for (final token in _llmService.generateStream(GenerationParams(
           prompt: prompt,
           maxLength: maxLen,
           minLength: minLen,
-          temperature: 0.8,
-          repeatPenalty: 1.2,
+          temperature: isJsonMode ? 0.7 : 0.85,
+          repeatPenalty: 1.15,
           minP: 0.05,
-          reasoningEnabled: false,
+          topP: isJsonMode ? 0.90 : 0.95,
+          reasoningEnabled: _reasoningEnabled,
           stopSequences: stops,
-          grammar: grammar,
         ))) {
+          if (_aborted || _generationEpoch != myEpoch) {
+            _llmService.abortGeneration();
+            break;
+          }
           accumulated += token;
           tokenCount++;
 
-          // Repetition detection — every 200 tokens, check for looping
-          if (tokenCount > 200 && tokenCount % 200 == 0 && accumulated.length > 600) {
+          // Degenerate output detection — fires every 50 tokens for fast catch.
+          // Two strategies:
+          //   1. Substring repeat: a 300-char tail appears earlier in the text
+          //   2. Word-salad: low unique-word ratio (model spewing random words)
+          if (tokenCount > 100 && tokenCount % 50 == 0 && accumulated.length > 400) {
+            // Strategy 1: exact substring repeat
             final tail = accumulated.substring(accumulated.length - 300);
             final earlier = accumulated.substring(0, accumulated.length - 300);
             if (earlier.contains(tail)) {
-              debugPrint('CharacterGen: Repetition loop detected at token $tokenCount — aborting generation');
+              debugPrint('CharacterGen: Repetition loop detected at token $tokenCount — aborting');
               repetitionDetected = true;
               break;
             }
+
+            // Strategy 2: unique word ratio in the last ~500 chars
+            final recentText = accumulated.length > 500
+                ? accumulated.substring(accumulated.length - 500)
+                : accumulated;
+            final words = recentText.toLowerCase().split(RegExp(r'\s+'));
+            if (words.length > 20) {
+              final uniqueRatio = words.toSet().length / words.length;
+              if (uniqueRatio < 0.30) {
+                debugPrint('CharacterGen: Word-salad detected at token $tokenCount '
+                    '(unique ratio: ${(uniqueRatio * 100).toStringAsFixed(1)}%) — aborting');
+                repetitionDetected = true;
+                break;
+              }
+            }
           }
 
-          // Early-exit for JSON mode: stop streaming at the first complete JSON object.
-          if (isJsonMode && accumulated.contains('}')) break;
+          if (isJsonMode) {
+            // Strip think blocks (fuzzy — models misspell <think> at high temp)
+            final tOpen = r'<(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
+            final tClose = r'</(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
+            final stripped = accumulated
+                .replaceAll(RegExp(tOpen + r'[\s\S]*?' + tClose, caseSensitive: false), '')
+                .replaceAll(RegExp(tOpen + r'[\s\S]*$', caseSensitive: false), '')
+                .trim();
+            if (stripped.startsWith('{')) {
+              int depth = 0;
+              bool inString = false;
+              bool complete = false;
+              for (int ci = 0; ci < stripped.length; ci++) {
+                final ch = stripped[ci];
+                if (ch == '"' && (ci == 0 || stripped[ci - 1] != '\\')) {
+                  inString = !inString;
+                } else if (!inString) {
+                  if (ch == '{') {
+                    // Skip doubled {{ (template markers like {{char}})
+                    if (ci + 1 < stripped.length && stripped[ci + 1] == '{') {
+                      ci++; // skip the second {
+                      continue;
+                    }
+                    depth++;
+                  } else if (ch == '}') {
+                    // Skip doubled }} (template markers like {{char}})
+                    if (ci + 1 < stripped.length && stripped[ci + 1] == '}') {
+                      ci++; // skip the second }
+                      continue;
+                    }
+                    depth--;
+                    if (depth == 0) { complete = true; break; }
+                  }
+                }
+              }
+              if (complete) break;
+            }
+          }
 
-          // Strip <think> blocks from preview so reasoning isn't shown
           if (onProgress != null) {
             String preview = accumulated;
-            // Remove completed <think>...</think> blocks
-            preview = preview.replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '');
-            // Remove in-progress <think> block (no closing tag yet)
-            preview = preview.replaceAll(RegExp(r'<think>[\s\S]*$'), '');
+            // Fuzzy think-tag stripping for preview
+            final tO = r'<(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
+            final tC = r'</(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
+            preview = preview.replaceAll(RegExp(tO + r'[\s\S]*?' + tC), '');
+            preview = preview.replaceAll(RegExp(tO + r'[\s\S]*$'), '');
             onProgress(preview.trim());
           }
         }
+
+        if (_aborted || _generationEpoch != myEpoch) return null;
 
         debugPrint('CharacterGen: Stream done. Tokens: $tokenCount, '
             'Raw: ${accumulated.length} chars${repetitionDetected ? ' (truncated due to repetition)' : ''}');
@@ -597,6 +736,7 @@ Respond with ONLY the JSON:''';
             'Prompt ~$promptEstTokens tokens. If this exceeds your model\'s context window, '
             'try a shorter concept or reduce lore depth.');
       } catch (e) {
+        if (_aborted || _generationEpoch != myEpoch) return null;
         debugPrint('CharacterGen: LLM error on attempt $attempt/$maxRetries: $e');
       }
 
@@ -605,7 +745,11 @@ Respond with ONLY the JSON:''';
         final delay = Duration(seconds: 2 * (1 << (attempt - 1)));
         debugPrint('CharacterGen: Retrying in ${delay.inSeconds}s...');
         onProgress?.call('[Retrying in ${delay.inSeconds}s... (attempt ${attempt + 1}/$maxRetries)]');
-        await Future.delayed(delay);
+        final deadline = DateTime.now().add(delay);
+        while (DateTime.now().isBefore(deadline)) {
+          if (_aborted || _generationEpoch != myEpoch) return null;
+          await Future.delayed(const Duration(milliseconds: 250));
+        }
         onProgress?.call(''); // Clear retry message
       }
     }
@@ -872,7 +1016,7 @@ Concept: $concept
 $ageLine$sexLine$relationshipLine$backstoryLine$scenarioLine$keywordsLine$loreLine
 Required JSON keys (generate them IN THIS ORDER):
 ${descriptionSpec}- "personality": (string) 1-2 paragraphs, third person. ONLY inner traits, social style, motives, quirks, and behavioral tics. Do NOT repeat physical appearance or scenario/setting info here — those belong in other fields
-- "scenario": (string) 2-4 sentences MAX. Where/when/why {{user}} and {{char}} meet. ONLY the situation that frames the roleplay. No personality traits, no backstory, no system instructions — just the setting and circumstance. Keep it SHORT
+- "scenario": (string) 3-5 sentences. Synthesize a vivid opening scene that naturally emerges from the character's concept, backstory, personality, and relationship to {{user}}. Ground it in a specific place, time, and situation — include sensory details (lighting, sounds, atmosphere). Establish dramatic tension: what's at stake, what just happened, or what's about to happen that forces {{user}} and {{char}} to interact. This is stage direction for the opening moment, NOT a character summary. Do NOT restate personality traits or backstory — only the immediate scene
 $sysSpec
 - "tags": (array of strings) 3-5 relevant tags
 $lorebookSpec
@@ -1525,9 +1669,15 @@ $greeting''';
   }
 
   /// Safely extract a List<String> from a JSON map.
+  /// Strips whitespace and newlines from each element.
   List<String> _getStringList(Map<String, dynamic> data, String key) {
     final val = data[key];
-    if (val is List) return val.map((e) => e.toString()).toList();
+    if (val is List) {
+      return val
+          .map((e) => e.toString().replaceAll(RegExp(r'[\n\r]+'), ' ').trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
     return [];
   }
 

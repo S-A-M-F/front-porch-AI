@@ -137,7 +137,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(suggestion.reasoning)));
   }
 
-  void _restartBackend() {
+  Future<void> _restartBackend() async {
     final koboldService = Provider.of<KoboldService>(context, listen: false);
     final backendManager = Provider.of<BackendManager>(context, listen: false);
 
@@ -159,23 +159,29 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     storage.setUseMetal(_useMetal);
     storage.setUseRocm(_useRocm);
 
-    koboldService.stopKobold();
-    
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
-      koboldService.startKobold(
-        backendManager.backendPath!,
-        _selectedModelPath!,
-        gpuLayers: int.tryParse(_gpuLayersController.text) ?? 0,
-        contextSize: int.tryParse(_contextSizeController.text) ?? 4096,
-        useVulkan: _useVulkan,
-        useCublas: _useCublas,
-        useMetal: _useMetal,
-        useRocm: _useRocm,
-      );
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Restarting backend with new settings...')));
-    });
+    // Await the full stop so the process tree is terminated and the port is
+    // released before we start a new instance. Without this, Windows can
+    // leave the old koboldcpp.exe alive → zombie processes accumulate.
+    if (koboldService.isRunning) {
+      await koboldService.stopKobold();
+    }
+
+    // Give the OS a moment to fully release the port after process termination.
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+
+    koboldService.startKobold(
+      backendManager.backendPath!,
+      _selectedModelPath!,
+      gpuLayers: int.tryParse(_gpuLayersController.text) ?? 0,
+      contextSize: int.tryParse(_contextSizeController.text) ?? 4096,
+      useVulkan: _useVulkan,
+      useCublas: _useCublas,
+      useMetal: _useMetal,
+      useRocm: _useRocm,
+    );
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Restarting backend with new settings...')));
   }
 
   void _saveRemoteSettings() {

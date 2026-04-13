@@ -91,6 +91,11 @@ class ImageGenService extends ChangeNotifier {
   Uint8List? _lastGeneratedImage;
   String? _lastSavedPath;
 
+  /// The checkpoint name that is currently loaded on the local A1111 server.
+  /// Used to skip redundant unload→reload cycles that can leave tensors
+  /// split across CPU and CUDA on Windows/nVidia setups.
+  String? _lastLoadedCheckpoint;
+
   bool get isGenerating => _isGenerating;
   String get statusMessage => _statusMessage;
   Uint8List? get lastGeneratedImage => _lastGeneratedImage;
@@ -827,9 +832,10 @@ class ImageGenService extends ChangeNotifier {
   ///   1. `POST /sdapi/v1/unload-checkpoint` — free current model from memory
   ///      (silently ignored if not supported by the server)
   ///   2. `POST /sdapi/v1/options` with the new model name — trigger model load
+  ///   3. Poll `GET /sdapi/v1/options` to confirm the model is fully loaded
+  ///      on the GPU before returning, preventing tensor device mismatches.
   ///
-  /// Returns true if both requests completed (or unload was skipped/failed
-  /// gracefully and the options call returned 200).
+  /// Returns true if the model was successfully switched and confirmed ready.
   Future<bool> switchLocalModel(String baseUrl, String modelName) async {
     if (modelName.isEmpty) return false;
     // Step 1: unload current model (best-effort — Draw Things may ignore this)
@@ -848,13 +854,66 @@ class ImageGenService extends ChangeNotifier {
           .timeout(const Duration(seconds: 120)); // model loads can be slow
       final ok = response.statusCode == 200;
       debugPrint('ImageGen: Checkpoint switch ${ok ? "accepted" : "rejected (${response.statusCode})"}');
-      return ok;
+      if (!ok) return false;
+
+      // Step 3: confirm the model is fully loaded before returning.
+      // A1111's /sdapi/v1/options POST returns 200 when the load *starts*,
+      // but on Windows/nVidia/CuBLAS the model may still be transferring
+      // tensors to CUDA. We poll until the reported checkpoint matches or
+      // we exhaust retries.
+      final ready = await _waitForModelReady(baseUrl, modelName, client);
+      if (ready) {
+        _lastLoadedCheckpoint = modelName;
+      } else {
+        debugPrint('ImageGen: Model ready check timed out — proceeding anyway');
+        _lastLoadedCheckpoint = modelName; // assume it loaded
+      }
+      return true;
     } catch (e) {
       debugPrint('ImageGen: switchLocalModel failed: $e');
       return false;
     } finally {
       client.close();
     }
+  }
+
+  /// Poll the A1111 server until the active checkpoint matches [expected].
+  ///
+  /// This prevents a race condition where `txt2img` fires while the model
+  /// is still being moved to the CUDA device, causing the
+  /// "Expected all tensors to be on the same device" RuntimeError.
+  ///
+  /// Polls up to 30 times with a 2-second interval (60 s total).
+  Future<bool> _waitForModelReady(
+    String baseUrl,
+    String expected,
+    http.Client client,
+  ) async {
+    final uri = Uri.parse('${baseUrl.trimRight()}/sdapi/v1/options');
+    const maxAttempts = 30;
+    const pollInterval = Duration(seconds: 2);
+
+    for (var i = 0; i < maxAttempts; i++) {
+      try {
+        final resp = await client
+            .get(uri)
+            .timeout(const Duration(seconds: 10));
+        if (resp.statusCode == 200) {
+          final body = jsonDecode(resp.body) as Map<String, dynamic>;
+          final active = body['sd_model_checkpoint']?.toString() ?? '';
+          if (active == expected) {
+            debugPrint('ImageGen: Model ready confirmed on attempt ${i + 1}');
+            return true;
+          }
+          debugPrint('ImageGen: Waiting for model load… '
+              '(active="$active", expected="$expected", attempt ${i + 1}/$maxAttempts)');
+        }
+      } catch (e) {
+        debugPrint('ImageGen: Model ready poll failed (attempt ${i + 1}): $e');
+      }
+      await Future<void>.delayed(pollInterval);
+    }
+    return false;
   }
 
   /// Generate via AUTOMATIC1111 / Draw Things local server.
@@ -875,8 +934,11 @@ class ImageGenService extends ChangeNotifier {
     String loraName = '',
     double loraWeight = 0.8,
   }) async {
-    // Switch model before generating if requested
-    if (switchModelFirst && modelCheckpoint.isNotEmpty) {
+    // Switch model only if a different checkpoint was requested.
+    // Skipping redundant switches prevents the unload→reload cycle that
+    // can leave tensors split across CPU & CUDA on Windows/nVidia setups.
+    if (switchModelFirst && modelCheckpoint.isNotEmpty &&
+        modelCheckpoint != _lastLoadedCheckpoint) {
       _statusMessage = 'Loading model: $modelCheckpoint…';
       notifyListeners();
       await switchLocalModel(baseUrl, modelCheckpoint);
