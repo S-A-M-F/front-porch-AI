@@ -4868,12 +4868,12 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Regex patterns for the post-extraction quality gate.
-  /// Facts matching any of these are rejected as garbage.
+  /// Facts matching any of these are rejected as garbage or character-specific events.
   static final List<RegExp> _factGarbagePatterns = [
     // RP action text (contains asterisks or action-style phrasing)
     RegExp(r'\*'),
-    // Starts with action verbs that indicate RP narration
-    RegExp(r'^(walks|runs|looks|says|said|goes|went|came|sat|stood|turned|moved|grabbed|took|pulled|pushed|kissed|hugged|touched|smiled|laughed|nodded|sighed|whispered|moaned|gasped)\b', caseSensitive: false),
+    // Starts with action verbs that indicate RP narration (present or past tense)
+    RegExp(r'^(walks|walked|runs|ran|looks|looked|says|said|goes|went|came|sat|stood|turned|moved|grabbed|took|pulled|pushed|kissed|hugged|touched|smiled|laughed|nodded|sighed|whispered|moaned|gasped|fought|visited|traveled|explored|entered|left|arrived|met|told|asked|agreed|decided|confessed|promised|attacked|defended|defeated|escaped|rescued|seduced|flirted|dated|married|proposed)\b', caseSensitive: false),
     // LLM meta-commentary / non-facts
     RegExp(r'^(no new facts|none|n/a|nothing|unknown|unclear|not sure|i don.?t know)', caseSensitive: false),
     // Too generic / vague to be useful
@@ -4884,6 +4884,14 @@ class ChatService extends ChangeNotifier {
     RegExp(r'[.!?]{3,}|\\[nrt]|&#|%[0-9a-f]{2}', caseSensitive: false),
     // Third-person narrator voice ("The user did X", "They went Y")
     RegExp(r'^(the user|the player|they|he|she)\s+(is|was|had|has|did|does|went|walked|said|looked|seemed|appeared)\b', caseSensitive: false),
+    // Character-specific relationship events ("kissed X", "went on a date with X", "told X")
+    RegExp(r'(kissed|hugged|dated|married|proposed to|confessed to|fell in love with|slept with|fought with|traveled with|met with|went .+ with|had .+ with|told .+ about|asked .+ to|promised .+ to)\s+[A-Z]', caseSensitive: false),
+    // References to specific RP interactions ("during the", "at the", "in the [location]")
+    RegExp(r'(during the|at the|in the|after the|before the)\s+(quest|battle|fight|mission|date|party|ritual|ceremony|adventure|journey|dungeon|castle|tavern|camp)', caseSensitive: false),
+    // Emotional events tied to scenes ("felt X when", "was X during")
+    RegExp(r'(felt|was|became|got)\s+\w+\s+(when|during|after|while|because)\b', caseSensitive: false),
+    // Relationship status with fictional characters ("is dating X", "is friends with X", "loves X")
+    RegExp(r'(is|are|was|were)\s+(dating|married to|in love with|friends with|enemies with|attracted to|bonded with|loyal to|allied with)\b', caseSensitive: false),
   ];
 
   /// Minimum/maximum character length for a valid fact.
@@ -4894,11 +4902,27 @@ class ChatService extends ChangeNotifier {
   static const int _maxLearnedFacts = 50;
 
   /// Returns true if a fact passes the quality gate.
+  /// Rejects RP actions, character-specific events, and scene-bound facts.
   bool _isValidFact(String fact) {
     if (fact.length < _minFactLength || fact.length > _maxFactLength) return false;
     for (final pattern in _factGarbagePatterns) {
       if (pattern.hasMatch(fact)) {
         debugPrint('[RAG:Persona] ✗ Rejected by quality gate: "$fact"');
+        return false;
+      }
+    }
+    // Reject facts that reference the current character by name (chat-specific)
+    if (_activeCharacter != null) {
+      final charName = _activeCharacter!.name.toLowerCase();
+      if (fact.toLowerCase().contains(charName)) {
+        debugPrint('[RAG:Persona] ✗ Rejected (references character "${_activeCharacter!.name}"): "$fact"');
+        return false;
+      }
+    }
+    // Reject facts referencing any group chat character
+    for (final gc in _groupCharacters) {
+      if (fact.toLowerCase().contains(gc.name.toLowerCase())) {
+        debugPrint('[RAG:Persona] ✗ Rejected (references group character "${gc.name}"): "$fact"');
         return false;
       }
     }
@@ -4944,20 +4968,35 @@ class ChatService extends ChangeNotifier {
           : '';
 
       // ── Strict RP-Aware Extraction Prompt ──
+      // Build character name list to explicitly exclude from facts
+      final charNames = <String>[];
+      if (_activeCharacter != null) charNames.add(_activeCharacter!.name);
+      for (final gc in _groupCharacters) {
+        if (!charNames.contains(gc.name)) charNames.add(gc.name);
+      }
+      final charNamesStr = charNames.isNotEmpty
+          ? 'Characters in this chat (NEVER reference these): ${charNames.join(", ")}\n'
+          : '';
+
       final extractionPrompt =
-          'You are extracting REAL personal facts about a user named "$userName" from their chat messages.\n\n'
+          'You are extracting REAL, PERMANENT personal facts about a user named "$userName" from their chat messages.\n'
+          'These facts will be used ACROSS ALL conversations, not just this one.\n\n'
           'CRITICAL RULES:\n'
-          '- ONLY extract facts that $userName explicitly states about THEMSELVES as a real person\n'
+          '- ONLY extract facts that are UNIVERSALLY TRUE about $userName as a real person\n'
+          '- Facts must be TIMELESS and CONTEXT-FREE — true regardless of which character they are talking to\n'
           '- IGNORE all roleplay actions (text between *asterisks*), character dialogue, and narrative descriptions\n'
           '- IGNORE anything said IN CHARACTER or about fictional scenarios, quests, or fantasy settings\n'
-          '- Each fact must be something you would put on a real person\'s About Me page or dating profile\n'
-          '- Extract ONLY concrete, specific details — not vague observations\n'
-          '- If you are not confident a fact is about the REAL person behind the screen, do NOT extract it\n\n'
-          'GOOD facts: "Has a dog named Max", "Works as a nurse", "Favorite color is blue", "Lives in Texas"\n'
-          'BAD (do NOT extract): "Walked to the door", "Kissed the character", "Is a warrior princess", "Said hello", "Seems happy"\n\n'
+          '- NEVER extract events, actions, or interactions that happened with a specific character\n'
+          '- NEVER extract relationship status or feelings toward any fictional character\n'
+          '- NEVER mention any character name in a fact\n'
+          '- Each fact must be something you would put on a real person\'s About Me page\n'
+          '- Extract ONLY concrete, specific, permanent details — not momentary states or scene-specific observations\n\n'
+          '$charNamesStr\n'
+          'GOOD facts (universal truths): "Has a dog named Max", "Works as a nurse", "Favorite color is blue", "Lives in Texas", "Is 25 years old", "Enjoys cooking"\n'
+          'BAD (do NOT extract): "Walked to the door", "Kissed [character]", "Went on a date", "Told [character] a secret", "Felt nervous", "Is dating [character]", "Explored the dungeon", "Agreed to help", "Seems happy today"\n\n'
           '$existingFactsText'
           'Recent messages from $userName:\n$userMsgText\n\n'
-          'Return ONLY a valid JSON array of short factual sentences. If no qualifying facts exist, return [].\n'
+          'Return ONLY a valid JSON array of short, universal factual sentences. If no qualifying facts exist, return [].\n'
           'Response:';
 
       debugPrint(
@@ -6456,8 +6495,8 @@ class ChatService extends ChangeNotifier {
         ).firstMatch(text);
         if (arousalMatch != null) {
           arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0).clamp(
-            -2,
-            2,
+            -10,
+            10,
           );
           _arousalLevel = (_arousalLevel + arousalDelta).clamp(-3, 10);
         }
@@ -6533,9 +6572,9 @@ class ChatService extends ChangeNotifier {
         ? ', "arousal_delta": <number -10 to +10>'
         : '';
     final arousalInstr = _nsfwCooldownEnabled
-        ? '3. "arousal_delta": Physical arousal shift this turn. (-2 to +2)\n'
+        ? '3. "arousal_delta": Physical arousal shift this turn. (-10 to +10)\n'
               '   Current arousal: $_arousalLevel/10. '
-              'High arousal naturally limits further increase — at 8+ only the most intense stimuli warrant +1.\n'
+              'Scale to the intensity — a mild flirt might be +1, while explicit contact could be +5 or more. Mood-killers can be large negatives.\n'
         : '';
 
     // ── Emotion inertia context ──
@@ -6592,7 +6631,7 @@ class ChatService extends ChangeNotifier {
         ).firstMatch(text);
         if (arousalMatch != null) {
           final arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0)
-              .clamp(-2, 2);
+              .clamp(-10, 10);
           _arousalLevel = (_arousalLevel + arousalDelta).clamp(-3, 10);
           if (arousalDelta != 0) {
             _pendingRealismMetadata ??= {};
@@ -6896,8 +6935,8 @@ class ChatService extends ChangeNotifier {
         : '';
     // Arousal is field 7 (after posture), objective is 8, fixation 9, reason 10
     final arousalInstr = _nsfwCooldownEnabled
-        ? '7. "arousal_delta": Physical arousal shift this turn. (-2 to +2)\n'
-              '   Current arousal: $_arousalLevel/10. High arousal limits further increase — at 8+ only the most intense stimuli warrant +1.\n'
+        ? '7. "arousal_delta": Physical arousal shift this turn. (-10 to +10)\n'
+              '   Current arousal: $_arousalLevel/10. Scale to the intensity — a mild flirt might be +1, explicit contact +5 or more. Mood-killers can be large negatives.\n'
         : '';
 
     // Determine the next field number after arousal (or after posture if arousal disabled)
@@ -6992,8 +7031,8 @@ class ChatService extends ChangeNotifier {
         ).firstMatch(text);
         if (arousalMatch != null) {
           arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0).clamp(
-            -2,
-            2,
+            -10,
+            10,
           );
           _arousalLevel = (_arousalLevel + arousalDelta).clamp(-3, 10);
         }
