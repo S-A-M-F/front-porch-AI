@@ -44,6 +44,8 @@ class RealismFormSection extends StatelessWidget {
   final ValueChanged<bool> onNsfwCooldownChanged;
   final bool chaosModeEnabled;
   final ValueChanged<bool> onChaosModeChanged;
+  final String currentTask;
+  final ValueChanged<String> onCurrentTaskChanged;
 
   const RealismFormSection({
     super.key,
@@ -67,6 +69,8 @@ class RealismFormSection extends StatelessWidget {
     required this.onNsfwCooldownChanged,
     required this.chaosModeEnabled,
     required this.onChaosModeChanged,
+    required this.currentTask,
+    required this.onCurrentTaskChanged,
   });
 
   static const _timeOptions = [
@@ -431,6 +435,50 @@ class RealismFormSection extends StatelessWidget {
                   subtitle: 'Random narrative events during roleplay',
                   value: chaosModeEnabled,
                   onChanged: onChaosModeChanged,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Task / Quest Section
+          _sectionHeader(Icons.flag, 'Current Task / Quest', Colors.orangeAccent),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: _cardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Task', style: _labelStyle),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: TextField(
+                    controller: TextEditingController(text: currentTask)
+                      ..selection = TextSelection.fromPosition(
+                        TextPosition(offset: currentTask.length),
+                      ),
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    maxLines: 3,
+                    minLines: 1,
+                    onChanged: onCurrentTaskChanged,
+                    decoration: InputDecoration(
+                      hintText: 'e.g. Find the missing artifact, Survive the first day at school',
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 13),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Sets the initial quest or objective when a new conversation starts.',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11),
                 ),
               ],
             ),

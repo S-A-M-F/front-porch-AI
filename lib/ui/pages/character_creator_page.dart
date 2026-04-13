@@ -80,6 +80,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   String _customRelationship = '';
   String _selectedArchetype = '';
   bool _nsfwEnabled = false;
+  bool _reasoningEnabled = false;
   String _generationDetail = 'Standard';
 
   // SFW Appearance
@@ -294,8 +295,26 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
       // Persona
       _selectedPersonaId = '';
+
+      // Active gen service
+      _activeGenService = null;
     });
   }
+
+  /// Abort an in-progress AI generation. Signals the CharacterGenService
+  /// to stop between steps and cancels any in-flight LLM stream.
+  void _abortGeneration() {
+    _activeGenService?.abort();
+    setState(() {
+      _isGenerating = false;
+      _generationStatus = 'Generation aborted.';
+      _generationPreview = '';
+      _progress = 0.0;
+      _currentStep = 2; // Return to config step
+      _activeGenService = null;
+    });
+  }
+
   // KoboldCpp local model state
   List<FileSystemEntity> _localModels = [];
   String _selectedLocalModelPath = '';
@@ -473,6 +492,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   String _generationPreview = '';
   bool _isGenerating = false;
   double _progress = 0.0;
+  CharacterGenService? _activeGenService;
 
   // Step 3 — Generated results
   CharacterCard? _generatedCard;
@@ -493,6 +513,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   String _realismEmotionIntensity = 'mild';
   bool _realismNsfwCooldown = false;
   bool _realismChaosMode = false;
+  String _realismCurrentTask = '';
 
   // Model selector state
   List<RemoteModelInfo> _availableModels = [];
@@ -522,6 +543,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   static const _prefSex = 'chargen_sex';
   static const _prefRelationship = 'chargen_relationship';
   static const _prefPersona = 'chargen_persona';
+  static const _prefQuickScenario = 'chargen_quick_scenario';
 
   static const _prefLoreCategories = 'chargen_lore_categories';
   static const _prefLoreDepth = 'chargen_lore_depth';
@@ -607,6 +629,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         _sexController.text = prefs.getString(_prefSex) ?? '';
         _relationshipController.text = prefs.getString(_prefRelationship) ?? '';
         _selectedPersonaId = prefs.getString(_prefPersona) ?? '';
+        _quickScenarioController.text = prefs.getString(_prefQuickScenario) ?? '';
 
         final savedCategories = prefs.getString(_prefLoreCategories) ?? '';
         _selectedLoreCategories = savedCategories.split(',').where((c) => c.isNotEmpty).toSet();
@@ -684,6 +707,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     await prefs.setString(_prefSex, _sexController.text);
     await prefs.setString(_prefRelationship, _relationshipController.text);
     await prefs.setString(_prefPersona, _selectedPersonaId);
+    await prefs.setString(_prefQuickScenario, _quickScenarioController.text);
 
     await prefs.setString(_prefLoreCategories, _selectedLoreCategories.join(','));
     await prefs.setString(_prefLoreDepth, _loreDepth);
@@ -822,7 +846,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       // Stop if running
       if (kobold.isRunning) {
         await kobold.stopKobold();
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(seconds: 1));
       }
 
       // Find executable
@@ -867,7 +891,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       for (int i = 0; i < 120; i++) {
         await Future.delayed(const Duration(seconds: 1));
         if (!mounted) return;
-        if (kobold.modelReady || kobold.consumeModelReady()) {
+        if (kobold.modelReady) {
           setState(() {
             _isReloadingKobold = false;
             _koboldStatus = 'Model loaded successfully!';
@@ -1373,10 +1397,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Tip: Use a non-thinking model (GPT-4o, Claude, Gemini) for best results.',
+                  'Tip: Enable Model Thinking below if using a reasoning model (e.g. Precog, QwQ).',
                   style: TextStyle(color: Colors.white24, fontSize: 11),
                 ),
               ],
+
+              const SizedBox(height: 24),
+
+              // Reasoning toggle
+              _buildReasoningToggle(Colors.blueAccent),
 
               const SizedBox(height: 32),
 
@@ -2105,6 +2134,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     final worldLore = await _extractWorldLore(llmProvider);
 
     final genService = CharacterGenService(llmService);
+    _activeGenService = genService;
     String? genError;
 
     // Quick mode defaults — everything the wizard normally asks for
@@ -2133,6 +2163,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       userPersonaContext: userPersonaContext,
       worldLore: worldLore,
       generateDescription: true,
+      nsfwEnabled: _nsfwEnabled,
+      reasoningEnabled: _reasoningEnabled,
       imageGenPromptParadigm: storage.imageGenPromptParadigm,
       onProgress: (accumulated) {
         if (mounted) {
@@ -2152,10 +2184,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     );
 
     if (!mounted) return;
+    // If aborted, _abortGeneration already reset state — bail out silently.
+    if (genService.isAborted) return;
     if (card == null || genError != null) {
       setState(() {
         _isGenerating = false;
         _generationStatus = genError ?? 'Generation failed. Check your backend connection.';
+        _activeGenService = null;
       });
       return;
     }
@@ -2184,6 +2219,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       _currentStep = 4; // Realism Engine step (was Review)
       _isGenerating = false;
       _progress = 1.0;
+      _activeGenService = null;
     });
 
     // Auto-start avatar generation (API backend only)
@@ -2328,6 +2364,66 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
           subtitle: Text(subtitle, style: const TextStyle(color: Colors.white24, fontSize: 11)),
           children: children,
+        ),
+      ),
+    );
+  }
+
+  /// Shared reasoning/thinking toggle for all creation modes.
+  Widget _buildReasoningToggle(Color accentColor) {
+    return InkWell(
+      onTap: () => setState(() => _reasoningEnabled = !_reasoningEnabled),
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: _reasoningEnabled
+              ? accentColor.withValues(alpha: 0.08)
+              : const Color(0xFF1E293B),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _reasoningEnabled ? accentColor.withValues(alpha: 0.5) : Colors.white12,
+            width: _reasoningEnabled ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.psychology,
+              color: _reasoningEnabled ? accentColor : Colors.white24,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Model Thinking',
+                    style: TextStyle(
+                      color: _reasoningEnabled ? Colors.white : Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Let the model reason before generating. Higher quality, but slower',
+                    style: TextStyle(
+                      color: _reasoningEnabled ? accentColor.withValues(alpha: 0.6) : Colors.white24,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: _reasoningEnabled,
+              onChanged: (v) => setState(() => _reasoningEnabled = v),
+              activeColor: accentColor,
+            ),
+          ],
         ),
       ),
     );
@@ -4100,6 +4196,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // Lore Input
               _buildLoreInputSection(Colors.blueAccent),
               const SizedBox(height: 32),
+              const SizedBox(height: 32),
 
               // Back + Generate buttons
               Center(
@@ -4372,7 +4469,24 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   minHeight: 6,
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              // Abort button
+              if (_isGenerating)
+                SizedBox(
+                  width: 200,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: _abortGeneration,
+                    icon: const Icon(Icons.stop_circle_outlined, size: 20),
+                    label: const Text('Abort Generation', style: TextStyle(fontSize: 14)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: const BorderSide(color: Colors.redAccent),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
               // Live preview of generation
               if (_generationPreview.isNotEmpty)
                 Container(
@@ -4478,6 +4592,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 onNsfwCooldownChanged: (v) => setState(() => _realismNsfwCooldown = v),
                 chaosModeEnabled: _realismChaosMode,
                 onChaosModeChanged: (v) => setState(() => _realismChaosMode = v),
+                currentTask: _realismCurrentTask,
+                onCurrentTaskChanged: (v) => setState(() => _realismCurrentTask = v),
               ),
 
               // Navigation
@@ -4790,7 +4906,6 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 _editableField('Scenario', _scenarioController, maxLines: 3),
                 _editableField('First Message', _firstMessageController, maxLines: 6),
                 _editableField('Example Dialogue', _exampleDialogueController, maxLines: 6),
-                _editableField('System Prompt', _systemPromptController, maxLines: 3),
 
                 // ── Lorebook Preview & Cherry-pick ──
                 if (_generatedCard!.lorebook != null && _generatedCard!.lorebook!.entries.isNotEmpty) ...[
@@ -5164,6 +5279,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     }
 
     final genService = CharacterGenService(llmService);
+    _activeGenService = genService;
 
 
     final card = await genService.generateCharacter(
@@ -5189,6 +5305,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       characterContext: contextParts.join('\n'),
       userPersonaContext: userPersonaContext,
       generateDescription: true,
+      nsfwEnabled: _nsfwEnabled,
+      reasoningEnabled: _reasoningEnabled,
       imageGenPromptParadigm: storage.imageGenPromptParadigm,
       onProgress: (accumulated) {
         if (mounted) {
@@ -5205,6 +5323,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     // Fetch the dedicated image prompt
     _imagePrompt = genService.generatedImagePrompt;
 
+    // If aborted, _abortGeneration already reset state — bail out silently.
+    if (genService.isAborted) return;
+
     if (card != null) {
       _generatedCard = card;
       _lorebookEntryEnabled = {};
@@ -5220,13 +5341,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       _exampleDialogueController.text = card.mesExample;
       _systemPromptController.text = card.systemPrompt;
 
-      setState(() { _currentStep = 4; _isGenerating = false; _progress = 1.0; }); // → Realism step
+      setState(() { _currentStep = 4; _isGenerating = false; _progress = 1.0; _activeGenService = null; }); // → Realism step
 
       if (llmProvider.activeBackend != BackendType.kobold) {
         _generateAvatar();
       }
     } else {
-      setState(() { _currentStep = 4; _isGenerating = false; _generatedCard = null; }); // → Realism step (error)
+      setState(() { _currentStep = 4; _isGenerating = false; _generatedCard = null; _activeGenService = null; }); // → Realism step (error)
     }
   }
 
@@ -5581,6 +5702,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     final worldLore = await _extractWorldLore(llmProvider);
     
     final genService = CharacterGenService(llmService);
+    _activeGenService = genService;
 
 
     // Build appearance + NSFW context
@@ -5658,6 +5780,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         if (_nsfwEnabled && nsfwParts.isNotEmpty) nsfwParts.join(', '),
       ].join('\n'),
       userPersonaContext: userPersonaContext,
+      nsfwEnabled: _nsfwEnabled,
+      reasoningEnabled: _reasoningEnabled,
       imageGenPromptParadigm: storage.imageGenPromptParadigm,
       onProgress: (accumulated) {
 
@@ -5688,6 +5812,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     // Fetch the dedicated image prompt before moving to review
     _imagePrompt = genService.generatedImagePrompt;
 
+    // If aborted, _abortGeneration already reset state — bail out silently.
+    if (genService.isAborted) return;
+
     if (card != null) {
       // Inject user-authored description (from magic wand)
       card.description = enrichedConcept;
@@ -5711,6 +5838,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         _currentStep = 4; // → Realism Engine step
         _isGenerating = false;
         _progress = 1.0;
+        _activeGenService = null;
       });
 
       // Auto-start avatar generation (API backend only — KoboldCpp has no image API)
@@ -5722,6 +5850,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         _currentStep = 4; // → Realism step (error state)
         _isGenerating = false;
         _generatedCard = null;
+        _activeGenService = null;
       });
     }
   }
@@ -5828,6 +5957,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           emotionIntensity: _realismEmotionIntensity,
           nsfwCooldownEnabled: _realismNsfwCooldown,
           chaosModeEnabled: _realismChaosMode,
+          currentTask: _realismCurrentTask,
         );
       }
 
@@ -5880,7 +6010,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         for (final key in [_prefName, _prefConcept, _prefKeywords, _prefArtStyle]) {
           await prefs.remove(key);
         }
-        Navigator.of(context).pop();
+        if (mounted) Navigator.of(context).pop();
       }
     } catch (e, stackTrace) {
       debugPrint('AG_DEBUG: ERROR saving character: $e');

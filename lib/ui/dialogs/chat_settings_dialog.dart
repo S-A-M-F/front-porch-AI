@@ -239,7 +239,7 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                          setState(() => _gen.minLength = val.toInt());
                          _save();
                        }, divisions: 512, tooltip: 'Minimum tokens the AI must write before it can stop. Increase for longer responses.'),
-                       _buildIntSlider('Context Size', _gen.resolveContextSize(storage).toDouble().clamp(512, isRemote ? 500000 : 15000), 512, isRemote ? 500000.0 : 15000.0, (val) {
+                       _buildIntSlider('Context Size', _gen.resolveContextSize(storage).toDouble().clamp(512, isRemote ? 500000 : 131072), 512, isRemote ? 500000.0 : 131072.0, (val) {
                          setState(() => _gen.contextSize = val.toInt());
                          _save();
                        }, step: 512),

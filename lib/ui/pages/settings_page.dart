@@ -387,6 +387,11 @@ class _SettingsPageState extends State<SettingsPage> {
       kvQuantizationLevel: Provider.of<StorageService>(context, listen: false).kvQuantizationLevel,
     );
 
+    // Persist settings to storage so they survive app restart
+    final storage = Provider.of<StorageService>(context, listen: false);
+    storage.setGpuLayers(suggestion.gpuLayers);
+    storage.setContextSize(suggestion.contextSize);
+
     setState(() {
       _gpuLayersController.text = suggestion.gpuLayers.toString();
       _contextSizeController.text = suggestion.contextSize.toString();
@@ -395,12 +400,17 @@ class _SettingsPageState extends State<SettingsPage> {
         _useMetal = true;
         _useVulkan = false;
         _useCublas = false;
+        storage.setUseMetal(true);
+        storage.setUseVulkan(false);
+        storage.setUseCublas(false);
       }
       // If user has Nvidia, suggest Cublas instead of Vulkan usually
       else if (hardware.vendor == 'Nvidia') {
         _useCublas = true;
         _useVulkan = false;
         _useMetal = false;
+        storage.setUseCublas(true);
+        storage.setUseVulkan(false);
       } else {
         _useCublas = false;
         _useMetal = false;
@@ -418,12 +428,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _applyAutoConfiguration(silent: false);
   }
 
-  void _toggleKobold(BuildContext context) {
+  Future<void> _toggleKobold(BuildContext context) async {
     final koboldService = Provider.of<KoboldService>(context, listen: false);
     final backendManager = Provider.of<BackendManager>(context, listen: false);
 
     if (koboldService.isRunning) {
-      koboldService.stopKobold();
+      await koboldService.stopKobold();
     } else {
       if (backendManager.backendPath == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -446,11 +456,23 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
 
+      final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 0;
+      final contextSize = int.tryParse(_contextSizeController.text) ?? 4096;
+
+      // Persist settings so autostart uses them on next launch
+      final storage = Provider.of<StorageService>(context, listen: false);
+      storage.setGpuLayers(gpuLayers);
+      storage.setContextSize(contextSize);
+      storage.setUseCublas(_useCublas);
+      storage.setUseVulkan(_useVulkan);
+      storage.setUseMetal(_useMetal);
+      storage.setUseRocm(_useRocm);
+
       koboldService.startKobold(
         backendManager.backendPath!,
         _selectedModelPath!,
-        gpuLayers: int.tryParse(_gpuLayersController.text) ?? 0,
-        contextSize: int.tryParse(_contextSizeController.text) ?? 4096,
+        gpuLayers: gpuLayers,
+        contextSize: contextSize,
         useVulkan: _useVulkan,
         useCublas: _useCublas,
         useMetal: _useMetal,
@@ -2431,11 +2453,6 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 24),
-            _buildStopSequencesSection(context),
-            if (Provider.of<LLMProvider>(context).isLocal) ...[
-            const SizedBox(height: 24),
-            _buildBannedPhrasesSection(context),
-            ],
          ],
        ),
      );
@@ -2601,131 +2618,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildStopSequencesSection(BuildContext context) {
-    final storageService = Provider.of<StorageService>(context);
-    final theme = Theme.of(context);
-    final controller = TextEditingController();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader('Stop Sequences (SillyTavern Style)', context),
-        const SizedBox(height: 8),
-        const Text(
-          'Generation will immediately stop if these strings are encountered. '
-          'Useful for preventing hallucinations or user impersonation.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: controller,
-                        style: theme.textTheme.bodyMedium,
-                        decoration: InputDecoration(
-                          hintText: 'Add new stop string...',
-                          hintStyle: TextStyle(color: theme.textTheme.bodySmall?.color),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                        ),
-                        onSubmitted: (val) {
-                          if (val.isNotEmpty) {
-                            storageService.addStopSequence(val);
-                            controller.clear();
-                          }
-                        },
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add_circle, color: Colors.blueAccent),
-                      onPressed: () {
-                        if (controller.text.isNotEmpty) {
-                          storageService.addStopSequence(controller.text);
-                          controller.clear();
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              ...storageService.stopSequences.map((seq) => ListTile(
-                title: Text(
-                  seq.replaceAll('\n', '\\n'),
-                  style: theme.textTheme.bodyMedium,
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
-                  onPressed: () => storageService.removeStopSequence(seq),
-                ),
-                dense: true,
-              )).toList(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBannedPhrasesSection(BuildContext context) {
-    final storageService = Provider.of<StorageService>(context);
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader('Banned Phrases (Anti-Slop)', context),
-        const SizedBox(height: 8),
-        const Text(
-          'Phrases banned from generation. If detected, KoboldCpp backtracks and regenerates. '
-          'One phrase per line. (Local KoboldCpp only)',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          padding: const EdgeInsets.all(8.0),
-          child: TextField(
-            controller: _bannedPhrasesController,
-            maxLines: 6,
-            minLines: 3,
-            style: theme.textTheme.bodyMedium,
-            decoration: InputDecoration(
-              hintText: 'shivers down\na cold shiver\nher eyes sparkled',
-              hintStyle: TextStyle(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.4)),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            onChanged: (val) {
-              final phrases = val.split('\n').where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
-              storageService.setBannedPhrases(phrases);
-            },
-          ),
-        ),
-        if (storageService.bannedPhrases.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              '${storageService.bannedPhrases.length} phrase${storageService.bannedPhrases.length == 1 ? '' : 's'} banned',
-              style: TextStyle(color: Colors.amber.shade300, fontSize: 11),
-            ),
-          ),
-      ],
-    );
-  }
 
   void _showSavePromptDialog(BuildContext context, StorageService storageService) {
 
@@ -3154,10 +3046,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
               Slider(
-                value: storage.contextSize.toDouble().clamp(512, isRemote ? 500000.0 : 15000.0),
+                value: storage.contextSize.toDouble().clamp(512, isRemote ? 500000.0 : 131072.0),
                 min: 512,
-                max: isRemote ? 500000.0 : 15000.0,
-                divisions: isRemote ? null : ((15000 - 512) ~/ 512),
+                max: isRemote ? 500000.0 : 131072.0,
+                divisions: isRemote ? null : ((131072 - 512) ~/ 512),
                 onChanged: (val) => storage.setContextSize(val.toInt()),
                 activeColor: Colors.blueAccent,
                 inactiveColor: Colors.white24,

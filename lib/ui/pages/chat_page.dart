@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
 import 'dart:ui';
 import 'dart:convert';
 import 'dart:io';
@@ -404,83 +405,7 @@ class _ChatPageState extends State<ChatPage> {
                           ),
                         ),
                         if (chatService.isGenerating)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF1A2332),
-                              border: Border(top: BorderSide(color: Colors.white10)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.blueAccent,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      chatService.isBuffering ? 'Buffering...' : 'Generating response...',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.7),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Text(
-                                      '${chatService.tokensPerSecond.toStringAsFixed(1)} t/s',
-                                      style: const TextStyle(
-                                        color: Colors.amberAccent,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        fontFamily: 'monospace',
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      '${chatService.tokensGenerated} / ${chatService.maxTokens} tokens',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.5),
-                                        fontSize: 11,
-                                        fontFamily: 'monospace',
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      '${(chatService.generationProgress * 100).toInt()}%',
-                                      style: const TextStyle(
-                                        color: Colors.blueAccent,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: chatService.generationProgress,
-                                    minHeight: 4,
-                                    backgroundColor: Colors.white.withValues(alpha: 0.08),
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Color.lerp(
-                                        const Color(0xFF3B82F6),
-                                        const Color(0xFF10B981),
-                                        chatService.generationProgress,
-                                      )!,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                          _GenerationStatusBar(chatService: chatService),
                   _buildInputArea(context, chatService),
                       ],
                     ),
@@ -7408,6 +7333,252 @@ class _AnimatedEvalPill extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Rich, phase-aware generation status bar.
+/// Shows distinct visuals for each generation phase with real KoboldCPP metrics.
+class _GenerationStatusBar extends StatefulWidget {
+  final ChatService chatService;
+  const _GenerationStatusBar({required this.chatService});
+
+  @override
+  State<_GenerationStatusBar> createState() => _GenerationStatusBarState();
+}
+
+class _GenerationStatusBarState extends State<_GenerationStatusBar> {
+  Timer? _elapsedTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Tick every second to update elapsed time displays for prefill/thinking
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _elapsedTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = widget.chatService;
+    final phase = cs.generationPhase;
+
+    // Phase-specific configuration
+    final (String label, Color accentColor, IconData icon, bool showMetrics) = switch (phase) {
+      GenerationPhase.preparing => ('Assembling prompt...', const Color(0xFFF59E0B), Icons.build_rounded, false),
+      GenerationPhase.prefilling => _prefillLabel(cs),
+      GenerationPhase.thinking => _thinkingLabel(cs),
+      GenerationPhase.buffering => ('Buffering tokens...', const Color(0xFF3B82F6), Icons.hourglass_top_rounded, true),
+      GenerationPhase.generating => ('Generating response...', const Color(0xFF10B981), Icons.bolt_rounded, true),
+      GenerationPhase.idle => ('Idle', Colors.white38, Icons.check_rounded, false),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1A2332),
+        border: Border(top: BorderSide(color: Colors.white10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // Phase icon with accent color
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: phase == GenerationPhase.prefilling || phase == GenerationPhase.preparing
+                    ? _PulsingIcon(icon: icon, color: accentColor)
+                    : Icon(icon, size: 16, color: accentColor),
+              ),
+              const SizedBox(width: 10),
+              // Phase label
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: accentColor.withOpacity(0.9),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // Metrics (only shown during active generation)
+              if (showMetrics) ...[
+                Text(
+                  '${cs.tokensPerSecond.toStringAsFixed(1)} t/s',
+                  style: const TextStyle(
+                    color: Colors.amberAccent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '${cs.tokensGenerated} / ${cs.maxTokens}',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '${(cs.generationProgress * 100).toInt()}%',
+                  style: TextStyle(
+                    color: accentColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Progress bar — determinate when we can estimate, indeterminate otherwise
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: _buildProgressBar(cs, phase, accentColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Smart progress bar: determinate during generation (real data), indeterminate otherwise.
+  Widget _buildProgressBar(ChatService cs, GenerationPhase phase, Color accentColor) {
+    // During generation: use actual token progress
+    if (phase == GenerationPhase.generating || phase == GenerationPhase.buffering) {
+      return LinearProgressIndicator(
+        value: cs.generationProgress,
+        minHeight: 4,
+        backgroundColor: Colors.white.withOpacity(0.08),
+        valueColor: AlwaysStoppedAnimation<Color>(
+          Color.lerp(accentColor, const Color(0xFF10B981), cs.generationProgress)!,
+        ),
+      );
+    }
+
+    // Prefill/preparing/thinking: indeterminate (no reliable progress data)
+    return LinearProgressIndicator(
+      minHeight: 4,
+      backgroundColor: Colors.white.withOpacity(0.08),
+      valueColor: AlwaysStoppedAnimation<Color>(accentColor.withOpacity(0.7)),
+    );
+  }
+
+  /// Build prefill label with elapsed time and KoboldCPP perf data.
+  (String, Color, IconData, bool) _prefillLabel(ChatService cs) {
+    final elapsed = cs.prefillElapsedSeconds;
+    final elapsedStr = elapsed >= 1 ? ' (${elapsed.toInt()}s)' : '';
+    final promptTokens = cs.prefillPromptTokens;
+
+    // Format token count: "~27K tokens" or "~4,096 tokens"
+    String tokenStr = '';
+    if (promptTokens > 0) {
+      if (promptTokens >= 1000) {
+        tokenStr = '~${(promptTokens / 1000).toStringAsFixed(promptTokens >= 10000 ? 0 : 1)}K tokens';
+      } else {
+        tokenStr = '~$promptTokens tokens';
+      }
+    }
+
+    // Check for KoboldCPP perf data
+    final perf = cs.lastPerfData;
+    String speedStr = '';
+    if (perf != null) {
+      final idle = perf['idle'];
+      if (idle == 0) {
+        final speed = perf['last_process_speed'];
+        if (speed != null && speed is num && speed > 0) {
+          speedStr = '~${speed.toStringAsFixed(0)} t/s';
+        }
+      }
+    }
+
+    // Build detail string: "~44K tokens, ~78 t/s"
+    final parts = <String>[
+      if (tokenStr.isNotEmpty) tokenStr,
+      if (speedStr.isNotEmpty) speedStr,
+    ];
+    final detail = parts.isNotEmpty ? ' — ${parts.join(', ')}' : '';
+
+    return (
+      'Processing prompt$elapsedStr$detail',
+      const Color(0xFFF97316), // Orange
+      Icons.memory_rounded,
+      false,
+    );
+  }
+
+  /// Build thinking label with elapsed time.
+  (String, Color, IconData, bool) _thinkingLabel(ChatService cs) {
+    final tokens = cs.tokensGenerated;
+    final tps = cs.tokensPerSecond;
+    String detail = '';
+    if (tokens > 0 && tps > 0) {
+      detail = ' — ${tps.toStringAsFixed(1)} t/s, $tokens tokens';
+    } else if (tokens > 0) {
+      detail = ' — $tokens tokens';
+    }
+
+    return (
+      'Model is thinking...$detail',
+      const Color(0xFFA855F7), // Purple
+      Icons.psychology_rounded,
+      false,
+    );
+  }
+}
+
+/// Pulsing icon animation for prefill/preparing phases.
+class _PulsingIcon extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  const _PulsingIcon({required this.icon, required this.color});
+
+  @override
+  State<_PulsingIcon> createState() => _PulsingIconState();
+}
+
+class _PulsingIconState extends State<_PulsingIcon> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Opacity(
+          opacity: 0.4 + (_controller.value * 0.6),
+          child: Icon(widget.icon, size: 16, color: widget.color),
+        );
+      },
     );
   }
 }

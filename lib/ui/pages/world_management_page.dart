@@ -199,18 +199,19 @@ class _WorldCard extends StatelessWidget {
               icon: const Icon(Icons.edit, size: 20),
               onPressed: () => _editWorld(context),
             ),
-            world.linkedCharacterName != null
-              ? Tooltip(
-                  message: 'Cannot delete: linked to ${world.linkedCharacterName}',
-                  child: IconButton(
-                    icon: Icon(Icons.delete, size: 20, color: Colors.grey.shade600),
-                    onPressed: null,
-                  ),
-                )
-              : IconButton(
-                  icon: const Icon(Icons.delete, size: 20, color: Colors.redAccent),
-                  onPressed: () => _confirmDelete(context),
-                ),
+            if (world.linkedCharacterName != null)
+              IconButton(
+                icon: const Icon(Icons.link_off, size: 20, color: Colors.orangeAccent),
+                tooltip: 'Unlink from ${world.linkedCharacterName}',
+                onPressed: () {
+                  world.linkedCharacterName = null;
+                  repo.saveWorld(world);
+                },
+              ),
+            IconButton(
+              icon: const Icon(Icons.delete, size: 20, color: Colors.redAccent),
+              onPressed: () => _confirmDelete(context),
+            ),
           ],
         ),
       ),

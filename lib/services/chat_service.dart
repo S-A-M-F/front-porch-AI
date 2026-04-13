@@ -70,6 +70,24 @@ ws      ::= [ \t\n\r]*
 
 enum GenerationMode { normal, continue_, impersonate }
 
+/// Tracks the distinct phases of text generation for UI display.
+/// Each phase maps to a user-visible status message.
+enum GenerationPhase {
+  /// Not generating.
+  idle,
+  /// Building the prompt context (lorebook, memories, history, etc.).
+  preparing,
+  /// HTTP request sent, waiting for response + prompt processing.
+  /// For KoboldCPP this is the prefill/eval phase which can be long.
+  prefilling,
+  /// Tokens arriving but inside <think>...</think> tags (reasoning model).
+  thinking,
+  /// Display buffer is accumulating tokens before smooth playback begins.
+  buffering,
+  /// Tokens are actively being generated and displayed to the user.
+  generating,
+}
+
 class ChatMessage {
   final List<String> swipes;
   int swipeIndex;
@@ -264,6 +282,10 @@ class ChatService extends ChangeNotifier {
   int _maxTokens = 0;
   DateTime? _generationStartTime;
   bool _isBuffering = false;
+  GenerationPhase _generationPhase = GenerationPhase.idle;
+  DateTime? _prefillStartTime; // When we entered prefill (for elapsed timer)
+  int _prefillPromptTokens = 0; // Estimated prompt token count for progress display
+  Map<String, dynamic>? _lastPerfData; // Cached KoboldCPP perf data
   final List<String> _tokenBuffer = [];
   Timer? _drainTimer;
   int _displayedTokenCount = 0;
@@ -496,6 +518,15 @@ class ChatService extends ChangeNotifier {
   int get tokensGenerated => _tokensGenerated;
   int get maxTokens => _maxTokens;
   bool get isBuffering => _isBuffering;
+  GenerationPhase get generationPhase => _generationPhase;
+  /// Seconds elapsed since entering the prefill phase. Returns 0 if not prefilling.
+  double get prefillElapsedSeconds => _prefillStartTime != null
+      ? DateTime.now().difference(_prefillStartTime!).inMilliseconds / 1000.0
+      : 0.0;
+  /// Cached KoboldCPP performance data from last /api/extra/perf poll.
+  Map<String, dynamic>? get lastPerfData => _lastPerfData;
+  /// Estimated prompt token count for the current generation (for progress display).
+  int get prefillPromptTokens => _prefillPromptTokens;
   bool get isGroupMode => _activeGroup != null;
   GroupChat? get activeGroup => _activeGroup;
   bool get observerMode => _observerMode;
@@ -1005,6 +1036,15 @@ class ChatService extends ChangeNotifier {
             '[ChatService] V2.5 extensions seeded: realism=$_realismEnabled, '
             'bond=$_affectionScore, trust=$_trustLevel, day=$_dayCount, time=$_timeOfDay',
           );
+
+          // Seed initial quest/task as a primary objective
+          if (ext.currentTask.isNotEmpty) {
+            // Defer so the session ID is ready before the DB write
+            Future.microtask(() async {
+              await setObjective(ext.currentTask, isPrimary: true);
+              debugPrint('[ChatService] V2.5 seeded initial task: ${ext.currentTask}');
+            });
+          }
         }
 
         if (_activeCharacter!.firstMessage.isNotEmpty) {
@@ -2244,6 +2284,7 @@ class ChatService extends ChangeNotifier {
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
         _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+        debugPrint('[Realism:Metadata] Synthesized metadata before generation: bond_delta=${_pendingRealismMetadata?['bond_delta']}, trust_delta=${_pendingRealismMetadata?['trust_delta']}, keys=${_pendingRealismMetadata?.keys.toList()}');
         _saveChat();
       }
 
@@ -2752,6 +2793,9 @@ class ChatService extends ChangeNotifier {
     _maxTokens = _sessionGenSettings.resolveMaxLength(_storageService);
     _generationStartTime = DateTime.now();
     _isBuffering = true;
+    _generationPhase = GenerationPhase.preparing;
+    _prefillStartTime = null;
+    _lastPerfData = null;
     _sentenceBuffer = '';
     notifyListeners();
 
@@ -3192,6 +3236,43 @@ class ChatService extends ChangeNotifier {
       // Get streaming response from whichever backend is active
       final stream = llmService.generateStream(genParams);
 
+      // ── Phase: Prefilling ──
+      // The HTTP request is now in flight. For KoboldCPP, the model is
+      // processing the prompt (prefill/eval). No tokens arrive until
+      // prefill finishes. Poll /api/extra/perf for real-time status.
+      _generationPhase = GenerationPhase.prefilling;
+      _prefillStartTime = DateTime.now();
+      _prefillPromptTokens = (prompt.length / 4).ceil(); // Rough placeholder
+      notifyListeners();
+
+      // If using local KoboldCPP, poll /api/extra/perf during prefill
+      // to get real prompt processing metrics.
+      Timer? _perfPoller;
+      final isLocalBackend = _llmProvider == null || _llmProvider!.isLocal;
+      if (isLocalBackend) {
+        // Get REAL token count from the model's tokenizer (async, updates UI when done)
+        _koboldService.countTokens(prompt).then((realCount) {
+          if (_generationPhase == GenerationPhase.prefilling && realCount > 0) {
+            _prefillPromptTokens = realCount;
+            debugPrint('[Prefill] Actual token count from tokenizer: $realCount (was ~${(prompt.length / 4).ceil()} est)');
+            notifyListeners();
+          }
+        });
+
+        _perfPoller = Timer.periodic(const Duration(seconds: 2), (_) async {
+          if (_generationPhase != GenerationPhase.prefilling) {
+            _perfPoller?.cancel();
+            _perfPoller = null;
+            return;
+          }
+          final perf = await _koboldService.fetchPerf();
+          if (perf != null) {
+            _lastPerfData = perf;
+            notifyListeners();
+          }
+        });
+      }
+
       String accumulatedResponse = "";
       bool stopFound = false;
       _tokenBuffer.clear();
@@ -3225,6 +3306,7 @@ class ChatService extends ChangeNotifier {
         final initialMetadata = _pendingRealismMetadata != null
             ? Map<String, dynamic>.from(_pendingRealismMetadata!)
             : null;
+        debugPrint('[Realism:Metadata] Attaching to new message: bond_delta=${initialMetadata?['bond_delta']}, keys=${initialMetadata?.keys.toList()}');
         _messages.add(
           ChatMessage(
             text: "",
@@ -3292,6 +3374,21 @@ class ChatService extends ChangeNotifier {
         accumulatedResponse += token;
         _tokensGenerated++;
         _tokenTimestamps.add(DateTime.now());
+
+        // ── Phase transition: first token marks end of prefill ──
+        if (_tokensGenerated == 1) {
+          _perfPoller?.cancel();
+          _perfPoller = null;
+          // Fetch final perf data so we know how long prefill really took
+          if (isLocalBackend) {
+            _koboldService.fetchPerf().then((perf) {
+              if (perf != null) {
+                _lastPerfData = perf;
+              }
+            });
+          }
+          _prefillStartTime = null;
+        }
 
         // Broadcast token to external listeners (SSE bridge)
         _tokenBroadcast.add(token);
@@ -3372,6 +3469,7 @@ class ChatService extends ChangeNotifier {
         if (!_thinkStarted && accumulatedResponse.contains('<think>')) {
           _thinkStarted = true;
           _thinkStartTime = DateTime.now();
+          _generationPhase = GenerationPhase.thinking;
           if (_messages.isNotEmpty) {
             _messages.last.thinkingStartTime =
                 _thinkStartTime!.millisecondsSinceEpoch;
@@ -3381,12 +3479,22 @@ class ChatService extends ChangeNotifier {
             !_thinkEnded &&
             accumulatedResponse.contains('</think>')) {
           _thinkEnded = true;
+          // Transition out of thinking to buffering/generating
+          _generationPhase = bufferEnabled
+              ? GenerationPhase.buffering
+              : GenerationPhase.generating;
           if (_thinkStartTime != null && _messages.isNotEmpty) {
             _messages.last.thinkingDurationMs = DateTime.now()
                 .difference(_thinkStartTime!)
                 .inMilliseconds;
             // Keep thinkingStartTime for fallback display logic in UI
           }
+        }
+        // If no thinking involved, first token transitions directly
+        if (!_thinkStarted && _tokensGenerated == 1) {
+          _generationPhase = bufferEnabled
+              ? GenerationPhase.buffering
+              : GenerationPhase.generating;
         }
 
         if (bufferEnabled) {
@@ -3427,6 +3535,7 @@ class ChatService extends ChangeNotifier {
 
             if (_tokenBuffer.length >= bufferTarget) {
               _isBuffering = false;
+              _generationPhase = GenerationPhase.generating;
               _startDrainTimer();
             }
           } else if (_drainTimer != null) {
@@ -3437,11 +3546,13 @@ class ChatService extends ChangeNotifier {
               _drainTimer?.cancel();
               _drainTimer = null;
               _isBuffering = true;
+              _generationPhase = GenerationPhase.buffering;
             }
           }
         } else {
           // No buffer: display tokens immediately
           _isBuffering = false;
+          _generationPhase = GenerationPhase.generating;
           _displayedTokenCount = _tokenBuffer.length;
           _flushBufferToDisplay();
         }
@@ -3482,7 +3593,19 @@ class ChatService extends ChangeNotifier {
       _cancelRequested = false;
       _generationProgress = 0.0;
       _isBuffering = false;
+      _generationPhase = GenerationPhase.idle;
+      _prefillStartTime = null;
+      _prefillPromptTokens = 0;
       _generationStartTime = null;
+      _perfPoller?.cancel();
+      _perfPoller = null;
+
+      // Fetch final perf stats from KoboldCPP for post-generation display
+      if (isLocalBackend) {
+        _koboldService.fetchPerf().then((perf) {
+          if (perf != null) _lastPerfData = perf;
+        });
+      }
 
       // Signal generation complete to SSE listeners
       _tokenBroadcast.add('__DONE__');
@@ -3586,6 +3709,9 @@ class ChatService extends ChangeNotifier {
       _cancelRequested = false;
       _generationProgress = 0.0;
       _isBuffering = false;
+      _generationPhase = GenerationPhase.idle;
+      _prefillStartTime = null;
+      _prefillPromptTokens = 0;
       _generationStartTime = null;
 
       // "Connection closed before full header was received" is thrown by the http package
@@ -6368,6 +6494,7 @@ class ChatService extends ChangeNotifier {
       debugPrint(
         '[Realism:Relationship] Bond: $bondDelta (${bondReason.isNotEmpty ? bondReason : 'no reason'}) | Trust: $trustDelta (${trustReason.isNotEmpty ? trustReason : 'no reason'})',
       );
+      debugPrint('[Realism:Metadata] _pendingRealismMetadata after relationship eval: $_pendingRealismMetadata');
       notifyListeners();
     } catch (e) {
       debugPrint('[Realism:Relationship] Failed: $e');
