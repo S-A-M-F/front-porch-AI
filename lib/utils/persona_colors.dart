@@ -26,17 +26,17 @@ class PersonaColors {
   // Palette of distinct, vibrant colors
   static const List<Color> _palette = [
     Color(0xFF3B82F6), // Blue
-    Color(0xFF8B5CF6), // Purple
-    Color(0xFFEC4899), // Pink
+    Color(0xFF64748B), // Slate
+    Color(0xFF0EA5E9), // Sky Blue
     Color(0xFFEF4444), // Red
     Color(0xFFF59E0B), // Amber
     Color(0xFF10B981), // Green
     Color(0xFF06B6D4), // Cyan
-    Color(0xFF6366F1), // Indigo
+    Color(0xFF2563EB), // Royal Blue
     Color(0xFFF97316), // Orange
     Color(0xFF84CC16), // Lime
     Color(0xFF14B8A6), // Teal
-    Color(0xFFA855F7), // Violet
+    Color(0xFF059669), // Emerald
   ];
 
   /// Get a consistent color for a given persona ID
