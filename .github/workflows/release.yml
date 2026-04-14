@@ -626,7 +626,10 @@ jobs:
           SRCINFO
 
           # Remove leading whitespace from .SRCINFO (heredoc indentation)
+          # and strip any stray \r from CRLF line endings
           sed -i 's/^          //' .SRCINFO
+          sed -i 's/\r$//' .SRCINFO
+          sed -i 's/\r$//' PKGBUILD
 
           git add -A
           git diff --cached --quiet && echo "No changes to push" && exit 0
