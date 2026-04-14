@@ -85,7 +85,42 @@
 
 ---
 
-## 🆕 What's New in V0.9.7.3
+## 🆕 What's New in V0.9.7.5
+
+This release delivers a **complete character editor redesign**, brings **editable Realism Engine settings** to the card editor, and fixes several stability and data integrity bugs.
+
+**🎨 Character Editor — Full Redesign**
+- **New 4-tab layout:** Details, Dialogue, Lorebook, and Worlds — dialogue fields (first message, alternate greetings, example conversations) are no longer crammed into the Details tab.
+- **Glassmorphic section cards** with icon headers for visual grouping (Identity, Personality & World, Advanced Prompts).
+- **160px avatar display** with rounded corners and camera overlay — tap to change.
+- **Collapsible Advanced Prompts** — system prompt and post-history instructions hidden by default to reduce visual clutter.
+- **Restyled lorebook cards** showing keyword chips, trigger depth badges, and always-active indicators.
+- **Restyled worlds tab** with toggle-based linking, visual feedback, and entry count badges.
+- **Consistent input styling** and token counter matching the manual character creator.
+
+**🧠 Realism Engine — Editable in Character Editor**
+- Characters can now have their Realism Engine settings **configured directly in the character editor** — no longer limited to the character creator.
+- Characters without V2.5 extensions can have them **created from scratch** via the editor.
+- Full access to all Realism Engine parameters: bond scores, trust level, time of day, starting emotion, recovery mechanics, and Chaos Mode toggle.
+- Includes a friendly note reminding users that changes only affect new conversations — existing chats keep their live state.
+
+**🐛 Bug Fixes**
+- **Fixed character creator crash on Linux:** The back button was calling `Navigator.pop()` on a tab-embedded page, popping the root navigator and leaving a black screen. Now correctly returns to the Home tab.
+- **Fixed V2.5 metadata loss on avatar change:** When editing a character and changing the avatar, the save flow was creating a redundant card copy that omitted Realism Engine extensions. The throwaway card has been eliminated — the editor now passes the live character object directly.
+- **Fixed Realism Engine level 10 prompt:** Refined the peak desire state prompt to describe emotional intensity without dictating deterministic narrative outcomes or causing behavioral leakage into subsequent turns.
+
+**⚙️ CI/CD**
+- Converted `release.yml` from CRLF to LF line endings.
+- Added defensive carriage-return stripping to AUR package generation to prevent future regressions.
+
+<details>
+<summary><strong>📦 Previous Releases</strong></summary>
+
+### V0.9.7.4
+
+- Documentation update: supplemented missing changelog entries from the v0.9.7.3 release.
+
+### V0.9.7.3
 
 This release overhauls the **Learned Facts** system, adds full **Web UI parity** for the character creator, and delivers phased **Realism Engine** improvements for more natural character behavior.
 
@@ -111,7 +146,7 @@ This release overhauls the **Learned Facts** system, adds full **Web UI parity**
 - **V2.5 character card extensions:** Both creators embed Realism Engine configuration in exported character cards.
 
 <details>
-<summary><strong>📦 Previous Releases</strong></summary>
+<summary><strong>📦 Older Releases</strong></summary>
 
 ### V0.9.7.2
 
