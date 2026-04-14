@@ -982,7 +982,9 @@ class ChatService extends ChangeNotifier {
       return;
     }
 
-    // Clear group mode when switching to 1:1
+    // Clear group mode when switching to 1:1 AND reset author note for new session context
+    _authorNote = '';
+    _authorNoteStrength = 4;
     _activeGroup = null;
     _groupCharacters = [];
     _turnIndex = 0;
@@ -1083,9 +1085,13 @@ class ChatService extends ChangeNotifier {
 
   /// Enter group chat mode with the given GroupChat definition.
   Future<void> setActiveGroup(GroupChat group) async {
-    // Cancel any in-flight generation before switching context
+    // Cancel any in-flight generation before switching context AND reset author note for new session context
     await _cancelAndWaitForGeneration();
     _generationEpoch++;
+
+    // Reset author notes when starting fresh chat/group (will be overridden if loading existing session)
+    _authorNote = '';
+    _authorNoteStrength = 4;
 
     if (_characterRepository == null) return;
 
