@@ -973,12 +973,14 @@ class ChatService extends ChangeNotifier {
     await _cancelAndWaitForGeneration();
     _generationEpoch++;
 
-    // If same character is already active, don't reset unless empty.
-    // Use dbId (stable DB identifier) rather than imagePath which can
-    // differ in format (basename vs full path) between repository and runtime.
+    // If same character is already active and has messages, just refresh
+    // the character reference (in case fields were edited) but skip the
+    // expensive full re-initialization (message clearing, session reload).
     if (_activeCharacter?.name == character?.name &&
         _activeCharacter?.dbId == character?.dbId &&
         _messages.isNotEmpty) {
+      _activeCharacter = character;
+      notifyListeners();
       return;
     }
 
@@ -2012,6 +2014,18 @@ class ChatService extends ChangeNotifier {
 
   Future<void> startNewChat() async {
     if (_activeCharacter == null && _activeGroup == null) return;
+
+    // Refresh _activeCharacter from the repository so we pick up any edits
+    // made in the character editor (personality, description, etc.)
+    if (_activeCharacter != null && _characterRepository != null) {
+      final freshChar = _characterRepository!.characters.cast<CharacterCard?>().firstWhere(
+        (c) => c!.dbId == _activeCharacter!.dbId,
+        orElse: () => null,
+      );
+      if (freshChar != null) {
+        _activeCharacter = freshChar;
+      }
+    }
 
     debugPrint(
       '[ChatService] 🟡 startNewChat: clearing messages (had ${_messages.length})',

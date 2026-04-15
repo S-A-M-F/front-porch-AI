@@ -108,3 +108,6 @@ tools/embed_server/target/
 # Testing
 test/
 tests/
+.llm_context/
+bug_triage.md
+*.backup
