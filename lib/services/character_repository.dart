@@ -66,12 +66,14 @@ class CharacterRepository extends ChangeNotifier {
   }
 
   /// Update the database reference (e.g. after cloud sync replaces the DB file).
-  void updateDatabase(AppDatabase db) { _db = db; }
+  void updateDatabase(AppDatabase db) {
+    _db = db;
+  }
 
   Future<void> loadCharacters() async {
     _isLoading = true;
     notifyListeners();
-    
+
     try {
       final dbChars = await _db.getAllCharacters();
       _characters.clear();
@@ -124,7 +126,9 @@ class CharacterRepository extends ChangeNotifier {
       await for (final entity in charDir.list()) {
         if (entity is File && entity.path.toLowerCase().endsWith('.png')) {
           if (!referencedPaths.contains(entity.path)) {
-            debugPrint('[Cleanup] Deleting orphaned PNG: ${p.basename(entity.path)}');
+            debugPrint(
+              '[Cleanup] Deleting orphaned PNG: ${p.basename(entity.path)}',
+            );
             await entity.delete();
             deletedCount++;
           }
@@ -144,17 +148,25 @@ class CharacterRepository extends ChangeNotifier {
   /// Convert a DB row into a CharacterCard model.
   CharacterCard _characterFromRow(Character c) {
     List<String> altGreetings = [];
-    try { altGreetings = List<String>.from(jsonDecode(c.alternateGreetings)); } catch (_) {}
-    
+    try {
+      altGreetings = List<String>.from(jsonDecode(c.alternateGreetings));
+    } catch (_) {}
+
     List<String> tags = [];
-    try { tags = List<String>.from(jsonDecode(c.tags)); } catch (_) {}
-    
+    try {
+      tags = List<String>.from(jsonDecode(c.tags));
+    } catch (_) {}
+
     List<String> worldNames = [];
-    try { worldNames = List<String>.from(jsonDecode(c.worldNames)); } catch (_) {}
-    
+    try {
+      worldNames = List<String>.from(jsonDecode(c.worldNames));
+    } catch (_) {}
+
     Lorebook? lorebook;
     if (c.lorebook != null) {
-      try { lorebook = Lorebook.fromJson(jsonDecode(c.lorebook!)); } catch (_) {}
+      try {
+        lorebook = Lorebook.fromJson(jsonDecode(c.lorebook!));
+      } catch (_) {}
     }
 
     final card = CharacterCard(
@@ -180,23 +192,31 @@ class CharacterRepository extends ChangeNotifier {
 
   Future<void> addCharacter(CharacterCard character) async {
     // Store basename only in DB for cross-platform portability
-    final dbImagePath = character.imagePath != null ? _toBasename(character.imagePath!) : null;
-    final dbId = await _db.insertCharacterReturningId(CharactersCompanion(
-      name: Value(character.name),
-      description: Value(character.description),
-      personality: Value(character.personality),
-      scenario: Value(character.scenario),
-      firstMessage: Value(character.firstMessage),
-      mesExample: Value(character.mesExample),
-      systemPrompt: Value(character.systemPrompt),
-      postHistoryInstructions: Value(character.postHistoryInstructions),
-      alternateGreetings: Value(jsonEncode(character.alternateGreetings)),
-      tags: Value(jsonEncode(character.tags)),
-      imagePath: Value(dbImagePath),
-      ttsVoice: Value(character.ttsVoice),
-      lorebook: Value(character.lorebook != null ? jsonEncode(character.lorebook!.toJson()) : null),
-      worldNames: Value(jsonEncode(character.worldNames)),
-    ));
+    final dbImagePath = character.imagePath != null
+        ? _toBasename(character.imagePath!)
+        : null;
+    final dbId = await _db.insertCharacterReturningId(
+      CharactersCompanion(
+        name: Value(character.name),
+        description: Value(character.description),
+        personality: Value(character.personality),
+        scenario: Value(character.scenario),
+        firstMessage: Value(character.firstMessage),
+        mesExample: Value(character.mesExample),
+        systemPrompt: Value(character.systemPrompt),
+        postHistoryInstructions: Value(character.postHistoryInstructions),
+        alternateGreetings: Value(jsonEncode(character.alternateGreetings)),
+        tags: Value(jsonEncode(character.tags)),
+        imagePath: Value(dbImagePath),
+        ttsVoice: Value(character.ttsVoice),
+        lorebook: Value(
+          character.lorebook != null
+              ? jsonEncode(character.lorebook!.toJson())
+              : null,
+        ),
+        worldNames: Value(jsonEncode(character.worldNames)),
+      ),
+    );
     character.dbId = dbId;
     _characters.add(character);
     notifyListeners();
@@ -207,7 +227,12 @@ class CharacterRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteCharacter(CharacterCard character, {WorldRepository? worldRepo, Directory? chatsDir, CloudSyncService? cloudSyncService}) async {
+  Future<void> deleteCharacter(
+    CharacterCard character, {
+    WorldRepository? worldRepo,
+    Directory? chatsDir,
+    CloudSyncService? cloudSyncService,
+  }) async {
     // Remove from in-memory list
     _characters.remove(character);
     notifyListeners();
@@ -216,7 +241,7 @@ class CharacterRepository extends ChangeNotifier {
     if (character.dbId != null) {
       await _db.deleteCharacterById(character.dbId!);
     }
-    
+
     // Delete the PNG file from disk
     if (character.imagePath != null) {
       try {
@@ -250,27 +275,30 @@ class CharacterRepository extends ChangeNotifier {
         cloudSyncService.deleteRemoteCharacter(charId, pngName);
       }
     }
-    
+
     // Remove any linked world
     if (worldRepo != null) {
-      final linkedWorld = worldRepo.worlds.where(
-        (w) => w.linkedCharacterName == character.name
-      ).toList();
+      final linkedWorld = worldRepo.worlds
+          .where((w) => w.linkedCharacterName == character.name)
+          .toList();
       for (final world in linkedWorld) {
         await worldRepo.deleteWorld(world);
       }
     }
   }
 
-  Future<CharacterCard?> importCharacter(File file, {WorldRepository? worldRepo}) async {
+  Future<CharacterCard?> importCharacter(
+    File file, {
+    WorldRepository? worldRepo,
+  }) async {
     _isLoading = true;
     notifyListeners();
     try {
       final v2Service = V2CardService();
-      
+
       // Parse the V2 card data from the PNG tEXt chunk
       CharacterCard? card = await v2Service.readCard(file.path);
-      
+
       // Fallback if no V2 data found in the PNG
       if (card == null) {
         final fileName = file.path.split('/').last.split('.').first;
@@ -280,15 +308,17 @@ class CharacterRepository extends ChangeNotifier {
           imagePath: file.path,
         );
       }
-      
+
       // Copy the file to the app's characters directory
       final charDir = _storage.charactersDir;
       if (!await charDir.exists()) {
         await charDir.create(recursive: true);
       }
-      
+
       // Use the character name for the filename, sanitized
-      final safeName = card.name.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
+      final safeName = card.name
+          .replaceAll(RegExp(r'[^\w\s\-]'), '')
+          .replaceAll(' ', '_');
 
       // Remove old PNG for same-named character to prevent duplicates
       final cardName = card.name;
@@ -299,7 +329,9 @@ class CharacterRepository extends ChangeNotifier {
             final oldFile = File(oldChar.imagePath!);
             if (await oldFile.exists()) {
               await oldFile.delete();
-              debugPrint('[Import] Deleted old PNG for ${card.name}: ${p.basename(oldChar.imagePath!)}');
+              debugPrint(
+                '[Import] Deleted old PNG for ${card.name}: ${p.basename(oldChar.imagePath!)}',
+              );
             }
           } catch (e) {
             debugPrint('[Import] Could not delete old PNG: $e');
@@ -307,35 +339,44 @@ class CharacterRepository extends ChangeNotifier {
         }
       }
 
-      final destPath = '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+      final destPath =
+          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
       await file.copy(destPath);
-      
+
       // Update the imagePath to point to the local copy
       card.imagePath = destPath;
 
       // Insert into database
       // Store basename only in DB for cross-platform portability
-      final dbImagePath = card.imagePath != null ? _toBasename(card.imagePath!) : null;
-      final dbId = await _db.insertCharacterReturningId(CharactersCompanion(
-        name: Value(card.name),
-        description: Value(card.description),
-        personality: Value(card.personality),
-        scenario: Value(card.scenario),
-        firstMessage: Value(card.firstMessage),
-        mesExample: Value(card.mesExample),
-        systemPrompt: Value(card.systemPrompt),
-        postHistoryInstructions: Value(card.postHistoryInstructions),
-        alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
-        tags: Value(jsonEncode(card.tags)),
-        imagePath: Value(dbImagePath),
-        ttsVoice: Value(card.ttsVoice),
-        lorebook: Value(card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null),
-        worldNames: Value(jsonEncode(card.worldNames)),
-      ));
+      final dbImagePath = card.imagePath != null
+          ? _toBasename(card.imagePath!)
+          : null;
+      final dbId = await _db.insertCharacterReturningId(
+        CharactersCompanion(
+          name: Value(card.name),
+          description: Value(card.description),
+          personality: Value(card.personality),
+          scenario: Value(card.scenario),
+          firstMessage: Value(card.firstMessage),
+          mesExample: Value(card.mesExample),
+          systemPrompt: Value(card.systemPrompt),
+          postHistoryInstructions: Value(card.postHistoryInstructions),
+          alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
+          tags: Value(jsonEncode(card.tags)),
+          imagePath: Value(dbImagePath),
+          ttsVoice: Value(card.ttsVoice),
+          lorebook: Value(
+            card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null,
+          ),
+          worldNames: Value(jsonEncode(card.worldNames)),
+        ),
+      );
       card.dbId = dbId;
-      
+
       // Auto-create a linked world if the card has a lorebook
-      if (card.lorebook != null && card.lorebook!.entries.isNotEmpty && worldRepo != null) {
+      if (card.lorebook != null &&
+          card.lorebook!.entries.isNotEmpty &&
+          worldRepo != null) {
         final world = world_model.World(
           name: "${card.name}'s world lore",
           description: 'Auto-imported from character card: ${card.name}',
@@ -344,11 +385,10 @@ class CharacterRepository extends ChangeNotifier {
         );
         await worldRepo.saveWorld(world);
       }
-      
+
       // Add to in-memory list (already inserted into DB above — do NOT call addCharacter() which would insert again)
       _characters.add(card);
       return card;
-      
     } catch (e) {
       rethrow;
     } finally {
@@ -363,7 +403,8 @@ class CharacterRepository extends ChangeNotifier {
   Future<Map<String, dynamic>> importCharacters(
     List<File> files, {
     WorldRepository? worldRepo,
-    void Function(int current, int total, String name, String? error)? onProgress,
+    void Function(int current, int total, String name, String? error)?
+    onProgress,
     bool Function()? isCancelled,
   }) async {
     int imported = 0;
@@ -400,45 +441,54 @@ class CharacterRepository extends ChangeNotifier {
 
   Future<void> updateCharacter(CharacterCard card) async {
     if (card.imagePath == null) return;
-    
+
     _isLoading = true;
     notifyListeners();
-    
+
     try {
       final v2Service = V2CardService();
       // Overwrite the existing file with updated data
       await v2Service.saveCardAsPng(card, card.imagePath!, card.imagePath!);
-      
+
       // Update in database — store basename only for cross-platform portability
       if (card.dbId != null) {
-        final dbImagePath = card.imagePath != null ? _toBasename(card.imagePath!) : null;
-        await _db.updateCharacter(CharactersCompanion(
-          id: Value(card.dbId!),
-          name: Value(card.name),
-          description: Value(card.description),
-          personality: Value(card.personality),
-          scenario: Value(card.scenario),
-          firstMessage: Value(card.firstMessage),
-          mesExample: Value(card.mesExample),
-          systemPrompt: Value(card.systemPrompt),
-          postHistoryInstructions: Value(card.postHistoryInstructions),
-          alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
-          tags: Value(jsonEncode(card.tags)),
-          imagePath: Value(dbImagePath),
-          ttsVoice: Value(card.ttsVoice),
-          lorebook: Value(card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null),
-          worldNames: Value(jsonEncode(card.worldNames)),
-          updatedAt: Value(DateTime.now()),
-        ));
+        final dbImagePath = card.imagePath != null
+            ? _toBasename(card.imagePath!)
+            : null;
+        await _db.updateCharacter(
+          CharactersCompanion(
+            id: Value(card.dbId!),
+            name: Value(card.name),
+            description: Value(card.description),
+            personality: Value(card.personality),
+            scenario: Value(card.scenario),
+            firstMessage: Value(card.firstMessage),
+            mesExample: Value(card.mesExample),
+            systemPrompt: Value(card.systemPrompt),
+            postHistoryInstructions: Value(card.postHistoryInstructions),
+            alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
+            tags: Value(jsonEncode(card.tags)),
+            imagePath: Value(dbImagePath),
+            ttsVoice: Value(card.ttsVoice),
+            lorebook: Value(
+              card.lorebook != null
+                  ? jsonEncode(card.lorebook!.toJson())
+                  : null,
+            ),
+            worldNames: Value(jsonEncode(card.worldNames)),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
       }
-      
+
       // Update the list entry
-      final index = _characters.indexWhere((c) => c.imagePath == card.imagePath);
+      final index = _characters.indexWhere(
+        (c) => c.imagePath == card.imagePath,
+      );
       if (index != -1) {
         _characters[index] = card;
       }
       notifyListeners();
-      
     } catch (e) {
       print('Error updating character: $e');
       rethrow;
@@ -453,7 +503,7 @@ class CharacterRepository extends ChangeNotifier {
     notifyListeners();
     try {
       final newName = '${card.name} (duplicate)';
-      
+
       // Clone the card model
       final clonedCard = CharacterCard(
         name: newName,
@@ -467,8 +517,12 @@ class CharacterRepository extends ChangeNotifier {
         alternateGreetings: List.from(card.alternateGreetings),
         tags: List.from(card.tags),
         ttsVoice: card.ttsVoice,
-        lorebook: card.lorebook != null ? Lorebook(entries: List.from(card.lorebook!.entries)) : null,
+        lorebook: card.lorebook != null
+            ? Lorebook(entries: List.from(card.lorebook!.entries))
+            : null,
         worldNames: List.from(card.worldNames),
+        frontPorchExtensions: card.frontPorchExtensions,
+        rawExtensions: card.rawExtensions,
       );
 
       // Handle image file duplication if exists
@@ -479,8 +533,11 @@ class CharacterRepository extends ChangeNotifier {
           if (!await charDir.exists()) {
             await charDir.create(recursive: true);
           }
-          final safeName = newName.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
-          final destPath = '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+          final safeName = newName
+              .replaceAll(RegExp(r'[^\w\s\-]'), '')
+              .replaceAll(' ', '_');
+          final destPath =
+              '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
           await originalFile.copy(destPath);
           clonedCard.imagePath = destPath;
 
@@ -491,28 +548,35 @@ class CharacterRepository extends ChangeNotifier {
       }
 
       // Insert into database
-      final dbImagePath = clonedCard.imagePath != null ? _toBasename(clonedCard.imagePath!) : null;
-      final dbId = await _db.insertCharacterReturningId(CharactersCompanion(
-        name: Value(clonedCard.name),
-        description: Value(clonedCard.description),
-        personality: Value(clonedCard.personality),
-        scenario: Value(clonedCard.scenario),
-        firstMessage: Value(clonedCard.firstMessage),
-        mesExample: Value(clonedCard.mesExample),
-        systemPrompt: Value(clonedCard.systemPrompt),
-        postHistoryInstructions: Value(clonedCard.postHistoryInstructions),
-        alternateGreetings: Value(jsonEncode(clonedCard.alternateGreetings)),
-        tags: Value(jsonEncode(clonedCard.tags)),
-        imagePath: Value(dbImagePath),
-        ttsVoice: Value(clonedCard.ttsVoice),
-        lorebook: Value(clonedCard.lorebook != null ? jsonEncode(clonedCard.lorebook!.toJson()) : null),
-        worldNames: Value(jsonEncode(clonedCard.worldNames)),
-      ));
+      final dbImagePath = clonedCard.imagePath != null
+          ? _toBasename(clonedCard.imagePath!)
+          : null;
+      final dbId = await _db.insertCharacterReturningId(
+        CharactersCompanion(
+          name: Value(clonedCard.name),
+          description: Value(clonedCard.description),
+          personality: Value(clonedCard.personality),
+          scenario: Value(clonedCard.scenario),
+          firstMessage: Value(clonedCard.firstMessage),
+          mesExample: Value(clonedCard.mesExample),
+          systemPrompt: Value(clonedCard.systemPrompt),
+          postHistoryInstructions: Value(clonedCard.postHistoryInstructions),
+          alternateGreetings: Value(jsonEncode(clonedCard.alternateGreetings)),
+          tags: Value(jsonEncode(clonedCard.tags)),
+          imagePath: Value(dbImagePath),
+          ttsVoice: Value(clonedCard.ttsVoice),
+          lorebook: Value(
+            clonedCard.lorebook != null
+                ? jsonEncode(clonedCard.lorebook!.toJson())
+                : null,
+          ),
+          worldNames: Value(jsonEncode(clonedCard.worldNames)),
+        ),
+      );
       clonedCard.dbId = dbId;
-      
+
       _characters.add(clonedCard);
       return clonedCard;
-      
     } catch (e) {
       debugPrint('[Duplicate] Error duplicating character: $e');
       rethrow;

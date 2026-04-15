@@ -256,21 +256,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     if (_newAvatarPath != null) {
       widget.character.imagePath = _newAvatarPath!;
 
-      // Embed V2 card data into the new avatar PNG
+      // Embed V2 card data into the new avatar PNG using the live character
+      // (not a throwaway copy) to preserve all extensions and metadata
       try {
-        final card = CharacterCard(
-          name: widget.character.name,
-          description: widget.character.description,
-          personality: widget.character.personality,
-          scenario: widget.character.scenario,
-          firstMessage: widget.character.firstMessage,
-          mesExample: widget.character.mesExample,
-          systemPrompt: widget.character.systemPrompt,
-          postHistoryInstructions: widget.character.postHistoryInstructions,
-          alternateGreetings: widget.character.alternateGreetings,
-          tags: widget.character.tags,
-        );
-        await V2CardService().saveCardAsPng(card, _newAvatarPath!, _newAvatarPath!);
+        await V2CardService().saveCardAsPng(widget.character, _newAvatarPath!, _newAvatarPath!);
       } catch (e) {
         debugPrint('Failed to embed V2 card data: $e');
       }
