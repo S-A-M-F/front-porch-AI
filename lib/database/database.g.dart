@@ -1569,6 +1569,20 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _passageOfTimeEnabledMeta =
+      const VerificationMeta('passageOfTimeEnabled');
+  @override
+  late final GeneratedColumn<bool> passageOfTimeEnabled = GeneratedColumn<bool>(
+    'passage_of_time_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("passage_of_time_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _arousalLevelMeta = const VerificationMeta(
     'arousalLevel',
   );
@@ -1814,6 +1828,7 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     timeOfDay,
     dayCount,
     nsfwCooldownEnabled,
+    passageOfTimeEnabled,
     arousalLevel,
     cooldownTurnsRemaining,
     trustLevel,
@@ -2042,6 +2057,15 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         nsfwCooldownEnabled.isAcceptableOrUnknown(
           data['nsfw_cooldown_enabled']!,
           _nsfwCooldownEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('passage_of_time_enabled')) {
+      context.handle(
+        _passageOfTimeEnabledMeta,
+        passageOfTimeEnabled.isAcceptableOrUnknown(
+          data['passage_of_time_enabled']!,
+          _passageOfTimeEnabledMeta,
         ),
       );
     }
@@ -2304,6 +2328,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.bool,
         data['${effectivePrefix}nsfw_cooldown_enabled'],
       )!,
+      passageOfTimeEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}passage_of_time_enabled'],
+      )!,
       arousalLevel: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}arousal_level'],
@@ -2411,6 +2439,7 @@ class Session extends DataClass implements Insertable<Session> {
   final String timeOfDay;
   final int dayCount;
   final bool nsfwCooldownEnabled;
+  final bool passageOfTimeEnabled;
   final int arousalLevel;
   final int cooldownTurnsRemaining;
   final int trustLevel;
@@ -2455,6 +2484,7 @@ class Session extends DataClass implements Insertable<Session> {
     required this.timeOfDay,
     required this.dayCount,
     required this.nsfwCooldownEnabled,
+    required this.passageOfTimeEnabled,
     required this.arousalLevel,
     required this.cooldownTurnsRemaining,
     required this.trustLevel,
@@ -2518,6 +2548,7 @@ class Session extends DataClass implements Insertable<Session> {
     map['time_of_day'] = Variable<String>(timeOfDay);
     map['day_count'] = Variable<int>(dayCount);
     map['nsfw_cooldown_enabled'] = Variable<bool>(nsfwCooldownEnabled);
+    map['passage_of_time_enabled'] = Variable<bool>(passageOfTimeEnabled);
     map['arousal_level'] = Variable<int>(arousalLevel);
     map['cooldown_turns_remaining'] = Variable<int>(cooldownTurnsRemaining);
     map['trust_level'] = Variable<int>(trustLevel);
@@ -2586,6 +2617,7 @@ class Session extends DataClass implements Insertable<Session> {
       timeOfDay: Value(timeOfDay),
       dayCount: Value(dayCount),
       nsfwCooldownEnabled: Value(nsfwCooldownEnabled),
+      passageOfTimeEnabled: Value(passageOfTimeEnabled),
       arousalLevel: Value(arousalLevel),
       cooldownTurnsRemaining: Value(cooldownTurnsRemaining),
       trustLevel: Value(trustLevel),
@@ -2648,6 +2680,9 @@ class Session extends DataClass implements Insertable<Session> {
       nsfwCooldownEnabled: serializer.fromJson<bool>(
         json['nsfwCooldownEnabled'],
       ),
+      passageOfTimeEnabled: serializer.fromJson<bool>(
+        json['passageOfTimeEnabled'],
+      ),
       arousalLevel: serializer.fromJson<int>(json['arousalLevel']),
       cooldownTurnsRemaining: serializer.fromJson<int>(
         json['cooldownTurnsRemaining'],
@@ -2709,6 +2744,7 @@ class Session extends DataClass implements Insertable<Session> {
       'timeOfDay': serializer.toJson<String>(timeOfDay),
       'dayCount': serializer.toJson<int>(dayCount),
       'nsfwCooldownEnabled': serializer.toJson<bool>(nsfwCooldownEnabled),
+      'passageOfTimeEnabled': serializer.toJson<bool>(passageOfTimeEnabled),
       'arousalLevel': serializer.toJson<int>(arousalLevel),
       'cooldownTurnsRemaining': serializer.toJson<int>(cooldownTurnsRemaining),
       'trustLevel': serializer.toJson<int>(trustLevel),
@@ -2758,6 +2794,7 @@ class Session extends DataClass implements Insertable<Session> {
     String? timeOfDay,
     int? dayCount,
     bool? nsfwCooldownEnabled,
+    bool? passageOfTimeEnabled,
     int? arousalLevel,
     int? cooldownTurnsRemaining,
     int? trustLevel,
@@ -2808,6 +2845,7 @@ class Session extends DataClass implements Insertable<Session> {
     timeOfDay: timeOfDay ?? this.timeOfDay,
     dayCount: dayCount ?? this.dayCount,
     nsfwCooldownEnabled: nsfwCooldownEnabled ?? this.nsfwCooldownEnabled,
+    passageOfTimeEnabled: passageOfTimeEnabled ?? this.passageOfTimeEnabled,
     arousalLevel: arousalLevel ?? this.arousalLevel,
     cooldownTurnsRemaining:
         cooldownTurnsRemaining ?? this.cooldownTurnsRemaining,
@@ -2894,6 +2932,9 @@ class Session extends DataClass implements Insertable<Session> {
       nsfwCooldownEnabled: data.nsfwCooldownEnabled.present
           ? data.nsfwCooldownEnabled.value
           : this.nsfwCooldownEnabled,
+      passageOfTimeEnabled: data.passageOfTimeEnabled.present
+          ? data.passageOfTimeEnabled.value
+          : this.passageOfTimeEnabled,
       arousalLevel: data.arousalLevel.present
           ? data.arousalLevel.value
           : this.arousalLevel,
@@ -2973,6 +3014,7 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('timeOfDay: $timeOfDay, ')
           ..write('dayCount: $dayCount, ')
           ..write('nsfwCooldownEnabled: $nsfwCooldownEnabled, ')
+          ..write('passageOfTimeEnabled: $passageOfTimeEnabled, ')
           ..write('arousalLevel: $arousalLevel, ')
           ..write('cooldownTurnsRemaining: $cooldownTurnsRemaining, ')
           ..write('trustLevel: $trustLevel, ')
@@ -3022,6 +3064,7 @@ class Session extends DataClass implements Insertable<Session> {
     timeOfDay,
     dayCount,
     nsfwCooldownEnabled,
+    passageOfTimeEnabled,
     arousalLevel,
     cooldownTurnsRemaining,
     trustLevel,
@@ -3070,6 +3113,7 @@ class Session extends DataClass implements Insertable<Session> {
           other.timeOfDay == this.timeOfDay &&
           other.dayCount == this.dayCount &&
           other.nsfwCooldownEnabled == this.nsfwCooldownEnabled &&
+          other.passageOfTimeEnabled == this.passageOfTimeEnabled &&
           other.arousalLevel == this.arousalLevel &&
           other.cooldownTurnsRemaining == this.cooldownTurnsRemaining &&
           other.trustLevel == this.trustLevel &&
@@ -3116,6 +3160,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<String> timeOfDay;
   final Value<int> dayCount;
   final Value<bool> nsfwCooldownEnabled;
+  final Value<bool> passageOfTimeEnabled;
   final Value<int> arousalLevel;
   final Value<int> cooldownTurnsRemaining;
   final Value<int> trustLevel;
@@ -3161,6 +3206,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.timeOfDay = const Value.absent(),
     this.dayCount = const Value.absent(),
     this.nsfwCooldownEnabled = const Value.absent(),
+    this.passageOfTimeEnabled = const Value.absent(),
     this.arousalLevel = const Value.absent(),
     this.cooldownTurnsRemaining = const Value.absent(),
     this.trustLevel = const Value.absent(),
@@ -3207,6 +3253,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.timeOfDay = const Value.absent(),
     this.dayCount = const Value.absent(),
     this.nsfwCooldownEnabled = const Value.absent(),
+    this.passageOfTimeEnabled = const Value.absent(),
     this.arousalLevel = const Value.absent(),
     this.cooldownTurnsRemaining = const Value.absent(),
     this.trustLevel = const Value.absent(),
@@ -3253,6 +3300,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<String>? timeOfDay,
     Expression<int>? dayCount,
     Expression<bool>? nsfwCooldownEnabled,
+    Expression<bool>? passageOfTimeEnabled,
     Expression<int>? arousalLevel,
     Expression<int>? cooldownTurnsRemaining,
     Expression<int>? trustLevel,
@@ -3302,6 +3350,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (dayCount != null) 'day_count': dayCount,
       if (nsfwCooldownEnabled != null)
         'nsfw_cooldown_enabled': nsfwCooldownEnabled,
+      if (passageOfTimeEnabled != null)
+        'passage_of_time_enabled': passageOfTimeEnabled,
       if (arousalLevel != null) 'arousal_level': arousalLevel,
       if (cooldownTurnsRemaining != null)
         'cooldown_turns_remaining': cooldownTurnsRemaining,
@@ -3354,6 +3404,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<String>? timeOfDay,
     Value<int>? dayCount,
     Value<bool>? nsfwCooldownEnabled,
+    Value<bool>? passageOfTimeEnabled,
     Value<int>? arousalLevel,
     Value<int>? cooldownTurnsRemaining,
     Value<int>? trustLevel,
@@ -3402,6 +3453,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       timeOfDay: timeOfDay ?? this.timeOfDay,
       dayCount: dayCount ?? this.dayCount,
       nsfwCooldownEnabled: nsfwCooldownEnabled ?? this.nsfwCooldownEnabled,
+      passageOfTimeEnabled: passageOfTimeEnabled ?? this.passageOfTimeEnabled,
       arousalLevel: arousalLevel ?? this.arousalLevel,
       cooldownTurnsRemaining:
           cooldownTurnsRemaining ?? this.cooldownTurnsRemaining,
@@ -3509,6 +3561,11 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (nsfwCooldownEnabled.present) {
       map['nsfw_cooldown_enabled'] = Variable<bool>(nsfwCooldownEnabled.value);
     }
+    if (passageOfTimeEnabled.present) {
+      map['passage_of_time_enabled'] = Variable<bool>(
+        passageOfTimeEnabled.value,
+      );
+    }
     if (arousalLevel.present) {
       map['arousal_level'] = Variable<int>(arousalLevel.value);
     }
@@ -3603,6 +3660,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('timeOfDay: $timeOfDay, ')
           ..write('dayCount: $dayCount, ')
           ..write('nsfwCooldownEnabled: $nsfwCooldownEnabled, ')
+          ..write('passageOfTimeEnabled: $passageOfTimeEnabled, ')
           ..write('arousalLevel: $arousalLevel, ')
           ..write('cooldownTurnsRemaining: $cooldownTurnsRemaining, ')
           ..write('trustLevel: $trustLevel, ')
@@ -9390,6 +9448,7 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<String> timeOfDay,
       Value<int> dayCount,
       Value<bool> nsfwCooldownEnabled,
+      Value<bool> passageOfTimeEnabled,
       Value<int> arousalLevel,
       Value<int> cooldownTurnsRemaining,
       Value<int> trustLevel,
@@ -9437,6 +9496,7 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<String> timeOfDay,
       Value<int> dayCount,
       Value<bool> nsfwCooldownEnabled,
+      Value<bool> passageOfTimeEnabled,
       Value<int> arousalLevel,
       Value<int> cooldownTurnsRemaining,
       Value<int> trustLevel,
@@ -9589,6 +9649,11 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<bool> get nsfwCooldownEnabled => $composableBuilder(
     column: $table.nsfwCooldownEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get passageOfTimeEnabled => $composableBuilder(
+    column: $table.passageOfTimeEnabled,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9817,6 +9882,11 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get passageOfTimeEnabled => $composableBuilder(
+    column: $table.passageOfTimeEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get arousalLevel => $composableBuilder(
     column: $table.arousalLevel,
     builder: (column) => ColumnOrderings(column),
@@ -10028,6 +10098,11 @@ class $$SessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get passageOfTimeEnabled => $composableBuilder(
+    column: $table.passageOfTimeEnabled,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get arousalLevel => $composableBuilder(
     column: $table.arousalLevel,
     builder: (column) => column,
@@ -10166,6 +10241,7 @@ class $$SessionsTableTableManager
                 Value<String> timeOfDay = const Value.absent(),
                 Value<int> dayCount = const Value.absent(),
                 Value<bool> nsfwCooldownEnabled = const Value.absent(),
+                Value<bool> passageOfTimeEnabled = const Value.absent(),
                 Value<int> arousalLevel = const Value.absent(),
                 Value<int> cooldownTurnsRemaining = const Value.absent(),
                 Value<int> trustLevel = const Value.absent(),
@@ -10211,6 +10287,7 @@ class $$SessionsTableTableManager
                 timeOfDay: timeOfDay,
                 dayCount: dayCount,
                 nsfwCooldownEnabled: nsfwCooldownEnabled,
+                passageOfTimeEnabled: passageOfTimeEnabled,
                 arousalLevel: arousalLevel,
                 cooldownTurnsRemaining: cooldownTurnsRemaining,
                 trustLevel: trustLevel,
@@ -10258,6 +10335,7 @@ class $$SessionsTableTableManager
                 Value<String> timeOfDay = const Value.absent(),
                 Value<int> dayCount = const Value.absent(),
                 Value<bool> nsfwCooldownEnabled = const Value.absent(),
+                Value<bool> passageOfTimeEnabled = const Value.absent(),
                 Value<int> arousalLevel = const Value.absent(),
                 Value<int> cooldownTurnsRemaining = const Value.absent(),
                 Value<int> trustLevel = const Value.absent(),
@@ -10303,6 +10381,7 @@ class $$SessionsTableTableManager
                 timeOfDay: timeOfDay,
                 dayCount: dayCount,
                 nsfwCooldownEnabled: nsfwCooldownEnabled,
+                passageOfTimeEnabled: passageOfTimeEnabled,
                 arousalLevel: arousalLevel,
                 cooldownTurnsRemaining: cooldownTurnsRemaining,
                 trustLevel: trustLevel,

@@ -388,6 +388,11 @@ class ChatService extends ChangeNotifier {
       0; // original refractory duration (for phased prompt)
   int _arousalLevel = 0; // -10 to +10 scale
 
+  // Passage of time (sub-feature of realism)
+  bool _passageOfTimeEnabled = true; // defaults to enabled when realism is on
+  bool _timeJumpedBackward =
+      false; // flag for easter egg when manually rewinding time
+
   // ── Chaos Mode / Chance Time ──
   bool _chaosModeEnabled = false;
   bool _chaosNsfwEnabled = false; // include spicy/NSFW events in the pool
@@ -646,6 +651,9 @@ class ChatService extends ChangeNotifier {
 
   bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
   int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
+
+  // Passage of time
+  bool get passageOfTimeEnabled => _passageOfTimeEnabled;
 
   // Chaos Mode
   bool get chaosModeEnabled => _chaosModeEnabled;
@@ -1054,10 +1062,13 @@ class ChatService extends ChangeNotifier {
 
       // If no session loaded, start fresh
       if (_messages.isEmpty) {
-        // Seed Realism Engine state from V2.5 card extensions (new conversations only)
-        if (_activeCharacter!.frontPorchExtensions != null) {
-          final ext = _activeCharacter!.frontPorchExtensions!;
-          _realismEnabled = ext.realismEnabled;
+        // Seed Realism Engine state with global settings taking precedence
+        // over any card extensions to ensure consistent behavior.
+        final ext = _activeCharacter!.frontPorchExtensions;
+        _realismEnabled = _storageService.realismDefault;
+        _nsfwCooldownEnabled = _storageService.nsfwCooldownDefault;
+        _passageOfTimeEnabled = _storageService.passageOfTimeDefault;
+        if (ext != null) {
           _affectionScore = ext.shortTermBond.clamp(-150, 150);
           _longTermScore = ext.longTermBond.clamp(-150, 150);
           _trustLevel = ext.trustLevel.clamp(-100, 100);
@@ -1065,13 +1076,12 @@ class ChatService extends ChangeNotifier {
           _timeOfDay = ext.timeOfDay;
           _characterEmotion = ext.characterEmotion;
           _emotionIntensity = ext.emotionIntensity;
-          _nsfwCooldownEnabled = ext.nsfwCooldownEnabled;
           _chaosModeEnabled = ext.chaosModeEnabled;
           // Recalculate tiers from seeded scores
           _relationshipTier = _calculateTier(_affectionScore);
           _longTermTier = _calculateTier(_longTermScore);
           debugPrint(
-            '[ChatService] V2.5 extensions seeded: realism=$_realismEnabled, '
+            '[ChatService] V2.5 extensions seeded: realism=$_realismEnabled (global), '
             'bond=$_affectionScore, trust=$_trustLevel, day=$_dayCount, time=$_timeOfDay',
           );
 
@@ -1493,6 +1503,7 @@ class ChatService extends ChangeNotifier {
         timeOfDay: drift.Value(_timeOfDay),
         dayCount: drift.Value(_dayCount),
         nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
+        passageOfTimeEnabled: drift.Value(_passageOfTimeEnabled),
         arousalLevel: drift.Value(_arousalLevel),
         cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
         trustLevel: drift.Value(_trustLevel),
@@ -1588,6 +1599,7 @@ class ChatService extends ChangeNotifier {
     _timeOfDay = lastSession.timeOfDay;
     _dayCount = lastSession.dayCount;
     _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
+    _passageOfTimeEnabled = lastSession.passageOfTimeEnabled;
     _arousalLevel = lastSession.arousalLevel;
     _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
     _trustLevel = lastSession.trustLevel;
@@ -1841,6 +1853,7 @@ class ChatService extends ChangeNotifier {
       _timeOfDay = session.timeOfDay;
       _dayCount = session.dayCount;
       _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
+      _passageOfTimeEnabled = session.passageOfTimeEnabled;
       _arousalLevel = session.arousalLevel;
       _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
       _trustLevel = session.trustLevel;
@@ -2060,21 +2073,25 @@ class ChatService extends ChangeNotifier {
     _summaryLastIndex = 0;
 
     // Seed Realism Engine state from V2.5 card extensions for 1:1 mode only,
-    // ensuring realism settings persist across chat sessions (group mode handled elsewhere)
+    // ensuring realism settings persist across chat sessions (group mode handled elsewhere).
+    // Falls back to StorageService global defaults for cards without extensions.
     if (_activeCharacter != null && _activeGroup == null) {
-      final extSeed =
-          _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
+      final extSeed = _activeCharacter!.frontPorchExtensions;
 
-      _realismEnabled = extSeed.realismEnabled;
-      _affectionScore = extSeed.shortTermBond.clamp(-150, 150);
-      _longTermScore = extSeed.longTermBond.clamp(-150, 150);
-      _trustLevel = extSeed.trustLevel.clamp(-100, 100);
-      _dayCount = extSeed.dayCount.clamp(1, 9999);
-      _timeOfDay = extSeed.timeOfDay;
-      _characterEmotion = extSeed.characterEmotion;
-      _emotionIntensity = extSeed.emotionIntensity;
-      _nsfwCooldownEnabled = extSeed.nsfwCooldownEnabled;
-      _chaosModeEnabled = extSeed.chaosModeEnabled;
+      _realismEnabled =
+          extSeed?.realismEnabled ?? _storageService.realismDefault;
+      _affectionScore = (extSeed?.shortTermBond ?? 0).clamp(-150, 150);
+      _longTermScore = (extSeed?.longTermBond ?? 0).clamp(-150, 150);
+      _trustLevel = (extSeed?.trustLevel ?? 0).clamp(-100, 100);
+      _dayCount = (extSeed?.dayCount ?? 1).clamp(1, 9999);
+      _timeOfDay = extSeed?.timeOfDay ?? 'morning';
+      _characterEmotion = extSeed?.characterEmotion ?? '';
+      _emotionIntensity = extSeed?.emotionIntensity ?? 'mild';
+      _nsfwCooldownEnabled =
+          extSeed?.nsfwCooldownEnabled ?? _storageService.nsfwCooldownDefault;
+      _passageOfTimeEnabled =
+          extSeed?.passageOfTimeEnabled ?? _storageService.passageOfTimeDefault;
+      _chaosModeEnabled = extSeed?.chaosModeEnabled ?? false;
 
       // Recalculate tiers from seeded scores (only needed for realism-enabled chars)
       if (_realismEnabled) {
@@ -2200,15 +2217,32 @@ class ChatService extends ChangeNotifier {
     _isProcessingGreeting = true; // reuse the greeting overlay
     notifyListeners();
     try {
-      if (_storageService.realismOneShotEval) {
-        await _evaluateOneShotCall();
+      // If character has V2.5 extensions, load the baked-in state instead of evaluating
+      if (_activeCharacter!.frontPorchExtensions != null) {
+        final ext = _activeCharacter!.frontPorchExtensions!;
+        _affectionScore = ext.shortTermBond.clamp(-150, 150);
+        _longTermScore = ext.longTermBond.clamp(-150, 150);
+        _trustLevel = ext.trustLevel.clamp(-100, 100);
+        _dayCount = ext.dayCount.clamp(1, 9999);
+        _timeOfDay = ext.timeOfDay;
+        _characterEmotion = ext.characterEmotion;
+        _emotionIntensity = ext.emotionIntensity;
+        _chaosModeEnabled = ext.chaosModeEnabled;
+        _relationshipTier = _calculateTier(_affectionScore);
+        _longTermTier = _calculateTier(_longTermScore);
+        debugPrint('[Realism] Loaded V2.5 extensions for retroactive baseline');
       } else {
-        // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
-        // HTTP requests being dropped before headers are received.
-        await _evaluateRelationshipCall();
-        await _evaluateEmotionalStateCall();
-        await _evaluatePhysicalStateCall();
-        await _evaluateNarrativeCall();
+        // No extensions — run full evaluation to generate baseline
+        if (_storageService.realismOneShotEval) {
+          await _evaluateOneShotCall();
+        } else {
+          // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
+          // HTTP requests being dropped before headers are received.
+          await _evaluateRelationshipCall();
+          await _evaluateEmotionalStateCall();
+          await _evaluatePhysicalStateCall();
+          await _evaluateNarrativeCall();
+        }
       }
 
       // Stamp the baseline on the most recent message so it persists
@@ -2221,7 +2255,7 @@ class ChatService extends ChangeNotifier {
       await _saveChat();
       notifyListeners();
       debugPrint(
-        '[Realism] Retroactive scan complete: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel',
+        '[Realism] Retroactive baseline complete: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel',
       );
     } catch (e) {
       debugPrint('[Realism] Retroactive baseline scan failed: $e');
@@ -2271,6 +2305,9 @@ class ChatService extends ChangeNotifier {
         text.trim().isEmpty)
       return;
     clearSuggestions();
+
+    // Reset time jump flag on new user message
+    _timeJumpedBackward = false;
 
     // In observer mode, route to sendDirectorNote instead
     if (_observerMode && _activeGroup != null) {
@@ -3126,6 +3163,9 @@ class ChatService extends ChangeNotifier {
       // Chance Time injection — independent of realism mode
       final chanceTimeBlock = _getChanceTimeInjection();
 
+      // Time jump easter egg — urgent priority
+      final timeJumpBlock = _getTimeJumpInjection();
+
       // Objective injection — always injected regardless of realism mode
       // Must sit in a fixed prompt section so it is NEVER trimmed by the budget system.
       final objectiveBlock = _getObjectiveInjection();
@@ -3263,6 +3303,7 @@ class ChatService extends ChangeNotifier {
                 "$objectiveBlock"
                 "$realismBlock"
                 "$suffix"
+                "$timeJumpBlock"
                 "$chanceTimeBlock"
           : "$systemPrompt\n"
                 "$loreContent"
@@ -3279,6 +3320,7 @@ class ChatService extends ChangeNotifier {
                 "$objectiveBlock"
                 "$realismBlock"
                 "$suffix"
+                "$timeJumpBlock"
                 "$chanceTimeBlock";
 
       // Track prompt budget for context viewer (always show full prompt)
@@ -6392,6 +6434,28 @@ class ChatService extends ChangeNotifier {
     return block;
   }
 
+  /// Injects a Chance Time event into the character's response prompt.
+  /// Injects a Chance Time event into the character's response prompt.
+  /// Placed AFTER the character name suffix for maximum recency weight.
+  /// Consumed after one use (cleared after response generation).
+  String _getChanceTimeInjection() {
+    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty)
+      return '';
+    final charName = _activeCharacter?.name ?? 'the character';
+    final event = _pendingChaosInjection!;
+    // Mark as delivered so it can be cleared on the NEXT sendMessage.
+    // Persists through regens/swipes until the user sends a new message.
+    _chaosEventDelivered = true;
+    return '\n[OOC — URGENT NARRATIVE INTERRUPT:\n'
+        'THE FOLLOWING EVENT JUST HAPPENED RIGHT NOW, THIS VERY MOMENT, during the scene:\n'
+        '>>> $event <<<\n\n'
+        'MANDATORY: $charName MUST acknowledge and react to this event IN THEIR VERY FIRST PARAGRAPH.\n'
+        'This is NOT optional. This is NOT background flavor. This event is happening RIGHT NOW and $charName witnesses/experiences it directly.\n'
+        'Write $charName\'s immediate, visceral reaction to this event FIRST, then continue responding to the conversation naturally.\n'
+        'Do NOT ignore this event. Do NOT save it for later. React NOW.\n'
+        'Do NOT mention meta-commentary, stage directions for others, or break the fourth wall.]\n';
+  }
+
   String _getTimeInjection() {
     if (!_realismEnabled) return '';
     final timeLabel = _timeOfDay.replaceAll('_', ' ');
@@ -6564,25 +6628,19 @@ class ChatService extends ChangeNotifier {
     return statePrompt;
   }
 
-  /// Injects a Chance Time event into the character's response prompt.
-  /// Placed AFTER the character name suffix for maximum recency weight.
-  /// Consumed after one use (cleared after response generation).
-  String _getChanceTimeInjection() {
-    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty)
-      return '';
-    final charName = _activeCharacter?.name ?? 'the character';
-    final event = _pendingChaosInjection!;
-    // Mark as delivered so it can be cleared on the NEXT sendMessage.
-    // Persists through regens/swipes until the user sends a new message.
-    _chaosEventDelivered = true;
-    return '\n[OOC — URGENT NARRATIVE INTERRUPT:\n'
-        'THE FOLLOWING EVENT JUST HAPPENED RIGHT NOW, THIS VERY MOMENT, during the scene:\n'
-        '>>> $event <<<\n\n'
-        'MANDATORY: $charName MUST acknowledge and react to this event IN THEIR VERY FIRST PARAGRAPH.\n'
-        'This is NOT optional. This is NOT background flavor. This event is happening RIGHT NOW and $charName witnesses/experiences it directly.\n'
-        'Write $charName\'s immediate, visceral reaction to this event FIRST, then continue responding to the conversation naturally.\n'
+  /// Urgent injection for time reversal easter egg — placed after suffix for maximum priority.
+  String _getTimeJumpInjection() {
+    if (!_timeJumpedBackward) return '';
+    // Flag persists until user sends new message (no longer consumed immediately)
+    return '\n[OOC — URGENT TEMPORAL ANOMALY:\n'
+        'THE CHARACTER JUST EXPERIENCED TIME RUNNING BACKWARD. THIS IS EXTREMELY JARRING AND DISORIENTING.\n'
+        'THE CHARACTER MUST acknowledge and react to this impossible temporal event IN THEIR VERY FIRST SENTENCE.\n'
+        'This is NOT optional. This is NOT background flavor. Time literally just reversed before their eyes.\n'
+        'Show visceral, immediate shock/confusion/curiosity — this supersedes ALL other concerns.\n'
         'Do NOT ignore this event. Do NOT save it for later. React NOW.\n'
-        'Do NOT mention game mechanics, "Chance Time", or systems.]\n';
+        'Do NOT mention game mechanics, "time travel", or systems. React as if reality glitched.\n'
+        'Examples: "What the—? Didn\'t we just...? Time just... reversed?" or "That\'s impossible... I swear it was morning a second ago..."\n'
+        'The anomaly is over — react to what happened, then continue naturally.]\n';
   }
 
   // ── LLM Evaluation Calls ──
@@ -6877,8 +6935,13 @@ class ChatService extends ChangeNotifier {
     // ── Deterministic Time Clock ──────────────────────────────────────────────
     // Increment every AI turn. Time only advances when the threshold is reached —
     // the LLM can only veto (hold) the advance, never skip multiple periods.
-    _turnsSinceLastTimeAdvance++;
-    final bool timeEligible = _turnsSinceLastTimeAdvance >= _turnsPerTimePeriod;
+    // Only runs if passage of time is enabled.
+    if (_passageOfTimeEnabled) {
+      _turnsSinceLastTimeAdvance++;
+    }
+    final bool timeEligible =
+        _passageOfTimeEnabled &&
+        _turnsSinceLastTimeAdvance >= _turnsPerTimePeriod;
 
     if (timeEligible) {
       final currentPostureCtx = _spatialStance.isNotEmpty
@@ -7711,6 +7774,12 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setPassageOfTimeEnabled(bool enabled) async {
+    _passageOfTimeEnabled = enabled;
+    await _saveChat();
+    notifyListeners();
+  }
+
   // ── Manual Time Nudge ────────────────────────────────────────────────────
 
   /// Called by the sidebar chevron buttons. delta = +1 (forward) or -1 (back).
@@ -7724,18 +7793,33 @@ class ChatService extends ChangeNotifier {
       'evening',
       'night',
     ];
-    int idx = validTimes.indexOf(_timeOfDay);
-    idx = (idx + delta) % validTimes.length;
-    if (idx < 0) {
-      idx = validTimes.length - 1;
-      _dayCount = (_dayCount - 1).clamp(1, 9999);
-    } else if (delta > 0 &&
-        validTimes.indexOf(_timeOfDay) == validTimes.length - 1) {
-      // wrapped forward past night
-      _dayCount++;
+    int currentIdx = validTimes.indexOf(_timeOfDay);
+    int newIdx = currentIdx + delta;
+    int dayDelta = 0;
+
+    // Handle wrapping
+    while (newIdx < 0) {
+      newIdx += validTimes.length;
+      dayDelta--;
     }
-    _timeOfDay = validTimes[idx];
+    while (newIdx >= validTimes.length) {
+      newIdx -= validTimes.length;
+      dayDelta++;
+    }
+
+    _dayCount += dayDelta;
+    _dayCount = _dayCount.clamp(1, 9999);
+    _timeOfDay = validTimes[newIdx];
     _turnsSinceLastTimeAdvance = 0; // reset clock after manual nudge
+
+    // Easter egg: flag backward jumps for character reaction
+    if (delta < 0) {
+      _timeJumpedBackward = true;
+      // Set metadata for UI chip to appear on next AI message
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata!['time_reversal'] = true;
+    }
+
     await _saveChat();
     notifyListeners();
   }

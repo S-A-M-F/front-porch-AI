@@ -4657,13 +4657,15 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final timeSkipNextDay = metadata['time_skip_next_day'] as bool? ?? false;
     final timeSkipTo = metadata['time_skip_to'] as String? ?? '';
     final chanceTimeEvent = metadata['chance_time_event'] as String? ?? '';
+    final timeReversal = metadata['time_reversal'] as bool? ?? false;
 
     if (bondDelta == 0 &&
         emotionLabel.isEmpty &&
         arousalDelta == 0 &&
         trustDelta == 0 &&
         timeSkipTo.isEmpty &&
-        chanceTimeEvent.isEmpty)
+        chanceTimeEvent.isEmpty &&
+        !timeReversal)
       return const SizedBox.shrink();
 
     Widget maybeTooltip(Widget child, String tip) {
@@ -4785,6 +4787,40 @@ class _MessageBubbleState extends State<_MessageBubble> {
         ],
       );
       chips.add(maybeTooltip(chip, trustReason));
+    }
+
+    // Time reversal chip
+    if (timeReversal) {
+      chips.add(
+        Tooltip(
+          message: 'Time is going backwards?!',
+          preferBelow: false,
+          textStyle: const TextStyle(fontSize: 12, color: Colors.white),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1F2937),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '😵‍💫',
+                style: TextStyle(fontSize: 11),
+              ), // Dizzy face with spirals
+              const SizedBox(width: 4),
+              const Text(
+                'Time Reversal',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.cyanAccent,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     if (timeSkipTo.isNotEmpty) {
@@ -8032,6 +8068,44 @@ class _RealismSectionState extends State<_RealismSection> {
                       ),
                       // OOC time-skip toast removed — skip info now appears
                       // in the delta row on the next AI message bubble.
+                      const SizedBox(height: 12),
+
+                      // ── Automatic Passage of Time Toggle ──
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.access_time,
+                            size: 14,
+                            color: Colors.white54,
+                          ),
+                          const SizedBox(width: 5),
+                          const Expanded(
+                            child: Text(
+                              'Automatic Passage of Time',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 24,
+                            child: Switch(
+                              value: chat.passageOfTimeEnabled,
+                              activeColor: Colors.blueAccent,
+                              onChanged: chat.isGenerating
+                                  ? null
+                                  : (val) => chat.setPassageOfTimeEnabled(val),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Time advances automatically as you chat. Manual controls remain available.',
+                        style: TextStyle(color: Colors.white54, fontSize: 10),
+                      ),
                       const SizedBox(height: 12),
 
                       // ── NSFW Enhancements Submenu ──

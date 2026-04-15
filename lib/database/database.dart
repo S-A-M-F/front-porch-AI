@@ -44,18 +44,28 @@ class Characters extends Table {
   TextColumn get firstMessage => text().withDefault(const Constant(''))();
   TextColumn get mesExample => text().withDefault(const Constant(''))();
   TextColumn get systemPrompt => text().withDefault(const Constant(''))();
-  TextColumn get postHistoryInstructions => text().withDefault(const Constant(''))();
-  TextColumn get alternateGreetings => text().withDefault(const Constant('[]'))(); // JSON array
-  TextColumn get tags => text().withDefault(const Constant('[]'))(); // JSON array
+  TextColumn get postHistoryInstructions =>
+      text().withDefault(const Constant(''))();
+  TextColumn get alternateGreetings =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+  TextColumn get tags =>
+      text().withDefault(const Constant('[]'))(); // JSON array
   TextColumn get imagePath => text().nullable()();
   TextColumn get ttsVoice => text().nullable()();
   TextColumn get folderId => text().nullable()();
   TextColumn get lorebook => text().nullable()(); // JSON blob
-  TextColumn get worldNames => text().withDefault(const Constant('[]'))(); // JSON array
-  TextColumn get memorySources => text().withDefault(const Constant('[]'))(); // JSON array of character IDs for cross-character RAG
-  TextColumn get evolvedPersonality => text().withDefault(const Constant(''))(); // LLM-evolved personality overlay
-  TextColumn get evolvedScenario => text().withDefault(const Constant(''))(); // LLM-evolved scenario overlay
-  IntColumn get evolutionCount => integer().withDefault(const Constant(0))(); // number of evolutions
+  TextColumn get worldNames =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+  TextColumn get memorySources => text().withDefault(
+    const Constant('[]'),
+  )(); // JSON array of character IDs for cross-character RAG
+  TextColumn get evolvedPersonality => text().withDefault(
+    const Constant(''),
+  )(); // LLM-evolved personality overlay
+  TextColumn get evolvedScenario =>
+      text().withDefault(const Constant(''))(); // LLM-evolved scenario overlay
+  IntColumn get evolutionCount =>
+      integer().withDefault(const Constant(0))(); // number of evolutions
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
@@ -74,36 +84,65 @@ class Sessions extends Table {
   TextColumn get authorNote => text().withDefault(const Constant(''))();
   IntColumn get authorNoteDepth => integer().withDefault(const Constant(4))();
   TextColumn get summary => text().nullable()(); // rolling chat summary
-  IntColumn get summaryLastIndex => integer().nullable()(); // message index at last summary update
+  IntColumn get summaryLastIndex =>
+      integer().nullable()(); // message index at last summary update
   TextColumn get parentSession => text().nullable()();
   IntColumn get forkIndex => integer().nullable()();
-  IntColumn get affectionScore => integer().withDefault(const Constant(0))(); // short-term tension points
-  IntColumn get relationshipTier => integer().withDefault(const Constant(0))(); // short-term tier
-  IntColumn get longTermScore => integer().withDefault(const Constant(0))(); // slowly accumulating bond
-  IntColumn get longTermTier => integer().withDefault(const Constant(0))(); // long-term rank
-  IntColumn get turnsSinceLongTermCheck => integer().withDefault(const Constant(0))(); // 5-turn counter
-  IntColumn get shortTermDeltasSummary => integer().withDefault(const Constant(0))(); // trends over 5 turns
-  BoolColumn get realismEnabled => boolean().withDefault(const Constant(false))(); // master realism toggle
-  IntColumn get shortTermMood => integer().withDefault(const Constant(0))(); // -5 to +5
-  IntColumn get moodDecayCounter => integer().withDefault(const Constant(0))(); // msgs since last mood change
-  TextColumn get characterEmotion => text().withDefault(const Constant(''))(); // e.g. "amused"
-  TextColumn get emotionIntensity => text().withDefault(const Constant(''))(); // mild/moderate/strong
-  TextColumn get timeOfDay => text().withDefault(const Constant('morning'))(); // dawn/morning/etc
-  IntColumn get dayCount => integer().withDefault(const Constant(1))(); // starts at Day 1
-  BoolColumn get nsfwCooldownEnabled => boolean().withDefault(const Constant(false))(); // sub-toggle
-  IntColumn get arousalLevel => integer().withDefault(const Constant(0))(); // 0 to 10 scale
-  IntColumn get cooldownTurnsRemaining => integer().withDefault(const Constant(0))(); // 0 = no cooldown
-  
+  IntColumn get affectionScore =>
+      integer().withDefault(const Constant(0))(); // short-term tension points
+  IntColumn get relationshipTier =>
+      integer().withDefault(const Constant(0))(); // short-term tier
+  IntColumn get longTermScore =>
+      integer().withDefault(const Constant(0))(); // slowly accumulating bond
+  IntColumn get longTermTier =>
+      integer().withDefault(const Constant(0))(); // long-term rank
+  IntColumn get turnsSinceLongTermCheck =>
+      integer().withDefault(const Constant(0))(); // 5-turn counter
+  IntColumn get shortTermDeltasSummary =>
+      integer().withDefault(const Constant(0))(); // trends over 5 turns
+  BoolColumn get realismEnabled =>
+      boolean().withDefault(const Constant(false))(); // master realism toggle
+  IntColumn get shortTermMood =>
+      integer().withDefault(const Constant(0))(); // -5 to +5
+  IntColumn get moodDecayCounter =>
+      integer().withDefault(const Constant(0))(); // msgs since last mood change
+  TextColumn get characterEmotion =>
+      text().withDefault(const Constant(''))(); // e.g. "amused"
+  TextColumn get emotionIntensity =>
+      text().withDefault(const Constant(''))(); // mild/moderate/strong
+  TextColumn get timeOfDay =>
+      text().withDefault(const Constant('morning'))(); // dawn/morning/etc
+  IntColumn get dayCount =>
+      integer().withDefault(const Constant(1))(); // starts at Day 1
+  BoolColumn get nsfwCooldownEnabled =>
+      boolean().withDefault(const Constant(false))(); // sub-toggle
+  BoolColumn get passageOfTimeEnabled => boolean().withDefault(
+    const Constant(true),
+  )(); // sub-toggle for automatic time advancement
+  IntColumn get arousalLevel =>
+      integer().withDefault(const Constant(0))(); // 0 to 10 scale
+  IntColumn get cooldownTurnsRemaining =>
+      integer().withDefault(const Constant(0))(); // 0 = no cooldown
+
   // Realism Engine v3.0 Behavioral Mechanics
-  IntColumn get trustLevel => integer().withDefault(const Constant(0))(); // -100 to 100 paranoia/trust
-  TextColumn get activeFixation => text().withDefault(const Constant(''))(); // ongoing obsession topic
-  IntColumn get fixationLifespan => integer().withDefault(const Constant(0))(); // decay turns
-  TextColumn get spatialStance => text().withDefault(const Constant(''))(); // physical anchor
-  BoolColumn get trustRepairPending => boolean().withDefault(const Constant(false))(); // repair window armed after severe trust drop
+  IntColumn get trustLevel =>
+      integer().withDefault(const Constant(0))(); // -100 to 100 paranoia/trust
+  TextColumn get activeFixation =>
+      text().withDefault(const Constant(''))(); // ongoing obsession topic
+  IntColumn get fixationLifespan =>
+      integer().withDefault(const Constant(0))(); // decay turns
+  TextColumn get spatialStance =>
+      text().withDefault(const Constant(''))(); // physical anchor
+  BoolColumn get trustRepairPending => boolean().withDefault(
+    const Constant(false),
+  )(); // repair window armed after severe trust drop
 
   // Chance Time / Chaos Mode (v21)
-  BoolColumn get chaosModeEnabled => boolean().withDefault(const Constant(false))();
-  IntColumn get chaosPressure => integer().withDefault(const Constant(0))(); // 0-100 escalating trigger chance
+  BoolColumn get chaosModeEnabled =>
+      boolean().withDefault(const Constant(false))();
+  IntColumn get chaosPressure => integer().withDefault(
+    const Constant(0),
+  )(); // 0-100 escalating trigger chance
 
   // Per-session character evolution (v19)
   // 1:1 chats: plain evolved text
@@ -111,11 +150,14 @@ class Sessions extends Table {
   TextColumn get evolvedScenario => text().withDefault(const Constant(''))();
   IntColumn get evolutionCount => integer().withDefault(const Constant(0))();
   // Group chats: JSON maps { charId → evolved text }
-  TextColumn get groupEvolvedPersonalities => text().withDefault(const Constant('{}'))();
-  TextColumn get groupEvolvedScenarios => text().withDefault(const Constant('{}'))();
+  TextColumn get groupEvolvedPersonalities =>
+      text().withDefault(const Constant('{}'))();
+  TextColumn get groupEvolvedScenarios =>
+      text().withDefault(const Constant('{}'))();
 
   // Per-session generation parameter overrides (v22)
-  TextColumn get generationSettings => text().nullable()(); // JSON blob, null = use global defaults
+  TextColumn get generationSettings =>
+      text().nullable()(); // JSON blob, null = use global defaults
 
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -133,9 +175,11 @@ class Messages extends Table {
   TextColumn get sender => text()();
   BoolColumn get isUser => boolean()();
   TextColumn get characterId => text().nullable()(); // for group chats
-  TextColumn get swipes => text().withDefault(const Constant('[]'))(); // JSON array
+  TextColumn get swipes =>
+      text().withDefault(const Constant('[]'))(); // JSON array
   IntColumn get swipeIndex => integer().withDefault(const Constant(0))();
-  TextColumn get swipeDurations => text().withDefault(const Constant('[]'))(); // JSON array
+  TextColumn get swipeDurations =>
+      text().withDefault(const Constant('[]'))(); // JSON array
   TextColumn get metadata => text().nullable()();
   TextColumn get swipeMetadata => text().nullable()();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -149,8 +193,10 @@ class Messages extends Table {
 class Groups extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
-  TextColumn get characterIds => text().withDefault(const Constant('[]'))(); // JSON array
-  TextColumn get turnOrder => text().withDefault(const Constant('roundRobin'))();
+  TextColumn get characterIds =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+  TextColumn get turnOrder =>
+      text().withDefault(const Constant('roundRobin'))();
   BoolColumn get autoAdvance => boolean().withDefault(const Constant(false))();
   BoolColumn get directorMode => boolean().withDefault(const Constant(false))();
   TextColumn get firstMessage => text().withDefault(const Constant(''))();
@@ -182,7 +228,9 @@ class Personas extends Table {
   TextColumn get name => text().withDefault(const Constant('User'))();
   TextColumn get description => text().withDefault(const Constant(''))();
   TextColumn get persona => text().withDefault(const Constant(''))();
-  TextColumn get learnedFacts => text().withDefault(const Constant('[]'))(); // JSON array of fact strings from auto-persona
+  TextColumn get learnedFacts => text().withDefault(
+    const Constant('[]'),
+  )(); // JSON array of fact strings from auto-persona
   TextColumn get avatarPath => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(false))();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -226,7 +274,8 @@ class MessageEmbeddings extends Table {
 class SyncMeta extends Table {
   IntColumn get id => integer().withDefault(const Constant(1))();
   IntColumn get version => integer().withDefault(const Constant(0))();
-  DateTimeColumn get lastModifiedAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get lastModifiedAt =>
+      dateTime().withDefault(currentDateAndTime)();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -235,10 +284,11 @@ class SyncMeta extends Table {
 /// Data Bank entries — user-provided knowledge per character for RAG retrieval.
 class DataBankEntries extends Table {
   TextColumn get id => text()();
-  TextColumn get characterId => text()();       // which character this belongs to
-  TextColumn get title => text()();              // user-given label
-  TextColumn get content => text()();            // the actual text content
-  BlobColumn get embedding => blob().nullable()(); // pre-computed embedding vector
+  TextColumn get characterId => text()(); // which character this belongs to
+  TextColumn get title => text()(); // user-given label
+  TextColumn get content => text()(); // the actual text content
+  BlobColumn get embedding =>
+      blob().nullable()(); // pre-computed embedding vector
   IntColumn get dimensions => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
@@ -249,13 +299,22 @@ class DataBankEntries extends Table {
 /// Objectives — quest/task system for guided roleplay.
 class Objectives extends Table {
   TextColumn get id => text()();
-  TextColumn get characterId => text()();         // which character this objective belongs to
-  TextColumn get objective => text()();            // the main goal
-  TextColumn get tasks => text().withDefault(const Constant('[]'))(); // JSON array of {description, completed}
+  TextColumn get characterId =>
+      text()(); // which character this objective belongs to
+  TextColumn get objective => text()(); // the main goal
+  TextColumn get tasks => text().withDefault(
+    const Constant('[]'),
+  )(); // JSON array of {description, completed}
   BoolColumn get active => boolean().withDefault(const Constant(true))();
-  BoolColumn get isPrimary => boolean().withDefault(const Constant(false))(); // Primary vs secondary goal
-  IntColumn get checkFrequency => integer().withDefault(const Constant(3))(); // check task completion every N messages
-  IntColumn get injectionDepth => integer().withDefault(const Constant(4))(); // how many messages from end to inject (0=strongest)
+  BoolColumn get isPrimary => boolean().withDefault(
+    const Constant(false),
+  )(); // Primary vs secondary goal
+  IntColumn get checkFrequency => integer().withDefault(
+    const Constant(3),
+  )(); // check task completion every N messages
+  IntColumn get injectionDepth => integer().withDefault(
+    const Constant(4),
+  )(); // how many messages from end to inject (0=strongest)
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
@@ -265,7 +324,8 @@ class Objectives extends Table {
 /// Porch Stories — AI-generated novel projects.
 class StoryProjects extends Table {
   TextColumn get id => text()();
-  TextColumn get title => text().withDefault(const Constant('Untitled Story'))();
+  TextColumn get title =>
+      text().withDefault(const Constant('Untitled Story'))();
   TextColumn get data => text()(); // Full StoryProject JSON blob
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -277,7 +337,22 @@ class StoryProjects extends Table {
 
 // ── Database Definition ─────────────────────────────────────────────────
 
-@DriftDatabase(tables: [Characters, Sessions, Messages, Groups, Folders, Personas, Worlds, MessageEmbeddings, DataBankEntries, Objectives, StoryProjects, SyncMeta])
+@DriftDatabase(
+  tables: [
+    Characters,
+    Sessions,
+    Messages,
+    Groups,
+    Folders,
+    Personas,
+    Worlds,
+    MessageEmbeddings,
+    DataBankEntries,
+    Objectives,
+    StoryProjects,
+    SyncMeta,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase._internal(super.e);
 
@@ -294,7 +369,8 @@ class AppDatabase extends _$AppDatabase {
     if (_instance != null) return _instance!;
     final prefs = await SharedPreferences.getInstance();
     final rootPath = prefs.getString('root_path');
-    final basePath = rootPath ?? (await getApplicationDocumentsDirectory()).path;
+    final basePath =
+        rootPath ?? (await getApplicationDocumentsDirectory()).path;
     final dbDir = p.join(basePath, 'KoboldManager');
     _dbDir = dbDir;
 
@@ -317,20 +393,25 @@ class AppDatabase extends _$AppDatabase {
     // This is a one-time operation on the first 0.9.0 stable launch.
     // Steps 1-2 run here (backup + promote). Steps 3-5 (diff + import)
     // run later in main.dart with a UI overlay.
-    if (!isPreRelease && await DbReunificationService.needsReunification(dbDir)) {
-      debugPrint('[DB] Reunification needed — backing up and promoting beta DB');
+    if (!isPreRelease &&
+        await DbReunificationService.needsReunification(dbDir)) {
+      debugPrint(
+        '[DB] Reunification needed — backing up and promoting beta DB',
+      );
       await DbReunificationService.createBackups(dbDir);
       await DbReunificationService.promoteBetaDb(dbDir);
     }
 
     _dbPath = file.path;
-    _instance = AppDatabase._internal(NativeDatabase.createInBackground(
-      file,
-      setup: (db) {
-        db.execute('PRAGMA synchronous = FULL');
-        debugPrint('[DB] PRAGMA synchronous = FULL set');
-      },
-    ));
+    _instance = AppDatabase._internal(
+      NativeDatabase.createInBackground(
+        file,
+        setup: (db) {
+          db.execute('PRAGMA synchronous = FULL');
+          debugPrint('[DB] PRAGMA synchronous = FULL set');
+        },
+      ),
+    );
     return _instance!;
   }
 
@@ -355,7 +436,9 @@ class AppDatabase extends _$AppDatabase {
         debugPrint('[DB] Integrity check passed');
         return true;
       }
-      debugPrint('[DB] Integrity check FAILED: ${result.map((r) => r.data).toList()}');
+      debugPrint(
+        '[DB] Integrity check FAILED: ${result.map((r) => r.data).toList()}',
+      );
       return false;
     } catch (e) {
       debugPrint('[DB] Integrity check error: $e');
@@ -375,22 +458,26 @@ class AppDatabase extends _$AppDatabase {
 
   /// For testing: create an in-memory database.
   factory AppDatabase.forTesting() {
-    return AppDatabase._internal(NativeDatabase.createInBackground(
-      File(':memory:'),
-      setup: (db) => db.execute('PRAGMA synchronous = FULL'),
-    ));
+    return AppDatabase._internal(
+      NativeDatabase.createInBackground(
+        File(':memory:'),
+        setup: (db) => db.execute('PRAGMA synchronous = FULL'),
+      ),
+    );
   }
 
   /// Open a specific DB file for reunification (runs migrations, not a singleton).
   factory AppDatabase.forReunification(File file) {
-    return AppDatabase._internal(NativeDatabase.createInBackground(
-      file,
-      setup: (db) => db.execute('PRAGMA synchronous = FULL'),
-    ));
+    return AppDatabase._internal(
+      NativeDatabase.createInBackground(
+        file,
+        setup: (db) => db.execute('PRAGMA synchronous = FULL'),
+      ),
+    );
   }
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -426,7 +513,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 4) {
         // v3→v4: add summary columns to sessions
         await customStatement('ALTER TABLE sessions ADD COLUMN summary TEXT');
-        await customStatement('ALTER TABLE sessions ADD COLUMN summary_last_index INTEGER');
+        await customStatement(
+          'ALTER TABLE sessions ADD COLUMN summary_last_index INTEGER',
+        );
       }
       if (from < 5) {
         // v4→v5: add message_embeddings table for RAG + memorySources on characters
@@ -445,7 +534,9 @@ class AppDatabase extends _$AppDatabase {
         );
         // Add memorySources column to characters for cross-character RAG
         try {
-          await customStatement("ALTER TABLE characters ADD COLUMN memory_sources TEXT NOT NULL DEFAULT '[]'");
+          await customStatement(
+            "ALTER TABLE characters ADD COLUMN memory_sources TEXT NOT NULL DEFAULT '[]'",
+          );
         } catch (_) {
           // Column may already exist
         }
@@ -453,7 +544,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 6) {
         // v5→v6: add learnedFacts column to personas for auto-persona
         try {
-          await customStatement("ALTER TABLE personas ADD COLUMN learned_facts TEXT NOT NULL DEFAULT '[]'");
+          await customStatement(
+            "ALTER TABLE personas ADD COLUMN learned_facts TEXT NOT NULL DEFAULT '[]'",
+          );
         } catch (_) {
           // Column may already exist
         }
@@ -469,7 +562,7 @@ class AppDatabase extends _$AppDatabase {
           'embedding BLOB, '
           'dimensions INTEGER NOT NULL DEFAULT 0, '
           'created_at INTEGER NOT NULL DEFAULT 0, '
-          'PRIMARY KEY (id))'
+          'PRIMARY KEY (id))',
         );
       }
       if (from < 8) {
@@ -484,13 +577,15 @@ class AppDatabase extends _$AppDatabase {
           'check_frequency INTEGER NOT NULL DEFAULT 3, '
           'injection_depth INTEGER NOT NULL DEFAULT 4, '
           'created_at INTEGER NOT NULL DEFAULT 0, '
-          'PRIMARY KEY (id))'
+          'PRIMARY KEY (id))',
         );
       }
       if (from < 9) {
         // v8→v9: add injection_depth column to objectives
         try {
-          await customStatement("ALTER TABLE objectives ADD COLUMN injection_depth INTEGER NOT NULL DEFAULT 4");
+          await customStatement(
+            "ALTER TABLE objectives ADD COLUMN injection_depth INTEGER NOT NULL DEFAULT 4",
+          );
         } catch (_) {
           // Column may already exist (fresh v8+ installs)
         }
@@ -498,13 +593,19 @@ class AppDatabase extends _$AppDatabase {
       if (from < 10) {
         // v9→v10: add character evolution columns
         try {
-          await customStatement("ALTER TABLE characters ADD COLUMN evolved_personality TEXT NOT NULL DEFAULT ''");
+          await customStatement(
+            "ALTER TABLE characters ADD COLUMN evolved_personality TEXT NOT NULL DEFAULT ''",
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE characters ADD COLUMN evolved_scenario TEXT NOT NULL DEFAULT ''");
+          await customStatement(
+            "ALTER TABLE characters ADD COLUMN evolved_scenario TEXT NOT NULL DEFAULT ''",
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE characters ADD COLUMN evolution_count INTEGER NOT NULL DEFAULT 0");
+          await customStatement(
+            "ALTER TABLE characters ADD COLUMN evolution_count INTEGER NOT NULL DEFAULT 0",
+          );
         } catch (_) {}
       }
       if (from < 11) {
@@ -517,19 +618,25 @@ class AppDatabase extends _$AppDatabase {
           'created_at INTEGER NOT NULL DEFAULT 0, '
           'updated_at INTEGER NOT NULL DEFAULT 0, '
           'deleted_at INTEGER, '
-          'PRIMARY KEY (id))'
+          'PRIMARY KEY (id))',
         );
       }
       if (from < 12) {
         // v11→v12: add relationship tracker columns to sessions
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN affection_score INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN affection_score INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN relationship_tier INTEGER NOT NULL DEFAULT 2');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN relationship_tier INTEGER NOT NULL DEFAULT 2',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN relationship_enabled INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN relationship_enabled INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
       }
       if (from < 13) {
@@ -537,102 +644,156 @@ class AppDatabase extends _$AppDatabase {
         // Rename: SQLite doesn't support RENAME COLUMN on older versions, so we add the new col
         // and copy data if the old one exists.
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN realism_enabled INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN realism_enabled INTEGER NOT NULL DEFAULT 0',
+          );
           // Copy existing relationship_enabled values to realism_enabled
-          await customStatement('UPDATE sessions SET realism_enabled = relationship_enabled');
+          await customStatement(
+            'UPDATE sessions SET realism_enabled = relationship_enabled',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN short_term_mood INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN short_term_mood INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN mood_decay_counter INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN mood_decay_counter INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN character_emotion TEXT NOT NULL DEFAULT ''");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN character_emotion TEXT NOT NULL DEFAULT ''",
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN emotion_intensity TEXT NOT NULL DEFAULT ''");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN emotion_intensity TEXT NOT NULL DEFAULT ''",
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN time_of_day TEXT NOT NULL DEFAULT 'morning'");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN time_of_day TEXT NOT NULL DEFAULT 'morning'",
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN day_count INTEGER NOT NULL DEFAULT 1');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN day_count INTEGER NOT NULL DEFAULT 1',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN nsfw_cooldown_enabled INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN nsfw_cooldown_enabled INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN cooldown_turns_remaining INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN cooldown_turns_remaining INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
       }
       if (from < 14) {
         // v13→v14: add metadata columns to messages
         try {
-          await customStatement('ALTER TABLE messages ADD COLUMN metadata TEXT');
+          await customStatement(
+            'ALTER TABLE messages ADD COLUMN metadata TEXT',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE messages ADD COLUMN swipe_metadata TEXT');
+          await customStatement(
+            'ALTER TABLE messages ADD COLUMN swipe_metadata TEXT',
+          );
         } catch (_) {}
       }
       if (from < 15) {
         // v14→v15: add arousal tracker to sessions
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN arousal_level INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN arousal_level INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
       }
       if (from < 16) {
         // v15→v16: add long term relationship tracking fields
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN long_term_score INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN long_term_score INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN long_term_tier INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN long_term_tier INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN turns_since_long_term_check INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN turns_since_long_term_check INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN short_term_deltas_summary INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN short_term_deltas_summary INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
       }
       if (from < 17) {
         // v16→v17: add behavioral Realism Mechanics
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN trust_level INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN trust_level INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN active_fixation TEXT NOT NULL DEFAULT ''");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN active_fixation TEXT NOT NULL DEFAULT ''",
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN fixation_lifespan INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN fixation_lifespan INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN spatial_stance TEXT NOT NULL DEFAULT ''");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN spatial_stance TEXT NOT NULL DEFAULT ''",
+          );
         } catch (_) {}
       }
       if (from < 18) {
         // v17→v18: add trust repair window flag
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN trust_repair_pending INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN trust_repair_pending INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
       }
       if (from < 19) {
         // v18→v19: per-session character evolution columns
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN evolved_personality TEXT NOT NULL DEFAULT ''");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN evolved_personality TEXT NOT NULL DEFAULT ''",
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN evolved_scenario TEXT NOT NULL DEFAULT ''");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN evolved_scenario TEXT NOT NULL DEFAULT ''",
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN evolution_count INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN evolution_count INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN group_evolved_personalities TEXT NOT NULL DEFAULT '{}'");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN group_evolved_personalities TEXT NOT NULL DEFAULT '{}'",
+          );
         } catch (_) {}
         try {
-          await customStatement("ALTER TABLE sessions ADD COLUMN group_evolved_scenarios TEXT NOT NULL DEFAULT '{}'");
+          await customStatement(
+            "ALTER TABLE sessions ADD COLUMN group_evolved_scenarios TEXT NOT NULL DEFAULT '{}'",
+          );
         } catch (_) {}
         // Data preservation: copy existing character-level evolved data into
         // all their matching (non-deleted) session rows so no user data is lost.
@@ -651,10 +812,17 @@ class AppDatabase extends _$AppDatabase {
             await customUpdate(
               'UPDATE sessions SET evolved_personality = ?, evolved_scenario = ?, evolution_count = ? '
               'WHERE character_id = ? AND deleted_at IS NULL',
-              variables: [Variable(ep), Variable(es), Variable(ec), Variable(charId)],
+              variables: [
+                Variable(ep),
+                Variable(es),
+                Variable(ec),
+                Variable(charId),
+              ],
               updates: {sessions},
             );
-            debugPrint('[DB] v19 migration: copied evolution data for character $charId to their sessions');
+            debugPrint(
+              '[DB] v19 migration: copied evolution data for character $charId to their sessions',
+            );
           }
         } catch (e) {
           debugPrint('[DB] v19 migration: data copy failed (non-fatal): $e');
@@ -664,22 +832,38 @@ class AppDatabase extends _$AppDatabase {
         // v19→v20: multi-objective support (primary vs secondary goals)
         try {
           // Defaulting to 1 so any previously active goal becomes the primary goal
-          await customStatement('ALTER TABLE objectives ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 1');
+          await customStatement(
+            'ALTER TABLE objectives ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 1',
+          );
         } catch (_) {}
       }
       if (from < 21) {
         // v20→v21: Chaos Mode / Chance Time system
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN chaos_mode_enabled INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN chaos_mode_enabled INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN chaos_pressure INTEGER NOT NULL DEFAULT 0');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN chaos_pressure INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
       }
       if (from < 22) {
         // v21→v22: per-session generation parameter overrides
         try {
-          await customStatement('ALTER TABLE sessions ADD COLUMN generation_settings TEXT');
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN generation_settings TEXT',
+          );
+        } catch (_) {}
+      }
+      if (from < 23) {
+        // v22→v23: add passage_of_time_enabled sub-toggle for realism mode
+        try {
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN passage_of_time_enabled INTEGER NOT NULL DEFAULT 1',
+          );
         } catch (_) {}
       }
     },
@@ -698,7 +882,9 @@ class AppDatabase extends _$AppDatabase {
       'deleted_at INTEGER, PRIMARY KEY (id))',
     );
     // Build oldId→uuid map
-    final oldFolders = await customSelect('SELECT id, name, parent_id FROM folders').get();
+    final oldFolders = await customSelect(
+      'SELECT id, name, parent_id FROM folders',
+    ).get();
     final folderIdMap = <int, String>{}; // old int → new uuid
     for (final row in oldFolders) {
       final oldId = row.read<int>('id');
@@ -711,8 +897,12 @@ class AppDatabase extends _$AppDatabase {
       final newParent = oldParent != null ? folderIdMap[oldParent] : null;
       await customInsert(
         'INSERT INTO folders_new (id, name, parent_id, updated_at) VALUES (?, ?, ?, ?)',
-        variables: [Variable(newId), Variable(row.read<String>('name')),
-                     Variable(newParent), Variable(now)],
+        variables: [
+          Variable(newId),
+          Variable(row.read<String>('name')),
+          Variable(newParent),
+          Variable(now),
+        ],
       );
     }
     await customStatement('DROP TABLE folders');
@@ -752,10 +942,14 @@ class AppDatabase extends _$AppDatabase {
         'lorebook, world_names, created_at, updated_at) '
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         variables: [
-          Variable(newId), Variable(row.read<String>('name')),
-          Variable(row.read<String>('description')), Variable(row.read<String>('personality')),
-          Variable(row.read<String>('scenario')), Variable(row.read<String>('first_message')),
-          Variable(row.read<String>('mes_example')), Variable(row.read<String>('system_prompt')),
+          Variable(newId),
+          Variable(row.read<String>('name')),
+          Variable(row.read<String>('description')),
+          Variable(row.read<String>('personality')),
+          Variable(row.read<String>('scenario')),
+          Variable(row.read<String>('first_message')),
+          Variable(row.read<String>('mes_example')),
+          Variable(row.read<String>('system_prompt')),
           Variable(row.read<String>('post_history_instructions')),
           Variable(row.read<String>('alternate_greetings')),
           Variable(row.read<String>('tags')),
@@ -846,11 +1040,15 @@ class AppDatabase extends _$AppDatabase {
     await customStatement('ALTER TABLE messages_new RENAME TO messages');
 
     // ── Groups (already text PK, just add updatedAt/deletedAt) ──
-    await customStatement('ALTER TABLE groups ADD COLUMN updated_at INTEGER NOT NULL DEFAULT $now');
+    await customStatement(
+      'ALTER TABLE groups ADD COLUMN updated_at INTEGER NOT NULL DEFAULT $now',
+    );
     await customStatement('ALTER TABLE groups ADD COLUMN deleted_at INTEGER');
 
     // ── Personas (already text PK, just add updatedAt/deletedAt) ──
-    await customStatement('ALTER TABLE personas ADD COLUMN updated_at INTEGER NOT NULL DEFAULT $now');
+    await customStatement(
+      'ALTER TABLE personas ADD COLUMN updated_at INTEGER NOT NULL DEFAULT $now',
+    );
     await customStatement('ALTER TABLE personas ADD COLUMN deleted_at INTEGER');
 
     // ── Worlds (int PK → text UUID, add updatedAt/deletedAt) ──
@@ -910,7 +1108,14 @@ class AppDatabase extends _$AppDatabase {
   /// the DB (e.g. 59k deleted messages = 300+ MB of wasted space).
   Future<int> purgeDeletedRows() async {
     int total = 0;
-    for (final table in ['messages', 'sessions', 'characters', 'groups', 'folders', 'personas']) {
+    for (final table in [
+      'messages',
+      'sessions',
+      'characters',
+      'groups',
+      'folders',
+      'personas',
+    ]) {
       final count = await customUpdate(
         'DELETE FROM $table WHERE deleted_at IS NOT NULL',
         updates: {},
@@ -940,7 +1145,9 @@ class AppDatabase extends _$AppDatabase {
       (select(characters)..where((c) => c.id.equals(id))).getSingle();
 
   Future<Character?> getCharacterByImagePath(String path) =>
-      (select(characters)..where((c) => c.imagePath.equals(path) & c.deletedAt.isNull())).getSingleOrNull();
+      (select(characters)
+            ..where((c) => c.imagePath.equals(path) & c.deletedAt.isNull()))
+          .getSingleOrNull();
 
   Future<int> insertCharacter(CharactersCompanion character) async {
     // Ensure UUID is set
@@ -953,7 +1160,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Insert a character and return its UUID (convenience for callers that need the ID).
-  Future<String> insertCharacterReturningId(CharactersCompanion character) async {
+  Future<String> insertCharacterReturningId(
+    CharactersCompanion character,
+  ) async {
     final id = character.id.present ? character.id.value : _uuid.v4();
     character = character.copyWith(id: Value(id));
     await into(characters).insert(character);
@@ -965,28 +1174,33 @@ class AppDatabase extends _$AppDatabase {
     // IMPORTANT: Use .write() not .replace() — .replace() overwrites the entire
     // row, wiping any fields not explicitly set (Value.absent → null/default).
     // .write() only updates fields where Value.present is true.
-    final rows = await (update(characters)
-      ..where((c) => c.id.equals(character.id.value)))
-      .write(character);
+    final rows = await (update(
+      characters,
+    )..where((c) => c.id.equals(character.id.value))).write(character);
     await bumpSyncVersion();
     return rows > 0;
   }
 
   /// Update ONLY the imagePath for a character (preserves all other data).
   Future<void> updateCharacterImagePath(String id, String newPath) async {
-    await (update(characters)..where((c) => c.id.equals(id)))
-        .write(CharactersCompanion(imagePath: Value(newPath)));
+    await (update(characters)..where((c) => c.id.equals(id))).write(
+      CharactersCompanion(imagePath: Value(newPath)),
+    );
     await bumpSyncVersion();
   }
 
   Future<int> deleteCharacterById(String id) async {
     // Hard delete: also cascade to sessions and their messages
-    final charSessions = await (select(sessions)..where((s) => s.characterId.equals(id))).get();
+    final charSessions = await (select(
+      sessions,
+    )..where((s) => s.characterId.equals(id))).get();
     for (final s in charSessions) {
       await (delete(messages)..where((m) => m.sessionId.equals(s.id))).go();
     }
     await (delete(sessions)..where((s) => s.characterId.equals(id))).go();
-    final count = await (delete(characters)..where((c) => c.id.equals(id))).go();
+    final count = await (delete(
+      characters,
+    )..where((c) => c.id.equals(id))).go();
     await bumpSyncVersion();
     return count;
   }
@@ -1030,15 +1244,17 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Session>> getSessionsForCharacter(String characterId) =>
       (select(sessions)
-        ..where((s) => s.characterId.equals(characterId) & s.deletedAt.isNull())
-        ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
-      .get();
+            ..where(
+              (s) => s.characterId.equals(characterId) & s.deletedAt.isNull(),
+            )
+            ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
+          .get();
 
   Future<List<Session>> getSessionsForGroup(String groupId) =>
       (select(sessions)
-        ..where((s) => s.groupId.equals(groupId) & s.deletedAt.isNull())
-        ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
-      .get();
+            ..where((s) => s.groupId.equals(groupId) & s.deletedAt.isNull())
+            ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
+          .get();
 
   Future<Session?> getSessionById(String id) =>
       (select(sessions)..where((s) => s.id.equals(id))).getSingleOrNull();
@@ -1064,9 +1280,9 @@ class AppDatabase extends _$AppDatabase {
   /// Partial-update a session — only writes fields that are explicitly set
   /// (Value.present). Safe to call without providing the full row.
   Future<bool> patchSession(SessionsCompanion session) async {
-    final rows = await (update(sessions)
-      ..where((s) => s.id.equals(session.id.value)))
-      .write(session);
+    final rows = await (update(
+      sessions,
+    )..where((s) => s.id.equals(session.id.value))).write(session);
     await bumpSyncVersion();
     return rows > 0;
   }
@@ -1083,15 +1299,15 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Message>> getMessagesForSession(String sessionId) =>
       (select(messages)
-        ..where((m) => m.sessionId.equals(sessionId) & m.deletedAt.isNull())
-        ..orderBy([(m) => OrderingTerm.asc(m.position)]))
-      .get();
+            ..where((m) => m.sessionId.equals(sessionId) & m.deletedAt.isNull())
+            ..orderBy([(m) => OrderingTerm.asc(m.position)]))
+          .get();
 
   Stream<List<Message>> watchMessagesForSession(String sessionId) =>
       (select(messages)
-        ..where((m) => m.sessionId.equals(sessionId) & m.deletedAt.isNull())
-        ..orderBy([(m) => OrderingTerm.asc(m.position)]))
-      .watch();
+            ..where((m) => m.sessionId.equals(sessionId) & m.deletedAt.isNull())
+            ..orderBy([(m) => OrderingTerm.asc(m.position)]))
+          .watch();
 
   Future<int> insertMessage(MessagesCompanion message) async {
     if (!message.id.present) {
@@ -1103,15 +1319,17 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> insertMessages(List<MessagesCompanion> msgs) async {
-    final withIds = msgs.map((m) =>
-      m.id.present ? m : m.copyWith(id: Value(_uuid.v4())),
-    ).toList();
+    final withIds = msgs
+        .map((m) => m.id.present ? m : m.copyWith(id: Value(_uuid.v4())))
+        .toList();
     await batch((b) => b.insertAll(messages, withIds));
     await bumpSyncVersion();
   }
 
   Future<int> deleteMessagesForSession(String sessionId) async {
-    final count = await (delete(messages)..where((m) => m.sessionId.equals(sessionId))).go();
+    final count = await (delete(
+      messages,
+    )..where((m) => m.sessionId.equals(sessionId))).go();
     await bumpSyncVersion();
     return count;
   }
@@ -1123,8 +1341,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> updateMessage(MessagesCompanion message) async {
-    await (update(messages)..where((m) => m.id.equals(message.id.value)))
-        .write(message);
+    await (update(
+      messages,
+    )..where((m) => m.id.equals(message.id.value))).write(message);
     await bumpSyncVersion();
   }
 
@@ -1153,7 +1372,9 @@ class AppDatabase extends _$AppDatabase {
 
   Future<int> deleteGroupById(String id) async {
     // Hard delete: also cascade to sessions and their messages
-    final groupSessions = await (select(sessions)..where((s) => s.groupId.equals(id))).get();
+    final groupSessions = await (select(
+      sessions,
+    )..where((s) => s.groupId.equals(id))).get();
     for (final s in groupSessions) {
       await (delete(messages)..where((m) => m.sessionId.equals(s.id))).go();
     }
@@ -1183,8 +1404,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> updateFolder(FoldersCompanion folder) async {
-    await (update(folders)..where((f) => f.id.equals(folder.id.value)))
-        .write(folder);
+    await (update(
+      folders,
+    )..where((f) => f.id.equals(folder.id.value))).write(folder);
     await bumpSyncVersion();
   }
 
@@ -1194,7 +1416,9 @@ class AppDatabase extends _$AppDatabase {
       (select(personas)..where((p) => p.deletedAt.isNull())).get();
 
   Future<Persona?> getActivePersona() =>
-      (select(personas)..where((p) => p.isActive.equals(true) & p.deletedAt.isNull())).getSingleOrNull();
+      (select(personas)
+            ..where((p) => p.isActive.equals(true) & p.deletedAt.isNull()))
+          .getSingleOrNull();
 
   Future<int> insertPersona(PersonasCompanion persona) async {
     final result = await into(personas).insert(persona);
@@ -1217,10 +1441,13 @@ class AppDatabase extends _$AppDatabase {
   Future<void> setActivePersona(String id) async {
     await transaction(() async {
       // Deactivate all
-      await (update(personas)).write(const PersonasCompanion(isActive: Value(false)));
+      await (update(
+        personas,
+      )).write(const PersonasCompanion(isActive: Value(false)));
       // Activate the chosen one
-      await (update(personas)..where((p) => p.id.equals(id)))
-          .write(const PersonasCompanion(isActive: Value(true)));
+      await (update(personas)..where((p) => p.id.equals(id))).write(
+        const PersonasCompanion(isActive: Value(true)),
+      );
     });
     await bumpSyncVersion();
   }
@@ -1254,7 +1481,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<World?> getWorldByName(String name) =>
-      (select(worlds)..where((w) => w.name.equals(name) & w.deletedAt.isNull())).getSingleOrNull();
+      (select(worlds)..where((w) => w.name.equals(name) & w.deletedAt.isNull()))
+          .getSingleOrNull();
 
   // ── Embedding Queries ──────────────────────────────────────────────
 
@@ -1265,36 +1493,46 @@ class AppDatabase extends _$AppDatabase {
     await into(messageEmbeddings).insert(embedding);
   }
 
-  Future<void> insertEmbeddings(List<MessageEmbeddingsCompanion> embeddings) async {
-    final withIds = embeddings.map((e) =>
-      e.id.present ? e : e.copyWith(id: Value(_uuid.v4())),
-    ).toList();
+  Future<void> insertEmbeddings(
+    List<MessageEmbeddingsCompanion> embeddings,
+  ) async {
+    final withIds = embeddings
+        .map((e) => e.id.present ? e : e.copyWith(id: Value(_uuid.v4())))
+        .toList();
     await batch((b) => b.insertAll(messageEmbeddings, withIds));
   }
 
   /// Get all embeddings for a set of character IDs (for cross-character RAG search).
-  Future<List<MessageEmbedding>> getEmbeddingsForCharacters(List<String> characterIds) async {
+  Future<List<MessageEmbedding>> getEmbeddingsForCharacters(
+    List<String> characterIds,
+  ) async {
     if (characterIds.isEmpty) return [];
-    return (select(messageEmbeddings)
-      ..where((e) => e.characterId.isIn(characterIds)))
-      .get();
+    return (select(
+      messageEmbeddings,
+    )..where((e) => e.characterId.isIn(characterIds))).get();
   }
 
   /// Get all embeddings for a specific session.
   Future<List<MessageEmbedding>> getEmbeddingsForSession(String sessionId) =>
-      (select(messageEmbeddings)..where((e) => e.sessionId.equals(sessionId))).get();
+      (select(
+        messageEmbeddings,
+      )..where((e) => e.sessionId.equals(sessionId))).get();
 
   /// Delete all embeddings for a session (cascading cleanup).
-  Future<int> deleteEmbeddingsForSession(String sessionId) =>
-      (delete(messageEmbeddings)..where((e) => e.sessionId.equals(sessionId))).go();
+  Future<int> deleteEmbeddingsForSession(String sessionId) => (delete(
+    messageEmbeddings,
+  )..where((e) => e.sessionId.equals(sessionId))).go();
 
   /// Delete all embeddings for a character.
-  Future<int> deleteEmbeddingsForCharacter(String characterId) =>
-      (delete(messageEmbeddings)..where((e) => e.characterId.equals(characterId))).go();
+  Future<int> deleteEmbeddingsForCharacter(String characterId) => (delete(
+    messageEmbeddings,
+  )..where((e) => e.characterId.equals(characterId))).go();
 
   /// Count total embeddings (for debug/settings display).
   Future<int> countEmbeddings() async {
-    final result = await customSelect('SELECT COUNT(*) AS cnt FROM message_embeddings').getSingle();
+    final result = await customSelect(
+      'SELECT COUNT(*) AS cnt FROM message_embeddings',
+    ).getSingle();
     return result.read<int>('cnt');
   }
 
@@ -1307,58 +1545,80 @@ class AppDatabase extends _$AppDatabase {
     await into(dataBankEntries).insert(entry);
   }
 
-  Future<List<DataBankEntry>> getDataBankEntriesForCharacter(String characterId) =>
-      (select(dataBankEntries)..where((e) => e.characterId.equals(characterId))).get();
+  Future<List<DataBankEntry>> getDataBankEntriesForCharacter(
+    String characterId,
+  ) => (select(
+    dataBankEntries,
+  )..where((e) => e.characterId.equals(characterId))).get();
 
-  Future<void> updateDataBankEntry(DataBankEntriesCompanion entry) =>
-      (update(dataBankEntries)..where((e) => e.id.equals(entry.id.value))).write(entry);
+  Future<void> updateDataBankEntry(DataBankEntriesCompanion entry) => (update(
+    dataBankEntries,
+  )..where((e) => e.id.equals(entry.id.value))).write(entry);
 
   Future<int> deleteDataBankEntry(String id) =>
       (delete(dataBankEntries)..where((e) => e.id.equals(id))).go();
 
-  Future<int> deleteDataBankEntriesForCharacter(String characterId) =>
-      (delete(dataBankEntries)..where((e) => e.characterId.equals(characterId))).go();
+  Future<int> deleteDataBankEntriesForCharacter(String characterId) => (delete(
+    dataBankEntries,
+  )..where((e) => e.characterId.equals(characterId))).go();
 
   // ── Objectives ─────────────────────────────────────────────────────
 
   Future<List<Objective>> getObjectivesForCharacter(String characterId) =>
-      (select(objectives)..where((o) => o.characterId.equals(characterId))
-        ..orderBy([(o) => OrderingTerm(expression: o.createdAt, mode: OrderingMode.desc)]))
-      .get();
+      (select(objectives)
+            ..where((o) => o.characterId.equals(characterId))
+            ..orderBy([
+              (o) => OrderingTerm(
+                expression: o.createdAt,
+                mode: OrderingMode.desc,
+              ),
+            ]))
+          .get();
 
   Future<List<Objective>> getActiveObjectives(String characterId) =>
-      (select(objectives)..where((o) => o.characterId.equals(characterId) & o.active.equals(true))
-        ..orderBy([
-          (o) => OrderingTerm(expression: o.isPrimary, mode: OrderingMode.desc),
-          (o) => OrderingTerm(expression: o.createdAt, mode: OrderingMode.asc)
-        ]))
-      .get();
+      (select(objectives)
+            ..where(
+              (o) => o.characterId.equals(characterId) & o.active.equals(true),
+            )
+            ..orderBy([
+              (o) => OrderingTerm(
+                expression: o.isPrimary,
+                mode: OrderingMode.desc,
+              ),
+              (o) =>
+                  OrderingTerm(expression: o.createdAt, mode: OrderingMode.asc),
+            ]))
+          .get();
 
   Future<void> insertObjective(ObjectivesCompanion entry) async {
     final id = entry.id.present ? entry.id.value : const Uuid().v4();
     await into(objectives).insert(entry.copyWith(id: Value(id)));
   }
 
-  Future<void> updateObjective(ObjectivesCompanion entry) =>
-      (update(objectives)..where((o) => o.id.equals(entry.id.value))).write(entry);
+  Future<void> updateObjective(ObjectivesCompanion entry) => (update(
+    objectives,
+  )..where((o) => o.id.equals(entry.id.value))).write(entry);
 
   Future<int> deleteObjective(String id) =>
       (delete(objectives)..where((o) => o.id.equals(id))).go();
 
-  Future<int> deleteObjectivesForCharacter(String characterId) =>
-      (delete(objectives)..where((o) => o.characterId.equals(characterId))).go();
+  Future<int> deleteObjectivesForCharacter(String characterId) => (delete(
+    objectives,
+  )..where((o) => o.characterId.equals(characterId))).go();
 
   // ── Story Project Queries ────────────────────────────────────────────
 
   Future<List<StoryProject>> getAllStoryProjects() =>
-      (select(storyProjects)..where((s) => s.deletedAt.isNull())
-        ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)]))
-      .get();
+      (select(storyProjects)
+            ..where((s) => s.deletedAt.isNull())
+            ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)]))
+          .get();
 
   Stream<List<StoryProject>> watchAllStoryProjects() =>
-      (select(storyProjects)..where((s) => s.deletedAt.isNull())
-        ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)]))
-      .watch();
+      (select(storyProjects)
+            ..where((s) => s.deletedAt.isNull())
+            ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)]))
+          .watch();
 
   Future<StoryProject?> getStoryProjectById(String id) =>
       (select(storyProjects)..where((s) => s.id.equals(id))).getSingleOrNull();
@@ -1372,13 +1632,16 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> updateStoryProject(StoryProjectsCompanion project) async {
-    await (update(storyProjects)..where((s) => s.id.equals(project.id.value)))
-        .write(project);
+    await (update(
+      storyProjects,
+    )..where((s) => s.id.equals(project.id.value))).write(project);
     await bumpSyncVersion();
   }
 
   Future<int> deleteStoryProject(String id) async {
-    final count = await (delete(storyProjects)..where((s) => s.id.equals(id))).go();
+    final count = await (delete(
+      storyProjects,
+    )..where((s) => s.id.equals(id))).go();
     await bumpSyncVersion();
     return count;
   }
@@ -1389,8 +1652,16 @@ class AppDatabase extends _$AppDatabase {
   Future<void> purgeSoftDeletes() async {
     final cutoff = DateTime.now().subtract(const Duration(days: 30));
     final cutoffEpoch = cutoff.millisecondsSinceEpoch ~/ 1000;
-    for (final table in ['messages', 'sessions', 'characters', 'folders',
-                          'groups', 'personas', 'worlds', 'story_projects']) {
+    for (final table in [
+      'messages',
+      'sessions',
+      'characters',
+      'folders',
+      'groups',
+      'personas',
+      'worlds',
+      'story_projects',
+    ]) {
       await customUpdate(
         'DELETE FROM $table WHERE deleted_at IS NOT NULL AND deleted_at < ?',
         variables: [Variable(cutoffEpoch)],

@@ -25,16 +25,17 @@ import 'package:front_porch_ai/models/lorebook.dart';
 /// own DB-persisted state and are not affected.
 class FrontPorchExtensions {
   bool realismEnabled;
-  int shortTermBond;       // -150 to 150
-  int longTermBond;        // -150 to 150
-  int trustLevel;          // -100 to 100
-  int dayCount;            // starts at 1
-  String timeOfDay;        // dawn/morning/late_morning/afternoon/evening/night
+  int shortTermBond; // -150 to 150
+  int longTermBond; // -150 to 150
+  int trustLevel; // -100 to 100
+  int dayCount; // starts at 1
+  String timeOfDay; // dawn/morning/late_morning/afternoon/evening/night
   String characterEmotion; // e.g. "curious"
   String emotionIntensity; // mild/moderate/strong
   bool nsfwCooldownEnabled;
+  bool passageOfTimeEnabled; // sub-toggle for automatic time advancement
   bool chaosModeEnabled;
-  String currentTask;         // initial quest/task for the character
+  String currentTask; // initial quest/task for the character
 
   FrontPorchExtensions({
     this.realismEnabled = false,
@@ -46,6 +47,7 @@ class FrontPorchExtensions {
     this.characterEmotion = '',
     this.emotionIntensity = 'mild',
     this.nsfwCooldownEnabled = false,
+    this.passageOfTimeEnabled = true, // defaults to on when realism is enabled
     this.chaosModeEnabled = false,
     this.currentTask = '',
   });
@@ -63,6 +65,7 @@ class FrontPorchExtensions {
         'character_emotion': characterEmotion,
         'emotion_intensity': emotionIntensity,
         'nsfw_cooldown_enabled': nsfwCooldownEnabled,
+        'passage_of_time_enabled': passageOfTimeEnabled,
         'chaos_mode_enabled': chaosModeEnabled,
         'current_task': currentTask,
       },
@@ -81,6 +84,7 @@ class FrontPorchExtensions {
       characterEmotion: realism['character_emotion'] as String? ?? '',
       emotionIntensity: realism['emotion_intensity'] as String? ?? 'mild',
       nsfwCooldownEnabled: realism['nsfw_cooldown_enabled'] as bool? ?? false,
+      passageOfTimeEnabled: realism['passage_of_time_enabled'] as bool? ?? true,
       chaosModeEnabled: realism['chaos_mode_enabled'] as bool? ?? false,
       currentTask: realism['current_task'] as String? ?? '',
     );
@@ -105,7 +109,8 @@ class CharacterCard {
   String? ttsVoice; // Piper voice key for per-character TTS
   String? dbId; // UUID primary key (runtime only, not serialized)
   FrontPorchExtensions? frontPorchExtensions; // V2.5 Realism Engine defaults
-  Map<String, dynamic>? rawExtensions; // Preserve unknown third-party extension keys
+  Map<String, dynamic>?
+  rawExtensions; // Preserve unknown third-party extension keys
 
   CharacterCard({
     required this.name,
@@ -137,7 +142,8 @@ class CharacterCard {
   Map<String, dynamic> toJson() {
     // Build extensions map: merge raw (third-party) keys with our namespace
     Map<String, dynamic>? extensions;
-    if (frontPorchExtensions != null || (rawExtensions != null && rawExtensions!.isNotEmpty)) {
+    if (frontPorchExtensions != null ||
+        (rawExtensions != null && rawExtensions!.isNotEmpty)) {
       extensions = <String, dynamic>{};
       // Preserve any third-party extension keys first
       if (rawExtensions != null) extensions.addAll(rawExtensions!);
