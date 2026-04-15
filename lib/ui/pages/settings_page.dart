@@ -77,20 +77,32 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _apiController.text = Provider.of<KoboldService>(context, listen: false).baseUrl;
+    _apiController.text = Provider.of<KoboldService>(
+      context,
+      listen: false,
+    ).baseUrl;
     _systemPromptController = TextEditingController(
       text: Provider.of<StorageService>(context, listen: false).systemPrompt,
     );
     _bannedPhrasesController = TextEditingController(
-      text: Provider.of<StorageService>(context, listen: false).bannedPhrases.join('\n'),
+      text: Provider.of<StorageService>(
+        context,
+        listen: false,
+      ).bannedPhrases.join('\n'),
     );
-    _remoteApiUrlController.text = Provider.of<StorageService>(context, listen: false).remoteApiUrl;
-    _remoteApiKeyController.text = Provider.of<StorageService>(context, listen: false).remoteApiKey;
-    
+    _remoteApiUrlController.text = Provider.of<StorageService>(
+      context,
+      listen: false,
+    ).remoteApiUrl;
+    _remoteApiKeyController.text = Provider.of<StorageService>(
+      context,
+      listen: false,
+    ).remoteApiKey;
+
     // Sync local state with storage
     final storage = Provider.of<StorageService>(context, listen: false);
     // Default to false if null, logic below handles the "first run" auto-enable
-    _useCublas = storage.useCublas == true; 
+    _useCublas = storage.useCublas == true;
     _useVulkan = storage.useVulkan == true;
     _useMetal = storage.useMetal == true;
     // Apply hardware-based defaults once hardware info is available.
@@ -99,19 +111,24 @@ class _SettingsPageState extends State<SettingsPage> {
     // listen for changes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final hardwareService = Provider.of<HardwareService>(context, listen: false);
-      
+      final hardwareService = Provider.of<HardwareService>(
+        context,
+        listen: false,
+      );
+
       if (hardwareService.hardwareInfo != null) {
         _applyHardwareDefaults(hardwareService.hardwareInfo!);
       } else {
         // Detection still in progress — listen for completion
         void listener() {
           if (!mounted) return;
-          if (!hardwareService.isDetecting && hardwareService.hardwareInfo != null) {
+          if (!hardwareService.isDetecting &&
+              hardwareService.hardwareInfo != null) {
             hardwareService.removeListener(listener);
             _applyHardwareDefaults(hardwareService.hardwareInfo!);
           }
         }
+
         hardwareService.addListener(listener);
       }
 
@@ -124,7 +141,9 @@ class _SettingsPageState extends State<SettingsPage> {
   void _autoFetchModels() async {
     final storage = Provider.of<StorageService>(context, listen: false);
     // Allow empty API key for local backends (LM Studio, vLLM, etc.)
-    final isLocal = storage.remoteApiUrl.contains('localhost') || storage.remoteApiUrl.contains('127.0.0.1');
+    final isLocal =
+        storage.remoteApiUrl.contains('localhost') ||
+        storage.remoteApiUrl.contains('127.0.0.1');
     if (storage.remoteApiUrl.isEmpty) return; // No API URL configured
     if (storage.remoteApiKey.isEmpty && !isLocal) return; // no API configured
 
@@ -224,8 +243,11 @@ class _SettingsPageState extends State<SettingsPage> {
         msg = 'Apple Silicon detected: Metal enabled.';
       } else if (hw.vendor == 'AMD' && Platform.isLinux && hw.hasRocm) {
         msg = 'AMD GPU detected: ROCm enabled for native GPU acceleration.';
-      } else if (hw.vendor == 'AMD' && Platform.isLinux && hw.hasRocm == false) {
-        msg = 'AMD GPU detected: Vulkan enabled. Install ROCm for better performance.';
+      } else if (hw.vendor == 'AMD' &&
+          Platform.isLinux &&
+          hw.hasRocm == false) {
+        msg =
+            'AMD GPU detected: Vulkan enabled. Install ROCm for better performance.';
         showRocmGuidanceDialog(context, hw.linuxDistro);
       } else {
         msg = 'Non-NVIDIA GPU detected: Vulkan enabled.';
@@ -266,22 +288,49 @@ class _SettingsPageState extends State<SettingsPage> {
       if (mounted) {
         // Close the current database so the file can be moved
         await AppDatabase.closeAndReset();
-        await Provider.of<StorageService>(context, listen: false).setRootPath(selectedDirectory);
+        await Provider.of<StorageService>(
+          context,
+          listen: false,
+        ).setRootPath(selectedDirectory);
         // Reopen the database from the new location
         final newDb = await AppDatabase.instance();
         // Update ALL downstream services that hold a DB reference
         if (mounted) {
-          Provider.of<CharacterRepository>(context, listen: false).updateDatabase(newDb);
-          Provider.of<FolderService>(context, listen: false).updateDatabase(newDb);
-          Provider.of<UserPersonaService>(context, listen: false).updateDatabase(newDb);
-          Provider.of<GroupChatRepository>(context, listen: false).updateDatabase(newDb);
-          Provider.of<WorldRepository>(context, listen: false).updateDatabase(newDb);
-          Provider.of<ChatService>(context, listen: false).updateDatabase(newDb);
+          Provider.of<CharacterRepository>(
+            context,
+            listen: false,
+          ).updateDatabase(newDb);
+          Provider.of<FolderService>(
+            context,
+            listen: false,
+          ).updateDatabase(newDb);
+          Provider.of<UserPersonaService>(
+            context,
+            listen: false,
+          ).updateDatabase(newDb);
+          Provider.of<GroupChatRepository>(
+            context,
+            listen: false,
+          ).updateDatabase(newDb);
+          Provider.of<WorldRepository>(
+            context,
+            listen: false,
+          ).updateDatabase(newDb);
+          Provider.of<ChatService>(
+            context,
+            listen: false,
+          ).updateDatabase(newDb);
           // Reload data from the new DB location
-          await Provider.of<CharacterRepository>(context, listen: false).loadCharacters();
+          await Provider.of<CharacterRepository>(
+            context,
+            listen: false,
+          ).loadCharacters();
           await Provider.of<FolderService>(context, listen: false).reload();
           // Refresh backend/models after path change
-          Provider.of<BackendManager>(context, listen: false).checkBackendAvailability();
+          Provider.of<BackendManager>(
+            context,
+            listen: false,
+          ).checkBackendAvailability();
           Provider.of<ModelManager>(context, listen: false).refreshModels();
         }
       }
@@ -289,10 +338,15 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _applyAutoConfiguration({bool silent = false}) {
-    final hardware = Provider.of<HardwareService>(context, listen: false).hardwareInfo;
+    final hardware = Provider.of<HardwareService>(
+      context,
+      listen: false,
+    ).hardwareInfo;
     if (hardware == null) {
       if (!silent) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hardware not detected yet.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Hardware not detected yet.')),
+        );
       }
       return;
     }
@@ -300,17 +354,25 @@ class _SettingsPageState extends State<SettingsPage> {
     if (silent) {
       _runOptimization(hardware.vramMb, hardware, silent: true);
     } else {
-      final vramController = TextEditingController(text: hardware.vramMb.toString());
+      final vramController = TextEditingController(
+        text: hardware.vramMb.toString(),
+      );
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
-          title: const Text('Auto-Configuration', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'Auto-Configuration',
+            style: TextStyle(color: Colors.white),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Confirm your System VRAM (MB):', style: TextStyle(color: Colors.white70)),
+              const Text(
+                'Confirm your System VRAM (MB):',
+                style: TextStyle(color: Colors.white70),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: vramController,
@@ -319,7 +381,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: Colors.black26,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -336,7 +400,8 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             ElevatedButton(
               onPressed: () {
-                final adjustedVram = int.tryParse(vramController.text) ?? hardware.vramMb;
+                final adjustedVram =
+                    int.tryParse(vramController.text) ?? hardware.vramMb;
                 Navigator.pop(context);
                 _runOptimization(adjustedVram, hardware, silent: false);
               },
@@ -348,7 +413,11 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  void _runOptimization(int vramMb, HardwareInfo hardware, {required bool silent}) {
+  void _runOptimization(
+    int vramMb,
+    HardwareInfo hardware, {
+    required bool silent,
+  }) {
     // Create temp hardware info with adjusted VRAM
     final adjustedHw = HardwareInfo(
       gpuName: hardware.gpuName,
@@ -372,11 +441,13 @@ class _SettingsPageState extends State<SettingsPage> {
 
     // Respect user's context size — pass it to the optimizer so only GPU layers adjust
     final userContext = int.tryParse(_contextSizeController.text);
-    
+
     int? kvBytesPerToken;
     if (_selectedModelPath != null && mounted) {
       final modelManager = Provider.of<ModelManager>(context, listen: false);
-      kvBytesPerToken = modelManager.getCachedKvBytesPerToken(_selectedModelPath!);
+      kvBytesPerToken = modelManager.getCachedKvBytesPerToken(
+        _selectedModelPath!,
+      );
     }
 
     final suggestion = OptimizationService.calculateSettings(
@@ -384,7 +455,10 @@ class _SettingsPageState extends State<SettingsPage> {
       modelSizeMb: modelSize,
       requestedContextSize: userContext,
       kvBytesPerToken: kvBytesPerToken,
-      kvQuantizationLevel: Provider.of<StorageService>(context, listen: false).kvQuantizationLevel,
+      kvQuantizationLevel: Provider.of<StorageService>(
+        context,
+        listen: false,
+      ).kvQuantizationLevel,
     );
 
     // Persist settings to storage so they survive app restart
@@ -418,9 +492,9 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     if (!silent) {
-       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(suggestion.reasoning)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(suggestion.reasoning)));
     }
   }
 
@@ -437,20 +511,22 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       if (backendManager.backendPath == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backend not found. Please download it first.')),
+          const SnackBar(
+            content: Text('Backend not found. Please download it first.'),
+          ),
         );
         return;
       }
       if (_selectedModelPath == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a model.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Please select a model.')));
         return;
       }
 
       // Check if model file actually exists
       if (!File(_selectedModelPath!).existsSync()) {
-         ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Selected model file does not exist!')),
         );
         return;
@@ -537,7 +613,8 @@ class _SettingsPageState extends State<SettingsPage> {
               Text('Dark Mode', style: theme.textTheme.titleMedium),
               Switch(
                 value: Provider.of<AppState>(context).darkMode,
-                onChanged: (_) => Provider.of<AppState>(context, listen: false).toggleTheme(),
+                onChanged: (_) =>
+                    Provider.of<AppState>(context, listen: false).toggleTheme(),
               ),
             ],
           ),
@@ -566,6 +643,13 @@ class _SettingsPageState extends State<SettingsPage> {
             divisions: 13,
           ),
           const SizedBox(height: 24),
+          _buildSectionHeader('Realism Mode', context),
+          const SizedBox(height: 8),
+          Consumer<StorageService>(
+            builder: (context, storageService, _) =>
+                _buildRealismModeSection(context, storageService),
+          ),
+          const SizedBox(height: 24),
           _buildSectionHeader('Model Instructions', context),
           const SizedBox(height: 8),
           // Prompt library row
@@ -575,21 +659,37 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: DropdownButtonFormField<String>(
                   initialValue: null,
                   isExpanded: true,
-                  hint: const Text('Load saved prompt...', style: TextStyle(fontSize: 13)),
+                  hint: const Text(
+                    'Load saved prompt...',
+                    style: TextStyle(fontSize: 13),
+                  ),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: theme.cardColor,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
-                  items: storageService.savedPrompts.map((p) => DropdownMenuItem<String>(
-                    value: p['name'],
-                    child: Text(p['name']!, overflow: TextOverflow.ellipsis),
-                  )).toList(),
+                  items: storageService.savedPrompts
+                      .map(
+                        (p) => DropdownMenuItem<String>(
+                          value: p['name'],
+                          child: Text(
+                            p['name']!,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (name) {
                     if (name != null) {
                       storageService.loadSavedPrompt(name);
-                      _systemPromptController.text = storageService.systemPrompt;
+                      _systemPromptController.text =
+                          storageService.systemPrompt;
                     }
                   },
                 ),
@@ -603,7 +703,8 @@ class _SettingsPageState extends State<SettingsPage> {
               IconButton(
                 tooltip: 'Delete a saved prompt',
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                onPressed: () => _showDeletePromptDialog(context, storageService),
+                onPressed: () =>
+                    _showDeletePromptDialog(context, storageService),
               ),
             ],
           ),
@@ -643,7 +744,9 @@ class _SettingsPageState extends State<SettingsPage> {
               hintStyle: TextStyle(color: theme.textTheme.bodySmall?.color),
               filled: true,
               fillColor: theme.cardColor,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             onChanged: (val) => storageService.setSystemPrompt(val),
           ),
@@ -679,19 +782,33 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(_engineDisplayName(storageService.ttsEngine), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        _engineDisplayName(storageService.ttsEngine),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       Text(
                         storageService.ttsEnabled
                             ? () {
                                 final voiceKey = storageService.ttsVoiceModel;
-                                if (voiceKey.isEmpty) return 'Enabled — Voice: Not set';
-                                final ttsService = Provider.of<TtsService>(context, listen: false);
-                                final match = ttsService.activeVoices.where((v) => v.id == voiceKey);
-                                final displayName = match.isNotEmpty ? match.first.name : voiceKey;
+                                if (voiceKey.isEmpty)
+                                  return 'Enabled — Voice: Not set';
+                                final ttsService = Provider.of<TtsService>(
+                                  context,
+                                  listen: false,
+                                );
+                                final match = ttsService.activeVoices.where(
+                                  (v) => v.id == voiceKey,
+                                );
+                                final displayName = match.isNotEmpty
+                                    ? match.first.name
+                                    : voiceKey;
                                 return 'Enabled — Voice: $displayName';
                               }()
                             : 'Disabled',
-                        style: const TextStyle(fontSize: 12, color: Colors.white54),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white54,
+                        ),
                       ),
                     ],
                   ),
@@ -706,7 +823,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueAccent,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                   ),
                 ),
               ],
@@ -730,9 +850,16 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.mic, color: Colors.greenAccent, size: 20),
+                        const Icon(
+                          Icons.mic,
+                          color: Colors.greenAccent,
+                          size: 20,
+                        ),
                         const SizedBox(width: 12),
-                        const Text('Enable Voice Input', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Enable Voice Input',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
                     Switch(
@@ -750,23 +877,41 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Whisper Model', style: theme.textTheme.bodySmall),
+                            Text(
+                              'Whisper Model',
+                              style: theme.textTheme.bodySmall,
+                            ),
                             const SizedBox(height: 4),
                             DropdownButtonFormField<String>(
                               initialValue: storageService.whisperModel,
                               decoration: InputDecoration(
                                 filled: true,
                                 fillColor: theme.scaffoldBackgroundColor,
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
                               ),
                               items: const [
-                                DropdownMenuItem(value: 'tiny.en', child: Text('Tiny (~40MB, fastest)')),
-                                DropdownMenuItem(value: 'base.en', child: Text('Base (~75MB, balanced)')),
-                                DropdownMenuItem(value: 'small.en', child: Text('Small (~250MB, best accuracy)')),
+                                DropdownMenuItem(
+                                  value: 'tiny.en',
+                                  child: Text('Tiny (~40MB, fastest)'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'base.en',
+                                  child: Text('Base (~75MB, balanced)'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'small.en',
+                                  child: Text('Small (~250MB, best accuracy)'),
+                                ),
                               ],
                               onChanged: (val) {
-                                if (val != null) storageService.setWhisperModel(val);
+                                if (val != null)
+                                  storageService.setWhisperModel(val);
                               },
                             ),
                           ],
@@ -787,30 +932,45 @@ class _SettingsPageState extends State<SettingsPage> {
                               onPressed: sttService.isDownloading
                                   ? null
                                   : () async {
-                                      final ok = await sttService.downloadModel();
+                                      final ok = await sttService
+                                          .downloadModel();
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           SnackBar(
-                                            content: Text(ok
-                                                ? '✅ Model "${storageService.whisperModel}" downloaded!'
-                                                : '❌ ${sttService.downloadError ?? "Download failed"}'),
+                                            content: Text(
+                                              ok
+                                                  ? '✅ Model "${storageService.whisperModel}" downloaded!'
+                                                  : '❌ ${sttService.downloadError ?? "Download failed"}',
+                                            ),
                                           ),
                                         );
                                       }
                                     },
                               icon: sttService.isDownloading
                                   ? const SizedBox(
-                                      width: 16, height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white54,
+                                      ),
                                     )
                                   : const Icon(Icons.download, size: 18),
-                              label: Text(sttService.isDownloading
-                                  ? sttService.downloadStatus
-                                  : 'Download Model'),
+                              label: Text(
+                                sttService.isDownloading
+                                    ? sttService.downloadStatus
+                                    : 'Download Model',
+                              ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.greenAccent,
-                                side: const BorderSide(color: Colors.greenAccent),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                side: const BorderSide(
+                                  color: Colors.greenAccent,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
                               ),
                             ),
                           ),
@@ -823,7 +983,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                     ? sttService.downloadProgress
                                     : null,
                                 backgroundColor: Colors.white10,
-                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.greenAccent,
+                                ),
                                 minHeight: 4,
                               ),
                             ),
@@ -851,39 +1013,67 @@ class _SettingsPageState extends State<SettingsPage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Microphone', style: theme.textTheme.bodySmall),
+                                    Text(
+                                      'Microphone',
+                                      style: theme.textTheme.bodySmall,
+                                    ),
                                     const SizedBox(height: 4),
                                     DropdownButtonFormField<String>(
-                                      initialValue: sttService.inputDevices.any((d) => d.id == sttService.selectedDeviceId)
+                                      initialValue:
+                                          sttService.inputDevices.any(
+                                            (d) =>
+                                                d.id ==
+                                                sttService.selectedDeviceId,
+                                          )
                                           ? sttService.selectedDeviceId
                                           : null,
                                       isExpanded: true,
                                       decoration: InputDecoration(
                                         filled: true,
-                                        fillColor: theme.scaffoldBackgroundColor,
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        fillColor:
+                                            theme.scaffoldBackgroundColor,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 10,
+                                            ),
                                       ),
                                       items: [
                                         const DropdownMenuItem<String>(
                                           value: null,
                                           child: Text('System Default'),
                                         ),
-                                        ...sttService.inputDevices.map((d) => DropdownMenuItem<String>(
-                                          value: d.id,
-                                          child: Text(d.label, overflow: TextOverflow.ellipsis),
-                                        )),
+                                        ...sttService.inputDevices.map(
+                                          (d) => DropdownMenuItem<String>(
+                                            value: d.id,
+                                            child: Text(
+                                              d.label,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ),
                                       ],
-                                      onChanged: (val) => sttService.setSelectedDevice(val),
+                                      onChanged: (val) =>
+                                          sttService.setSelectedDevice(val),
                                     ),
                                   ],
                                 ),
                               ),
                               const SizedBox(width: 8),
                               IconButton(
-                                icon: const Icon(Icons.refresh, size: 20, color: Colors.white54),
+                                icon: const Icon(
+                                  Icons.refresh,
+                                  size: 20,
+                                  color: Colors.white54,
+                                ),
                                 tooltip: 'Refresh devices',
-                                onPressed: () => sttService.refreshInputDevices(),
+                                onPressed: () =>
+                                    sttService.refreshInputDevices(),
                               ),
                             ],
                           ),
@@ -892,7 +1082,12 @@ class _SettingsPageState extends State<SettingsPage> {
                               padding: const EdgeInsets.only(top: 4),
                               child: Text(
                                 'No microphones detected. Click refresh to scan.',
-                                style: TextStyle(fontSize: 11, color: Colors.orangeAccent.withValues(alpha: 0.7)),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orangeAccent.withValues(
+                                    alpha: 0.7,
+                                  ),
+                                ),
                               ),
                             ),
                         ],
@@ -901,164 +1096,243 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   const SizedBox(height: 12),
                   // Voice call model selector — backend-aware
-                  Builder(builder: (context) {
-                    final isLocal = llmProvider.activeBackend == BackendType.kobold;
-                    final List<Map<String, String>> callModels;
-                    if (isLocal) {
-                      callModels = modelManager.models.map((f) {
-                        final basename = f.path.split('/').last.split('\\').last;
-                        final displayName = basename.replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '');
-                        return {'id': f.path, 'name': displayName};
-                      }).toList();
-                    } else {
-                      callModels = _availableModels.map((m) => {'id': m.id, 'name': m.name}).toList();
-                    }
+                  Builder(
+                    builder: (context) {
+                      final isLocal =
+                          llmProvider.activeBackend == BackendType.kobold;
+                      final List<Map<String, String>> callModels;
+                      if (isLocal) {
+                        callModels = modelManager.models.map((f) {
+                          final basename = f.path
+                              .split('/')
+                              .last
+                              .split('\\')
+                              .last;
+                          final displayName = basename.replaceAll(
+                            RegExp(r'\.gguf$', caseSensitive: false),
+                            '',
+                          );
+                          return {'id': f.path, 'name': displayName};
+                        }).toList();
+                      } else {
+                        callModels = _availableModels
+                            .map((m) => {'id': m.id, 'name': m.name})
+                            .toList();
+                      }
 
-                    final recommended = callModels.where((m) {
-                      final lower = m['name']!.toLowerCase();
-                      return lower.contains('mini') ||
-                          lower.contains('tiny') ||
-                          lower.contains('1b') ||
-                          lower.contains('3b') ||
-                          lower.contains('4b') ||
-                          lower.contains('flash') ||
-                          lower.contains('haiku') ||
-                          lower.contains('nano') ||
-                          lower.contains('small');
-                    }).take(8).toList();
+                      final recommended = callModels
+                          .where((m) {
+                            final lower = m['name']!.toLowerCase();
+                            return lower.contains('mini') ||
+                                lower.contains('tiny') ||
+                                lower.contains('1b') ||
+                                lower.contains('3b') ||
+                                lower.contains('4b') ||
+                                lower.contains('flash') ||
+                                lower.contains('haiku') ||
+                                lower.contains('nano') ||
+                                lower.contains('small');
+                          })
+                          .take(8)
+                          .toList();
 
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text('Voice Call Model', style: theme.textTheme.bodySmall),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: isLocal
-                                    ? Colors.orangeAccent.withValues(alpha: 0.15)
-                                    : Colors.blueAccent.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Voice Call Model',
+                                style: theme.textTheme.bodySmall,
                               ),
-                              child: Text(
-                                isLocal ? 'Local' : 'API',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: isLocal ? Colors.orangeAccent : Colors.blueAccent,
-                                  fontWeight: FontWeight.bold,
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isLocal
+                                      ? Colors.orangeAccent.withValues(
+                                          alpha: 0.15,
+                                        )
+                                      : Colors.blueAccent.withValues(
+                                          alpha: 0.15,
+                                        ),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  isLocal ? 'Local' : 'API',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: isLocal
+                                        ? Colors.orangeAccent
+                                        : Colors.blueAccent,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          if (callModels.isNotEmpty)
+                            DropdownButtonFormField<String>(
+                              initialValue: storageService.callModelName.isEmpty
+                                  ? ''
+                                  : (callModels.any(
+                                          (m) =>
+                                              m['id'] ==
+                                              storageService.callModelName,
+                                        )
+                                        ? storageService.callModelName
+                                        : ''),
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: theme.scaffoldBackgroundColor,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                              ),
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: '',
+                                  child: Text(
+                                    'Same as main model',
+                                    style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                                ...callModels.map((m) {
+                                  final name = m['name']!;
+                                  final isRec = recommended.any(
+                                    (r) => r['id'] == m['id'],
+                                  );
+                                  return DropdownMenuItem<String>(
+                                    value: m['id'],
+                                    child: Row(
+                                      children: [
+                                        if (isRec) ...[
+                                          const Icon(
+                                            Icons.star,
+                                            size: 12,
+                                            color: Colors.amber,
+                                          ),
+                                          const SizedBox(width: 4),
+                                        ],
+                                        Expanded(
+                                          child: Text(
+                                            name.length > 45
+                                                ? '${name.substring(0, 42)}...'
+                                                : name,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
+                              onChanged: (val) {
+                                if (val != null)
+                                  storageService.setCallModelName(val);
+                              },
+                            )
+                          else
+                            TextFormField(
+                              initialValue: storageService.callModelName,
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: theme.scaffoldBackgroundColor,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                hintText: isLocal
+                                    ? 'No local models found — add models in Model Manager'
+                                    : 'Enter model ID or configure API first',
+                                hintStyle: const TextStyle(
+                                  color: Colors.white24,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              style: const TextStyle(fontSize: 13),
+                              onChanged: (val) =>
+                                  storageService.setCallModelName(val.trim()),
+                            ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            '💡 Use a smaller, faster model for voice calls.\n'
+                            'Reasoning/thinking models add latency — not recommended.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white38,
+                            ),
+                          ),
+                          if (recommended.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            const Text(
+                              '⭐ Recommended for voice calls:',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white24,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: recommended.map((m) {
+                                final name = m['name']!;
+                                final id = m['id']!;
+                                final isSelected =
+                                    storageService.callModelName == id;
+                                return ActionChip(
+                                  label: Text(
+                                    name.length > 30
+                                        ? '${name.substring(0, 27)}...'
+                                        : name,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: isSelected
+                                          ? Colors.greenAccent
+                                          : Colors.white54,
+                                    ),
+                                  ),
+                                  backgroundColor: isSelected
+                                      ? Colors.greenAccent.withValues(
+                                          alpha: 0.15,
+                                        )
+                                      : Colors.white.withValues(alpha: 0.05),
+                                  side: BorderSide(
+                                    color: isSelected
+                                        ? Colors.greenAccent.withValues(
+                                            alpha: 0.4,
+                                          )
+                                        : Colors.white12,
+                                  ),
+                                  onPressed: () =>
+                                      storageService.setCallModelName(id),
+                                );
+                              }).toList(),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 4),
-                        if (callModels.isNotEmpty)
-                          DropdownButtonFormField<String>(
-                            initialValue: storageService.callModelName.isEmpty
-                                ? ''
-                                : (callModels.any((m) => m['id'] == storageService.callModelName)
-                                    ? storageService.callModelName
-                                    : ''),
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              filled: true,
-                              fillColor: theme.scaffoldBackgroundColor,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: '',
-                                child: Text('Same as main model', style: TextStyle(color: Colors.white38, fontSize: 13)),
-                              ),
-                              ...callModels.map((m) {
-                                final name = m['name']!;
-                                final isRec = recommended.any((r) => r['id'] == m['id']);
-                                return DropdownMenuItem<String>(
-                                  value: m['id'],
-                                  child: Row(
-                                    children: [
-                                      if (isRec) ...[
-                                        const Icon(Icons.star, size: 12, color: Colors.amber),
-                                        const SizedBox(width: 4),
-                                      ],
-                                      Expanded(
-                                        child: Text(
-                                          name.length > 45 ? '${name.substring(0, 42)}...' : name,
-                                          style: const TextStyle(fontSize: 13),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }),
-                            ],
-                            onChanged: (val) {
-                              if (val != null) storageService.setCallModelName(val);
-                            },
-                          )
-                        else
-                          TextFormField(
-                            initialValue: storageService.callModelName,
-                            decoration: InputDecoration(
-                              filled: true,
-                              fillColor: theme.scaffoldBackgroundColor,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              hintText: isLocal
-                                  ? 'No local models found — add models in Model Manager'
-                                  : 'Enter model ID or configure API first',
-                              hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
-                            ),
-                            style: const TextStyle(fontSize: 13),
-                            onChanged: (val) => storageService.setCallModelName(val.trim()),
-                          ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          '💡 Use a smaller, faster model for voice calls.\n'
-                          'Reasoning/thinking models add latency — not recommended.',
-                          style: TextStyle(fontSize: 11, color: Colors.white38),
-                        ),
-                        if (recommended.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          const Text('⭐ Recommended for voice calls:', style: TextStyle(fontSize: 10, color: Colors.white24)),
-                          const SizedBox(height: 4),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: recommended
-                                .map((m) {
-                                  final name = m['name']!;
-                                  final id = m['id']!;
-                                  final isSelected = storageService.callModelName == id;
-                                  return ActionChip(
-                                    label: Text(
-                                      name.length > 30 ? '${name.substring(0, 27)}...' : name,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: isSelected ? Colors.greenAccent : Colors.white54,
-                                      ),
-                                    ),
-                                    backgroundColor: isSelected
-                                        ? Colors.greenAccent.withValues(alpha: 0.15)
-                                        : Colors.white.withValues(alpha: 0.05),
-                                    side: BorderSide(
-                                      color: isSelected
-                                          ? Colors.greenAccent.withValues(alpha: 0.4)
-                                          : Colors.white12,
-                                    ),
-                                    onPressed: () => storageService.setCallModelName(id),
-                                  );
-                                })
-                                .toList(),
-                          ),
                         ],
-                      ],
-                    );
-                  }),
+                      );
+                    },
+                  ),
                   const SizedBox(height: 12),
                   // Voice buffer size slider
                   Column(
@@ -1067,10 +1341,16 @@ class _SettingsPageState extends State<SettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Voice Buffer', style: theme.textTheme.bodySmall),
+                          Text(
+                            'Voice Buffer',
+                            style: theme.textTheme.bodySmall,
+                          ),
                           Text(
                             '${storageService.callBufferSentences} sentences',
-                            style: const TextStyle(fontSize: 12, color: Colors.white54),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white54,
+                            ),
                           ),
                         ],
                       ),
@@ -1080,7 +1360,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         max: 10,
                         divisions: 9,
                         activeColor: Colors.blueAccent,
-                        onChanged: (val) => storageService.setCallBufferSentences(val.round()),
+                        onChanged: (val) =>
+                            storageService.setCallBufferSentences(val.round()),
                       ),
                       const Text(
                         'Sentences to pre-generate before playback starts. '
@@ -1097,7 +1378,10 @@ class _SettingsPageState extends State<SettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Call System Prompt', style: theme.textTheme.bodySmall),
+                          Text(
+                            'Call System Prompt',
+                            style: theme.textTheme.bodySmall,
+                          ),
                           TextButton.icon(
                             onPressed: () {
                               storageService.setCallSystemPrompt(
@@ -1108,7 +1392,10 @@ class _SettingsPageState extends State<SettingsPage> {
                               );
                             },
                             icon: const Icon(Icons.restore, size: 14),
-                            label: const Text('Reset', style: TextStyle(fontSize: 11)),
+                            label: const Text(
+                              'Reset',
+                              style: TextStyle(fontSize: 11),
+                            ),
                             style: TextButton.styleFrom(
                               foregroundColor: Colors.white38,
                               padding: EdgeInsets.zero,
@@ -1126,13 +1413,23 @@ class _SettingsPageState extends State<SettingsPage> {
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: theme.scaffoldBackgroundColor,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          hintText: 'Instructions appended during voice calls...',
-                          hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          hintText:
+                              'Instructions appended during voice calls...',
+                          hintStyle: const TextStyle(
+                            color: Colors.white24,
+                            fontSize: 13,
+                          ),
                         ),
                         style: const TextStyle(fontSize: 12),
-                        onChanged: (val) => storageService.setCallSystemPrompt(val),
+                        onChanged: (val) =>
+                            storageService.setCallSystemPrompt(val),
                       ),
                       const SizedBox(height: 4),
                       const Text(
@@ -1147,14 +1444,22 @@ class _SettingsPageState extends State<SettingsPage> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.send, color: Colors.blueAccent, size: 16),
+                          const Icon(
+                            Icons.send,
+                            color: Colors.blueAccent,
+                            size: 16,
+                          ),
                           const SizedBox(width: 8),
-                          const Text('Auto-send transcription', style: TextStyle(fontSize: 13)),
+                          const Text(
+                            'Auto-send transcription',
+                            style: TextStyle(fontSize: 13),
+                          ),
                         ],
                       ),
                       Switch(
                         value: storageService.autoSendTranscription,
-                        onChanged: (val) => storageService.setAutoSendTranscription(val),
+                        onChanged: (val) =>
+                            storageService.setAutoSendTranscription(val),
                       ),
                     ],
                   ),
@@ -1184,8 +1489,12 @@ class _SettingsPageState extends State<SettingsPage> {
                     Row(
                       children: [
                         Icon(
-                          storage.imageGenEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
-                          color: storage.imageGenEnabled ? Colors.tealAccent : Colors.white38,
+                          storage.imageGenEnabled
+                              ? Icons.auto_awesome
+                              : Icons.auto_awesome_outlined,
+                          color: storage.imageGenEnabled
+                              ? Colors.tealAccent
+                              : Colors.white38,
                           size: 20,
                         ),
                         const SizedBox(width: 12),
@@ -1201,7 +1510,10 @@ class _SettingsPageState extends State<SettingsPage> {
                                 storage.imageGenEnabled
                                     ? 'Enabled — Model: ${storage.imageGenModel.isEmpty ? "Not set" : storage.imageGenModel}'
                                     : 'Disabled',
-                                style: const TextStyle(fontSize: 12, color: Colors.white54),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white54,
+                                ),
                               ),
                             ],
                           ),
@@ -1227,7 +1539,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.tealAccent,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
                           ),
                         ),
                       ),
@@ -1274,7 +1589,11 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, size: 20, color: Colors.orange),
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 20,
+                    color: Colors.orange,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -1303,23 +1622,43 @@ class _SettingsPageState extends State<SettingsPage> {
                         contentPadding: EdgeInsets.zero,
                         title: Row(
                           children: [
-                            Icon(Icons.computer, size: 18, color: backendManager.isIntelMac ? Colors.grey : theme.iconTheme.color),
+                            Icon(
+                              Icons.computer,
+                              size: 18,
+                              color: backendManager.isIntelMac
+                                  ? Colors.grey
+                                  : theme.iconTheme.color,
+                            ),
                             const SizedBox(width: 6),
-                            Text('Local (KoboldCPP)', style: TextStyle(fontSize: 13, color: backendManager.isIntelMac ? Colors.grey : null)),
+                            Text(
+                              'Local (KoboldCPP)',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: backendManager.isIntelMac
+                                    ? Colors.grey
+                                    : null,
+                              ),
+                            ),
                           ],
                         ),
                         value: BackendType.kobold,
                         groupValue: llmProvider.activeBackend,
-                        onChanged: backendManager.isIntelMac ? null : (val) async {
-                          if (val != null) {
-                            await llmProvider.setActiveBackend(val);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Switched to local KoboldCPP backend.')),
-                              );
-                            }
-                          }
-                        },
+                        onChanged: backendManager.isIntelMac
+                            ? null
+                            : (val) async {
+                                if (val != null) {
+                                  await llmProvider.setActiveBackend(val);
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Switched to local KoboldCPP backend.',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
                       ),
                     ),
                     Expanded(
@@ -1328,23 +1667,33 @@ class _SettingsPageState extends State<SettingsPage> {
                         contentPadding: EdgeInsets.zero,
                         title: Row(
                           children: [
-                            Icon(Icons.cloud, size: 18, color: theme.iconTheme.color),
+                            Icon(
+                              Icons.cloud,
+                              size: 18,
+                              color: theme.iconTheme.color,
+                            ),
                             const SizedBox(width: 6),
-                            const Text('Remote API', style: TextStyle(fontSize: 13)),
+                            const Text(
+                              'Remote API',
+                              style: TextStyle(fontSize: 13),
+                            ),
                           ],
                         ),
                         value: BackendType.openRouter,
                         groupValue: llmProvider.activeBackend,
                         onChanged: (val) async {
                           if (val != null) {
-                            final stoppedKobold = await llmProvider.setActiveBackend(val);
+                            final stoppedKobold = await llmProvider
+                                .setActiveBackend(val);
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(
-                                  stoppedKobold
-                                      ? 'Shutting down KoboldCPP… Switched to Remote API.'
-                                      : 'Switched to Remote API backend.',
-                                )),
+                                SnackBar(
+                                  content: Text(
+                                    stoppedKobold
+                                        ? 'Shutting down KoboldCPP… Switched to Remote API.'
+                                        : 'Switched to Remote API backend.',
+                                  ),
+                                ),
                               );
                             }
                           }
@@ -1356,12 +1705,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 if (llmProvider.isLocal)
                   Text(
                     'Use a local KoboldCPP instance to run models on your hardware.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
                   )
                 else
                   Text(
                     'Connect to OpenRouter, Nano-GPT, or any OpenAI-compatible API.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
                   ),
               ],
             ),
@@ -1417,10 +1770,16 @@ class _SettingsPageState extends State<SettingsPage> {
                       hintText: 'https://openrouter.ai/api/v1',
                       filled: true,
                       fillColor: theme.scaffoldBackgroundColor,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
-                    onChanged: (val) => storageService.setRemoteApiUrl(val.trim()),
+                    onChanged: (val) =>
+                        storageService.setRemoteApiUrl(val.trim()),
                   ),
                   const SizedBox(height: 16),
                   Text('API Key', style: theme.textTheme.bodySmall),
@@ -1432,51 +1791,79 @@ class _SettingsPageState extends State<SettingsPage> {
                       hintText: 'sk-or-...',
                       filled: true,
                       fillColor: theme.scaffoldBackgroundColor,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       suffixIcon: const Icon(Icons.key, size: 18),
                     ),
-                    onChanged: (val) => storageService.setRemoteApiKey(val.trim()),
+                    onChanged: (val) =>
+                        storageService.setRemoteApiKey(val.trim()),
                   ),
                   const SizedBox(height: 12),
                   // ── Check Connection Button ──
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _isCheckingConnection ? null : () async {
-                        setState(() => _isCheckingConnection = true);
-                        final openRouter = Provider.of<OpenRouterService>(context, listen: false);
-                        openRouter.configure(
-                          apiUrl: storageService.remoteApiUrl,
-                          apiKey: storageService.remoteApiKey,
-                        );
-                        final result = await openRouter.testConnection();
-                        if (mounted) {
-                          setState(() => _isCheckingConnection = false);
-                          final isSuccess = result.contains('successful');
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  Icon(
-                                    isSuccess ? Icons.check_circle : Icons.error,
-                                    color: isSuccess ? Colors.greenAccent : Colors.redAccent,
-                                    size: 18,
+                      onPressed: _isCheckingConnection
+                          ? null
+                          : () async {
+                              setState(() => _isCheckingConnection = true);
+                              final openRouter = Provider.of<OpenRouterService>(
+                                context,
+                                listen: false,
+                              );
+                              openRouter.configure(
+                                apiUrl: storageService.remoteApiUrl,
+                                apiKey: storageService.remoteApiKey,
+                              );
+                              final result = await openRouter.testConnection();
+                              if (mounted) {
+                                setState(() => _isCheckingConnection = false);
+                                final isSuccess = result.contains('successful');
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        Icon(
+                                          isSuccess
+                                              ? Icons.check_circle
+                                              : Icons.error,
+                                          color: isSuccess
+                                              ? Colors.greenAccent
+                                              : Colors.redAccent,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(child: Text(result)),
+                                      ],
+                                    ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text(result)),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-                      },
+                                );
+                              }
+                            },
                       icon: _isCheckingConnection
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                           : const Icon(Icons.wifi_tethering, size: 18),
-                      label: Text(_isCheckingConnection ? 'Checking...' : 'Check Connection'),
+                      label: Text(
+                        _isCheckingConnection
+                            ? 'Checking...'
+                            : 'Check Connection',
+                      ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent.withValues(alpha: 0.8),
+                        backgroundColor: Colors.blueAccent.withValues(
+                          alpha: 0.8,
+                        ),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
@@ -1489,32 +1876,49 @@ class _SettingsPageState extends State<SettingsPage> {
                     children: [
                       Text('Model', style: theme.textTheme.bodySmall),
                       TextButton.icon(
-                        onPressed: _isFetchingModels ? null : () async {
-                          setState(() => _isFetchingModels = true);
-                          final openRouter = Provider.of<OpenRouterService>(context, listen: false);
-                          openRouter.configure(
-                            apiUrl: storageService.remoteApiUrl,
-                            apiKey: storageService.remoteApiKey,
-                          );
-                          final models = await openRouter.fetchAvailableModels();
-                          if (mounted) {
-                            setState(() {
-                              _availableModels = models;
-                              _isFetchingModels = false;
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(
-                                models.isEmpty
-                                    ? 'No models found. Check your API URL and key.'
-                                    : 'Found ${models.length} available models.',
-                              )),
-                            );
-                          }
-                        },
+                        onPressed: _isFetchingModels
+                            ? null
+                            : () async {
+                                setState(() => _isFetchingModels = true);
+                                final openRouter =
+                                    Provider.of<OpenRouterService>(
+                                      context,
+                                      listen: false,
+                                    );
+                                openRouter.configure(
+                                  apiUrl: storageService.remoteApiUrl,
+                                  apiKey: storageService.remoteApiKey,
+                                );
+                                final models = await openRouter
+                                    .fetchAvailableModels();
+                                if (mounted) {
+                                  setState(() {
+                                    _availableModels = models;
+                                    _isFetchingModels = false;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        models.isEmpty
+                                            ? 'No models found. Check your API URL and key.'
+                                            : 'Found ${models.length} available models.',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
                         icon: _isFetchingModels
-                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : const Icon(Icons.refresh, size: 16),
-                        label: Text(_isFetchingModels ? 'Loading...' : 'Refresh Models'),
+                        label: Text(
+                          _isFetchingModels ? 'Loading...' : 'Refresh Models',
+                        ),
                         style: TextButton.styleFrom(padding: EdgeInsets.zero),
                       ),
                     ],
@@ -1522,11 +1926,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 4),
                   if (_availableModels.isNotEmpty)
                     InkWell(
-                      onTap: () => _showModelSearchDialog(context, storageService),
+                      onTap: () =>
+                          _showModelSearchDialog(context, storageService),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
                           color: theme.scaffoldBackgroundColor,
                           borderRadius: BorderRadius.circular(8),
@@ -1544,29 +1952,48 @@ class _SettingsPageState extends State<SettingsPage> {
                                         : 'Tap to select a model...',
                                     style: TextStyle(
                                       fontSize: 13,
-                                      color: storageService.remoteModelName.isNotEmpty
+                                      color:
+                                          storageService
+                                              .remoteModelName
+                                              .isNotEmpty
                                           ? null
                                           : Colors.grey,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  if (storageService.remoteModelName.isNotEmpty) ...[
+                                  if (storageService
+                                      .remoteModelName
+                                      .isNotEmpty) ...[
                                     const SizedBox(height: 2),
-                                    Builder(builder: (context) {
-                                      final match = _availableModels
-                                          .where((m) => m.id == storageService.remoteModelName)
-                                          .toList();
-                                      if (match.isEmpty) return const SizedBox.shrink();
-                                      return Text(
-                                        match.first.pricingLabel,
-                                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                                      );
-                                    }),
+                                    Builder(
+                                      builder: (context) {
+                                        final match = _availableModels
+                                            .where(
+                                              (m) =>
+                                                  m.id ==
+                                                  storageService
+                                                      .remoteModelName,
+                                            )
+                                            .toList();
+                                        if (match.isEmpty)
+                                          return const SizedBox.shrink();
+                                        return Text(
+                                          match.first.pricingLabel,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey[500],
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ],
                                 ],
                               ),
                             ),
-                            Icon(Icons.arrow_drop_down, color: Colors.grey[500]),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              color: Colors.grey[500],
+                            ),
                           ],
                         ),
                       ),
@@ -1578,11 +2005,17 @@ class _SettingsPageState extends State<SettingsPage> {
                         hintText: 'e.g. nousresearch/hermes-3-llama-3.1-405b',
                         filled: true,
                         fillColor: theme.scaffoldBackgroundColor,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         suffixIcon: const Icon(Icons.smart_toy, size: 18),
                       ),
-                      onChanged: (val) => storageService.setRemoteModelName(val.trim()),
+                      onChanged: (val) =>
+                          storageService.setRemoteModelName(val.trim()),
                     ),
                   const SizedBox(height: 12),
                   Container(
@@ -1590,22 +2023,29 @@ class _SettingsPageState extends State<SettingsPage> {
                     decoration: BoxDecoration(
                       color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.blue.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                        const Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.blue,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'Works with OpenRouter, Nano-GPT, or any OpenAI-compatible endpoint.',
-                            style: theme.textTheme.bodySmall?.copyWith(color: Colors.blue),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.blue,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-
                 ],
               ),
             ),
@@ -1613,83 +2053,111 @@ class _SettingsPageState extends State<SettingsPage> {
 
           // ── Local KoboldCPP sections (only when local mode and not Intel Mac) ──
           if (llmProvider.isLocal && !backendManager.isIntelMac) ...[
-          const SizedBox(height: 24),
-          _buildSectionHeader('Koboldcpp Backend', context),
-           // ... (Existing Backend Logic adapted) ...
+            const SizedBox(height: 24),
+            _buildSectionHeader('Koboldcpp Backend', context),
+            // ... (Existing Backend Logic adapted) ...
             const SizedBox(height: 16),
             Column(
-              crossAxisAlignment: CrossAxisAlignment.start, 
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                 if (backendManager.error != null)
-                   Padding(
-                     padding: const EdgeInsets.only(bottom: 8.0),
-                     child: Text(backendManager.error!, style: const TextStyle(color: Colors.redAccent)),
-                   ),
-                 
-                 Row(
+                if (backendManager.error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Text(
+                      backendManager.error!,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+
+                Row(
                   children: [
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            backendManager.backendPath != null ? 'Status: Ready' : 'Status: Missing',
-                             style: TextStyle(
-                              color: backendManager.backendPath != null ? Colors.green : Colors.orange,
+                            backendManager.backendPath != null
+                                ? 'Status: Ready'
+                                : 'Status: Missing',
+                            style: TextStyle(
+                              color: backendManager.backendPath != null
+                                  ? Colors.green
+                                  : Colors.orange,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           if (backendManager.backendPath != null)
                             Text(
                               backendManager.backendPath!,
-                              style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
-                               overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 10,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                         ],
                       ),
                     ),
                     if (backendManager.isDownloading)
-                      const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     else
                       ElevatedButton(
                         onPressed: () => backendManager.downloadBackend(),
-                        child: Text(backendManager.backendPath != null ? 'Update' : 'Download'),
+                        child: Text(
+                          backendManager.backendPath != null
+                              ? 'Update'
+                              : 'Download',
+                        ),
                       ),
                   ],
                 ),
                 if (backendManager.isDownloading)
-                   Padding(
-                     padding: const EdgeInsets.only(top: 8.0),
-                     child: LinearProgressIndicator(value: backendManager.downloadProgress),
-                   ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: LinearProgressIndicator(
+                      value: backendManager.downloadProgress,
+                    ),
+                  ),
               ],
             ),
 
-          const SizedBox(height: 16),
-          Container(
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SwitchListTile(
-              title: const Text('Auto-start model on launch', style: TextStyle(fontSize: 14)),
-              subtitle: Text(
-                'Automatically load the last used model when the app starts',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+            const SizedBox(height: 16),
+            Container(
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(8),
               ),
-              value: storageService.autostartBackend,
-              activeTrackColor: Colors.blueAccent,
-              onChanged: (val) {
-                storageService.setAutostartBackend(val);
-              },
+              child: SwitchListTile(
+                title: const Text(
+                  'Auto-start model on launch',
+                  style: TextStyle(fontSize: 14),
+                ),
+                subtitle: Text(
+                  'Automatically load the last used model when the app starts',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 11,
+                  ),
+                ),
+                value: storageService.autostartBackend,
+                activeTrackColor: Colors.blueAccent,
+                onChanged: (val) {
+                  storageService.setAutostartBackend(val);
+                },
+              ),
             ),
-          ),
 
-          const SizedBox(height: 24),
-          _buildSectionHeader('Model Selection', context),
-           const SizedBox(height: 16),
+            const SizedBox(height: 24),
+            _buildSectionHeader('Model Selection', context),
+            const SizedBox(height: 16),
             if (modelManager.models.isEmpty)
-              const Text('No models available. Go to "Manage Models" to download one.', style: TextStyle(color: Colors.orange))
+              const Text(
+                'No models available. Go to "Manage Models" to download one.',
+                style: TextStyle(color: Colors.orange),
+              )
             else
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1703,33 +2171,49 @@ class _SettingsPageState extends State<SettingsPage> {
                     isExpanded: true,
                     dropdownColor: theme.cardColor,
                     style: theme.textTheme.bodyMedium,
-                    icon: Icon(Icons.arrow_drop_down, color: theme.iconTheme.color),
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: theme.iconTheme.color,
+                    ),
                     items: modelManager.models.map((file) {
                       return DropdownMenuItem(
                         value: file.path,
-                        child: Text(file.path.split(Platform.pathSeparator).last),
+                        child: Text(
+                          file.path.split(Platform.pathSeparator).last,
+                        ),
                       );
                     }).toList(),
                     onChanged: (val) {
                       setState(() {
-                         _selectedModelPath = val;
+                        _selectedModelPath = val;
                       });
-                      Provider.of<StorageService>(context, listen: false).setLastUsedModelPath(val);
+                      Provider.of<StorageService>(
+                        context,
+                        listen: false,
+                      ).setLastUsedModelPath(val);
                       _applyAutoConfiguration(silent: true);
                     },
                   ),
                 ),
               ),
-            
+
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: backendManager.backendPath == null ? null : () => _toggleKobold(context),
-                icon: Icon(koboldService.isRunning ? Icons.stop : Icons.play_arrow),
-                label: Text(koboldService.isRunning ? 'Stop Backend' : 'Start Backend'),
+                onPressed: backendManager.backendPath == null
+                    ? null
+                    : () => _toggleKobold(context),
+                icon: Icon(
+                  koboldService.isRunning ? Icons.stop : Icons.play_arrow,
+                ),
+                label: Text(
+                  koboldService.isRunning ? 'Stop Backend' : 'Start Backend',
+                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: koboldService.isRunning ? Colors.red.withValues(alpha: 0.8) : Colors.green.withValues(alpha: 0.8),
+                  backgroundColor: koboldService.isRunning
+                      ? Colors.red.withValues(alpha: 0.8)
+                      : Colors.green.withValues(alpha: 0.8),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 20),
                 ),
@@ -1746,504 +2230,660 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildAdvancedTab(BuildContext context) {
-     final storageService = Provider.of<StorageService>(context);
-     final hardwareService = Provider.of<HardwareService>(context);
-     final llmProvider = Provider.of<LLMProvider>(context);
-     final theme = Theme.of(context);
+    final storageService = Provider.of<StorageService>(context);
+    final hardwareService = Provider.of<HardwareService>(context);
+    final llmProvider = Provider.of<LLMProvider>(context);
+    final theme = Theme.of(context);
 
-     return SingleChildScrollView(
-       padding: const EdgeInsets.all(24.0),
-       child: Column(
-         crossAxisAlignment: CrossAxisAlignment.start,
-         children: [
-           _buildSectionHeader('Storage Configuration', context),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.folder, color: Colors.blueAccent),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Data Directory', style: theme.textTheme.bodySmall),
-                        Text(
-                          storageService.rootPath ?? 'Not set',
-                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.edit, color: theme.iconTheme.color),
-                    onPressed: _pickStoragePath,
-                    tooltip: 'Change Data Directory',
-                  ),
-                ],
-              ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader('Storage Configuration', context),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(8),
             ),
-
-            const SizedBox(height: 24),
-            _buildSectionHeader('Web Server', context),
-            const SizedBox(height: 8),
-            Consumer2<StorageService, WebServerService>(
-              builder: (context, storage, webServer, _) {
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.cardColor,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+            child: Row(
+              children: [
+                const Icon(Icons.folder, color: Colors.blueAccent),
+                const SizedBox(width: 12),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                webServer.isRunning ? Icons.wifi_tethering : Icons.wifi_tethering_off,
-                                color: webServer.isRunning ? Colors.greenAccent : Colors.white38,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
-                              const Text('Enable Web Server', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          Switch(
-                            value: storage.webServerEnabled,
-                            onChanged: (val) async {
-                              await storage.setWebServerEnabled(val);
-                              if (val) {
-                                await webServer.start(storage.webServerPort);
-                              } else {
-                                await webServer.stop();
-                              }
-                            },
-                          ),
-                        ],
+                      Text('Data Directory', style: theme.textTheme.bodySmall),
+                      Text(
+                        storageService.rootPath ?? 'Not set',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      if (storage.webServerEnabled) ...[
-                        const Divider(color: Colors.white10),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Port', style: theme.textTheme.bodySmall),
-                                  const SizedBox(height: 4),
-                                  SizedBox(
-                                    width: 120,
-                                    child: TextFormField(
-                                      initialValue: storage.webServerPort.toString(),
-                                      keyboardType: TextInputType.number,
-                                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                                      decoration: InputDecoration(
-                                        filled: true,
-                                        fillColor: theme.scaffoldBackgroundColor,
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      ),
-                                      onFieldSubmitted: (val) async {
-                                        final port = int.tryParse(val) ?? 8085;
-                                        await storage.setWebServerPort(port);
-                                        if (webServer.isRunning) {
-                                          await webServer.stop();
-                                          await webServer.start(port);
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('PIN', style: theme.textTheme.bodySmall),
-                                  const SizedBox(height: 4),
-                                  SizedBox(
-                                    width: 120,
-                                    child: TextFormField(
-                                      initialValue: storage.webServerPin,
-                                      keyboardType: TextInputType.number,
-                                      style: const TextStyle(color: Colors.white, fontSize: 13, letterSpacing: 4),
-                                      decoration: InputDecoration(
-                                        filled: true,
-                                        fillColor: theme.scaffoldBackgroundColor,
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                        hintText: '6 digits',
-                                        hintStyle: TextStyle(color: Colors.white24, letterSpacing: 1),
-                                      ),
-                                      maxLength: 6,
-                                      buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-                                      onFieldSubmitted: (val) async {
-                                        if (val.length >= 4 && int.tryParse(val) != null) {
-                                          await storage.setWebServerPin(val);
-                                        }
-                                      },
-                                      onChanged: (val) async {
-                                        if (val.length == 6 && int.tryParse(val) != null) {
-                                          await storage.setWebServerPin(val);
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Status', style: theme.textTheme.bodySmall),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: BoxDecoration(
-                                          color: webServer.isRunning ? Colors.greenAccent : Colors.redAccent,
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        webServer.isRunning ? 'Running' : 'Stopped',
-                                        style: TextStyle(
-                                          color: webServer.isRunning ? Colors.greenAccent : Colors.redAccent,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (webServer.lanIp != null) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.blueAccent.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.language, color: Colors.blueAccent, size: 16),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: SelectableText(
-                                    'http://${webServer.lanIp}:${storage.webServerPort}',
-                                    style: const TextStyle(
-                                      color: Colors.blueAccent,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        if (webServer.hasActiveClient) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.amber.withValues(alpha: 0.2)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.devices, color: Colors.amber, size: 16),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Client connected: ${webServer.connectedClientIp ?? "Unknown"}',
-                                    style: const TextStyle(color: Colors.amber, fontSize: 12),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
                     ],
                   ),
-                );
-              },
-            ),
-
-               const SizedBox(height: 24),
-           Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildSectionHeader('Hardware & GPU', context),
-                TextButton.icon(
-                  onPressed: _autoConfigure,
-                  icon: const Icon(Icons.auto_fix_high, color: Colors.amber),
-                  label: const Text('Auto-Configure', style: TextStyle(color: Colors.amber)),
+                ),
+                IconButton(
+                  icon: Icon(Icons.edit, color: theme.iconTheme.color),
+                  onPressed: _pickStoragePath,
+                  tooltip: 'Change Data Directory',
                 ),
               ],
             ),
-           const SizedBox(height: 16),
-           // Hardware Info with VRAM Gauge (always shown)
-            Container(
-               padding: const EdgeInsets.all(16),
-               decoration: BoxDecoration(
-                 color: theme.cardColor,
-                 borderRadius: BorderRadius.circular(12),
-               ),
-              child: hardwareService.isDetecting
-                ? const Center(child: CircularProgressIndicator())
-                : hardwareService.hardwareInfo == null
-                  ? const Text('Hardware not detected.', style: TextStyle(color: Colors.redAccent))
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+
+          const SizedBox(height: 24),
+          _buildSectionHeader('Web Server', context),
+          const SizedBox(height: 8),
+          Consumer2<StorageService, WebServerService>(
+            builder: (context, storage, webServer, _) {
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // GPU Name header
                         Row(
                           children: [
-                            Icon(Icons.memory, color: Colors.blueAccent, size: 20),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                hardwareService.hardwareInfo!.gpuName,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            Icon(
+                              webServer.isRunning
+                                  ? Icons.wifi_tethering
+                                  : Icons.wifi_tethering_off,
+                              color: webServer.isRunning
+                                  ? Colors.greenAccent
+                                  : Colors.white38,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Enable Web Server',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        Switch(
+                          value: storage.webServerEnabled,
+                          onChanged: (val) async {
+                            await storage.setWebServerEnabled(val);
+                            if (val) {
+                              await webServer.start(storage.webServerPort);
+                            } else {
+                              await webServer.stop();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    if (storage.webServerEnabled) ...[
+                      const Divider(color: Colors.white10),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Port', style: theme.textTheme.bodySmall),
+                                const SizedBox(height: 4),
+                                SizedBox(
+                                  width: 120,
+                                  child: TextFormField(
+                                    initialValue: storage.webServerPort
+                                        .toString(),
+                                    keyboardType: TextInputType.number,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                    ),
+                                    decoration: InputDecoration(
+                                      filled: true,
+                                      fillColor: theme.scaffoldBackgroundColor,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
+                                    ),
+                                    onFieldSubmitted: (val) async {
+                                      final port = int.tryParse(val) ?? 8085;
+                                      await storage.setWebServerPort(port);
+                                      if (webServer.isRunning) {
+                                        await webServer.stop();
+                                        await webServer.start(port);
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('PIN', style: theme.textTheme.bodySmall),
+                                const SizedBox(height: 4),
+                                SizedBox(
+                                  width: 120,
+                                  child: TextFormField(
+                                    initialValue: storage.webServerPin,
+                                    keyboardType: TextInputType.number,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      letterSpacing: 4,
+                                    ),
+                                    decoration: InputDecoration(
+                                      filled: true,
+                                      fillColor: theme.scaffoldBackgroundColor,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
+                                      hintText: '6 digits',
+                                      hintStyle: TextStyle(
+                                        color: Colors.white24,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                    maxLength: 6,
+                                    buildCounter:
+                                        (
+                                          _, {
+                                          required currentLength,
+                                          required isFocused,
+                                          maxLength,
+                                        }) => null,
+                                    onFieldSubmitted: (val) async {
+                                      if (val.length >= 4 &&
+                                          int.tryParse(val) != null) {
+                                        await storage.setWebServerPin(val);
+                                      }
+                                    },
+                                    onChanged: (val) async {
+                                      if (val.length == 6 &&
+                                          int.tryParse(val) != null) {
+                                        await storage.setWebServerPin(val);
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Status',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: webServer.isRunning
+                                            ? Colors.greenAccent
+                                            : Colors.redAccent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      webServer.isRunning
+                                          ? 'Running'
+                                          : 'Stopped',
+                                      style: TextStyle(
+                                        color: webServer.isRunning
+                                            ? Colors.greenAccent
+                                            : Colors.redAccent,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (webServer.lanIp != null) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.blueAccent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.blueAccent.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.language,
+                                color: Colors.blueAccent,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: SelectableText(
+                                  'http://${webServer.lanIp}:${storage.webServerPort}',
+                                  style: const TextStyle(
+                                    color: Colors.blueAccent,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (webServer.hasActiveClient) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.amber.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.devices,
+                                color: Colors.amber,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Client connected: ${webServer.connectedClientIp ?? "Unknown"}',
+                                  style: const TextStyle(
+                                    color: Colors.amber,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSectionHeader('Hardware & GPU', context),
+              TextButton.icon(
+                onPressed: _autoConfigure,
+                icon: const Icon(Icons.auto_fix_high, color: Colors.amber),
+                label: const Text(
+                  'Auto-Configure',
+                  style: TextStyle(color: Colors.amber),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Hardware Info with VRAM Gauge (always shown)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: hardwareService.isDetecting
+                ? const Center(child: CircularProgressIndicator())
+                : hardwareService.hardwareInfo == null
+                ? const Text(
+                    'Hardware not detected.',
+                    style: TextStyle(color: Colors.redAccent),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // GPU Name header
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.memory,
+                            color: Colors.blueAccent,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              hardwareService.hardwareInfo!.gpuName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // VRAM Gauge
+                      if (llmProvider.isLocal)
+                        FutureBuilder<int?>(
+                          future: _selectedModelPath != null
+                              ? Provider.of<ModelManager>(
+                                  context,
+                                  listen: false,
+                                ).getKvCacheBytesPerToken(_selectedModelPath!)
+                              : Future.value(null),
+                          builder: (context, snapshot) {
+                            final totalVram = hardwareService
+                                .hardwareInfo!
+                                .vramMb
+                                .toDouble();
+                            if (totalVram <= 0) return const SizedBox.shrink();
+
+                            // Estimate model VRAM usage from model size
+                            final modelSizeMb = _getSelectedModelSizeMb();
+                            final contextSize =
+                                int.tryParse(_contextSizeController.text) ??
+                                4096;
+
+                            // Use exact KV cost if parsed, else fallback to 100MB per 1k heuristic
+                            final kvBytesPerToken = snapshot.data;
+                            double contextVramMb = kvBytesPerToken != null
+                                ? (contextSize *
+                                      kvBytesPerToken /
+                                      (1024 * 1024))
+                                : (contextSize / 1024 * 100.0);
+
+                            if (storageService.kvQuantizationLevel == 1) {
+                              contextVramMb *= 0.5;
+                            } else if (storageService.kvQuantizationLevel ==
+                                2) {
+                              contextVramMb *= 0.25;
+                            }
+
+                            final gpuLayers =
+                                int.tryParse(_gpuLayersController.text) ?? 0;
+                            // If GPU layers < 99, only part of model is on GPU
+                            final modelVramMb = gpuLayers >= 99
+                                ? modelSizeMb.toDouble()
+                                : (modelSizeMb * (gpuLayers / 40.0)).clamp(
+                                    0,
+                                    modelSizeMb.toDouble(),
+                                  );
+                            final usedVram = modelVramMb + contextVramMb;
+                            final usedRatio = (usedVram / totalVram).clamp(
+                              0.0,
+                              1.0,
+                            );
+                            final modelRatio = (modelVramMb / totalVram).clamp(
+                              0.0,
+                              1.0,
+                            );
+                            final contextRatio = (contextVramMb / totalVram)
+                                .clamp(0.0, usedRatio);
+                            final freeVram = (totalVram - usedVram).clamp(
+                              0,
+                              totalVram,
+                            );
+
+                            Color gaugeColor;
+                            if (usedRatio > 0.95) {
+                              gaugeColor = Colors.redAccent;
+                            } else if (usedRatio > 0.8) {
+                              gaugeColor = Colors.orangeAccent;
+                            } else {
+                              gaugeColor = Colors.greenAccent;
+                            }
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // VRAM bar
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final totalWidth = constraints.maxWidth;
+                                    final modelWidth = totalWidth * modelRatio;
+                                    final contextWidth =
+                                        totalWidth * contextRatio;
+
+                                    return ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: SizedBox(
+                                        height: 20,
+                                        child: Stack(
+                                          children: [
+                                            // Background (free)
+                                            Container(
+                                              width: double.infinity,
+                                              color: Colors.white.withValues(
+                                                alpha: 0.08,
+                                              ),
+                                            ),
+                                            // Model portion (starts at left)
+                                            Positioned(
+                                              left: 0,
+                                              top: 0,
+                                              bottom: 0,
+                                              width: modelWidth,
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: [
+                                                      Colors.blueAccent,
+                                                      Colors.blue.shade700,
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            // Context portion (starts exactly where model ends)
+                                            if (contextWidth > 0)
+                                              Positioned(
+                                                left: modelWidth,
+                                                top: 0,
+                                                bottom: 0,
+                                                width: contextWidth,
+                                                child: Container(
+                                                  decoration: BoxDecoration(
+                                                    gradient: LinearGradient(
+                                                      colors: [
+                                                        Colors.tealAccent,
+                                                        Colors.teal.shade700,
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                // Legend
+                                Row(
+                                  children: [
+                                    _buildVramLegendDot(
+                                      Colors.blueAccent,
+                                      'Model ~${modelVramMb.round()} MB',
+                                    ),
+                                    const SizedBox(width: 16),
+                                    _buildVramLegendDot(
+                                      Colors.tealAccent,
+                                      'Context ~${contextVramMb.round()} MB',
+                                    ),
+                                    const SizedBox(width: 16),
+                                    _buildVramLegendDot(
+                                      Colors.white24,
+                                      'Free ~${freeVram.round()} MB',
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${usedVram.round()} / ${totalVram.round()} MB used',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: gaugeColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        )
+                      else ...[
+                        // Remote API — show total VRAM only, no usage estimate
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            height: 20,
+                            width: double.infinity,
+                            color: Colors.white.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            _buildVramLegendDot(
+                              Colors.white24,
+                              'Total ${hardwareService.hardwareInfo!.vramMb} MB',
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Remote API — GPU not in use',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white38,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        // VRAM Gauge
-                        if (llmProvider.isLocal)
-                          FutureBuilder<int?>(
-                            future: _selectedModelPath != null 
-                                ? Provider.of<ModelManager>(context, listen: false).getKvCacheBytesPerToken(_selectedModelPath!)
-                                : Future.value(null),
-                            builder: (context, snapshot) {
-                              final totalVram = hardwareService.hardwareInfo!.vramMb.toDouble();
-                              if (totalVram <= 0) return const SizedBox.shrink();
-
-                              // Estimate model VRAM usage from model size
-                              final modelSizeMb = _getSelectedModelSizeMb();
-                              final contextSize = int.tryParse(_contextSizeController.text) ?? 4096;
-                              
-                              // Use exact KV cost if parsed, else fallback to 100MB per 1k heuristic
-                              final kvBytesPerToken = snapshot.data;
-                              double contextVramMb = kvBytesPerToken != null 
-                                  ? (contextSize * kvBytesPerToken / (1024 * 1024))
-                                  : (contextSize / 1024 * 100.0);
-                                  
-                              if (storageService.kvQuantizationLevel == 1) {
-                                contextVramMb *= 0.5;
-                              } else if (storageService.kvQuantizationLevel == 2) {
-                                contextVramMb *= 0.25;
-                              }
-
-                              final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 0;
-                              // If GPU layers < 99, only part of model is on GPU
-                              final modelVramMb = gpuLayers >= 99
-                                  ? modelSizeMb.toDouble()
-                                  : (modelSizeMb * (gpuLayers / 40.0)).clamp(0, modelSizeMb.toDouble());
-                              final usedVram = modelVramMb + contextVramMb;
-                              final usedRatio = (usedVram / totalVram).clamp(0.0, 1.0);
-                              final modelRatio = (modelVramMb / totalVram).clamp(0.0, 1.0);
-                              final contextRatio = (contextVramMb / totalVram).clamp(0.0, usedRatio);
-                              final freeVram = (totalVram - usedVram).clamp(0, totalVram);
-
-                              Color gaugeColor;
-                              if (usedRatio > 0.95) {
-                                gaugeColor = Colors.redAccent;
-                              } else if (usedRatio > 0.8) {
-                                gaugeColor = Colors.orangeAccent;
-                              } else {
-                                gaugeColor = Colors.greenAccent;
-                              }
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // VRAM bar
-                                  LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      final totalWidth = constraints.maxWidth;
-                                      final modelWidth = totalWidth * modelRatio;
-                                      final contextWidth = totalWidth * contextRatio;
-
-                                      return ClipRRect(
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: SizedBox(
-                                          height: 20,
-                                          child: Stack(
-                                            children: [
-                                              // Background (free)
-                                              Container(
-                                                width: double.infinity,
-                                                color: Colors.white.withValues(alpha: 0.08),
-                                              ),
-                                              // Model portion (starts at left)
-                                              Positioned(
-                                                left: 0,
-                                                top: 0,
-                                                bottom: 0,
-                                                width: modelWidth,
-                                                child: Container(
-                                                  decoration: BoxDecoration(
-                                                    gradient: LinearGradient(
-                                                      colors: [Colors.blueAccent, Colors.blue.shade700],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              // Context portion (starts exactly where model ends)
-                                              if (contextWidth > 0)
-                                                Positioned(
-                                                  left: modelWidth,
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  width: contextWidth,
-                                                  child: Container(
-                                                    decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                        colors: [Colors.tealAccent, Colors.teal.shade700],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(height: 8),
-                                  // Legend
-                                  Row(
-                                    children: [
-                                      _buildVramLegendDot(Colors.blueAccent, 'Model ~${modelVramMb.round()} MB'),
-                                      const SizedBox(width: 16),
-                                      _buildVramLegendDot(Colors.tealAccent, 'Context ~${contextVramMb.round()} MB'),
-                                      const SizedBox(width: 16),
-                                      _buildVramLegendDot(Colors.white24, 'Free ~${freeVram.round()} MB'),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${usedVram.round()} / ${totalVram.round()} MB used',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: gaugeColor,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          )
-                        else ...[
-                          // Remote API — show total VRAM only, no usage estimate
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: Container(
-                              height: 20,
-                              width: double.infinity,
-                              color: Colors.white.withValues(alpha: 0.08),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              _buildVramLegendDot(Colors.white24, 'Total ${hardwareService.hardwareInfo!.vramMb} MB'),
-                              const SizedBox(width: 12),
-                              const Text(
-                                'Remote API — GPU not in use',
-                                style: TextStyle(fontSize: 10, color: Colors.white38),
-                              ),
-                            ],
-                          ),
-                        ],
                       ],
-                    ),
-            ),
-
-            const SizedBox(height: 16),
-            // Context Size — slider with presets + text field
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.straighten, color: Colors.tealAccent, size: 18),
-                      const SizedBox(width: 8),
-                      const Text('Context Window', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      const Spacer(),
-                      // Manual text input
-                      SizedBox(
-                        width: 90,
-                        child: TextField(
-                          controller: _contextSizeController,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: theme.scaffoldBackgroundColor,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(color: Colors.tealAccent.withValues(alpha: 0.3)),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            isDense: true,
-                          ),
-                          onChanged: (val) {
-                            final parsed = int.tryParse(val);
-                            if (parsed != null && parsed > 0) {
-                              storageService.setContextSize(parsed);
-                              setState(() {}); // refresh VRAM gauge
-                            }
-                          },
-                        ),
-                      ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  // Slider
-                  Builder(builder: (context) {
-                    final currentVal = int.tryParse(_contextSizeController.text) ?? 4096;
+          ),
+
+          const SizedBox(height: 16),
+          // Context Size — slider with presets + text field
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.straighten,
+                      color: Colors.tealAccent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Context Window',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Manual text input
+                    SizedBox(
+                      width: 90,
+                      child: TextField(
+                        controller: _contextSizeController,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: theme.scaffoldBackgroundColor,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(
+                              color: Colors.tealAccent.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                          isDense: true,
+                        ),
+                        onChanged: (val) {
+                          final parsed = int.tryParse(val);
+                          if (parsed != null && parsed > 0) {
+                            storageService.setContextSize(parsed);
+                            setState(() {}); // refresh VRAM gauge
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Slider
+                Builder(
+                  builder: (context) {
+                    final currentVal =
+                        int.tryParse(_contextSizeController.text) ?? 4096;
                     // Map context size to slider position (log scale)
-                    final presets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072];
+                    final presets = [
+                      512,
+                      1024,
+                      2048,
+                      4096,
+                      8192,
+                      16384,
+                      32768,
+                      65536,
+                      131072,
+                    ];
                     int closestIdx = 0;
                     int closestDist = (presets[0] - currentVal).abs();
                     for (int i = 1; i < presets.length; i++) {
@@ -2259,9 +2899,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             activeTrackColor: Colors.tealAccent,
-                            inactiveTrackColor: Colors.tealAccent.withValues(alpha: 0.15),
+                            inactiveTrackColor: Colors.tealAccent.withValues(
+                              alpha: 0.15,
+                            ),
                             thumbColor: Colors.tealAccent,
-                            overlayColor: Colors.tealAccent.withValues(alpha: 0.2),
+                            overlayColor: Colors.tealAccent.withValues(
+                              alpha: 0.2,
+                            ),
                           ),
                           child: Slider(
                             value: closestIdx.toDouble(),
@@ -2280,186 +2924,425 @@ class _SettingsPageState extends State<SettingsPage> {
                         Wrap(
                           spacing: 6,
                           runSpacing: 4,
-                          children: [512, 2048, 4096, 8192, 16384, 32768, 65536, 131072].map((size) {
-                            final isSelected = currentVal == size;
-                            final label = size >= 1024 ? '${size ~/ 1024}K' : '$size';
-                            return ChoiceChip(
-                              label: Text(
-                                label,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: isSelected ? Colors.white : Colors.white54,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                ),
-                              ),
-                              selected: isSelected,
-                              selectedColor: Colors.tealAccent,
-                              backgroundColor: Colors.white.withValues(alpha: 0.05),
-                              side: BorderSide(
-                                color: isSelected ? Colors.tealAccent : Colors.white12,
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              onSelected: (_) {
-                                _contextSizeController.text = size.toString();
-                                storageService.setContextSize(size);
-                                setState(() {});
-                              },
-                            );
-                          }).toList(),
+                          children:
+                              [
+                                512,
+                                2048,
+                                4096,
+                                8192,
+                                16384,
+                                32768,
+                                65536,
+                                131072,
+                              ].map((size) {
+                                final isSelected = currentVal == size;
+                                final label = size >= 1024
+                                    ? '${size ~/ 1024}K'
+                                    : '$size';
+                                return ChoiceChip(
+                                  label: Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.white54,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                  selected: isSelected,
+                                  selectedColor: Colors.tealAccent,
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.05,
+                                  ),
+                                  side: BorderSide(
+                                    color: isSelected
+                                        ? Colors.tealAccent
+                                        : Colors.white12,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  onSelected: (_) {
+                                    _contextSizeController.text = size
+                                        .toString();
+                                    storageService.setContextSize(size);
+                                    setState(() {});
+                                  },
+                                );
+                              }).toList(),
                         ),
                       ],
                     );
-                  }),
-                  const SizedBox(height: 12),
-                  const Divider(color: Colors.white10),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Text('KV Cache Quantization:', style: TextStyle(fontSize: 13, color: Colors.white70)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: storageService.kvQuantizationLevel,
-                            isExpanded: true,
-                            dropdownColor: const Color(0xFF374151),
-                            style: const TextStyle(color: Colors.white, fontSize: 13),
-                            onChanged: (val) {
-                              if (val != null) {
-                                storageService.setKvQuantizationLevel(val);
-                                setState(() {}); // Refresh VRAM gauge
-                              }
-                            },
-                            items: const [
-                              DropdownMenuItem(value: 0, child: Text('0 - None (Highest Quality, FP16)')),
-                              DropdownMenuItem(value: 1, child: Text('1 - 8-Bit Q8 (~50% VRAM Savings)')),
-                              DropdownMenuItem(value: 2, child: Text('2 - 4-Bit Q4 (~75% VRAM Savings)')),
-                            ],
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: Colors.white10),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Text(
+                      'KV Cache Quantization:',
+                      style: TextStyle(fontSize: 13, color: Colors.white70),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          value: storageService.kvQuantizationLevel,
+                          isExpanded: true,
+                          dropdownColor: const Color(0xFF374151),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
                           ),
+                          onChanged: (val) {
+                            if (val != null) {
+                              storageService.setKvQuantizationLevel(val);
+                              setState(() {}); // Refresh VRAM gauge
+                            }
+                          },
+                          items: const [
+                            DropdownMenuItem(
+                              value: 0,
+                              child: Text('0 - None (Highest Quality, FP16)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 1,
+                              child: Text('1 - 8-Bit Q8 (~50% VRAM Savings)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 2,
+                              child: Text('2 - 4-Bit Q4 (~75% VRAM Savings)'),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Tooltip(
-                        message: 'Quantizes the context window to save significant VRAM with minimal quality loss. Note: KoboldCPP dynamically disables Context Shifting when this is active.',
-                        child: Icon(Icons.info_outline, size: 16, color: Colors.tealAccent.withValues(alpha: 0.5)),
+                    ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message:
+                          'Quantizes the context window to save significant VRAM with minimal quality loss. Note: KoboldCPP dynamically disables Context Shifting when this is active.',
+                      child: Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Colors.tealAccent.withValues(alpha: 0.5),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Larger context = more memory per conversation. Auto-configure adjusts GPU layers to fit.',
-                    style: TextStyle(fontSize: 11, color: Colors.white38),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            // GPU Layers
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    label: 'GPU Layers',
-                    controller: _gpuLayersController,
-                    context: context,
-                    isNumber: true,
-                  ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Larger context = more memory per conversation. Auto-configure adjusts GPU layers to fit.',
+                  style: TextStyle(fontSize: 11, color: Colors.white38),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-             Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                 FilterChip(
-                  label: const Text('Use Vulkan'),
-                  selected: _useVulkan,
-                  onSelected: (val) {
-                     setState(() {
-                       _useVulkan = val;
-                       if (val) { _useCublas = false; _useRocm = false; _useMetal = false; }
-                     });
-                     final ss = Provider.of<StorageService>(context, listen: false);
-                     ss.setUseVulkan(val);
-                     if (val) { ss.setUseCublas(false); ss.setUseRocm(false); ss.setUseMetal(false); }
-                  },
+          ),
+
+          const SizedBox(height: 16),
+          // GPU Layers
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  label: 'GPU Layers',
+                  controller: _gpuLayersController,
+                  context: context,
+                  isNumber: true,
                 ),
-                 Tooltip(
-                   message: hardwareService.hardwareInfo?.hasRocm == true ? 'Use ROCm for native AMD GPU acceleration' : 'Requires ROCm installation (AMD GPU)',
-                   child: FilterChip(
-                    label: const Text('Use ROCm (AMD)'),
-                    selected: _useRocm,
-                    onSelected: hardwareService.hardwareInfo?.hasRocm == true 
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilterChip(
+                label: const Text('Use Vulkan'),
+                selected: _useVulkan,
+                onSelected: (val) {
+                  setState(() {
+                    _useVulkan = val;
+                    if (val) {
+                      _useCublas = false;
+                      _useRocm = false;
+                      _useMetal = false;
+                    }
+                  });
+                  final ss = Provider.of<StorageService>(
+                    context,
+                    listen: false,
+                  );
+                  ss.setUseVulkan(val);
+                  if (val) {
+                    ss.setUseCublas(false);
+                    ss.setUseRocm(false);
+                    ss.setUseMetal(false);
+                  }
+                },
+              ),
+              Tooltip(
+                message: hardwareService.hardwareInfo?.hasRocm == true
+                    ? 'Use ROCm for native AMD GPU acceleration'
+                    : 'Requires ROCm installation (AMD GPU)',
+                child: FilterChip(
+                  label: const Text('Use ROCm (AMD)'),
+                  selected: _useRocm,
+                  onSelected: hardwareService.hardwareInfo?.hasRocm == true
                       ? (val) {
                           setState(() {
                             _useRocm = val;
-                            if (val) { _useVulkan = false; _useCublas = false; _useMetal = false; }
+                            if (val) {
+                              _useVulkan = false;
+                              _useCublas = false;
+                              _useMetal = false;
+                            }
                           });
-                          final ss = Provider.of<StorageService>(context, listen: false);
+                          final ss = Provider.of<StorageService>(
+                            context,
+                            listen: false,
+                          );
                           ss.setUseRocm(val);
-                          if (val) { ss.setUseVulkan(false); ss.setUseCublas(false); ss.setUseMetal(false); }
+                          if (val) {
+                            ss.setUseVulkan(false);
+                            ss.setUseCublas(false);
+                            ss.setUseMetal(false);
+                          }
                         }
                       : null, // Disabled if ROCm not installed
-                    avatar: hardwareService.hardwareInfo?.hasRocm == true 
-                      ? null 
+                  avatar: hardwareService.hardwareInfo?.hasRocm == true
+                      ? null
                       : const Icon(Icons.block, size: 16),
-                  ),
-                 ),
-                 Tooltip(
-                   message: hardwareService.hardwareInfo?.vendor == 'Nvidia' ? 'Use CUDA (NVIDIA only)' : 'Requires NVIDIA GPU',
-                   child: FilterChip(
-                    label: const Text('Use CuBLAS (Nvidia)'),
-                    selected: _useCublas,
-                    onSelected: hardwareService.hardwareInfo?.vendor == 'Nvidia' 
+                ),
+              ),
+              Tooltip(
+                message: hardwareService.hardwareInfo?.vendor == 'Nvidia'
+                    ? 'Use CUDA (NVIDIA only)'
+                    : 'Requires NVIDIA GPU',
+                child: FilterChip(
+                  label: const Text('Use CuBLAS (Nvidia)'),
+                  selected: _useCublas,
+                  onSelected: hardwareService.hardwareInfo?.vendor == 'Nvidia'
                       ? (val) {
                           setState(() {
                             _useCublas = val;
-                            if (val) { _useVulkan = false; _useRocm = false; _useMetal = false; }
+                            if (val) {
+                              _useVulkan = false;
+                              _useRocm = false;
+                              _useMetal = false;
+                            }
                           });
-                          final ss = Provider.of<StorageService>(context, listen: false);
+                          final ss = Provider.of<StorageService>(
+                            context,
+                            listen: false,
+                          );
                           ss.setUseCublas(val);
-                          if (val) { ss.setUseVulkan(false); ss.setUseRocm(false); ss.setUseMetal(false); }
+                          if (val) {
+                            ss.setUseVulkan(false);
+                            ss.setUseRocm(false);
+                            ss.setUseMetal(false);
+                          }
                         }
                       : null, // Disabled if not Nvidia
-                    avatar: hardwareService.hardwareInfo?.vendor == 'Nvidia' 
-                      ? null 
+                  avatar: hardwareService.hardwareInfo?.vendor == 'Nvidia'
+                      ? null
                       : const Icon(Icons.block, size: 16),
-                  ),
-                 ),
-                 Tooltip(
-                   message: hardwareService.hardwareInfo?.hasMetal == true ? 'Use Metal (Apple Silicon/Mac)' : 'Requires MacOS with Metal support',
-                   child: FilterChip(
-                    label: const Text('Use Metal (MacOS)'),
-                    selected: _useMetal,
-                    onSelected: hardwareService.hardwareInfo?.hasMetal == true 
+                ),
+              ),
+              Tooltip(
+                message: hardwareService.hardwareInfo?.hasMetal == true
+                    ? 'Use Metal (Apple Silicon/Mac)'
+                    : 'Requires MacOS with Metal support',
+                child: FilterChip(
+                  label: const Text('Use Metal (MacOS)'),
+                  selected: _useMetal,
+                  onSelected: hardwareService.hardwareInfo?.hasMetal == true
                       ? (val) {
                           setState(() {
                             _useMetal = val;
-                            if (val) { _useVulkan = false; _useCublas = false; _useRocm = false; }
+                            if (val) {
+                              _useVulkan = false;
+                              _useCublas = false;
+                              _useRocm = false;
+                            }
                           });
-                          final ss = Provider.of<StorageService>(context, listen: false);
+                          final ss = Provider.of<StorageService>(
+                            context,
+                            listen: false,
+                          );
                           ss.setUseMetal(val);
-                          if (val) { ss.setUseVulkan(false); ss.setUseCublas(false); ss.setUseRocm(false); }
+                          if (val) {
+                            ss.setUseVulkan(false);
+                            ss.setUseCublas(false);
+                            ss.setUseRocm(false);
+                          }
                         }
                       : null, // Disabled if not MacOS/Metal
-                    avatar: hardwareService.hardwareInfo?.hasMetal == true 
-                      ? null 
+                  avatar: hardwareService.hardwareInfo?.hasMetal == true
+                      ? null
                       : const Icon(Icons.block, size: 16),
-                  ),
-                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-         ],
-       ),
-     );
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
   }
 
+  Widget _buildRealismModeSection(
+    BuildContext context,
+    StorageService storageService,
+  ) {
+    // storageService drives the toggle values — it holds the global defaults
+    // that apply to every new session. chatService is also updated immediately
+    // so the currently active chat reflects the change right away.
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    final theme = Theme.of(context);
 
-  Widget _buildSlider(String label, double value, double min, double max, Function(double) onChanged, BuildContext context, {int? divisions, String? tooltip}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Master Realism Mode Toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.theater_comedy,
+                    size: 18,
+                    color: Colors.tealAccent,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Enable Realism Mode',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ],
+              ),
+              Switch(
+                value: storageService.realismDefault,
+                activeColor: Colors.tealAccent,
+                onChanged: (val) {
+                  storageService.setRealismDefault(val);
+                  chatService.setRealismEnabled(val);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Adds relationship tracking, emotional state, and physical realism to roleplay.',
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.textTheme.bodySmall?.color,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Sub-options (only shown when realism is enabled globally)
+          if (storageService.realismDefault) ...[
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            // NSFW / Cooldown Toggle
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.local_fire_department,
+                      size: 16,
+                      color: Colors.deepOrangeAccent,
+                    ),
+                    const SizedBox(width: 8),
+                    Text('NSFW Cooldown', style: theme.textTheme.bodyLarge),
+                  ],
+                ),
+                Switch(
+                  value: storageService.nsfwCooldownDefault,
+                  activeColor: Colors.deepOrangeAccent,
+                  onChanged: (val) {
+                    storageService.setNsfwCooldownDefault(val);
+                    chatService.setNsfwCooldownEnabled(val);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Tracks arousal level and enforces refractory periods after intimate scenes.',
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.textTheme.bodySmall?.color,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Passage of Time Toggle
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.access_time,
+                      size: 16,
+                      color: Colors.blueAccent,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Automatic Passage of Time',
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
+                Switch(
+                  value: storageService.passageOfTimeDefault,
+                  activeColor: Colors.blueAccent,
+                  onChanged: (val) {
+                    storageService.setPassageOfTimeDefault(val);
+                    chatService.setPassageOfTimeEnabled(val);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Time automatically advances (dawn→morning→afternoon→evening→night) as you chat.',
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.textTheme.bodySmall?.color,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlider(
+    String label,
+    double value,
+    double min,
+    double max,
+    Function(double) onChanged,
+    BuildContext context, {
+    int? divisions,
+    String? tooltip,
+  }) {
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2470,18 +3353,32 @@ class _SettingsPageState extends State<SettingsPage> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color)),
+                Text(
+                  label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.textTheme.bodySmall?.color,
+                  ),
+                ),
                 if (tooltip != null)
                   Tooltip(
                     message: tooltip,
                     child: const Padding(
                       padding: EdgeInsets.only(left: 4),
-                      child: Icon(Icons.info_outline, size: 16, color: Colors.white38),
+                      child: Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Colors.white38,
+                      ),
                     ),
                   ),
               ],
             ),
-            Text(value.toStringAsFixed(2), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Text(
+              value.toStringAsFixed(2),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
         Slider(
@@ -2506,7 +3403,10 @@ class _SettingsPageState extends State<SettingsPage> {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white54)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: Colors.white54),
+        ),
       ],
     );
   }
@@ -2527,14 +3427,16 @@ class _SettingsPageState extends State<SettingsPage> {
     final theme = context != null ? Theme.of(context) : null;
     return Text(
       title,
-      style: theme?.textTheme.titleMedium?.copyWith(
-         fontWeight: FontWeight.bold,
-         color: Colors.blueAccent,
-      ) ?? const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: Colors.blueAccent,
-      ),
+      style:
+          theme?.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Colors.blueAccent,
+          ) ??
+          const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.blueAccent,
+          ),
     );
   }
 
@@ -2549,7 +3451,9 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.tealAccent.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.05),
+          color: isSelected
+              ? Colors.tealAccent.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected ? Colors.tealAccent : Colors.white12,
@@ -2570,7 +3474,9 @@ class _SettingsPageState extends State<SettingsPage> {
             Text(
               subtitle,
               style: TextStyle(
-                color: isSelected ? Colors.tealAccent.withValues(alpha: 0.6) : Colors.white30,
+                color: isSelected
+                    ? Colors.tealAccent.withValues(alpha: 0.6)
+                    : Colors.white30,
                 fontSize: 10,
               ),
             ),
@@ -2588,7 +3494,12 @@ class _SettingsPageState extends State<SettingsPage> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: theme.textTheme.bodySmall),
-          Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            value,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
@@ -2618,9 +3529,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-
-  void _showSavePromptDialog(BuildContext context, StorageService storageService) {
-
+  void _showSavePromptDialog(
+    BuildContext context,
+    StorageService storageService,
+  ) {
     final controller = TextEditingController();
     showDialog(
       context: context,
@@ -2637,7 +3549,10 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           onSubmitted: (value) {
             if (value.trim().isNotEmpty) {
-              storageService.savePrompt(value.trim(), storageService.systemPrompt);
+              storageService.savePrompt(
+                value.trim(),
+                storageService.systemPrompt,
+              );
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Prompt "${value.trim()}" saved!')),
@@ -2648,16 +3563,26 @@ class _SettingsPageState extends State<SettingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade700),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber.shade700,
+            ),
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
-                storageService.savePrompt(controller.text.trim(), storageService.systemPrompt);
+                storageService.savePrompt(
+                  controller.text.trim(),
+                  storageService.systemPrompt,
+                );
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Prompt "${controller.text.trim()}" saved!')),
+                  SnackBar(
+                    content: Text('Prompt "${controller.text.trim()}" saved!'),
+                  ),
                 );
               }
             },
@@ -2668,32 +3593,56 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _showDeletePromptDialog(BuildContext context, StorageService storageService) {
+  void _showDeletePromptDialog(
+    BuildContext context,
+    StorageService storageService,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1F2937),
-        title: const Text('Delete Saved Prompt', style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Delete Saved Prompt',
+          style: TextStyle(color: Colors.white),
+        ),
         content: SizedBox(
           width: 300,
           child: storageService.savedPrompts.isEmpty
-              ? const Text('No saved prompts.', style: TextStyle(color: Colors.white54))
+              ? const Text(
+                  'No saved prompts.',
+                  style: TextStyle(color: Colors.white54),
+                )
               : Column(
                   mainAxisSize: MainAxisSize.min,
-                  children: storageService.savedPrompts.map((p) => ListTile(
-                    title: Text(p['name']!, style: const TextStyle(color: Colors.white)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
-                      onPressed: () {
-                        storageService.deleteSavedPrompt(p['name']!);
-                        Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Prompt "${p['name']}" deleted.')),
-                        );
-                      },
-                    ),
-                    dense: true,
-                  )).toList(),
+                  children: storageService.savedPrompts
+                      .map(
+                        (p) => ListTile(
+                          title: Text(
+                            p['name']!,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.delete,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
+                            onPressed: () {
+                              storageService.deleteSavedPrompt(p['name']!);
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Prompt "${p['name']}" deleted.',
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          dense: true,
+                        ),
+                      )
+                      .toList(),
                 ),
         ),
         actions: [
@@ -2707,7 +3656,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// Shows a full dialog with a search bar to filter and select from available models.
-  void _showModelSearchDialog(BuildContext context, StorageService storageService) {
+  void _showModelSearchDialog(
+    BuildContext context,
+    StorageService storageService,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) {
@@ -2719,12 +3671,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 : _availableModels.where((m) {
                     final q = searchQuery.toLowerCase();
                     return m.id.toLowerCase().contains(q) ||
-                           m.name.toLowerCase().contains(q);
+                        m.name.toLowerCase().contains(q);
                   }).toList();
 
             return AlertDialog(
               backgroundColor: const Color(0xFF1F2937),
-              title: const Text('Select Model', style: TextStyle(color: Colors.white)),
+              title: const Text(
+                'Select Model',
+                style: TextStyle(color: Colors.white),
+              ),
               content: SizedBox(
                 width: 500,
                 height: 450,
@@ -2736,17 +3691,28 @@ class _SettingsPageState extends State<SettingsPage> {
                       style: const TextStyle(color: Colors.white, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Search ${_availableModels.length} models...',
-                        hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-                        prefixIcon: const Icon(Icons.search, color: Colors.white38, size: 20),
+                        hintStyle: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 14,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.white38,
+                          size: 20,
+                        ),
                         filled: true,
                         fillColor: const Color(0xFF111827),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide: BorderSide.none,
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                       ),
-                      onChanged: (val) => setDialogState(() => searchQuery = val),
+                      onChanged: (val) =>
+                          setDialogState(() => searchQuery = val),
                     ),
                     const SizedBox(height: 8),
                     // Result count
@@ -2754,31 +3720,50 @@ class _SettingsPageState extends State<SettingsPage> {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         '${filtered.length} models',
-                        style: const TextStyle(color: Colors.white38, fontSize: 11),
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
                     // Model list
                     Expanded(
                       child: filtered.isEmpty
-                          ? const Center(child: Text('No models match your search.', style: TextStyle(color: Colors.white38)))
+                          ? const Center(
+                              child: Text(
+                                'No models match your search.',
+                                style: TextStyle(color: Colors.white38),
+                              ),
+                            )
                           : ListView.builder(
                               itemCount: filtered.length,
                               itemBuilder: (ctx, i) {
                                 final model = filtered[i];
-                                final isSelected = model.id == storageService.remoteModelName;
+                                final isSelected =
+                                    model.id == storageService.remoteModelName;
                                 return ListTile(
                                   dense: true,
                                   selected: isSelected,
-                                  selectedTileColor: Colors.blueAccent.withValues(alpha: 0.15),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  selectedTileColor: Colors.blueAccent
+                                      .withValues(alpha: 0.15),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
                                   title: Text(
                                     model.id,
                                     style: TextStyle(
-                                      color: isSelected ? Colors.blueAccent : Colors.white,
+                                      color: isSelected
+                                          ? Colors.blueAccent
+                                          : Colors.white,
                                       fontSize: 13,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -2786,30 +3771,55 @@ class _SettingsPageState extends State<SettingsPage> {
                                     children: [
                                       if (model.isFree)
                                         Container(
-                                          margin: const EdgeInsets.only(right: 6),
-                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                          decoration: BoxDecoration(
-                                            color: Colors.green.withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(4),
+                                          margin: const EdgeInsets.only(
+                                            right: 6,
                                           ),
-                                          child: const Text('FREE', style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 1,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.withValues(
+                                              alpha: 0.2,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'FREE',
+                                            style: TextStyle(
+                                              color: Colors.greenAccent,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                         ),
                                       Flexible(
                                         child: Text(
                                           model.pricingLabel,
-                                          style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                                          style: TextStyle(
+                                            color: Colors.grey[500],
+                                            fontSize: 11,
+                                          ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ],
                                   ),
                                   trailing: isSelected
-                                      ? const Icon(Icons.check_circle, color: Colors.blueAccent, size: 18)
+                                      ? const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.blueAccent,
+                                          size: 18,
+                                        )
                                       : null,
                                   onTap: () {
                                     storageService.setRemoteModelName(model.id);
                                     Navigator.pop(ctx);
-                                    setState(() {});  // Refresh the settings page
+                                    setState(
+                                      () {},
+                                    ); // Refresh the settings page
                                   },
                                 );
                               },
@@ -2821,7 +3831,10 @@ class _SettingsPageState extends State<SettingsPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white54),
+                  ),
                 ),
               ],
             );
@@ -2899,11 +3912,11 @@ class _SettingsPageState extends State<SettingsPage> {
         _remoteApiUrlController.text = url;
 
         // Configure OpenRouter with stored values (apiKey persists across switches)
-        final openRouter = Provider.of<OpenRouterService>(context, listen: false);
-        openRouter.configure(
-          apiUrl: url,
-          apiKey: storageService.remoteApiKey,
+        final openRouter = Provider.of<OpenRouterService>(
+          context,
+          listen: false,
         );
+        openRouter.configure(apiUrl: url, apiKey: storageService.remoteApiKey);
 
         setState(() => _isFetchingModels = true);
         try {
@@ -2914,11 +3927,13 @@ class _SettingsPageState extends State<SettingsPage> {
               _isFetchingModels = false;
             });
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(
-                models.isEmpty
-                    ? '$label connected — no models found yet.'
-                    : '$label connected — found ${models.length} models.',
-              )),
+              SnackBar(
+                content: Text(
+                  models.isEmpty
+                      ? '$label connected — no models found yet.'
+                      : '$label connected — found ${models.length} models.',
+                ),
+              ),
             );
           }
         } catch (_) {
@@ -2945,7 +3960,10 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Text('Request Reasoning', style: TextStyle(color: Colors.white)),
+                const Text(
+                  'Request Reasoning',
+                  style: TextStyle(color: Colors.white),
+                ),
                 const Spacer(),
                 Switch(
                   value: storage.reasoningEnabled,
@@ -2957,7 +3975,10 @@ class _SettingsPageState extends State<SettingsPage> {
             if (storage.reasoningEnabled)
               Row(
                 children: [
-                  const Text('Effort Level', style: TextStyle(color: Colors.white70)),
+                  const Text(
+                    'Effort Level',
+                    style: TextStyle(color: Colors.white70),
+                  ),
                   const Spacer(),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -2972,7 +3993,10 @@ class _SettingsPageState extends State<SettingsPage> {
                         style: const TextStyle(color: Colors.white),
                         items: const [
                           DropdownMenuItem(value: 'low', child: Text('Low')),
-                          DropdownMenuItem(value: 'medium', child: Text('Medium')),
+                          DropdownMenuItem(
+                            value: 'medium',
+                            child: Text('Medium'),
+                          ),
                           DropdownMenuItem(value: 'high', child: Text('High')),
                         ],
                         onChanged: (val) {
@@ -2989,28 +4013,67 @@ class _SettingsPageState extends State<SettingsPage> {
           // ── Generation Parameters ──────────────────────────────────────
           _buildSectionHeader('Generation Parameters', context),
           const SizedBox(height: 8),
-          _buildSlider('Temperature', storage.temperature, 0.0, 2.0,
-              (val) => storage.setTemperature(val), context,
-              divisions: 20),
-          _buildSlider('Min-P', storage.minP, 0.0, 1.0,
-              (val) => storage.setMinP(val), context,
-              divisions: 100),
-          _buildSlider('Repeat Penalty', storage.repeatPenalty, 1.0, 3.0,
-              (val) => storage.setRepeatPenalty(val), context,
-              divisions: 200),
-          _buildSlider('Repeat Penalty Tokens', storage.repeatPenaltyTokens.toDouble(), 0, 512,
-              (val) => storage.setRepeatPenaltyTokens(val.toInt()), context,
-              divisions: 512),
-          _buildSlider('XTC Threshold', storage.xtcThreshold, 0.0, 0.5,
-              (val) => storage.setXtcThreshold(val), context,
-              divisions: 50),
-          _buildSlider('XTC Probability', storage.xtcProbability, 0.0, 1.0,
-              (val) => storage.setXtcProbability(val), context,
-              divisions: 20),
+          _buildSlider(
+            'Temperature',
+            storage.temperature,
+            0.0,
+            2.0,
+            (val) => storage.setTemperature(val),
+            context,
+            divisions: 20,
+          ),
+          _buildSlider(
+            'Min-P',
+            storage.minP,
+            0.0,
+            1.0,
+            (val) => storage.setMinP(val),
+            context,
+            divisions: 100,
+          ),
+          _buildSlider(
+            'Repeat Penalty',
+            storage.repeatPenalty,
+            1.0,
+            3.0,
+            (val) => storage.setRepeatPenalty(val),
+            context,
+            divisions: 200,
+          ),
+          _buildSlider(
+            'Repeat Penalty Tokens',
+            storage.repeatPenaltyTokens.toDouble(),
+            0,
+            512,
+            (val) => storage.setRepeatPenaltyTokens(val.toInt()),
+            context,
+            divisions: 512,
+          ),
+          _buildSlider(
+            'XTC Threshold',
+            storage.xtcThreshold,
+            0.0,
+            0.5,
+            (val) => storage.setXtcThreshold(val),
+            context,
+            divisions: 50,
+          ),
+          _buildSlider(
+            'XTC Probability',
+            storage.xtcProbability,
+            0.0,
+            1.0,
+            (val) => storage.setXtcProbability(val),
+            context,
+            divisions: 20,
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
-              const Text('Dynamic Temperature', style: TextStyle(color: Colors.white70)),
+              const Text(
+                'Dynamic Temperature',
+                style: TextStyle(color: Colors.white70),
+              ),
               const Spacer(),
               Switch(
                 value: storage.dynamicTempEnabled,
@@ -3020,19 +4083,37 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
           if (storage.dynamicTempEnabled)
-            _buildSlider('Dynatemp Range', storage.dynamicTempRange, 0.0, 2.0,
-                (val) => storage.setDynamicTempRange(val), context,
-                divisions: 20),
+            _buildSlider(
+              'Dynatemp Range',
+              storage.dynamicTempRange,
+              0.0,
+              2.0,
+              (val) => storage.setDynamicTempRange(val),
+              context,
+              divisions: 20,
+            ),
           const SizedBox(height: 24),
 
           // ── Output Limits ──────────────────────────────────────────────
           _buildSectionHeader('Output Limits', context),
           const SizedBox(height: 8),
-          _buildSlider('Max Output Tokens', storage.maxLength.toDouble(), 16, 16384,
-              (val) => storage.setMaxLength(val.toInt()), context),
-          _buildSlider('Min Output Tokens', storage.minLength.toDouble(), 0, 512,
-              (val) => storage.setMinLength(val.toInt()), context,
-              divisions: 512),
+          _buildSlider(
+            'Max Output Tokens',
+            storage.maxLength.toDouble(),
+            16,
+            16384,
+            (val) => storage.setMaxLength(val.toInt()),
+            context,
+          ),
+          _buildSlider(
+            'Min Output Tokens',
+            storage.minLength.toDouble(),
+            0,
+            512,
+            (val) => storage.setMinLength(val.toInt()),
+            context,
+            divisions: 512,
+          ),
           // Context size — wider range for remote backends
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3040,13 +4121,24 @@ class _SettingsPageState extends State<SettingsPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Context Size', style: TextStyle(color: Colors.white70)),
-                  Text(storage.contextSize.toString(),
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  const Text(
+                    'Context Size',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  Text(
+                    storage.contextSize.toString(),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
               ),
               Slider(
-                value: storage.contextSize.toDouble().clamp(512, isRemote ? 500000.0 : 131072.0),
+                value: storage.contextSize.toDouble().clamp(
+                  512,
+                  isRemote ? 500000.0 : 131072.0,
+                ),
                 min: 512,
                 max: isRemote ? 500000.0 : 131072.0,
                 divisions: isRemote ? null : ((131072 - 512) ~/ 512),
@@ -3063,7 +4155,10 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Text('Smooth Output Buffer', style: TextStyle(color: Colors.white70)),
+              const Text(
+                'Smooth Output Buffer',
+                style: TextStyle(color: Colors.white70),
+              ),
               const Spacer(),
               Switch(
                 value: storage.displayBufferEnabled,
@@ -3073,12 +4168,24 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
           if (storage.displayBufferEnabled) ...[
-            _buildSlider('Target Display Speed (t/s)', storage.targetDisplayTps, 5.0, 60.0,
-                (val) => storage.setTargetDisplayTps(val), context,
-                divisions: 55),
-            _buildSlider('Buffer Duration (seconds)', storage.bufferDurationSeconds, 1.0, 10.0,
-                (val) => storage.setBufferDurationSeconds(val), context,
-                divisions: 9),
+            _buildSlider(
+              'Target Display Speed (t/s)',
+              storage.targetDisplayTps,
+              5.0,
+              60.0,
+              (val) => storage.setTargetDisplayTps(val),
+              context,
+              divisions: 55,
+            ),
+            _buildSlider(
+              'Buffer Duration (seconds)',
+              storage.bufferDurationSeconds,
+              1.0,
+              10.0,
+              (val) => storage.setBufferDurationSeconds(val),
+              context,
+              divisions: 9,
+            ),
           ],
           const SizedBox(height: 24),
 
@@ -3113,16 +4220,23 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
                 const Divider(height: 1, color: Colors.white10),
-                ...storage.stopSequences.map((seq) => ListTile(
-                  title: Text(seq.replaceAll('\n', '\\n'),
-                      style: const TextStyle(color: Colors.white)),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.remove_circle_outline,
-                        color: Colors.redAccent, size: 20),
-                    onPressed: () => storage.removeStopSequence(seq),
+                ...storage.stopSequences.map(
+                  (seq) => ListTile(
+                    title: Text(
+                      seq.replaceAll('\n', '\\n'),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(
+                        Icons.remove_circle_outline,
+                        color: Colors.redAccent,
+                        size: 20,
+                      ),
+                      onPressed: () => storage.removeStopSequence(seq),
+                    ),
+                    dense: true,
                   ),
-                  dense: true,
-                )),
+                ),
               ],
             ),
           ),
@@ -3134,7 +4248,10 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 4),
             Text(
               'One phrase per line. If any appear during generation the model backtracks and retries.',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 12),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 8),
             Container(
@@ -3152,7 +4269,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   hintText: 'shivers down\na cold shiver\nher eyes sparkled',
                   hintStyle: TextStyle(color: Colors.white24, fontSize: 13),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                 ),
                 onChanged: (val) {
                   final phrases = val
@@ -3179,14 +4299,17 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
-
 }
 
 String _engineDisplayName(String engineId) {
   switch (engineId) {
-    case 'kokoro': return 'Kokoro TTS';
-    case 'openai': return 'OpenAI TTS';
-    case 'piper': return 'Piper TTS';
-    default: return 'TTS';
+    case 'kokoro':
+      return 'Kokoro TTS';
+    case 'openai':
+      return 'OpenAI TTS';
+    case 'piper':
+      return 'Piper TTS';
+    default:
+      return 'TTS';
   }
 }

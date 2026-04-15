@@ -36,13 +36,15 @@ class StorageService extends ChangeNotifier {
   String? get rootPath => _rootPath;
   String? get customModelsPath => _customModelsPath;
   Directory get binDir => _binDir ?? Directory(_rootPath ?? '');
-  Directory get modelsDir => _customModelsPath != null && _customModelsPath!.isNotEmpty
+  Directory get modelsDir =>
+      _customModelsPath != null && _customModelsPath!.isNotEmpty
       ? Directory(_customModelsPath!)
       : Directory(path.join(_rootPath ?? '', 'models'));
   Directory get chatsDir => Directory(path.join(_rootPath ?? '', 'chats'));
   Directory get worldsDir => Directory(path.join(_rootPath ?? '', 'worlds'));
 
-  Directory get charactersDir => Directory(path.join(_rootPath ?? '', 'KoboldManager', 'Characters'));
+  Directory get charactersDir =>
+      Directory(path.join(_rootPath ?? '', 'KoboldManager', 'Characters'));
 
   /// Resolve a character [imagePath] (stored in the DB) to a [File].
   ///
@@ -62,7 +64,8 @@ class StorageService extends ChangeNotifier {
   }
 
   // Settings
-  static const String defaultSystemPrompt = "You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns. You may also roleplay as any side characters introduced.\n\nEngage with {{user}} by depicting {{char}}'s actions, emotions, and dialogue. Develop the plot slowly and organically while driving the scenario forward. Never write {{user}}'s speech, actions, or decisions — allow them full control of their character.\n\nWrite in a vivid, creative, varied, and descriptive style. Use rich sensory detail for the environment, people, and events. Make each reply unique and end with an action or dialogue to keep momentum.\n\nMaintain consistency with established details — clothing, time of day, location, and prior events. Stay in character at all times.";
+  static const String defaultSystemPrompt =
+      "You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns. You may also roleplay as any side characters introduced.\n\nEngage with {{user}} by depicting {{char}}'s actions, emotions, and dialogue. Develop the plot slowly and organically while driving the scenario forward. Never write {{user}}'s speech, actions, or decisions — allow them full control of their character.\n\nWrite in a vivid, creative, varied, and descriptive style. Use rich sensory detail for the environment, people, and events. Make each reply unique and end with an action or dialogue to keep momentum.\n\nMaintain consistency with established details — clothing, time of day, location, and prior events. Stay in character at all times.";
   String _systemPrompt = defaultSystemPrompt;
   double _minP = 0.1;
   double _temperature = 0.7;
@@ -83,13 +86,27 @@ class StorageService extends ChangeNotifier {
   String? _lastUsedModelPath;
   int _gpuLayers = 0;
   int _contextSize = 8192;
-  List<String> _stopSequences = ["\nUser:", "\n###", "\nScenario:", "<END>", "</END>", "[END]", "<|end|>", "<START>", "\nSystem:", "\n(Note:", "\n[Note:", "\n{Note:"];
+  List<String> _stopSequences = [
+    "\nUser:",
+    "\n###",
+    "\nScenario:",
+    "<END>",
+    "</END>",
+    "[END]",
+    "<|end|>",
+    "<START>",
+    "\nSystem:",
+    "\n(Note:",
+    "\n[Note:",
+    "\n{Note:",
+  ];
   double _textScale = 1.0;
   String _chatBackground = 'none';
   List<Map<String, String>> _savedPrompts = [];
   bool _displayBufferEnabled = true;
   double _targetDisplayTps = 6.0; // ~250 WPM average human reading speed
-  double _bufferDurationSeconds = 3.0; // How many seconds of tokens to buffer before draining
+  double _bufferDurationSeconds =
+      3.0; // How many seconds of tokens to buffer before draining
 
   // External API settings
   String _backendType = 'kobold'; // 'kobold' or 'openRouter'
@@ -106,12 +123,14 @@ class StorageService extends ChangeNotifier {
   // TTS settings
   bool _ttsEnabled = false;
   String _ttsEngine = 'kokoro'; // 'kokoro', 'openai', 'elevenlabs', 'piper'
-  String _ttsVoiceModel = ''; // voice key, e.g. 'af_heart' or 'en_US-lessac-medium'
+  String _ttsVoiceModel =
+      ''; // voice key, e.g. 'af_heart' or 'en_US-lessac-medium'
   double _ttsSpeechRate = 1.0;
   bool _ttsAutoPlay = false;
   String _openaiTtsApiKey = '';
   String _openaiTtsModel = 'tts-1'; // 'tts-1' or 'tts-1-hd'
-  String _openaiTtsBaseUrl = 'https://api.openai.com/v1'; // customizable endpoint for OpenAI-compatible TTS
+  String _openaiTtsBaseUrl =
+      'https://api.openai.com/v1'; // customizable endpoint for OpenAI-compatible TTS
   String _elevenlabsApiKey = '';
   String _elevenlabsModel = 'eleven_flash_v2_5';
   double _elevenlabsStability = 0.5;
@@ -120,7 +139,8 @@ class StorageService extends ChangeNotifier {
   bool _ttsNarrateQuotedOnly = false;
   bool _ttsIgnoreAsterisks = false;
   int _ttsConcurrency = Platform.numberOfProcessors.clamp(1, 16);
-  double _directorDelay = 15.0; // seconds between auto-chat responses in Director Mode
+  double _directorDelay =
+      15.0; // seconds between auto-chat responses in Director Mode
 
   // STT (Speech-to-Text) settings
   bool _sttEnabled = false;
@@ -129,7 +149,8 @@ class StorageService extends ChangeNotifier {
   String? _selectedMicId;
   String _callModelName = ''; // separate LLM model for voice call mode
   int _callBufferSentences = 3; // how many sentences to buffer before playback
-  String _callSystemPrompt = 'You are on a live voice call. Respond naturally as if speaking on the phone. '
+  String _callSystemPrompt =
+      'You are on a live voice call. Respond naturally as if speaking on the phone. '
       'ALWAYS write in first person — never narrate in third person. '
       'Keep responses concise: 1-3 sentences max. '
       'No actions, no narration, no stage directions — just speak directly.';
@@ -157,9 +178,8 @@ class StorageService extends ChangeNotifier {
   String _imageGenNegativePrompt = 'blurry, low quality, watermark, text';
   String _imageGenStyle = 'photorealistic';
   String _imageGenPromptParadigm = 'natural'; // 'natural', 'tags'
-  String _imageGenLora = '';        // selected LoRA filename (A1111/Forge/SDNext only)
+  String _imageGenLora = ''; // selected LoRA filename (A1111/Forge/SDNext only)
   double _imageGenLoraWeight = 0.8; // LoRA strength 0.0–1.0
-
 
   // Web server settings
   bool _webServerEnabled = false;
@@ -193,10 +213,17 @@ class StorageService extends ChangeNotifier {
 
   // Character evolution settings
   bool _characterEvolutionEnabled = false;
-  int _evolutionInterval = 10; // unified with fact extraction (every N user messages)
+  int _evolutionInterval =
+      10; // unified with fact extraction (every N user messages)
+
+  // Realism Engine global defaults (applied to new sessions / characters without extensions)
+  bool _realismDefault = false; // Default to off for global realism control
+  bool _nsfwCooldownDefault = false;
+  bool _passageOfTimeDefault = true;
 
   // Realism Engine performance settings
-  bool _realismOneShotEval = false; // fuse relationship + scene eval into one LLM call
+  bool _realismOneShotEval =
+      false; // fuse relationship + scene eval into one LLM call
 
   // Getters
   String get systemPrompt => _systemPrompt;
@@ -222,7 +249,8 @@ class StorageService extends ChangeNotifier {
   List<String> get stopSequences => List.unmodifiable(_stopSequences);
   double get textScale => _textScale;
   String get chatBackground => _chatBackground;
-  List<Map<String, String>> get savedPrompts => List.unmodifiable(_savedPrompts);
+  List<Map<String, String>> get savedPrompts =>
+      List.unmodifiable(_savedPrompts);
   bool get displayBufferEnabled => _displayBufferEnabled;
   double get targetDisplayTps => _targetDisplayTps;
   double get bufferDurationSeconds => _bufferDurationSeconds;
@@ -296,6 +324,9 @@ class StorageService extends ChangeNotifier {
   int get autoPersonaInterval => _autoPersonaInterval;
   bool get characterEvolutionEnabled => _characterEvolutionEnabled;
   int get evolutionInterval => _evolutionInterval;
+  bool get realismDefault => _realismDefault;
+  bool get nsfwCooldownDefault => _nsfwCooldownDefault;
+  bool get passageOfTimeDefault => _passageOfTimeDefault;
   bool get realismOneShotEval => _realismOneShotEval;
 
   StorageService() {
@@ -308,22 +339,25 @@ class StorageService extends ChangeNotifier {
     final defaultRoot = path.join(docsDir.path, 'FrontPorchAI');
     _rootPath = _prefs?.getString('root_path') ?? defaultRoot;
     _binDir = Directory(path.join(_rootPath!, 'koboldcpp_bin'));
-    
+
     // Ensure directories exist
     await chatsDir.create(recursive: true);
     await modelsDir.create(recursive: true);
     await worldsDir.create(recursive: true);
     await charactersDir.create(recursive: true);
-    
+
     // Load settings
     _systemPrompt = _prefs?.getString('system_prompt') ?? _systemPrompt;
     _minP = _prefs?.getDouble('min_p') ?? _minP;
     _temperature = _prefs?.getDouble('temperature') ?? _temperature;
     _bubbleOpacity = _prefs?.getDouble('bubble_opacity') ?? _bubbleOpacity;
     _repeatPenalty = _prefs?.getDouble('repeat_penalty') ?? _repeatPenalty;
-    _repeatPenaltyTokens = _prefs?.getInt('repeat_penalty_tokens') ?? _repeatPenaltyTokens;
-    _dynamicTempEnabled = _prefs?.getBool('dynamic_temp_enabled') ?? _dynamicTempEnabled;
-    _dynamicTempRange = _prefs?.getDouble('dynamic_temp_range') ?? _dynamicTempRange;
+    _repeatPenaltyTokens =
+        _prefs?.getInt('repeat_penalty_tokens') ?? _repeatPenaltyTokens;
+    _dynamicTempEnabled =
+        _prefs?.getBool('dynamic_temp_enabled') ?? _dynamicTempEnabled;
+    _dynamicTempRange =
+        _prefs?.getDouble('dynamic_temp_range') ?? _dynamicTempRange;
     _xtcThreshold = _prefs?.getDouble('xtc_threshold') ?? _xtcThreshold;
     _xtcProbability = _prefs?.getDouble('xtc_probability') ?? _xtcProbability;
     _useCublas = _prefs?.getBool('use_cublas');
@@ -332,7 +366,8 @@ class StorageService extends ChangeNotifier {
     _useRocm = _prefs?.getBool('use_rocm');
     _maxLength = _prefs?.getInt('max_length') ?? _maxLength;
     _minLength = _prefs?.getInt('min_length') ?? _minLength;
-    _autostartBackend = _prefs?.getBool('autostart_backend') ?? _autostartBackend;
+    _autostartBackend =
+        _prefs?.getBool('autostart_backend') ?? _autostartBackend;
     _lastUsedModelPath = _prefs?.getString('last_used_model_path');
     _gpuLayers = _prefs?.getInt('gpu_layers') ?? _gpuLayers;
     _contextSize = _prefs?.getInt('context_size') ?? _contextSize;
@@ -353,12 +388,14 @@ class StorageService extends ChangeNotifier {
     _chatBackground = _prefs?.getString('chat_background') ?? 'none';
     _displayBufferEnabled = _prefs?.getBool('display_buffer_enabled') ?? true;
     _targetDisplayTps = _prefs?.getDouble('target_display_tps') ?? 30.0;
-    _bufferDurationSeconds = _prefs?.getDouble('buffer_duration_seconds') ?? 3.0;
+    _bufferDurationSeconds =
+        _prefs?.getDouble('buffer_duration_seconds') ?? 3.0;
 
     // External API settings
     _backendType = _prefs?.getString('backend_type') ?? 'kobold';
     _remoteApiKey = _prefs?.getString('remote_api_key') ?? '';
-    _remoteApiUrl = _prefs?.getString('remote_api_url') ?? 'https://openrouter.ai/api/v1';
+    _remoteApiUrl =
+        _prefs?.getString('remote_api_url') ?? 'https://openrouter.ai/api/v1';
     _remoteModelName = _prefs?.getString('remote_model_name') ?? '';
     _reasoningEnabled = _prefs?.getBool('reasoning_enabled') ?? false;
     _reasoningEffort = _prefs?.getString('reasoning_effort') ?? 'medium';
@@ -371,12 +408,16 @@ class StorageService extends ChangeNotifier {
     _ttsSpeechRate = _prefs?.getDouble('tts_speech_rate') ?? 1.0;
     _ttsAutoPlay = _prefs?.getBool('tts_auto_play') ?? false;
     _openaiTtsApiKey = _prefs?.getString('openai_tts_api_key') ?? '';
-    _ttsConcurrency = _prefs?.getInt('tts_concurrency') ?? Platform.numberOfProcessors.clamp(1, 16);
+    _ttsConcurrency =
+        _prefs?.getInt('tts_concurrency') ??
+        Platform.numberOfProcessors.clamp(1, 16);
     _kvQuantizationLevel = _prefs?.getInt('kv_quantization_level') ?? 0;
     _openaiTtsModel = _prefs?.getString('openai_tts_model') ?? 'tts-1';
-    _openaiTtsBaseUrl = _prefs?.getString('openai_tts_base_url') ?? 'https://api.openai.com/v1';
+    _openaiTtsBaseUrl =
+        _prefs?.getString('openai_tts_base_url') ?? 'https://api.openai.com/v1';
     _elevenlabsApiKey = _prefs?.getString('elevenlabs_api_key') ?? '';
-    _elevenlabsModel = _prefs?.getString('elevenlabs_model') ?? 'eleven_flash_v2_5';
+    _elevenlabsModel =
+        _prefs?.getString('elevenlabs_model') ?? 'eleven_flash_v2_5';
     _elevenlabsStability = _prefs?.getDouble('elevenlabs_stability') ?? 0.5;
     _elevenlabsSimilarity = _prefs?.getDouble('elevenlabs_similarity') ?? 0.75;
     _elevenlabsStyle = _prefs?.getDouble('elevenlabs_style') ?? 0.0;
@@ -387,7 +428,8 @@ class StorageService extends ChangeNotifier {
     // STT settings
     _sttEnabled = _prefs?.getBool('stt_enabled') ?? false;
     _whisperModel = _prefs?.getString('whisper_model') ?? 'base.en';
-    _autoSendTranscription = _prefs?.getBool('auto_send_transcription') ?? false;
+    _autoSendTranscription =
+        _prefs?.getBool('auto_send_transcription') ?? false;
     _selectedMicId = _prefs?.getString('selected_mic_id');
     _callModelName = _prefs?.getString('call_model_name') ?? '';
     _callBufferSentences = _prefs?.getInt('call_buffer_sentences') ?? 3;
@@ -408,15 +450,18 @@ class StorageService extends ChangeNotifier {
     // Image generation settings
     _imageGenEnabled = _prefs?.getBool('image_gen_enabled') ?? false;
     _imageGenBackend = _prefs?.getString('image_gen_backend') ?? 'remote';
-    _localImageGenUrl = _prefs?.getString('local_image_gen_url') ?? 'http://127.0.0.1:7860';
+    _localImageGenUrl =
+        _prefs?.getString('local_image_gen_url') ?? 'http://127.0.0.1:7860';
     _imageGenModel = _prefs?.getString('image_gen_model') ?? '';
     _imageGenSize = _prefs?.getString('image_gen_size') ?? '1024x1024';
-    _imageGenNegativePrompt = _prefs?.getString('image_gen_negative_prompt') ?? 'blurry, low quality, watermark, text';
+    _imageGenNegativePrompt =
+        _prefs?.getString('image_gen_negative_prompt') ??
+        'blurry, low quality, watermark, text';
     _imageGenStyle = _prefs?.getString('image_gen_style') ?? 'photorealistic';
-    _imageGenPromptParadigm = _prefs?.getString('image_gen_prompt_paradigm') ?? 'natural';
+    _imageGenPromptParadigm =
+        _prefs?.getString('image_gen_prompt_paradigm') ?? 'natural';
     _imageGenLora = _prefs?.getString('image_gen_lora') ?? '';
     _imageGenLoraWeight = _prefs?.getDouble('image_gen_lora_weight') ?? 0.8;
-
 
     // Web server settings
     _webServerEnabled = _prefs?.getBool('web_server_enabled') ?? false;
@@ -430,7 +475,8 @@ class StorageService extends ChangeNotifier {
     _summaryEnabled = _prefs?.getBool('summary_enabled') ?? false;
     _summaryInterval = _prefs?.getInt('summary_interval') ?? 10;
     _summaryMaxWords = _prefs?.getInt('summary_max_words') ?? 200;
-    _summaryPrompt = _prefs?.getString('summary_prompt') ?? defaultSummaryPrompt;
+    _summaryPrompt =
+        _prefs?.getString('summary_prompt') ?? defaultSummaryPrompt;
 
     // Banned phrases
     final bannedJson = _prefs?.getString('banned_phrases');
@@ -447,15 +493,22 @@ class StorageService extends ChangeNotifier {
     _ragRetrievalCount = _prefs?.getInt('rag_retrieval_count') ?? 5;
     _ragWindowSize = _prefs?.getInt('rag_window_size') ?? 5;
     _ragEmbeddingSource = _prefs?.getString('rag_embedding_source') ?? 'auto';
-    _ragEmbeddingModel = _prefs?.getString('rag_embedding_model') ?? 'text-embedding-3-small';
+    _ragEmbeddingModel =
+        _prefs?.getString('rag_embedding_model') ?? 'text-embedding-3-small';
 
     // Auto-persona settings
     _autoPersonaEnabled = _prefs?.getBool('auto_persona_enabled') ?? false;
     _autoPersonaInterval = _prefs?.getInt('auto_persona_interval') ?? 10;
 
     // Character evolution settings
-    _characterEvolutionEnabled = _prefs?.getBool('character_evolution_enabled') ?? false;
+    _characterEvolutionEnabled =
+        _prefs?.getBool('character_evolution_enabled') ?? false;
     _evolutionInterval = _prefs?.getInt('evolution_interval') ?? 10;
+
+    // Realism Engine global defaults
+    _realismDefault = _prefs?.getBool('realism_default') ?? false;
+    _nsfwCooldownDefault = _prefs?.getBool('nsfw_cooldown_default') ?? false;
+    _passageOfTimeDefault = _prefs?.getBool('passage_of_time_default') ?? true;
 
     // Realism Engine performance settings
     _realismOneShotEval = _prefs?.getBool('realism_one_shot_eval') ?? false;
@@ -464,11 +517,16 @@ class StorageService extends ChangeNotifier {
     final promptsJson = _prefs?.getString('saved_prompts');
     if (promptsJson != null) {
       final decoded = jsonDecode(promptsJson) as List;
-      _savedPrompts = decoded.map((e) => Map<String, String>.from(e as Map)).toList();
+      _savedPrompts = decoded
+          .map((e) => Map<String, String>.from(e as Map))
+          .toList();
     }
     // Always ensure the built-in default preset exists
     if (!_savedPrompts.any((p) => p['name'] == 'Immersive Roleplay')) {
-      _savedPrompts.insert(0, {'name': 'Immersive Roleplay', 'content': defaultSystemPrompt});
+      _savedPrompts.insert(0, {
+        'name': 'Immersive Roleplay',
+        'content': defaultSystemPrompt,
+      });
       await _persistPrompts();
     }
 
@@ -484,7 +542,13 @@ class StorageService extends ChangeNotifier {
     if (oldRoot == pathStr) return; // No-op if same path
 
     // Directories to move from old root to new root
-    final dirsToMove = ['KoboldManager', 'chats', 'worlds', 'models', 'koboldcpp_bin'];
+    final dirsToMove = [
+      'KoboldManager',
+      'chats',
+      'worlds',
+      'models',
+      'koboldcpp_bin',
+    ];
 
     for (final dirName in dirsToMove) {
       final oldDir = Directory(path.join(oldRoot ?? '', dirName));
@@ -558,7 +622,10 @@ class StorageService extends ChangeNotifier {
   }
 
   void loadSavedPrompt(String name) {
-    final prompt = _savedPrompts.firstWhere((p) => p['name'] == name, orElse: () => {});
+    final prompt = _savedPrompts.firstWhere(
+      (p) => p['name'] == name,
+      orElse: () => {},
+    );
     if (prompt.containsKey('content')) {
       setSystemPrompt(prompt['content']!);
     }
@@ -1056,8 +1123,6 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
-
-
   // Web server setters
   Future<void> setWebServerEnabled(bool value) async {
     _webServerEnabled = value;
@@ -1169,6 +1234,24 @@ class StorageService extends ChangeNotifier {
   Future<void> setRealismOneShotEval(bool value) async {
     _realismOneShotEval = value;
     await _prefs?.setBool('realism_one_shot_eval', value);
+    notifyListeners();
+  }
+
+  Future<void> setRealismDefault(bool value) async {
+    _realismDefault = value;
+    await _prefs?.setBool('realism_default', value);
+    notifyListeners();
+  }
+
+  Future<void> setNsfwCooldownDefault(bool value) async {
+    _nsfwCooldownDefault = value;
+    await _prefs?.setBool('nsfw_cooldown_default', value);
+    notifyListeners();
+  }
+
+  Future<void> setPassageOfTimeDefault(bool value) async {
+    _passageOfTimeDefault = value;
+    await _prefs?.setBool('passage_of_time_default', value);
     notifyListeners();
   }
 }
