@@ -2098,6 +2098,17 @@ class ChatService extends ChangeNotifier {
         _relationshipTier = _calculateTier(_affectionScore);
         _longTermTier = _calculateTier(_longTermScore);
       }
+
+      // Seed initial quest/task as a primary objective
+      if (extSeed?.currentTask.isNotEmpty == true) {
+        // Defer so the session ID is ready before the DB write
+        Future.microtask(() async {
+          await setObjective(extSeed!.currentTask, isPrimary: true);
+          debugPrint(
+            '[ChatService] V2.5 seeded initial task: ${extSeed.currentTask}',
+          );
+        });
+      }
     } else {
       // Group mode or no active character: reset to defaults but preserve existing extensions-based values
       _pendingTrustRepair = false;
