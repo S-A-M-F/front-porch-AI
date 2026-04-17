@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -61,13 +60,13 @@ import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/services/audiobook_generator_service.dart';
 import 'package:front_porch_ai/services/file_consolidation_service.dart';
 
-
 import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
 import 'package:front_porch_ai/ui/widgets/remote_lock_overlay.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 import 'package:front_porch_ai/services/web_server_service.dart';
 import 'package:front_porch_ai/services/web_chat_bridge.dart';
 import 'package:front_porch_ai/app_version.dart';
+
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
@@ -86,9 +85,11 @@ void main(List<String> args) async {
       exit(0);
     });
   }
-  
+
   // Consolidate files BEFORE loading database or any configs.
-  try { await FileConsolidationService.consolidate(); } catch (e) {
+  try {
+    await FileConsolidationService.consolidate();
+  } catch (e) {
     debugPrint('Fatal error during file consolidation: $e');
   }
 
@@ -101,11 +102,15 @@ void main(List<String> args) async {
   _MyAppState._dbHealthy = dbHealthy;
 
   // Purge rows that were soft-deleted more than 30 days ago
-  try { await db.purgeSoftDeletes(); } catch (_) {}
+  try {
+    await db.purgeSoftDeletes();
+  } catch (_) {}
 
   // Clean up legacy JSON files from pre-0.8.0 (idempotent, safe to run every startup)
-  try { await DataMigrationService.cleanupLegacyFiles(); } catch (_) {}
-  
+  try {
+    await DataMigrationService.cleanupLegacyFiles();
+  } catch (_) {}
+
   WindowOptions windowOptions = const WindowOptions(
     size: Size(1280, 720),
     center: true,
@@ -113,7 +118,7 @@ void main(List<String> args) async {
     skipTaskbar: false,
     titleBarStyle: TitleBarStyle.normal,
   );
-  
+
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.show();
     await windowManager.focus();
@@ -127,19 +132,45 @@ void main(List<String> args) async {
         ChangeNotifierProvider(create: (_) => AppState()),
         ChangeNotifierProvider(create: (_) => StorageService()),
         ChangeNotifierProxyProvider<StorageService, KoboldService>(
-          create: (context) => KoboldService(Provider.of<StorageService>(context, listen: false)),
-          update: (context, storage, previous) => previous ?? KoboldService(storage),
+          create: (context) => KoboldService(
+            Provider.of<StorageService>(context, listen: false),
+          ),
+          update: (context, storage, previous) =>
+              previous ?? KoboldService(storage),
         ),
         ChangeNotifierProvider(create: (_) => HardwareService()),
         ChangeNotifierProxyProvider<StorageService, CharacterRepository>(
-          create: (context) => CharacterRepository(db, Provider.of<StorageService>(context, listen: false)),
-          update: (context, storage, previous) => previous ?? CharacterRepository(db, storage),
+          create: (context) => CharacterRepository(
+            db,
+            Provider.of<StorageService>(context, listen: false),
+          ),
+          update: (context, storage, previous) =>
+              previous ?? CharacterRepository(db, storage),
         ),
         ChangeNotifierProvider(create: (context) => UserPersonaService(db)),
         ChangeNotifierProvider(create: (context) => FolderService(db)),
-        ChangeNotifierProxyProvider<StorageService, WorldRepository>(
-          create: (context) => WorldRepository(Provider.of<StorageService>(context, listen: false), db),
-          update: (context, storage, previous) => previous ?? WorldRepository(storage, db),
+        ChangeNotifierProxyProvider2<
+          CharacterRepository,
+          StorageService,
+          WorldRepository
+        >(
+          create: (context) {
+            final repo = WorldRepository(
+              Provider.of<StorageService>(context, listen: false),
+              db,
+            );
+            // Wire CharacterRepository for avatar path resolution
+            repo.setCharacterRepository(
+              Provider.of<CharacterRepository>(context, listen: false),
+            );
+            return repo;
+          },
+          update: (context, charRepo, storage, previous) {
+            final newRepo = previous ?? WorldRepository(storage, db);
+            // Re-wire CharacterRepository if changed
+            newRepo.setCharacterRepository(charRepo);
+            return newRepo;
+          },
         ),
         ChangeNotifierProvider(create: (_) => EmbeddingSidecar()),
         ChangeNotifierProvider<EmbeddingService>(
@@ -148,15 +179,25 @@ void main(List<String> args) async {
           ),
         ),
         ChangeNotifierProxyProvider<StorageService, BackendManager>(
-          create: (context) => BackendManager(Provider.of<StorageService>(context, listen: false)),
-          update: (context, storage, previous) => previous ?? BackendManager(storage),
+          create: (context) => BackendManager(
+            Provider.of<StorageService>(context, listen: false),
+          ),
+          update: (context, storage, previous) =>
+              previous ?? BackendManager(storage),
         ),
         ChangeNotifierProxyProvider<StorageService, ModelManager>(
-          create: (context) => ModelManager(Provider.of<StorageService>(context, listen: false)),
-          update: (context, storage, previous) => previous ?? ModelManager(storage),
+          create: (context) =>
+              ModelManager(Provider.of<StorageService>(context, listen: false)),
+          update: (context, storage, previous) =>
+              previous ?? ModelManager(storage),
         ),
         ChangeNotifierProvider(create: (_) => OpenRouterService()),
-        ChangeNotifierProxyProvider3<KoboldService, OpenRouterService, StorageService, LLMProvider>(
+        ChangeNotifierProxyProvider3<
+          KoboldService,
+          OpenRouterService,
+          StorageService,
+          LLMProvider
+        >(
           create: (context) => LLMProvider(
             Provider.of<KoboldService>(context, listen: false),
             Provider.of<OpenRouterService>(context, listen: false),
@@ -165,7 +206,13 @@ void main(List<String> args) async {
           update: (context, kobold, openRouter, storage, previous) =>
               previous ?? LLMProvider(kobold, openRouter, storage),
         ),
-        ChangeNotifierProxyProvider4<KoboldService, UserPersonaService, StorageService, WorldRepository, ChatService>(
+        ChangeNotifierProxyProvider4<
+          KoboldService,
+          UserPersonaService,
+          StorageService,
+          WorldRepository,
+          ChatService
+        >(
           create: (context) {
             final chatService = ChatService(
               Provider.of<KoboldService>(context, listen: false),
@@ -175,11 +222,18 @@ void main(List<String> args) async {
             );
             // Wire LLMProvider and CharacterRepository immediately at creation time
             chatService.setDatabase(db);
-            chatService.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
-            chatService.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
+            chatService.setLLMProvider(
+              Provider.of<LLMProvider>(context, listen: false),
+            );
+            chatService.setCharacterRepository(
+              Provider.of<CharacterRepository>(context, listen: false),
+            );
             // Wire MemoryService for RAG
             try {
-              final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+              final sidecar = Provider.of<EmbeddingSidecar>(
+                context,
+                listen: false,
+              );
               final embeddingService = EmbeddingService(sidecar);
               final memoryService = MemoryService(
                 embeddingService,
@@ -193,36 +247,64 @@ void main(List<String> args) async {
           update: (context, kobold, persona, storage, worldRepo, previous) {
             if (previous != null) {
               // Re-wire dependencies on every update to stay in sync
-              previous.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
-              previous.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
+              previous.setLLMProvider(
+                Provider.of<LLMProvider>(context, listen: false),
+              );
+              previous.setCharacterRepository(
+                Provider.of<CharacterRepository>(context, listen: false),
+              );
               // Wire TtsService if available (it's registered later in the tree)
-              try { previous.setTtsService(Provider.of<TtsService>(context, listen: false)); } catch (_) {}
+              try {
+                previous.setTtsService(
+                  Provider.of<TtsService>(context, listen: false),
+                );
+              } catch (_) {}
               return previous;
             }
-            final chatService = ChatService(kobold, persona, storage, worldRepo);
+            final chatService = ChatService(
+              kobold,
+              persona,
+              storage,
+              worldRepo,
+            );
             chatService.setDatabase(db);
-            chatService.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
-            chatService.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
+            chatService.setLLMProvider(
+              Provider.of<LLMProvider>(context, listen: false),
+            );
+            chatService.setCharacterRepository(
+              Provider.of<CharacterRepository>(context, listen: false),
+            );
             return chatService;
           },
         ),
         ChangeNotifierProxyProvider<StorageService, GroupChatRepository>(
-          create: (context) => GroupChatRepository(Provider.of<StorageService>(context, listen: false), db),
-          update: (context, storage, previous) => previous ?? GroupChatRepository(storage, db),
+          create: (context) => GroupChatRepository(
+            Provider.of<StorageService>(context, listen: false),
+            db,
+          ),
+          update: (context, storage, previous) =>
+              previous ?? GroupChatRepository(storage, db),
         ),
-        ChangeNotifierProxyProvider3<StorageService, BackendManager, KoboldService, SetupService>(
+        ChangeNotifierProxyProvider3<
+          StorageService,
+          BackendManager,
+          KoboldService,
+          SetupService
+        >(
           create: (context) => SetupService(
             Provider.of<StorageService>(context, listen: false),
             Provider.of<BackendManager>(context, listen: false),
             Provider.of<KoboldService>(context, listen: false),
           ),
-          update: (context, storage, backend, kobold, previous) => 
+          update: (context, storage, backend, kobold, previous) =>
               previous ?? SetupService(storage, backend, kobold),
         ),
         ChangeNotifierProvider(create: (_) => UpdateService()),
         ChangeNotifierProxyProvider<StorageService, VoiceManager>(
-          create: (context) => VoiceManager(Provider.of<StorageService>(context, listen: false)),
-          update: (context, storage, previous) => previous ?? VoiceManager(storage),
+          create: (context) =>
+              VoiceManager(Provider.of<StorageService>(context, listen: false)),
+          update: (context, storage, previous) =>
+              previous ?? VoiceManager(storage),
         ),
         ChangeNotifierProxyProvider2<StorageService, VoiceManager, TtsService>(
           create: (context) => TtsService(
@@ -232,7 +314,11 @@ void main(List<String> args) async {
           update: (context, storage, voiceManager, previous) =>
               previous ?? TtsService(storage, voiceManager),
         ),
-        ChangeNotifierProxyProvider2<TtsService, StorageService, AudiobookGeneratorService>(
+        ChangeNotifierProxyProvider2<
+          TtsService,
+          StorageService,
+          AudiobookGeneratorService
+        >(
           create: (context) => AudiobookGeneratorService(
             Provider.of<TtsService>(context, listen: false),
             Provider.of<StorageService>(context, listen: false),
@@ -241,12 +327,15 @@ void main(List<String> args) async {
               previous ?? AudiobookGeneratorService(tts, storage),
         ),
         ChangeNotifierProxyProvider<StorageService, SttService>(
-          create: (context) => SttService(
-            Provider.of<StorageService>(context, listen: false),
-          ),
+          create: (context) =>
+              SttService(Provider.of<StorageService>(context, listen: false)),
           update: (context, storage, previous) {
             if (previous != null) {
-              try { previous.setTtsService(Provider.of<TtsService>(context, listen: false)); } catch (_) {}
+              try {
+                previous.setTtsService(
+                  Provider.of<TtsService>(context, listen: false),
+                );
+              } catch (_) {}
             }
             return previous ?? SttService(storage);
           },
@@ -254,90 +343,186 @@ void main(List<String> args) async {
         ChangeNotifierProvider(create: (_) => CloudSyncService()),
         ChangeNotifierProxyProvider<StorageService, ImageGenService>(
           create: (context) {
-            return ImageGenService(Provider.of<StorageService>(context, listen: false));
+            return ImageGenService(
+              Provider.of<StorageService>(context, listen: false),
+            );
           },
           update: (context, storage, previous) {
             return previous ?? ImageGenService(storage);
           },
         ),
         // Porch Stories: repository + pipeline must be above WebServerService
-        ChangeNotifierProvider(create: (context) {
-          final repo = StoryRepository(db);
-          repo.loadProjects();
-          return repo;
-        }),
-        ChangeNotifierProxyProvider2<LLMProvider, StorageService, StoryPipelineService>(
+        ChangeNotifierProvider(
           create: (context) {
-            final llmProvider = Provider.of<LLMProvider>(context, listen: false);
-            final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+            final repo = StoryRepository(db);
+            repo.loadProjects();
+            return repo;
+          },
+        ),
+        ChangeNotifierProxyProvider2<
+          LLMProvider,
+          StorageService,
+          StoryPipelineService
+        >(
+          create: (context) {
+            final llmProvider = Provider.of<LLMProvider>(
+              context,
+              listen: false,
+            );
+            final sidecar = Provider.of<EmbeddingSidecar>(
+              context,
+              listen: false,
+            );
             final storage = Provider.of<StorageService>(context, listen: false);
             final embeddingService = EmbeddingService(sidecar);
             final memoryService = MemoryService(embeddingService, storage, db);
             final repo = Provider.of<StoryRepository>(context, listen: false);
-            return StoryPipelineService(repo, llmProvider.activeService, memoryService, db);
+            return StoryPipelineService(
+              repo,
+              llmProvider.activeService,
+              memoryService,
+              db,
+            );
           },
           update: (context, llmProvider, storage, previous) {
             if (previous != null) return previous;
-            final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+            final sidecar = Provider.of<EmbeddingSidecar>(
+              context,
+              listen: false,
+            );
             final embeddingService = EmbeddingService(sidecar);
             final memoryService = MemoryService(embeddingService, storage, db);
             final repo = Provider.of<StoryRepository>(context, listen: false);
-            return StoryPipelineService(repo, llmProvider.activeService, memoryService, db);
+            return StoryPipelineService(
+              repo,
+              llmProvider.activeService,
+              memoryService,
+              db,
+            );
           },
         ),
         ChangeNotifierProxyProvider<StorageService, WebServerService>(
           create: (context) {
-            final chatService = Provider.of<ChatService>(context, listen: false);
-            final ws = WebServerService(Provider.of<StorageService>(context, listen: false));
+            final chatService = Provider.of<ChatService>(
+              context,
+              listen: false,
+            );
+            final ws = WebServerService(
+              Provider.of<StorageService>(context, listen: false),
+            );
             ws.setDatabase(db);
-            ws.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
+            ws.setCharacterRepository(
+              Provider.of<CharacterRepository>(context, listen: false),
+            );
             ws.setChatService(chatService);
             ws.setChatBridge(WebChatBridge(chatService));
             ws.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
-            ws.setFolderService(Provider.of<FolderService>(context, listen: false));
+            ws.setFolderService(
+              Provider.of<FolderService>(context, listen: false),
+            );
             ws.setTtsService(Provider.of<TtsService>(context, listen: false));
-            ws.setUserPersonaService(Provider.of<UserPersonaService>(context, listen: false));
-            ws.setGroupChatRepository(Provider.of<GroupChatRepository>(context, listen: false));
-            ws.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
-            ws.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
-            ws.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
-            ws.setStoryRepository(Provider.of<StoryRepository>(context, listen: false));
-            ws.setStoryPipelineService(Provider.of<StoryPipelineService>(context, listen: false));
+            ws.setUserPersonaService(
+              Provider.of<UserPersonaService>(context, listen: false),
+            );
+            ws.setGroupChatRepository(
+              Provider.of<GroupChatRepository>(context, listen: false),
+            );
+            ws.setCloudSyncService(
+              Provider.of<CloudSyncService>(context, listen: false),
+            );
+            ws.setImageGenService(
+              Provider.of<ImageGenService>(context, listen: false),
+            );
+            ws.setEmbeddingSidecar(
+              Provider.of<EmbeddingSidecar>(context, listen: false),
+            );
+            ws.setStoryRepository(
+              Provider.of<StoryRepository>(context, listen: false),
+            );
+            ws.setStoryPipelineService(
+              Provider.of<StoryPipelineService>(context, listen: false),
+            );
             return ws;
           },
           update: (context, storage, previous) {
             if (previous != null) {
-              final chatService = Provider.of<ChatService>(context, listen: false);
+              final chatService = Provider.of<ChatService>(
+                context,
+                listen: false,
+              );
               previous.setChatService(chatService);
-              previous.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
-              previous.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
-              previous.setFolderService(Provider.of<FolderService>(context, listen: false));
-              previous.setTtsService(Provider.of<TtsService>(context, listen: false));
-              previous.setUserPersonaService(Provider.of<UserPersonaService>(context, listen: false));
-              previous.setGroupChatRepository(Provider.of<GroupChatRepository>(context, listen: false));
-              previous.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
-              previous.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
-              previous.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
-              previous.setStoryRepository(Provider.of<StoryRepository>(context, listen: false));
-              previous.setStoryPipelineService(Provider.of<StoryPipelineService>(context, listen: false));
+              previous.setCharacterRepository(
+                Provider.of<CharacterRepository>(context, listen: false),
+              );
+              previous.setLLMProvider(
+                Provider.of<LLMProvider>(context, listen: false),
+              );
+              previous.setFolderService(
+                Provider.of<FolderService>(context, listen: false),
+              );
+              previous.setTtsService(
+                Provider.of<TtsService>(context, listen: false),
+              );
+              previous.setUserPersonaService(
+                Provider.of<UserPersonaService>(context, listen: false),
+              );
+              previous.setGroupChatRepository(
+                Provider.of<GroupChatRepository>(context, listen: false),
+              );
+              previous.setCloudSyncService(
+                Provider.of<CloudSyncService>(context, listen: false),
+              );
+              previous.setImageGenService(
+                Provider.of<ImageGenService>(context, listen: false),
+              );
+              previous.setEmbeddingSidecar(
+                Provider.of<EmbeddingSidecar>(context, listen: false),
+              );
+              previous.setStoryRepository(
+                Provider.of<StoryRepository>(context, listen: false),
+              );
+              previous.setStoryPipelineService(
+                Provider.of<StoryPipelineService>(context, listen: false),
+              );
               return previous;
             }
-            final chatService = Provider.of<ChatService>(context, listen: false);
+            final chatService = Provider.of<ChatService>(
+              context,
+              listen: false,
+            );
             final ws = WebServerService(storage);
             ws.setDatabase(db);
-            ws.setCharacterRepository(Provider.of<CharacterRepository>(context, listen: false));
+            ws.setCharacterRepository(
+              Provider.of<CharacterRepository>(context, listen: false),
+            );
             ws.setChatService(chatService);
             ws.setChatBridge(WebChatBridge(chatService));
             ws.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
-            ws.setFolderService(Provider.of<FolderService>(context, listen: false));
+            ws.setFolderService(
+              Provider.of<FolderService>(context, listen: false),
+            );
             ws.setTtsService(Provider.of<TtsService>(context, listen: false));
-            ws.setUserPersonaService(Provider.of<UserPersonaService>(context, listen: false));
-            ws.setGroupChatRepository(Provider.of<GroupChatRepository>(context, listen: false));
-            ws.setCloudSyncService(Provider.of<CloudSyncService>(context, listen: false));
-            ws.setImageGenService(Provider.of<ImageGenService>(context, listen: false));
-            ws.setEmbeddingSidecar(Provider.of<EmbeddingSidecar>(context, listen: false));
-            ws.setStoryRepository(Provider.of<StoryRepository>(context, listen: false));
-            ws.setStoryPipelineService(Provider.of<StoryPipelineService>(context, listen: false));
+            ws.setUserPersonaService(
+              Provider.of<UserPersonaService>(context, listen: false),
+            );
+            ws.setGroupChatRepository(
+              Provider.of<GroupChatRepository>(context, listen: false),
+            );
+            ws.setCloudSyncService(
+              Provider.of<CloudSyncService>(context, listen: false),
+            );
+            ws.setImageGenService(
+              Provider.of<ImageGenService>(context, listen: false),
+            );
+            ws.setEmbeddingSidecar(
+              Provider.of<EmbeddingSidecar>(context, listen: false),
+            );
+            ws.setStoryRepository(
+              Provider.of<StoryRepository>(context, listen: false),
+            );
+            ws.setStoryPipelineService(
+              Provider.of<StoryPipelineService>(context, listen: false),
+            );
             return ws;
           },
         ),
@@ -453,12 +638,19 @@ class _MyAppState extends State<MyApp> with WindowListener {
           theme: ThemeData(
             brightness: appState.darkMode ? Brightness.dark : Brightness.light,
             primarySwatch: Colors.blue,
-            scaffoldBackgroundColor: appState.darkMode ? const Color(0xFF0F172A) : const Color(0xFFF3F4F6),
-            cardColor: appState.darkMode ? const Color(0xFF1E293B) : Colors.white,
-            textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme).apply(
-              bodyColor: appState.darkMode ? Colors.white : Colors.black87,
-              displayColor: appState.darkMode ? Colors.white : Colors.black87,
-            ),
+            scaffoldBackgroundColor: appState.darkMode
+                ? const Color(0xFF0F172A)
+                : const Color(0xFFF3F4F6),
+            cardColor: appState.darkMode
+                ? const Color(0xFF1E293B)
+                : Colors.white,
+            textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme)
+                .apply(
+                  bodyColor: appState.darkMode ? Colors.white : Colors.black87,
+                  displayColor: appState.darkMode
+                      ? Colors.white
+                      : Colors.black87,
+                ),
             useMaterial3: true,
           ),
           home: Builder(
@@ -475,7 +667,10 @@ class _MyAppState extends State<MyApp> with WindowListener {
                   // Wire TtsService into ChatService (can't be done during provider
                   // creation because TtsService is registered later in the tree)
                   try {
-                    final chatService = Provider.of<ChatService>(context, listen: false);
+                    final chatService = Provider.of<ChatService>(
+                      context,
+                      listen: false,
+                    );
                     final tts = Provider.of<TtsService>(context, listen: false);
                     chatService.setTtsService(tts);
                   } catch (_) {}
@@ -483,18 +678,30 @@ class _MyAppState extends State<MyApp> with WindowListener {
                   // (KoboldCPP, web server, embedding sidecar) are stopped
                   // before exit(0) in installNow(), which bypasses onWindowClose.
                   try {
-                    final updateService = Provider.of<UpdateService>(context, listen: false);
+                    final updateService = Provider.of<UpdateService>(
+                      context,
+                      listen: false,
+                    );
                     updateService.setShutdownCallback(() async {
                       try {
-                        final kobold = Provider.of<KoboldService>(context, listen: false);
+                        final kobold = Provider.of<KoboldService>(
+                          context,
+                          listen: false,
+                        );
                         if (kobold.isRunning) await kobold.stopKobold();
                       } catch (_) {}
                       try {
-                        final webServer = Provider.of<WebServerService>(context, listen: false);
+                        final webServer = Provider.of<WebServerService>(
+                          context,
+                          listen: false,
+                        );
                         if (webServer.isRunning) await webServer.stop();
                       } catch (_) {}
                       try {
-                        final sidecar = Provider.of<EmbeddingSidecar>(context, listen: false);
+                        final sidecar = Provider.of<EmbeddingSidecar>(
+                          context,
+                          listen: false,
+                        );
                         if (sidecar.isRunning) await sidecar.stopServer();
                       } catch (_) {}
                     });
@@ -504,29 +711,26 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
               final storage = Provider.of<StorageService>(context);
               final width = MediaQuery.of(context).size.width;
-              
+
               // Scale text relative to base design width of 1280px
               // Clamp responsive base between 0.85 and 1.5
               final responsiveScale = (width / 1280).clamp(0.85, 1.5);
-              
+
               // Combine with user preference
               final effectiveScale = responsiveScale * storage.textScale;
-              
+
               return MediaQuery(
-                data: MediaQuery.of(context).copyWith(
-                  textScaler: TextScaler.linear(effectiveScale),
-                ),
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(effectiveScale)),
                 child: Stack(
                   children: [
                     const MainLayout(),
                     const SetupOverlay(),
                     const RemoteLockOverlay(),
-                    if (_isDbCorrupt)
-                      _buildCorruptionOverlay(),
-                    if (_isMigrating)
-                      _buildMigrationOverlay(),
-                    if (_isReunifying)
-                      _buildReunificationOverlay(),
+                    if (_isDbCorrupt) _buildCorruptionOverlay(),
+                    if (_isMigrating) _buildMigrationOverlay(),
+                    if (_isReunifying) _buildReunificationOverlay(),
                   ],
                 ),
               );
@@ -581,7 +785,11 @@ class _MyAppState extends State<MyApp> with WindowListener {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.warning_amber_rounded, size: 40, color: Colors.white),
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 40,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 32),
                 const Text(
@@ -612,7 +820,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
                     decoration: BoxDecoration(
                       color: const Color(0xFF1E293B),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.1),
+                      ),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -631,12 +841,17 @@ class _MyAppState extends State<MyApp> with WindowListener {
                           child: ListView.separated(
                             shrinkWrap: true,
                             itemCount: _availableBackups.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 4),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 4),
                             itemBuilder: (context, index) {
                               final backup = _availableBackups[index];
                               final stat = backup.statSync();
-                              final age = DateTime.now().difference(stat.modified);
-                              final sizeKb = (stat.size / 1024).toStringAsFixed(0);
+                              final age = DateTime.now().difference(
+                                stat.modified,
+                              );
+                              final sizeKb = (stat.size / 1024).toStringAsFixed(
+                                0,
+                              );
                               String ageStr;
                               if (age.inDays > 0) {
                                 ageStr = '${age.inDays}d ago';
@@ -649,25 +864,37 @@ class _MyAppState extends State<MyApp> with WindowListener {
                                 onTap: () => _restoreBackup(backup),
                                 borderRadius: BorderRadius.circular(8),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Colors.white.withValues(alpha: 0.03),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.restore, size: 18, color: Colors.blueAccent.shade100),
+                                      Icon(
+                                        Icons.restore,
+                                        size: 18,
+                                        color: Colors.blueAccent.shade100,
+                                      ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
                                           ageStr,
-                                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                          ),
                                         ),
                                       ),
                                       Text(
                                         '$sizeKb KB',
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.4),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.4,
+                                          ),
                                           fontSize: 12,
                                         ),
                                       ),
@@ -688,11 +915,17 @@ class _MyAppState extends State<MyApp> with WindowListener {
                     decoration: BoxDecoration(
                       color: const Color(0xFF1E293B),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, size: 18, color: Colors.orange.shade300),
+                        Icon(
+                          Icons.info_outline,
+                          size: 18,
+                          color: Colors.orange.shade300,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -824,7 +1057,11 @@ class _MyAppState extends State<MyApp> with WindowListener {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.storage_rounded, size: 40, color: Colors.white),
+                  child: const Icon(
+                    Icons.storage_rounded,
+                    size: 40,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 32),
                 const Text(
@@ -861,10 +1098,14 @@ class _MyAppState extends State<MyApp> with WindowListener {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: LinearProgressIndicator(
-                    value: _migrationTotal > 0 ? _migrationCurrent / _migrationTotal : null,
+                    value: _migrationTotal > 0
+                        ? _migrationCurrent / _migrationTotal
+                        : null,
                     minHeight: 8,
                     backgroundColor: Colors.white.withValues(alpha: 0.1),
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent.shade200),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.blueAccent.shade200,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -892,7 +1133,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
     if (await DbReunificationService.isComplete()) return;
 
     // Check if the stable backup exists (created by database.dart during promoteBetaDb)
-    final stableBackupExists = File('$dbDir/front_porch.db.pre-0.9.0-backup').existsSync();
+    final stableBackupExists = File(
+      '$dbDir/front_porch.db.pre-0.9.0-backup',
+    ).existsSync();
     if (!stableBackupExists) return;
 
     setState(() {
@@ -909,7 +1152,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
       ]);
 
       // Step 2: Preparing data
-       if (mounted) {
+      if (mounted) {
         setState(() {
           _reunifyStep = 'Preparing your data...';
           _reunifyCurrent = 2;
@@ -918,7 +1161,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
       final db = Provider.of<AppDatabase>(context, listen: false);
       await Future.wait([
         BackupService.purgeAllBackups(), // purge old v1/v2 schema backups
-        db.purgeDeletedRows(),           // hard-delete soft-deleted bloat + VACUUM
+        db.purgeDeletedRows(), // hard-delete soft-deleted bloat + VACUUM
         Future.delayed(const Duration(seconds: 3)),
       ]);
 
@@ -962,7 +1205,10 @@ class _MyAppState extends State<MyApp> with WindowListener {
       final items = <String>[];
       if (diff.characters.isNotEmpty) {
         final names = diff.characters.map((c) => c.name).join(', ');
-        final sessions = diff.characters.fold<int>(0, (sum, c) => sum + c.sessionCount);
+        final sessions = diff.characters.fold<int>(
+          0,
+          (sum, c) => sum + c.sessionCount,
+        );
         items.add('${diff.characters.length} character(s): $names');
         if (sessions > 0) items.add('$sessions chat session(s)');
       }
@@ -970,7 +1216,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
         items.add('${diff.groups.length} group(s): ${diff.groups.join(', ')}');
       }
       if (diff.personas.isNotEmpty) {
-        items.add('${diff.personas.length} persona(s): ${diff.personas.join(', ')}');
+        items.add(
+          '${diff.personas.length} persona(s): ${diff.personas.join(', ')}',
+        );
       }
       if (diff.worlds.isNotEmpty) {
         items.add('${diff.worlds.length} world(s): ${diff.worlds.join(', ')}');
@@ -1011,11 +1259,26 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
         // Reload all repositories
         if (mounted) {
-          final charRepo = Provider.of<CharacterRepository>(context, listen: false);
-          final folderService = Provider.of<FolderService>(context, listen: false);
-          final personaService = Provider.of<UserPersonaService>(context, listen: false);
-          final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
-          final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+          final charRepo = Provider.of<CharacterRepository>(
+            context,
+            listen: false,
+          );
+          final folderService = Provider.of<FolderService>(
+            context,
+            listen: false,
+          );
+          final personaService = Provider.of<UserPersonaService>(
+            context,
+            listen: false,
+          );
+          final groupRepo = Provider.of<GroupChatRepository>(
+            context,
+            listen: false,
+          );
+          final worldRepo = Provider.of<WorldRepository>(
+            context,
+            listen: false,
+          );
           final chatService = Provider.of<ChatService>(context, listen: false);
           await charRepo.loadCharacters();
           await charRepo.cleanOrphanedPngs();
@@ -1066,7 +1329,10 @@ class _MyAppState extends State<MyApp> with WindowListener {
                   height: 80,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.blueAccent.shade700, Colors.cyanAccent.shade400],
+                      colors: [
+                        Colors.blueAccent.shade700,
+                        Colors.cyanAccent.shade400,
+                      ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -1079,7 +1345,11 @@ class _MyAppState extends State<MyApp> with WindowListener {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.merge_type_rounded, size: 40, color: Colors.white),
+                  child: const Icon(
+                    Icons.merge_type_rounded,
+                    size: 40,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 32),
                 const Text(
@@ -1110,7 +1380,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
                     decoration: BoxDecoration(
                       color: const Color(0xFF1E293B),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.blueAccent.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -1118,43 +1390,76 @@ class _MyAppState extends State<MyApp> with WindowListener {
                       children: [
                         const Text(
                           'Import Stable Data?',
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         const Text(
                           'We found data in your stable v0.8 install that isn\'t in your v0.9 database:',
-                          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
                         ),
                         const SizedBox(height: 12),
-                        ..._importItems.map((item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('• ', style: TextStyle(color: Colors.blueAccent, fontSize: 13)),
-                              Expanded(
-                                child: Text(item, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                              ),
-                            ],
+                        ..._importItems.map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '• ',
+                                  style: TextStyle(
+                                    color: Colors.blueAccent,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    item,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        )),
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           'Your v0.9 data is safe regardless of your choice.',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                            fontSize: 11,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             TextButton(
-                              onPressed: () => _importChoiceCompleter?.complete(false),
-                              child: const Text('Skip', style: TextStyle(color: Colors.white38)),
+                              onPressed: () =>
+                                  _importChoiceCompleter?.complete(false),
+                              child: const Text(
+                                'Skip',
+                                style: TextStyle(color: Colors.white38),
+                              ),
                             ),
                             const SizedBox(width: 8),
                             ElevatedButton.icon(
-                              onPressed: () => _importChoiceCompleter?.complete(true),
-                              icon: const Icon(Icons.download_rounded, size: 18),
+                              onPressed: () =>
+                                  _importChoiceCompleter?.complete(true),
+                              icon: const Icon(
+                                Icons.download_rounded,
+                                size: 18,
+                              ),
                               label: const Text('Import'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blueAccent,
@@ -1181,10 +1486,14 @@ class _MyAppState extends State<MyApp> with WindowListener {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(6),
                     child: LinearProgressIndicator(
-                      value: _reunifyTotal > 0 ? _reunifyCurrent / _reunifyTotal : null,
+                      value: _reunifyTotal > 0
+                          ? _reunifyCurrent / _reunifyTotal
+                          : null,
                       minHeight: 8,
                       backgroundColor: Colors.white.withValues(alpha: 0.1),
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent.shade200),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Colors.blueAccent.shade200,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1227,13 +1536,16 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
     // Pre-release builds must not sync to prevent schema version conflicts
     if (isPreRelease) {
-      debugPrint('[CloudSync] Skipped — pre-release build uses separate beta DB');
+      debugPrint(
+        '[CloudSync] Skipped — pre-release build uses separate beta DB',
+      );
       return;
     }
 
     final storage = Provider.of<StorageService>(context, listen: false);
     await storage.initialized;
-    if (!storage.cloudSyncEnabled || storage.cloudSyncProvider == 'none') return;
+    if (!storage.cloudSyncEnabled || storage.cloudSyncProvider == 'none')
+      return;
 
     final syncService = Provider.of<CloudSyncService>(context, listen: false);
 
@@ -1265,7 +1577,8 @@ class _MyAppState extends State<MyApp> with WindowListener {
       // Get paths
       final chatsPath = storage.chatsDir.path;
       final rootPath = storage.rootPath ?? chatsPath;
-      final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
+      final charactersPath =
+          '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
 
       // Safety net: backup DB before every cloud sync
       await BackupService.createBackup();
@@ -1290,9 +1603,16 @@ class _MyAppState extends State<MyApp> with WindowListener {
               backgroundColor: const Color(0xFF1E293B),
               title: const Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 28),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.amberAccent,
+                    size: 28,
+                  ),
                   SizedBox(width: 12),
-                  Text('Database Version Mismatch', style: TextStyle(color: Colors.white)),
+                  Text(
+                    'Database Version Mismatch',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ],
               ),
               content: Text(
@@ -1306,7 +1626,10 @@ class _MyAppState extends State<MyApp> with WindowListener {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('OK', style: TextStyle(color: Colors.blueAccent)),
+                  child: const Text(
+                    'OK',
+                    style: TextStyle(color: Colors.blueAccent),
+                  ),
                 ),
               ],
             ),
@@ -1319,13 +1642,30 @@ class _MyAppState extends State<MyApp> with WindowListener {
       if (syncService.pendingSchemaUpgrade) {
         // The DB was downloaded and migrated — reload all repositories
         if (syncService.dbWasDownloaded) {
-          debugPrint('[CloudSync] Schema upgrade: reloading all repositories after migration');
+          debugPrint(
+            '[CloudSync] Schema upgrade: reloading all repositories after migration',
+          );
           final newDb = await AppDatabase.instance();
-          final charRepo = Provider.of<CharacterRepository>(context, listen: false);
-          final folderService = Provider.of<FolderService>(context, listen: false);
-          final personaService = Provider.of<UserPersonaService>(context, listen: false);
-          final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
-          final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+          final charRepo = Provider.of<CharacterRepository>(
+            context,
+            listen: false,
+          );
+          final folderService = Provider.of<FolderService>(
+            context,
+            listen: false,
+          );
+          final personaService = Provider.of<UserPersonaService>(
+            context,
+            listen: false,
+          );
+          final groupRepo = Provider.of<GroupChatRepository>(
+            context,
+            listen: false,
+          );
+          final worldRepo = Provider.of<WorldRepository>(
+            context,
+            listen: false,
+          );
           charRepo.updateDatabase(newDb);
           folderService.updateDatabase(newDb);
           personaService.updateDatabase(newDb);
@@ -1350,9 +1690,18 @@ class _MyAppState extends State<MyApp> with WindowListener {
               backgroundColor: const Color(0xFF1E293B),
               title: const Row(
                 children: [
-                  Icon(Icons.upgrade_rounded, color: Colors.amberAccent, size: 28),
+                  Icon(
+                    Icons.upgrade_rounded,
+                    color: Colors.amberAccent,
+                    size: 28,
+                  ),
                   SizedBox(width: 12),
-                  Expanded(child: Text('Database Upgrade', style: TextStyle(color: Colors.white))),
+                  Expanded(
+                    child: Text(
+                      'Database Upgrade',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
                 ],
               ),
               content: Text(
@@ -1366,14 +1715,19 @@ class _MyAppState extends State<MyApp> with WindowListener {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Later', style: TextStyle(color: Colors.white54)),
+                  child: const Text(
+                    'Later',
+                    style: TextStyle(color: Colors.white54),
+                  ),
                 ),
                 ElevatedButton(
                   onPressed: () async {
                     Navigator.of(ctx).pop();
                     try {
                       await syncService.forceUploadDatabase();
-                      await storage.setCloudSyncLastTime(DateTime.now().toIso8601String());
+                      await storage.setCloudSyncLastTime(
+                        DateTime.now().toIso8601String(),
+                      );
                     } catch (e) {
                       debugPrint('Schema upgrade upload failed: $e');
                     }
@@ -1394,21 +1748,38 @@ class _MyAppState extends State<MyApp> with WindowListener {
       if (syncService.status == SyncStatus.success) {
         await storage.setCloudSyncLastTime(DateTime.now().toIso8601String());
         // Reload characters so newly downloaded PNGs appear in the UI
-        final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+        final charRepo = Provider.of<CharacterRepository>(
+          context,
+          listen: false,
+        );
         await charRepo.loadCharacters();
         await charRepo.cleanOrphanedPngs();
 
         // If a new database was downloaded, update all repo DB references and reload
         if (syncService.dbWasDownloaded) {
-          debugPrint('[CloudSync] DB was downloaded — updating all repositories');
+          debugPrint(
+            '[CloudSync] DB was downloaded — updating all repositories',
+          );
           final newDb = await AppDatabase.instance();
 
           // Push the new DB connection to every repo
           charRepo.updateDatabase(newDb);
-          final folderService = Provider.of<FolderService>(context, listen: false);
-          final personaService = Provider.of<UserPersonaService>(context, listen: false);
-          final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
-          final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+          final folderService = Provider.of<FolderService>(
+            context,
+            listen: false,
+          );
+          final personaService = Provider.of<UserPersonaService>(
+            context,
+            listen: false,
+          );
+          final groupRepo = Provider.of<GroupChatRepository>(
+            context,
+            listen: false,
+          );
+          final worldRepo = Provider.of<WorldRepository>(
+            context,
+            listen: false,
+          );
           folderService.updateDatabase(newDb);
           personaService.updateDatabase(newDb);
           groupRepo.updateDatabase(newDb);
