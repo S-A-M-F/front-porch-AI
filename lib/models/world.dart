@@ -18,17 +18,35 @@
 
 import 'package:front_porch_ai/models/lorebook.dart';
 
+/// Model representing a world or lorebook in the application.
+///
+/// Worlds can be created independently or auto-generated from character imports.
+/// When linked to a character, the world inherits the character's avatar path
+/// for consistent visual representation in the UI.
 class World {
   String name;
   String description;
   Lorebook lorebook;
-  String? linkedCharacterName; // If set, this world was auto-created from a character import
+  
+  /// If set, this world was auto-created from a character import.
+  /// When linked to a character, we can display the character's actual avatar
+  /// instead of a generic globe icon.
+  String? linkedCharacterName;
+  
+  /// Path to the avatar image for this world. Only applicable when
+  /// linkedCharacterName is set (world was created from a character).
+  /// 
+  /// This allows us to display the actual character avatar in world cards
+  /// and other UI elements, providing visual consistency between characters
+  /// and their associated worlds.
+  String? avatarPath;
 
   World({
     required this.name,
     this.description = '',
     required this.lorebook,
     this.linkedCharacterName,
+    this.avatarPath,
   });
 
   Map<String, dynamic> toJson() {
@@ -37,6 +55,7 @@ class World {
       'description': description,
       'lorebook': lorebook.toJson(),
       if (linkedCharacterName != null) 'linked_character_name': linkedCharacterName,
+      if (avatarPath != null) 'avatar_path': avatarPath,
     };
   }
 
@@ -48,6 +67,7 @@ class World {
           ? Lorebook.fromJson(json['lorebook'])
           : Lorebook(entries: []),
       linkedCharacterName: json['linked_character_name'],
+      avatarPath: json['avatar_path'],
     );
   }
 }

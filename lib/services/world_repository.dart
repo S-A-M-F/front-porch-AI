@@ -23,6 +23,7 @@ import 'package:drift/drift.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/world.dart' as model;
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 
 class WorldRepository extends ChangeNotifier {
@@ -31,6 +32,9 @@ class WorldRepository extends ChangeNotifier {
   final List<model.World> _worlds = [];
   bool _isLoading = false;
 
+  // Optional CharacterRepository reference for loading avatar paths
+  CharacterRepository? _characterRepository;
+
   List<model.World> get worlds => List.unmodifiable(_worlds);
   bool get isLoading => _isLoading;
 
@@ -38,8 +42,59 @@ class WorldRepository extends ChangeNotifier {
     loadWorlds();
   }
 
+  /// Set the CharacterRepository reference for loading avatar paths.
+  ///
+  /// This method should be called after dependency injection to enable
+  /// automatic avatar path resolution for linked worlds.
+  ///
+  /// [repo] - The CharacterRepository instance to use for character lookups.
+  void setCharacterRepository(CharacterRepository repo) {
+    _characterRepository = repo;
+    // Reload worlds to populate avatar paths
+    loadWorlds();
+  }
+
   /// Update the database reference (e.g. after cloud sync replaces the DB file).
-  void updateDatabase(AppDatabase db) { _db = db; }
+  void updateDatabase(AppDatabase db) {
+    _db = db;
+  }
+
+  /// Resolve avatar paths for worlds linked to characters.
+  ///
+  /// This method looks up each world's linked character and copies the
+  /// character's avatar path to the world. This enables UI elements to
+  /// display the actual character avatar instead of a generic globe icon.
+  ///
+  /// Steps:
+  /// 1. If CharacterRepository is not available, skip avatar resolution
+  /// 2. For each world with linkedCharacterName:
+  ///    a. Look up the character by name in memory (fast, no DB query)
+  ///    b. If found, copy the character's imagePath to world.avatarPath
+  ///    c. If not found in memory, skip (will try on next load)
+  ///
+  /// This approach is efficient because:
+  /// - Memory lookup is O(1) vs database query
+  /// - Works with the existing in-memory character list
+  /// - No additional database queries needed
+  void _resolveAvatarPaths(List<model.World> worlds) {
+    // If character repository is not available, skip avatar resolution
+    if (_characterRepository == null) return;
+
+    for (final world in worlds) {
+      // Only resolve avatar paths for worlds linked to characters
+      if (world.linkedCharacterName != null) {
+        // Look up character in memory (fast, no DB query needed)
+        final character = _characterRepository!.characters
+            .where((c) => c.name == world.linkedCharacterName)
+            .firstOrNull;
+
+        // If character found and has avatar path, copy it to world
+        if (character != null && character.imagePath != null) {
+          world.avatarPath = character.imagePath;
+        }
+      }
+    }
+  }
 
   Future<void> loadWorlds() async {
     _isLoading = true;
@@ -62,13 +117,18 @@ class WorldRepository extends ChangeNotifier {
           lorebook = Lorebook(entries: []);
         }
 
-        _worlds.add(model.World(
-          name: w.name,
-          description: w.description,
-          lorebook: lorebook,
-          linkedCharacterName: w.linkedCharacterName,
-        ));
+        _worlds.add(
+          model.World(
+            name: w.name,
+            description: w.description,
+            lorebook: lorebook,
+            linkedCharacterName: w.linkedCharacterName,
+          ),
+        );
       }
+
+      // Resolve avatar paths for linked worlds
+      _resolveAvatarPaths(_worlds);
     } catch (e) {
       print('Error loading worlds: $e');
     } finally {
@@ -80,22 +140,26 @@ class WorldRepository extends ChangeNotifier {
   Future<void> saveWorld(model.World world) async {
     // Check if exists
     final existing = await _db.getWorldByName(world.name);
-    
+
     if (existing != null) {
-      await _db.updateWorld(WorldsCompanion(
-        id: Value(existing.id),
-        name: Value(world.name),
-        description: Value(world.description),
-        lorebook: Value(jsonEncode(world.lorebook.toJson())),
-        linkedCharacterName: Value(world.linkedCharacterName),
-      ));
+      await _db.updateWorld(
+        WorldsCompanion(
+          id: Value(existing.id),
+          name: Value(world.name),
+          description: Value(world.description),
+          lorebook: Value(jsonEncode(world.lorebook.toJson())),
+          linkedCharacterName: Value(world.linkedCharacterName),
+        ),
+      );
     } else {
-      await _db.insertWorld(WorldsCompanion(
-        name: Value(world.name),
-        description: Value(world.description),
-        lorebook: Value(jsonEncode(world.lorebook.toJson())),
-        linkedCharacterName: Value(world.linkedCharacterName),
-      ));
+      await _db.insertWorld(
+        WorldsCompanion(
+          name: Value(world.name),
+          description: Value(world.description),
+          lorebook: Value(jsonEncode(world.lorebook.toJson())),
+          linkedCharacterName: Value(world.linkedCharacterName),
+        ),
+      );
     }
 
     // Refresh list
@@ -105,6 +169,12 @@ class WorldRepository extends ChangeNotifier {
     } else {
       _worlds.add(world);
     }
+
+    // If this is a linked world, try to resolve avatar path
+    if (world.linkedCharacterName != null) {
+      _resolveAvatarPaths([world]);
+    }
+
     notifyListeners();
   }
 
@@ -131,4 +201,9 @@ class WorldRepository extends ChangeNotifier {
     final file = File(outputPath);
     await file.writeAsString(jsonEncode(world.toJson()));
   }
+}
+
+// Extension to safely get the first element of a list or null if empty
+extension NullableListExtensions<T> on List<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

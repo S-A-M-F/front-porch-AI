@@ -420,6 +420,7 @@ class CharacterRepository extends ChangeNotifier {
           card.lorebook!.entries.isNotEmpty &&
           worldRepo != null) {
         final world = world_model.World(
+          avatarPath: card.imagePath,
           name: "${card.name}'s world lore",
           description: 'Auto-imported from character card: ${card.name}',
           lorebook: Lorebook(entries: List.from(card.lorebook!.entries)),
