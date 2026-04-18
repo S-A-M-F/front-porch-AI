@@ -1038,19 +1038,24 @@ class ChatService extends ChangeNotifier {
         }
       }
       // Reset world lore triggers
-      for (final worldName in _activeCharacter!.worldNames) {
-        final world = _worldRepository.worlds
-            .where((w) => w.name == worldName)
-            .firstOrNull;
-        if (world != null) {
-          for (final entry in world.lorebook.entries) {
-            entry.isTriggered = false;
-          }
-        }
-      }
+       for (final worldName in _activeCharacter!.worldNames) {
+         final world = _worldRepository.worlds
+             .where((w) => w.name == worldName)
+             .firstOrNull;
+         if (world != null) {
+           for (final entry in world.lorebook.entries) {
+             entry.isTriggered = false;
+           }
+         }
+       }
 
-      // Try to load last session
-      await _loadLastSession();
+       // Reset realism state to prevent bleeding from previous character
+       _arousalLevel = 0;
+       _fixationLifespan = 0;
+       _activeFixation = '';
+
+       // Try to load last session
+       await _loadLastSession();
 
       // If no session loaded, start fresh
       if (_messages.isEmpty) {
@@ -7677,7 +7682,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       // ── Solution 1: Pending greeting flag ────────────────────────────
       // The greeting was placed while realism was off. Fire the baseline
       // eval now that the user has explicitly enabled it.
-      if (_greetingEvalPending) {
+      if (_greetingEvalPending && !_hasRealismBaseline) {
         debugPrint(
           '[Realism] Consuming pending greeting eval (user enabled realism after load).',
         );
@@ -7687,7 +7692,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       // Realism was enabled mid-conversation with no baseline captured yet
       // (emotion is blank, affection is zero, multiple messages exist).
       // Run a full retrospective eval against all visible messages.
-      else if (!_hasRealismBaseline && _messages.isNotEmpty) {
+      else if (!_hasRealismBaseline && _messages.length > 1) {
         debugPrint(
           '[Realism] No baseline detected — running retroactive scan on enable.',
         );
