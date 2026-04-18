@@ -2154,15 +2154,15 @@ class ChatService extends ChangeNotifier {
     await _saveChat();
     notifyListeners();
 
-    // ── Post-Greeting Realism Baseline ──────────────────────────────────
+// ── Post-Greeting Realism Baseline ──────────────────────────────────
     // Always mark that a greeting was placed — even if Realism is currently off.
     // If Realism is already on, fire immediately. Otherwise the flag will be
     // consumed the moment the user enables Realism.
     // Skip if character already has pre-seeded V2.5 extensions — those baseline
     // values are intentional and should not be overwritten by auto-eval.
-    if (_activeGroup == null && _messages.isNotEmpty) {
+    if (_activeGroup == null && _messages.isNotEmpty && _activeCharacter!.frontPorchExtensions == null) {
       _greetingEvalPending = true;
-      if (_realismEnabled && _activeCharacter!.frontPorchExtensions == null) {
+      if (_realismEnabled) {
         _runPostGreetingEval();
       }
     }
