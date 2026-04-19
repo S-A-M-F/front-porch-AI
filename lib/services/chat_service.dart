@@ -2059,6 +2059,10 @@ class ChatService extends ChangeNotifier {
   Future<void> startNewChat() async {
     if (_activeCharacter == null && _activeGroup == null) return;
 
+    debugPrint(
+      '[startNewChat] START: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+    );
+
     // Refresh _activeCharacter from the repository so we pick up any edits
     // made in the character editor (personality, description, etc.)
     if (_activeCharacter != null && _characterRepository != null) {
@@ -2103,10 +2107,16 @@ class ChatService extends ChangeNotifier {
       _chaosModeEnabled = extSeed.chaosModeEnabled;
       
       // Reset arousal/fixation to defaults for fresh chat (not seeded from extensions)
+      debugPrint(
+        '[startNewChat] Resetting arousal/fixation (was: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan)',
+      );
       _arousalLevel = 0;
       _fixationLifespan = 0;
       _activeFixation = '';
       _cooldownTurnsRemaining = 0;
+      debugPrint(
+        '[startNewChat] After reset: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      );
 
       // Recalculate tiers from seeded scores (only needed for realism-enabled chars)
       if (_realismEnabled) {
@@ -2179,7 +2189,13 @@ class ChatService extends ChangeNotifier {
     }
 
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
+    debugPrint(
+      '[startNewChat] BEFORE SAVE: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+    );
     await _saveChat();
+    debugPrint(
+      '[startNewChat] AFTER SAVE: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+    );
     notifyListeners();
 
 // ── Post-Greeting Realism Baseline ──────────────────────────────────
