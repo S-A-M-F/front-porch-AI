@@ -564,8 +564,13 @@ class CharacterRepository extends ChangeNotifier {
             ? Lorebook(entries: List.from(card.lorebook!.entries))
             : null,
         worldNames: List.from(card.worldNames),
-        frontPorchExtensions: card.frontPorchExtensions,
-        rawExtensions: card.rawExtensions,
+        // Deep copy realism extensions (not just reference copy)
+        frontPorchExtensions: card.frontPorchExtensions != null
+            ? card.frontPorchExtensions!.copyWith()
+            : null,
+        rawExtensions: card.rawExtensions != null
+            ? Map<String, dynamic>.from(card.rawExtensions!)
+            : null,
       );
 
       // Handle image file duplication if exists
@@ -584,9 +589,12 @@ class CharacterRepository extends ChangeNotifier {
           await originalFile.copy(destPath);
           clonedCard.imagePath = destPath;
 
-          // Now write the V2 card data to the *new* PNG
-          final v2Service = V2CardService();
-          await v2Service.saveCardAsPng(clonedCard, destPath, destPath);
+           // Now write the V2 card data to the *new* PNG
+           final v2Service = V2CardService();
+           debugPrint(
+             '[Duplicate] Saving PNG with extensions: ${clonedCard.frontPorchExtensions != null ? 'realism=${clonedCard.frontPorchExtensions!.realismEnabled}, bond=${clonedCard.frontPorchExtensions!.shortTermBond}' : 'none'}',
+           );
+           await v2Service.saveCardAsPng(clonedCard, destPath, destPath);
         }
       }
 

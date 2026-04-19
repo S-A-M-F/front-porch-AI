@@ -89,6 +89,37 @@ class FrontPorchExtensions {
       currentTask: realism['current_task'] as String? ?? '',
     );
   }
+
+  /// Create a deep copy of this extensions object
+  FrontPorchExtensions copyWith({
+    bool? realismEnabled,
+    int? shortTermBond,
+    int? longTermBond,
+    int? trustLevel,
+    int? dayCount,
+    String? timeOfDay,
+    String? characterEmotion,
+    String? emotionIntensity,
+    bool? nsfwCooldownEnabled,
+    bool? passageOfTimeEnabled,
+    bool? chaosModeEnabled,
+    String? currentTask,
+  }) {
+    return FrontPorchExtensions(
+      realismEnabled: realismEnabled ?? this.realismEnabled,
+      shortTermBond: shortTermBond ?? this.shortTermBond,
+      longTermBond: longTermBond ?? this.longTermBond,
+      trustLevel: trustLevel ?? this.trustLevel,
+      dayCount: dayCount ?? this.dayCount,
+      timeOfDay: timeOfDay ?? this.timeOfDay,
+      characterEmotion: characterEmotion ?? this.characterEmotion,
+      emotionIntensity: emotionIntensity ?? this.emotionIntensity,
+      nsfwCooldownEnabled: nsfwCooldownEnabled ?? this.nsfwCooldownEnabled,
+      passageOfTimeEnabled: passageOfTimeEnabled ?? this.passageOfTimeEnabled,
+      chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
+      currentTask: currentTask ?? this.currentTask,
+    );
+  }
 }
 
 class CharacterCard {
