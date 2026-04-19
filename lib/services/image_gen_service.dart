@@ -73,10 +73,26 @@ class ImageModelInfo {
   /// Whether this model costs extra per-prompt (true) or is included
   /// with a Nano-GPT Pro subscription (false).
   final bool isPaid;
+  /// Pricing information from OpenRouter (if available).
+  /// Format: "prompt_cost / completion_cost per token" or raw JSON string.
+  final String? pricingInfo;
 
-  const ImageModelInfo({required this.id, this.name = '', this.isPaid = true});
+  const ImageModelInfo({
+    required this.id,
+    this.name = '',
+    this.isPaid = true,
+    this.pricingInfo,
+  });
 
   String get displayName => name.isNotEmpty ? name : id;
+
+  /// Human-readable description including pricing if available.
+  String get description {
+    if (pricingInfo != null && pricingInfo!.isNotEmpty) {
+      return '$displayName — $pricingInfo';
+    }
+    return displayName;
+  }
 }
 
 /// Service for generating images via the remote API.
@@ -307,22 +323,47 @@ class ImageGenService extends ChangeNotifier {
 
   /// Fetch available image models.
   ///
-  /// Returns a merged list of:
-  /// 1. Models discovered from the API's /models endpoint (if it tags image models)
-  /// 2. A curated list of common image models (always included as fallback)
+  /// Behavior depends on which API backend is configured:
   ///
-  /// Many providers (e.g. Nano-GPT) do not expose image models via /models,
-  /// so the curated list ensures the dropdown is never empty.
+  /// **OpenRouter** (detected by URL containing "openrouter.ai"):
+  /// - Calls `/models?output_modalities=image` to get real image-capable models
+  /// - Returns what OpenRouter provides (includes pricing info from their API)
+  /// - If API fails: returns empty list with error logged
+  ///
+  /// **Nano-GPT and others**:
+  /// - Returns hardcoded list of common image models (since Nano-GPT doesn't
+  ///   expose image models via /models endpoint)
+  /// - No API polling attempt
   Future<List<ImageModelInfo>> fetchImageModels() async {
     final apiUrl = _storage.remoteApiUrl;
     final apiKey = _storage.remoteApiKey;
     if (apiUrl.isEmpty || apiKey.isEmpty) return List.from(_commonImageModels);
 
+    // Detect if this is OpenRouter
+    final isOpenRouter = _isOpenRouterStyle(apiUrl);
+
+    if (isOpenRouter) {
+      return _fetchOpenRouterImageModels(apiUrl, apiKey);
+    } else {
+      // For Nano-GPT and other providers: return hardcoded list
+      return List.from(_commonImageModels);
+    }
+  }
+
+  /// Fetch image models specifically from OpenRouter's API.
+  ///
+  /// OpenRouter supports querying for image-capable models via:
+  /// GET /models?output_modalities=image
+  ///
+  /// Returns the models as provided by OpenRouter with their pricing,
+  /// or an empty list if the API call fails.
+  Future<List<ImageModelInfo>> _fetchOpenRouterImageModels(String apiUrl, String apiKey) async {
     final apiModels = <ImageModelInfo>[];
     final client = http.Client();
 
     try {
-      final uri = Uri.parse('$apiUrl/models');
+      // Query for models that can output images
+      final uri = Uri.parse('$apiUrl/models?output_modalities=image');
       final response = await client.get(
         uri,
         headers: {'Authorization': 'Bearer $apiKey'},
@@ -337,39 +378,47 @@ class ImageGenService extends ChangeNotifier {
           if (id.isEmpty) continue;
           final name = m['name']?.toString() ?? id;
 
-          // If the API provides architecture/modality metadata, use it
-          final arch = m['architecture'] as Map<String, dynamic>?;
-          if (arch != null) {
-            final outputModalities = arch['output_modalities'] as List<dynamic>?;
-            if (outputModalities != null && outputModalities.contains('image')) {
-              apiModels.add(ImageModelInfo(id: id, name: name));
-              continue;
+          // Extract pricing info if available (display as-is from OpenRouter)
+          final pricing = m['pricing'] as Map<String, dynamic>?;
+          bool isPaid = true;
+          String? pricingInfo;
+
+          if (pricing != null) {
+            final prompt = pricing['prompt'];
+            final completion = pricing['completion'];
+            
+            // Determine if paid
+            final promptCost = double.tryParse(prompt?.toString() ?? '0') ?? 0;
+            final completionCost = double.tryParse(completion?.toString() ?? '0') ?? 0;
+            isPaid = promptCost > 0 || completionCost > 0;
+
+            // Format pricing for display (show as-is from API)
+            if (prompt != null || completion != null) {
+              pricingInfo = '\$$prompt / \$$completion';
             }
           }
 
-          // Also match well-known image model IDs from the model list
-          if (_isKnownImageModel(id.toLowerCase())) {
-            apiModels.add(ImageModelInfo(id: id, name: name));
-          }
+          apiModels.add(ImageModelInfo(
+            id: id,
+            name: name,
+            isPaid: isPaid,
+            pricingInfo: pricingInfo,
+          ));
         }
+
+        debugPrint('ImageGen: Fetched ${apiModels.length} image models from OpenRouter');
+      } else {
+        debugPrint('ImageGen: OpenRouter /models?output_modalities=image returned ${response.statusCode}');
       }
-    } catch (_) {
-      // API call failed — we'll still return the common models
+    } catch (e) {
+      debugPrint('ImageGen: Failed to fetch OpenRouter image models: $e');
     } finally {
       client.close();
     }
 
-    // Merge: API-discovered models first, then common models not already found
-    final seenIds = apiModels.map((m) => m.id.toLowerCase()).toSet();
-    final merged = <ImageModelInfo>[...apiModels];
-    for (final common in _commonImageModels) {
-      if (!seenIds.contains(common.id.toLowerCase())) {
-        merged.add(common);
-      }
-    }
-
-    merged.sort((a, b) => a.displayName.compareTo(b.displayName));
-    return merged;
+    // Sort by name for consistent display
+    apiModels.sort((a, b) => a.displayName.compareTo(b.displayName));
+    return apiModels;
   }
 
   /// Max prompt length for image generation APIs.
@@ -1009,24 +1058,6 @@ class ImageGenService extends ChangeNotifier {
   /// Detect if URL is an OpenRouter-style API (uses chat/completions for images).
   bool _isOpenRouterStyle(String url) {
     return url.contains('openrouter.ai');
-  }
-
-  /// Check if a model ID is a well-known image generation model.
-  bool _isKnownImageModel(String id) {
-    const knownPrefixes = [
-      'dall-e', 'flux', 'hidream', 'stable-diffusion', 'sdxl',
-      'black-forest-labs', 'playground', 'midjourney', 'imagen',
-      'gpt-image', 'openai/gpt-image', 'stability',
-      // Nano-GPT specific
-      'ideogram', 'cogview', 'dreamshaper', 'animagine', 'atomix',
-      'mjv', 'esrgan', 'background-remover', 'qrbtf', 'riverflow',
-      'glm-image', 'z-image', 'nsfw-gen', 'rev-animated', 'wai-',
-      'cyberrealistic', '2dn-pony', 'nano-banana', 'boltning',
-    ];
-    for (final prefix in knownPrefixes) {
-      if (id.contains(prefix)) return true;
-    }
-    return false;
   }
 
   /// Generate via OpenAI-compatible /images/generations endpoint.
