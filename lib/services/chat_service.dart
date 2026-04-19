@@ -644,7 +644,10 @@ class ChatService extends ChangeNotifier {
   /// True if the realism engine has already captured a meaningful baseline
   /// (emotion or bond score). Used to avoid redundant retroactive scans.
   bool get _hasRealismBaseline =>
-      _characterEmotion.isNotEmpty || _affectionScore != 0;
+      _characterEmotion.isNotEmpty ||
+      _affectionScore != 0 ||
+      _arousalLevel != 0 ||
+      _activeFixation.isNotEmpty;
 
   bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
   int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
