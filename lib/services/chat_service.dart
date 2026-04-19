@@ -7743,20 +7743,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     }
 
     if (!enabled) {
-      _affectionScore = 0;
-      _trustLevel = 0;
-      _relationshipTier = 0;
-      _longTermScore = 0;
-      _longTermTier = 0;
-      _turnsSinceLongTermCheck = 0;
-      _shortTermDeltasSummary = 0;
-      _moodDecayCounter = 0;
-      _characterEmotion = '';
-      _emotionIntensity = '';
-      _timeOfDay = 'morning';
-      _dayCount = 1;
-      _cooldownTurnsRemaining = 0;
-      _cooldownTurnsTotal = 0;
+      // IMPORTANT: Do NOT zero out realism state when disabling!
+      // Just stop using it. State persists in memory/DB so re-enabling restores it.
+      // Old behavior was destructive - it deleted all character building progress.
+      debugPrint(
+        '[Realism] Disabled (preserving state: bond=$_affectionScore, trust=$_trustLevel, emotion=$_characterEmotion)',
+      );
     }
     await _saveChat();
     notifyListeners();
