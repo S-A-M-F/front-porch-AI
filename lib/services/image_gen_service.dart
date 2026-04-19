@@ -585,7 +585,7 @@ class ImageGenService extends ChangeNotifier {
       String accumulated = '';
       await for (final token in llmService.generateStream(GenerationParams(
         prompt: llmPrompt,
-        maxLength: 500,  // Increased from 200 to allow room for thinking + prompt
+        maxLength: 2000,  // Generous budget: some models think extensively before generating the prompt
         temperature: 0.2,
         repeatPenalty: 1.0,
         reasoningEnabled: false,
