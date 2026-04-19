@@ -438,14 +438,33 @@ class _EditCharacterPageState extends State<EditCharacterPage>
 
     if (targetPngPath != null) {
       try {
+        debugPrint(
+          '[_saveCharacter] About to save PNG with extensions: ${widget.character.frontPorchExtensions != null}',
+        );
         await V2CardService().saveCardAsPng(
           widget.character,
           targetPngPath,
           targetPngPath,
         );
         debugPrint(
-          '[_saveCharacter] PNG saved successfully for ${widget.character.name}',
+          '[_saveCharacter] PNG saved successfully for ${widget.character.name} to $targetPngPath',
         );
+        
+        // Verify PNG was written by reading it back immediately
+        try {
+          final reloaded = await V2CardService().readCard(targetPngPath);
+          if (reloaded?.frontPorchExtensions != null) {
+            debugPrint(
+              '[_saveCharacter] ✓ PNG verification successful: extensions found in saved file',
+            );
+          } else {
+            debugPrint(
+              '[_saveCharacter] ✗ PNG verification FAILED: no extensions in saved file!',
+            );
+          }
+        } catch (verifyError) {
+          debugPrint('[_saveCharacter] PNG verification read failed: $verifyError');
+        }
       } catch (e) {
         debugPrint('Failed to embed V2 card data: $e');
       }
