@@ -457,12 +457,12 @@ If Front Porch AI is useful to you, please consider starring these projects too 
 
 ## 🤝 Contributing
 
-Pull requests are welcome.
+Pull requests are welcome! If you're a dev reading this far down, here's what you need to know:
 
-1. Fork the project
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes (`git commit -m 'Add my feature'`)
-4. Push and open a PR
+- **Branch workflow:** All PRs target the **`dev`** branch — never `main`. The `main` branch is for stable releases only.
+- **Commit conventions:** Follow the guidelines in [AGENTS.md](AGENTS.md) for commit message format, code style, and naming conventions.
+- **Full guide:** See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, testing requirements, and the PR template.
+- **Before you PR:** Run `flutter analyze` and `flutter test` locally. CI will check these too, but saving a round-trip is nicer for everyone.
 
 ---
 
