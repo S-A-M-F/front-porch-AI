@@ -1440,9 +1440,11 @@ class ChatService extends ChangeNotifier {
     await _cancelAndWaitForGeneration();
     _generationEpoch++;
 
-    // Reset author notes when starting fresh chat/group (will be overridden if loading existing session)
+    // Reset author notes and summary when starting fresh chat/group (will be overridden if loading existing session)
     _authorNote = '';
     _authorNoteStrength = 4;
+    _summary = '';
+    _summaryLastIndex = 0;
 
     if (_characterRepository == null) return;
 
@@ -3280,7 +3282,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       }
 
       String postHistoryBlock = '';
-      if (speakingCharacter.postHistoryInstructions.isNotEmpty) {
+      if (_activeGroup == null && speakingCharacter.postHistoryInstructions.isNotEmpty) {
         postHistoryBlock =
             '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
       }
@@ -3604,7 +3606,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
       // Build post-history instructions block
       String postHistoryBlock = '';
-      if (speakingCharacter.postHistoryInstructions.isNotEmpty) {
+      if (_activeGroup == null && speakingCharacter.postHistoryInstructions.isNotEmpty) {
         postHistoryBlock =
             '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
       }

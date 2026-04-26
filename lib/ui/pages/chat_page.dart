@@ -3314,6 +3314,12 @@ class _ChatPageState extends State<ChatPage> {
             child: _AuthorNoteSection(chatService: chatService),
           ),
 
+          // ── Summary ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: _SummarySection(chatService: chatService),
+          ),
+
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 10, 12, 0),
             child: Text(
