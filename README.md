@@ -110,13 +110,13 @@ If you're evaluating local AI tools, here's an honest breakdown. Every project o
 | **Speech-to-text (push-to-talk)** | ✅ Whisper, built-in | ⚙️ Extension required | ❌ | ❌ |
 | **Local image generation** | ✅ A1111, Forge, Draw Things | ⚙️ Extension required | ❌ | ❌ |
 | **Realism Engine** | ✅ Time, trust, emotion, chaos, objectives | ❌ | ❌ | ❌ |
-| **Character Expressions** | ✅ ONNX + LLM, live avatar swap | ✅ (manual setup) | ❌ | ❌ |
+| **Character Expressions** | ✅ ONNX + LLM, live avatar swap | ⚙️ Extension required | ❌ | ❌ |
 | **RAG memory (local)** | ✅ ONNX embeddings, no cloud | ⚙️ Extension required | ❌ | ❌ |
 | **Novel / story generator** | ✅ Porch Stories pipeline | ❌ | ❌ | ❌ |
-| **Cloud sync** | ✅ Google Drive / WebDAV | ❌ | ❌ | ☁️ Proprietary |
-| **Character card compatibility** | ✅ V2 spec + Backyard .byaf | ✅ V2 spec | ❌ | Proprietary |
+| **Cloud sync** | ✅ Google Drive / WebDAV | ❌ | ❌ | ❌ |
+| **Character card compatibility** | ✅ V2 spec + Backyard .byaf import | ✅ V2 spec | ❌ | .byaf only |
 | **Group chat** | ✅ | ✅ | ❌ | ❌ |
-| **Extension / plugin ecosystem** | 🌱 Growing | ⭐ Very large | Moderate | ❌ |
+| **Extension / plugin ecosystem** | ❌ | ⭐ Very large | Moderate | ❌ |
 | **Open source license** | ✅ AGPL-3.0 | ✅ AGPL-3.0 | ✅ MIT | ❌ |
 | **Best for** | Polished AI companion + storytelling | Power users / heavy customization | Simple local chat | — |
 
