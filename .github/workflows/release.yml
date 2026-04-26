@@ -122,7 +122,7 @@ jobs:
 
           # Install TTS dependencies + PyInstaller
           pip install --upgrade pip
-          pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy "optimum[onnxruntime]" transformers
+          pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
 
           # Build Kokoro TTS as a standalone directory bundle
           echo "Building Kokoro TTS binary..."
@@ -209,10 +209,10 @@ jobs:
           pyinstaller sentiment_classifier.py \
             --onedir \
             --name sentiment_classifier \
-            --collect-all optimum \
+            --collect-all huggingface_hub \
             --collect-all transformers \
             --collect-all numpy \
-            --hidden-import optimum.onnxruntime \
+            --hidden-import huggingface_hub \
             --hidden-import transformers \
             --hidden-import numpy \
             --hidden-import onnxruntime \

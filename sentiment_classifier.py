@@ -146,10 +146,11 @@ def _load_model():
 
     # Check dependencies first so the error message is helpful
     try:
-        from optimum.onnxruntime import ORTModelForSequenceClassification
+        import onnxruntime as ort
+        from huggingface_hub import hf_hub_download
         from transformers import AutoTokenizer
     except ImportError as e:
-        _err(f'Missing dependency: {e}. Run: pip install "optimum[onnxruntime]" transformers numpy')
+        _err(f'Missing dependency: {e}. Run: pip install onnxruntime huggingface_hub transformers numpy')
         sys.exit(1)
 
     try:
@@ -163,7 +164,8 @@ def _load_model():
         _patch_tqdm()
 
         _tokenizer = AutoTokenizer.from_pretrained(MODEL_REPO, cache_dir=MODEL_CACHE_DIR)
-        _model = ORTModelForSequenceClassification.from_pretrained(MODEL_REPO, cache_dir=MODEL_CACHE_DIR)
+        model_path = hf_hub_download(repo_id=MODEL_REPO, filename="onnx/model.onnx", cache_dir=MODEL_CACHE_DIR)
+        _model = ort.InferenceSession(model_path)
 
         print(json.dumps({'status': 'model_ready'}), file=sys.stderr, flush=True)
 
@@ -187,17 +189,18 @@ def classify(text: str) -> dict:
     model, tokenizer = _load_model()
 
     inputs = tokenizer(text, return_tensors='np', truncation=True, max_length=512, padding=True)
-    outputs = model(**inputs)
+    
+    ort_inputs = {
+        "input_ids": inputs["input_ids"],
+        "attention_mask": inputs["attention_mask"]
+    }
+    outputs = model.run(None, ort_inputs)
 
-    logits = outputs.logits[0]
+    logits = outputs[0][0]
     scores = _softmax(logits)
     max_idx = scores.index(max(scores))
 
-    id2label = getattr(model.config, 'id2label', None)
-
     def get_label(i):
-        if id2label:
-            return id2label.get(i, 'neutral').lower()
         try:
             return EMOTION_LABELS[i]
         except IndexError:
