@@ -130,6 +130,7 @@ class _ChatPageState extends State<ChatPage> {
   late final FocusNode _chatFocusNode;
   bool _autoScroll = true;
   double _sidebarWidth = 300;
+  int _inputMinLines = 1;
   bool _isCallActive = false;
   bool? _externalImagesAllowed;
   bool _imageConsentChecked = false;
@@ -146,6 +147,7 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
+    _loadInputSettings();
     _chatFocusNode = FocusNode(
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent &&
@@ -234,6 +236,29 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _loadInputSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _inputMinLines = prefs.getInt('input_min_lines') ?? 1;
+    });
+  }
+
+  Future<void> _saveInputMinLines(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('input_min_lines', value);
+  }
+
+  void _handleInputResize(double deltaPixels) {
+    // ~24px per line (character height + padding)
+    final deltaLines = (deltaPixels / -24).round();
+    if (deltaLines == 0) return;
+    final newLines = _inputMinLines + deltaLines;
+    if (newLines >= 1 && newLines <= 8 && newLines != _inputMinLines) {
+      setState(() => _inputMinLines = newLines);
+      _saveInputMinLines(newLines);
     }
   }
 
@@ -1954,17 +1979,35 @@ class _ChatPageState extends State<ChatPage> {
           ),
 
         // ── Input bar ────────────────────────────────────────────────────
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-          decoration: const BoxDecoration(
-            color: Color(0xFF1F2937),
-            border: Border(top: BorderSide(color: Colors.white10)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Resize handle — drag up/down to adjust input height
+            MouseRegion(
+              cursor: SystemMouseCursors.resizeRow,
+              child: GestureDetector(
+                onVerticalDragUpdate: (details) => _handleInputResize(details.delta.dy),
+                child: Container(
+                  height: 3,
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1F2937),
+                border: Border(top: BorderSide(color: Colors.white10)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
 
-            children: [
-              // Persona Switcher
+                children: [
+                  // Persona Switcher
               Consumer<UserPersonaService>(
                 builder: (context, personaService, _) {
                   final persona = personaService.persona;
@@ -2210,8 +2253,8 @@ class _ChatPageState extends State<ChatPage> {
                 child: AppTextField(
                   controller: _controller,
                   focusNode: _chatFocusNode,
-                  maxLines: 5,
-                  minLines: 1,
+                  maxLines: 10,
+                  minLines: _inputMinLines,
                   textInputAction: TextInputAction.newline,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
@@ -2439,10 +2482,10 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ),
       ],
+    ),
+    ],
     );
   }
-
-  /// Wraps a sidebar widget with a draggable resize handle on its left edge.
 
   void _showNoMicDialog(BuildContext context) {
     showDialog(
@@ -4374,18 +4417,17 @@ class _MessageBubbleState extends State<_MessageBubble> {
                               _showForkConfirmation(context, index),
                         ),
                       if (message.sender != 'System') const SizedBox(width: 8),
-                      if (message.sender != 'System')
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            size: 16,
-                            color: Colors.white38,
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          onPressed: () =>
-                              _showDeleteConfirmation(context, index),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          size: 16,
+                          color: Colors.white38,
                         ),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () =>
+                            _showDeleteConfirmation(context, index),
+                      ),
                     ],
                   ),
                   if (!message.isUser) const SizedBox(height: 4),

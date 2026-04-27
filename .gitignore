@@ -106,8 +106,6 @@ tools/embed_server/target/
 *.png
 
 # Testing
-test/
-tests/
 .llm_context/
 bug_triage.md
 *.backup

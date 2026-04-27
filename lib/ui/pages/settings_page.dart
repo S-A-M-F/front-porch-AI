@@ -3911,7 +3911,7 @@ class _SettingsPageState extends State<SettingsPage> {
               const SizedBox(width: 12),
               Wrap(
                 spacing: 6,
-                children: [256, 512, 1024, 2048].map((bs) {
+                children: [256, 512, 1024, 2048, 4096, 8192].map((bs) {
                   final isSelected = storage.blasBatchSize == bs;
                   return GestureDetector(
                     onTap: () => storage.setBlasBatchSize(bs),
