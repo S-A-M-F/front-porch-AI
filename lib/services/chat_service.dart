@@ -2946,6 +2946,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
           }
         }
 
+        bool wasNudged = false;
+        if (lastMsg.activeMetadata != null &&
+            lastMsg.activeMetadata!['realism_state'] is Map) {
+          wasNudged = lastMsg.activeMetadata!['realism_state']['time_nudged'] == true;
+        }
+
         if (lastMsg.activeMetadata != null) {
           final bondDelta = lastMsg.activeMetadata!['bond_delta'] as int? ?? 0;
           final moodDelta = lastMsg.activeMetadata!['mood_delta'] as int? ?? 0;
@@ -3017,8 +3023,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
               _characterEmotion;
           _emotionIntensity = previousMessageState['emotionIntensity'] as String? ??
               _emotionIntensity;
-          _timeOfDay = previousMessageState['timeOfDay'] as String? ?? _timeOfDay;
-          _dayCount = previousMessageState['dayCount'] as int? ?? _dayCount;
+          
+          if (_passageOfTimeEnabled && !wasNudged) {
+            _timeOfDay = previousMessageState['timeOfDay'] as String? ?? _timeOfDay;
+            _dayCount = previousMessageState['dayCount'] as int? ?? _dayCount;
+          }
+          
           _arousalLevel =
               previousMessageState['arousalLevel'] as int? ?? _arousalLevel;
           _cooldownTurnsRemaining = previousMessageState[
@@ -8034,8 +8044,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         state['characterEmotion'] as String? ?? _characterEmotion;
     _emotionIntensity =
         state['emotionIntensity'] as String? ?? _emotionIntensity;
-    _timeOfDay = state['timeOfDay'] as String? ?? _timeOfDay;
-    _dayCount = state['dayCount'] as int? ?? _dayCount;
+        
+    if (_passageOfTimeEnabled) {
+      _timeOfDay = state['timeOfDay'] as String? ?? _timeOfDay;
+      _dayCount = state['dayCount'] as int? ?? _dayCount;
+    }
+
     _arousalLevel = state['arousalLevel'] as int? ?? _arousalLevel;
     _cooldownTurnsRemaining =
         state['cooldownTurnsRemaining'] as int? ?? _cooldownTurnsRemaining;
@@ -8282,9 +8296,11 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       if (existingState is Map<String, dynamic>) {
         existingState['timeOfDay'] = _timeOfDay;
         existingState['dayCount'] = _dayCount;
+        existingState['time_nudged'] = true;
       } else {
         // No snapshot yet — create a minimal one anchored to current state
         lastMsg.activeMetadata!['realism_state'] = _captureRealismState();
+        lastMsg.activeMetadata!['realism_state']['time_nudged'] = true;
       }
     }
 
