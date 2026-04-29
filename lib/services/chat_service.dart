@@ -8270,6 +8270,24 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     }
     _timeOfDay = validTimes[idx];
     _turnsSinceLastTimeAdvance = 0; // reset clock after manual nudge
+
+    // CRITICAL: Patch the realism_state snapshot on the last message so that
+    // _restoreRealismStateFromMessage cannot revert the manually-set time.
+    // Without this, any swipe navigation or session reload reads the stale
+    // pre-nudge snapshot and silently reverts _timeOfDay back to what it was.
+    if (_messages.isNotEmpty) {
+      final lastMsg = _messages.last;
+      lastMsg.activeMetadata ??= {};
+      final existingState = lastMsg.activeMetadata!['realism_state'];
+      if (existingState is Map<String, dynamic>) {
+        existingState['timeOfDay'] = _timeOfDay;
+        existingState['dayCount'] = _dayCount;
+      } else {
+        // No snapshot yet — create a minimal one anchored to current state
+        lastMsg.activeMetadata!['realism_state'] = _captureRealismState();
+      }
+    }
+
     await _saveChat();
     notifyListeners();
   }
