@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flat_buffers/flat_buffers.dart' as fb;
@@ -11,6 +12,12 @@ import 'package:grpc/grpc.dart';
 
 import 'image_service.pbgrpc.dart';
 import 'draw_things_generated.dart';
+
+/// Accepts Draw Things' self-signed TLS certificate
+bool allowBadCertificates(X509Certificate certificate) {
+  debugPrint('DrawThingsGrpcService: Accepting self-signed certificate');
+  return true;
+}
 
 class ImageGenProgress {
   final int step;
