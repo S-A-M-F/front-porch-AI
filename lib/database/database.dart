@@ -174,6 +174,9 @@ class Sessions extends Table {
   TextColumn get generationSettings =>
       text().nullable()(); // JSON blob, null = use global defaults
 
+  // User persona linked to this session (v25)
+  TextColumn get userPersonaId => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
@@ -514,7 +517,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -920,6 +923,14 @@ class AppDatabase extends _$AppDatabase {
           'created_at INTEGER NOT NULL DEFAULT 0, '
           'PRIMARY KEY (id))',
         );
+      }
+      if (from < 25) {
+        // v24->v25: add userPersonaId to sessions
+        try {
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN user_persona_id TEXT',
+          );
+        } catch (_) {}
       }
     },
   );

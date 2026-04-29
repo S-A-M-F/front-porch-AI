@@ -1987,12 +1987,23 @@ class _ChatPageState extends State<ChatPage> {
               cursor: SystemMouseCursors.resizeRow,
               child: GestureDetector(
                 onVerticalDragUpdate: (details) => _handleInputResize(details.delta.dy),
+                behavior: HitTestBehavior.opaque,
                 child: Container(
-                  height: 3,
+                  height: 8,
                   margin: const EdgeInsets.symmetric(horizontal: 40),
                   decoration: BoxDecoration(
                     color: Colors.white12,
                     borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: Center(
+                    child: Container(
+                      height: 2,
+                      width: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.white38,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
                   ),
                 ),
               ),

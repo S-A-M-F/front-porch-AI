@@ -1801,6 +1801,7 @@ class ChatService extends ChangeNotifier {
         groupId: drift.Value(groupDbId),
         name: drift.Value(_sessionName),
         description: drift.Value(_sessionDescription),
+        userPersonaId: drift.Value(_userPersonaService.persona.id),
         authorNote: drift.Value(_authorNote),
         authorNoteDepth: drift.Value(_authorNoteStrength),
         summary: drift.Value(_summary.isEmpty ? null : _summary),
@@ -2090,6 +2091,10 @@ class ChatService extends ChangeNotifier {
 
     final session = await _db.getSessionById(sessionId);
     if (session == null) return;
+
+    if (session.userPersonaId != null) {
+      await _userPersonaService.setActivePersona(session.userPersonaId!);
+    }
 
     try {
       final dbMessages = await _db.getMessagesForSession(sessionId);
