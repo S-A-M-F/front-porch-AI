@@ -3817,15 +3817,6 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) => storage.setFlashAttentionEnabled(v),
           ),
 
-          // Context Shift
-          _toggle(
-            label: 'Context Shift',
-            tooltip: 'Graceful KV-cache eviction when context overflows. Prevents hard cutoff of old conversation.',
-            value: storage.contextShiftEnabled,
-            recommended: true,
-            onChanged: (v) => storage.setContextShiftEnabled(v),
-          ),
-
           // mlock
           _toggle(
             label: 'Lock Weights in RAM (mlock)',

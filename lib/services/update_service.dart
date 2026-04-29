@@ -33,7 +33,8 @@ import 'package:front_porch_ai/app_version.dart';
 class UpdateService extends ChangeNotifier {
   static const String _repoOwner = 'linux4life1';
   static const String _repoName = 'front-porch-AI';
-  static const String _windowsAsset = 'Front_Porch_AI_Setup.exe';
+  static const String _windowsAssetStable = 'Front_Porch_AI_Setup.exe';
+  static const String _windowsAssetBeta = 'Front_Porch_AI_Beta_Setup.exe';
   static const String _linuxAsset = 'Front_Porch_AI-Linux.AppImage';
   static const String _macosAsset = 'Front_Porch_AI.dmg';
   static const String _prefsKeyAutoCheck = 'update_auto_check';
@@ -90,8 +91,12 @@ class UpdateService extends ChangeNotifier {
   }
 
   /// The correct asset name for this platform's update package.
+  /// Beta builds use a different asset filename so the stable and beta
+  /// update streams are completely independent.
   static String get _platformAsset {
-    if (Platform.isWindows) return _windowsAsset;
+    if (Platform.isWindows) {
+      return isPreRelease ? _windowsAssetBeta : _windowsAssetStable;
+    }
     if (Platform.isLinux) return _linuxAsset;
     if (Platform.isMacOS) return _macosAsset;
     return '';

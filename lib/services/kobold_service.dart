@@ -275,14 +275,6 @@ class KoboldService extends ChangeNotifier
       }
     }
 
-    // \u2500\u2500 ContextShift \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    // Bug fix: KoboldCPP\u2019s own Quick Launch enables this by default (graceful
-    // KV eviction when context overflows instead of hard truncation). We now
-    // match that behaviour. Users can disable it in Advanced Launch Options.
-    if (_storageService.contextShiftEnabled) {
-      args.add('--contextshift');
-    }
-
     // \u2500\u2500 mlock \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     // Prevents the OS from paging model weights to disk under memory pressure.
     // Without this, a system at the edge of RAM capacity can drop from 20 t/s

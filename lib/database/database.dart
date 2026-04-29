@@ -403,11 +403,26 @@ class AppDatabase extends _$AppDatabase {
 
     // For pre-release: if no beta DB exists yet, copy the production DB
     // so users get all their data without modifying the stable database.
+    // The copy is gated by the import dialog — it only happens after the
+    // user has seen the dialog and chosen Import (or skipped the dialog
+    // entirely for non-pre-release builds).
     if (isPreRelease && !file.existsSync()) {
-      final prodFile = File(p.join(dbDir, 'front_porch.db'));
-      if (prodFile.existsSync()) {
-        debugPrint('[DB] Pre-release build — copying production DB to beta DB');
-        await prodFile.copy(file.path);
+      final prefs = await SharedPreferences.getInstance();
+      final shown = prefs.getBool('beta_stable_import_shown') ?? false;
+      if (shown) {
+        // Dialog has been shown — respect the user's choice
+        final skipped = prefs.getBool('beta_stable_import_skipped') ?? false;
+        if (!skipped) {
+          final prodFile = File(p.join(dbDir, 'front_porch.db'));
+          if (prodFile.existsSync()) {
+            debugPrint('[DB] Pre-release build — copying production DB to beta DB');
+            await prodFile.copy(file.path);
+          }
+        }
+      } else {
+        // Dialog not yet shown — defer to the import dialog which will
+        // show after the first frame and trigger the copy manually.
+        debugPrint('[DB] Pre-release build — import dialog pending, skipping copy');
       }
     }
 

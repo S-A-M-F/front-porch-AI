@@ -96,9 +96,8 @@ class StorageService extends ChangeNotifier {
 
   // ── Advanced KoboldCPP launch flags ──────────────────────────────────────
   // Defaults are chosen to match KoboldCPP's own Quick Launch GUI behaviour
-  // (FlashAttention on, ContextShift on) and to give best out-of-box speed.
+  // and to give best out-of-box speed.
   bool _flashAttentionEnabled = true;  // ~30% speed boost on RTX/Metal; off for ROCm
-  bool _contextShiftEnabled   = true;  // graceful KV eviction vs hard truncation
   bool _mlockEnabled          = !Platform.isLinux; // prevent VRAM paging (needs root on Linux)
   int  _blasBatchSize         = 512;   // tokens processed in parallel during prefill
   int  _gpuId                 = 0;     // explicit GPU index — prevents iGPU routing on multi-GPU
@@ -202,6 +201,10 @@ class StorageService extends ChangeNotifier {
   String _imageGenPromptParadigm = 'natural'; // 'natural', 'tags'
   String _imageGenLora = ''; // selected LoRA filename (A1111/Forge/SDNext only)
   double _imageGenLoraWeight = 0.8; // LoRA strength 0.0–1.0
+  int    _imageGenSteps = 20; // sampling steps (5-50)
+  double _imageGenCfgScale = 7.0; // CFG scale (1.0-20.0)
+  String _imageGenSampler = 'Euler a'; // sampler name
+  int    _imageGenSeed = -1; // -1 = random
 
   // Web server settings
   bool _webServerEnabled = false;
@@ -263,7 +266,6 @@ class StorageService extends ChangeNotifier {
   bool? get useMetal => _useMetal;
   bool? get useRocm => _useRocm;
   bool get flashAttentionEnabled => _flashAttentionEnabled;
-  bool get contextShiftEnabled   => _contextShiftEnabled;
   bool get mlockEnabled          => _mlockEnabled;
   int  get blasBatchSize         => _blasBatchSize;
   int  get gpuId                 => _gpuId;
@@ -330,6 +332,10 @@ class StorageService extends ChangeNotifier {
   String get imageGenPromptParadigm => _imageGenPromptParadigm;
   String get imageGenLora => _imageGenLora;
   double get imageGenLoraWeight => _imageGenLoraWeight;
+  int    get imageGenSteps => _imageGenSteps;
+  double get imageGenCfgScale => _imageGenCfgScale;
+  String get imageGenSampler => _imageGenSampler;
+  int    get imageGenSeed => _imageGenSeed;
 
   bool get webServerEnabled => _webServerEnabled;
   int get webServerPort => _webServerPort;
@@ -413,8 +419,9 @@ class StorageService extends ChangeNotifier {
     _useMetal = _prefs?.getBool(_k('use_metal'));
     _useRocm = _prefs?.getBool(_k('use_rocm'));
     _flashAttentionEnabled = _prefs?.getBool(_k('flash_attention_enabled')) ?? _flashAttentionEnabled;
-    _contextShiftEnabled   = _prefs?.getBool(_k('context_shift_enabled'))   ?? _contextShiftEnabled;
     _mlockEnabled          = _prefs?.getBool(_k('mlock_enabled'))           ?? _mlockEnabled;
+    // Cleanup orphaned prefs
+    await _prefs?.remove(_k('context_shift_enabled'));
     _blasBatchSize         = _prefs?.getInt(_k('blas_batch_size'))          ?? _blasBatchSize;
     _gpuId                 = _prefs?.getInt(_k('gpu_id'))                   ?? _gpuId;
     _maxLength = _prefs?.getInt(_k('max_length')) ?? _maxLength;
@@ -515,6 +522,10 @@ class StorageService extends ChangeNotifier {
         _prefs?.getString(_k('image_gen_prompt_paradigm')) ?? 'natural';
     _imageGenLora = _prefs?.getString(_k('image_gen_lora')) ?? '';
     _imageGenLoraWeight = _prefs?.getDouble(_k('image_gen_lora_weight')) ?? 0.8;
+    _imageGenSteps = _prefs?.getInt(_k('image_gen_steps')) ?? 20;
+    _imageGenCfgScale = _prefs?.getDouble(_k('image_gen_cfg_scale')) ?? 7.0;
+    _imageGenSampler = _prefs?.getString(_k('image_gen_sampler')) ?? 'Euler a';
+    _imageGenSeed = _prefs?.getInt(_k('image_gen_seed')) ?? -1;
 
     // Web server settings
     _webServerEnabled = _prefs?.getBool(_k('web_server_enabled')) ?? false;
@@ -779,12 +790,6 @@ class StorageService extends ChangeNotifier {
   Future<void> setFlashAttentionEnabled(bool value) async {
     _flashAttentionEnabled = value;
     await _prefs?.setBool(_k('flash_attention_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setContextShiftEnabled(bool value) async {
-    _contextShiftEnabled = value;
-    await _prefs?.setBool(_k('context_shift_enabled'), value);
     notifyListeners();
   }
 
@@ -1213,6 +1218,30 @@ class StorageService extends ChangeNotifier {
   Future<void> setImageGenLoraWeight(double value) async {
     _imageGenLoraWeight = value.clamp(0.0, 1.0);
     await _prefs?.setDouble(_k('image_gen_lora_weight'), _imageGenLoraWeight);
+    notifyListeners();
+  }
+
+  Future<void> setImageGenSteps(int value) async {
+    _imageGenSteps = value.clamp(5, 50);
+    await _prefs?.setInt(_k('image_gen_steps'), _imageGenSteps);
+    notifyListeners();
+  }
+
+  Future<void> setImageGenCfgScale(double value) async {
+    _imageGenCfgScale = value.clamp(1.0, 20.0);
+    await _prefs?.setDouble(_k('image_gen_cfg_scale'), _imageGenCfgScale);
+    notifyListeners();
+  }
+
+  Future<void> setImageGenSampler(String value) async {
+    _imageGenSampler = value;
+    await _prefs?.setString(_k('image_gen_sampler'), value);
+    notifyListeners();
+  }
+
+  Future<void> setImageGenSeed(int value) async {
+    _imageGenSeed = value;
+    await _prefs?.setInt(_k('image_gen_seed'), value);
     notifyListeners();
   }
 

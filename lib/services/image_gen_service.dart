@@ -182,6 +182,10 @@ class ImageGenService extends ChangeNotifier {
           switchModelFirst: modelCheckpoint.isNotEmpty,
           loraName:   isDrawThings ? '' : _storage.imageGenLora,
           loraWeight: _storage.imageGenLoraWeight,
+          steps:      _storage.imageGenSteps,
+          cfgScale:   _storage.imageGenCfgScale,
+          samplerName: _storage.imageGenSampler,
+          seed:       _storage.imageGenSeed,
         );
 
       } else {
@@ -966,6 +970,31 @@ class ImageGenService extends ChangeNotifier {
     return false;
   }
 
+  /// Fetch available samplers from an A1111 / Draw Things server.
+  ///
+  /// Endpoint: GET /sdapi/v1/samplers
+  /// Returns sampler names (the `name` field from each entry).
+  Future<List<String>> fetchA1111Samplers(String baseUrl) async {
+    final client = http.Client();
+    try {
+      final uri = Uri.parse('${baseUrl.trimRight()}/sdapi/v1/samplers');
+      final response = await client
+          .get(uri)
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return [];
+      final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+      return data
+          .map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+    } catch (e) {
+      debugPrint('ImageGen: fetchA1111Samplers failed: $e');
+      return [];
+    } finally {
+      client.close();
+    }
+  }
+
   /// Generate via AUTOMATIC1111 / Draw Things local server.
   ///
   /// Endpoint: POST {baseUrl}/sdapi/v1/txt2img
@@ -983,6 +1012,10 @@ class ImageGenService extends ChangeNotifier {
     bool switchModelFirst = false,
     String loraName = '',
     double loraWeight = 0.8,
+    int steps = 20,
+    double cfgScale = 7.0,
+    String samplerName = 'Euler a',
+    int seed = -1,
   }) async {
     // Switch model only if a different checkpoint was requested.
     // Skipping redundant switches prevents the unload→reload cycle that
@@ -1009,10 +1042,10 @@ class ImageGenService extends ChangeNotifier {
       'negative_prompt': negativePrompt,
       'width': width,
       'height': height,
-      'steps': 20,
-      'cfg_scale': 7,
-      'sampler_name': 'Euler a',
-      'seed': -1,
+      'steps': steps,
+      'cfg_scale': cfgScale,
+      'sampler_name': samplerName,
+      'seed': seed,
       'batch_size': 1,
       // NOTE: override_settings is intentionally omitted here.
       // Passing sd_model_checkpoint inside override_settings causes A1111 to

@@ -20,6 +20,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:provider/provider.dart';
 
@@ -63,6 +66,7 @@ import 'package:front_porch_ai/services/file_consolidation_service.dart';
 import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
 import 'package:front_porch_ai/ui/widgets/remote_lock_overlay.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/stable_db_import_dialog.dart';
 import 'package:front_porch_ai/services/web_server_service.dart';
 import 'package:front_porch_ai/services/web_chat_bridge.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
@@ -569,9 +573,83 @@ class _MyAppState extends State<MyApp> with WindowListener {
     // Run migration after first frame, then reunification if needed
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkDbHealth();
+      // Show stable DB import dialog on first beta launch (before migration)
+      await _showStableDbImportIfNeeded();
       await _runMigrationIfNeeded();
       await _runReunificationIfNeeded();
     });
+  }
+
+  /// Show the stable DB import dialog on first beta launch.
+  /// Only shown when a stable DB exists and no beta DB has been created yet.
+  /// If the user chooses Import, the stable DB is manually copied to the
+  /// beta location and all repositories are reloaded with the new data.
+  Future<void> _showStableDbImportIfNeeded() async {
+    if (!isPreRelease) return;
+    final shouldShow = await StableDbImportDialog.shouldShow();
+    if (!shouldShow || !mounted) return;
+
+    // Show the dialog — it's modal and blocks further initialization
+    await StableDbImportDialog.show(context);
+
+    // If user chose Import, manually copy the stable DB and reinitialize
+    final stablePath = await StableDbImportDialog.stableDbPath();
+    if (stablePath == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final skipped = prefs.getBool('beta_stable_import_skipped') ?? false;
+    if (skipped) return;
+
+    final betaRoot = p.join(
+      (await getApplicationDocumentsDirectory()).path,
+      'FrontPorchAI-Beta',
+    );
+    final betaDbDir = p.join(betaRoot, 'KoboldManager');
+    final betaDb = File(p.join(betaDbDir, 'front_porch_beta.db'));
+    final stableDb = File(stablePath);
+
+    if (betaDb.existsSync()) return; // another process already copied
+
+    await Directory(betaDbDir).create(recursive: true);
+    await stableDb.copy(betaDb.path);
+    debugPrint('[DB] Pre-release build — imported stable DB to beta DB');
+
+    // Reinitialize the database and reload all repositories
+    await _reinitializeAfterImport();
+  }
+
+  Future<void> _reinitializeAfterImport() async {
+    if (!mounted) return;
+
+    try {
+      final oldDb = Provider.of<AppDatabase>(context, listen: false);
+      await oldDb.close();
+
+      final newDb = await AppDatabase.instance();
+      _MyAppState._dbHealthy = await newDb.integrityCheck();
+
+      final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+      final folderService = Provider.of<FolderService>(context, listen: false);
+      final personaService = Provider.of<UserPersonaService>(context, listen: false);
+      final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+      final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+
+      charRepo.updateDatabase(newDb);
+      folderService.updateDatabase(newDb);
+      personaService.updateDatabase(newDb);
+      groupRepo.updateDatabase(newDb);
+      worldRepo.updateDatabase(newDb);
+      Provider.of<ChatService>(context, listen: false).updateDatabase(newDb);
+
+      await charRepo.loadCharacters();
+      await charRepo.cleanOrphanedPngs();
+      await folderService.reload();
+      await personaService.reload();
+      await groupRepo.reload();
+      await worldRepo.loadWorlds();
+    } catch (e) {
+      debugPrint('[DB] Reinitialize after import failed: $e');
+    }
   }
 
   @override
