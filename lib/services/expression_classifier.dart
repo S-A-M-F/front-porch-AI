@@ -168,7 +168,16 @@ class ONNXExpressionClassifier implements ExpressionClassifier {
   ///
   /// Returns a record of (executable, args).
   (String, List<String>) _resolveCommand(List<String> extraArgs) {
-    // 1. macOS production: binary inside app bundle Resources
+    // 1. User's storage root (manual placement / advanced users / hotfixes)
+    // Checking this FIRST allows testers to override a broken bundled binary
+    // by placing an updated sentiment_classifier.py in their Documents folder.
+    final userScript = File('${storage.rootPath}/sentiment_classifier.py');
+    if (userScript.existsSync()) {
+      debugPrint('[ExpressionClassifier] Using USER SCRIPT override: ${userScript.path}');
+      return (_pythonCmd, [userScript.path, ...extraArgs]);
+    }
+
+    // 2. macOS production: binary inside app bundle Resources
     if (Platform.isMacOS) {
       final resourcesDir = File(Platform.resolvedExecutable).parent.parent.path;
       final bundled = File('$resourcesDir/Resources/sentiment_classifier/sentiment_classifier');
@@ -177,19 +186,13 @@ class ONNXExpressionClassifier implements ExpressionClassifier {
       }
     }
 
-    // 2. Linux / Windows production: binary alongside the app executable
+    // 3. Linux / Windows production: binary alongside the app executable
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final ext = Platform.isWindows ? '.exe' : '';
     final bundledBin = File('$exeDir/sentiment_classifier/sentiment_classifier$ext');
     if (bundledBin.existsSync()) {
       debugPrint('[ExpressionClassifier] Using bundled binary: ${bundledBin.path}');
       return (bundledBin.path, extraArgs);
-    }
-
-    // 3. User's storage root (manual placement / advanced users)
-    final userScript = File('${storage.rootPath}/sentiment_classifier.py');
-    if (userScript.existsSync()) {
-      return (_pythonCmd, [userScript.path, ...extraArgs]);
     }
 
     // 4. Dev mode: project root via Directory.current (flutter run sets CWD to project root)
