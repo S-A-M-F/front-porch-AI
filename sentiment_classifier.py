@@ -224,21 +224,28 @@ def main():
         _load_model()
         sys.exit(0)
 
-    # Normal classification mode: JSON on stdin → JSON on stdout.
+    # Normal classification mode: JSON input on stdin → JSON output on stdout.
     try:
-        line = sys.stdin.readline().strip()
-        if not line:
-            _err('No input received')
-            sys.exit(1)
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                break
+            
+            line_content = line.strip()
+            if not line_content:
+                continue
+                
+            request = json.loads(line_content)
+            text_input = request.get("text")
+            
+            # Ensure we have a string. If the app accidentally sent null, use empty string.
+            text = str(text_input) if text_input is not None else ""
 
-        request = json.loads(line)
-        text = request.get('text', '').strip()
+            if not text.strip():
+                print(json.dumps({'emotion': 'neutral', 'confidence': 0.0}), flush=True)
+                continue
 
-        if not text:
-            print(json.dumps({'emotion': 'neutral', 'confidence': 0.0}), flush=True)
-            return
-
-        print(json.dumps(classify(text)), flush=True)
+            print(json.dumps(classify(text)), flush=True)
 
     except Exception as e:
         _err(str(e))
