@@ -230,6 +230,12 @@ jobs:
             --exclude-module torchaudio \
             --noconfirm
           echo "Sentiment classifier built at: $STT_DEST/sentiment_classifier/"
+          # Copy Draw Things gRPC Client (macOS only)
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            mkdir -p "$STT_DEST/dt-grpc-python"
+            cp -R "tools/dt-grpc-python/"* "$STT_DEST/dt-grpc-python/"
+            echo "Draw Things client copied to: $STT_DEST/dt-grpc-python/"
+          fi
 
           # For macOS, copy into the app bundle Resources
           if [ "${{ matrix.platform }}" = "macos" ]; then
@@ -256,6 +262,10 @@ jobs:
               mkdir -p "$SENTIMENT_RESOURCES"
               cp -R "$STT_DEST/sentiment_classifier/"* "$SENTIMENT_RESOURCES/"
               chmod +x "$SENTIMENT_RESOURCES/sentiment_classifier"
+
+              DT_RESOURCES="$APP_NAME/Contents/Resources/dt-grpc-python"
+              mkdir -p "$DT_RESOURCES"
+              cp -R "$STT_DEST/dt-grpc-python/"* "$DT_RESOURCES/"
             fi
           fi
 

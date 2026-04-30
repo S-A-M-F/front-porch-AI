@@ -28,9 +28,66 @@ class DrawThingsGrpcService {
   DrawThingsGrpcService({
     required this.host,
     this.port = 7859,
-    this.pythonPath = 'python3',
-    this.pythonClientDir = '/tmp/dt-grpc-python',
-  });
+    String? pythonPath,
+    String? pythonClientDir,
+  })  : pythonPath = pythonPath ?? _resolvePythonPath(),
+        pythonClientDir = pythonClientDir ?? _resolvePythonClientDir() {
+    debugPrint('DrawThingsGrpcService: Resolved pythonPath: ${this.pythonPath}');
+    debugPrint('DrawThingsGrpcService: Resolved pythonClientDir: ${this.pythonClientDir}');
+  }
+
+  static String _resolvePythonPath() {
+    if (Platform.isMacOS) {
+      // Check common absolute paths for python3 on macOS
+      final candidates = [
+        '/usr/bin/python3',
+        '/usr/local/bin/python3',
+        '/opt/homebrew/bin/python3',
+      ];
+      for (final path in candidates) {
+        if (File(path).existsSync()) return path;
+      }
+    }
+    // Fallback to searching the system PATH
+    return 'python3';
+  }
+
+  static String _resolvePythonClientDir() {
+    if (Platform.isMacOS) {
+      final execPath = Platform.resolvedExecutable;
+      final execDir = File(execPath).parent.path;
+
+      // 1. Check for bundled Resources in macOS App Bundle
+      // Structure: App.app/Contents/MacOS/Executable -> App.app/Contents/Resources/
+      final bundleResources = p.join(Directory(execDir).parent.path, 'Resources', 'dt-grpc-python');
+      if (Directory(bundleResources).existsSync()) {
+        return bundleResources;
+      }
+
+      // 2. Dev mode: Search upwards from executable for the project root folder
+      var dir = Directory(execDir);
+      for (int i = 0; i < 10; i++) {
+        // Priority 1: Vendored tools directory
+        final toolsCandidate = Directory(p.join(dir.path, 'tools', 'dt-grpc-python'));
+        if (toolsCandidate.existsSync()) {
+          return toolsCandidate.path;
+        }
+        // Priority 2: Direct folder in root
+        final directCandidate = Directory(p.join(dir.path, 'dt-grpc-python'));
+        if (directCandidate.existsSync()) {
+          return directCandidate.path;
+        }
+        final parent = dir.parent;
+
+        if (parent.path == dir.path) break;
+        dir = parent;
+      }
+    }
+
+    // 3. Final fallback to the original dev path
+    return '/tmp/dt-grpc-python';
+  }
+
 
   /// Tests connection to Draw Things via Python client
   Future<bool> testConnection() async {
