@@ -384,6 +384,7 @@ class ChatService extends ChangeNotifier {
   String? _onnxExpressionLabel;
   String? _onnxCachedForEmotion;
   int _lastOnnxMessageCount = 0;
+  String? _lastOnnxMessageText;
   bool _onnxClassifying = false;
 
   // Passage of time
@@ -903,10 +904,14 @@ class ChatService extends ChangeNotifier {
     final lower = _characterEmotion.toLowerCase();
     final messageCount = _messages.length;
 
+    final lastAiMsgText = _messages.isNotEmpty && !_messages.last.isUser ? _messages.last.text : '';
+
     // ONNX mode: trigger classification if needed and return cached result
     if (_storageService.expressionClassificationMode == 'onnx') {
-      // Trigger async ONNX classification if a new message arrived or emotion changed
-      if ((_onnxCachedForEmotion != lower || messageCount != _lastOnnxMessageCount) && !_onnxClassifying) {
+      // Trigger async ONNX classification if a new message arrived, text changed, or emotion changed
+      if ((_onnxCachedForEmotion != lower || 
+           messageCount != _lastOnnxMessageCount || 
+           lastAiMsgText != _lastOnnxMessageText) && !_onnxClassifying) {
         _classifyWithOnnxAsync(lower);
       }
 
@@ -1053,6 +1058,8 @@ class ChatService extends ChangeNotifier {
 
     _onnxClassifying = true;
     _lastOnnxMessageCount = _messages.length;
+    _lastOnnxMessageText = _messages.isNotEmpty && !_messages.last.isUser ? _messages.last.text : '';
+    stdout.writeln('>>> [CHAT:ONNX] Starting classification for message count: $_lastOnnxMessageCount');
     try {
       // Initialize classifier with current mode
       await _expressionClassifierService!.ensureInitialized(
@@ -3096,10 +3103,14 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         // Cancel any pending debounce notify before closing the overlay
         _evalChunkTimer?.cancel();
         _evalChunkTimer = null;
-        await Future.delayed(const Duration(milliseconds: 500));
         _isEvaluatingRealism = false;
         notifyListeners();
       }
+
+      // Invalidate ONNX cache for the new response
+      _onnxCachedForEmotion = null;
+      _onnxCachedLabel = null;
+      _lastOnnxMessageText = null;
 
       // Generate into a new message — it will be appended by _generateResponse
       await _generateResponse(GenerationMode.normal);
