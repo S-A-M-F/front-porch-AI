@@ -899,20 +899,24 @@ class ChatService extends ChangeNotifier {
     if (_manualExpressionLabel != null && _manualExpressionLabel!.isNotEmpty) {
       return _manualExpressionLabel!.toLowerCase();
     }
-    if (_characterEmotion.isEmpty) return 'neutral';
+    
     final lower = _characterEmotion.toLowerCase();
+    final messageCount = _messages.length;
 
-    // ONNX mode: return cached ONNX result
+    // ONNX mode: trigger classification if needed and return cached result
     if (_storageService.expressionClassificationMode == 'onnx') {
+      // Trigger async ONNX classification if a new message arrived or emotion changed
+      if ((_onnxCachedForEmotion != lower || messageCount != _lastOnnxMessageCount) && !_onnxClassifying) {
+        _classifyWithOnnxAsync(lower);
+      }
+
       if (_onnxCachedForEmotion == lower && _onnxExpressionLabel != null) {
         return _onnxExpressionLabel;
       }
-      // Trigger async ONNX classification if emotion changed OR a new message arrived
-      if ((_onnxCachedForEmotion != lower || _messages.length != _lastOnnxMessageCount) && !_onnxClassifying) {
-        _classifyWithOnnxAsync(lower);
-      }
       return _onnxExpressionLabel ?? 'neutral';
     }
+
+    if (_characterEmotion.isEmpty) return 'neutral';
 
     // Return cached label if emotion hasn't changed
     if (_cachedForEmotion == lower && _cachedExpressionLabel != null) {
