@@ -184,6 +184,8 @@ try:
             f.write(img_data)
             f.flush()
             os.fsync(f.fileno())
+        file_size = os.path.getsize('OUTPUT_PATH')
+        print(f'FILE_SIZE:{file_size}')
         print('SUCCESS')
     else:
         print('NO_IMAGE')
