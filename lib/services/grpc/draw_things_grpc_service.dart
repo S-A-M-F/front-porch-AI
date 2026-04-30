@@ -236,8 +236,16 @@ finally:
         throw Exception('Output file not created');
       }
 
+      // Verify file still exists and has content
       final fileSize = await file.length();
       debugPrint('DrawThingsGrpcService: Output file size: $fileSize bytes');
+      if (fileSize == 0) {
+        throw Exception('Output file is empty after Python generation');
+      }
+
+      // Small delay to ensure file is fully written
+      await Future.delayed(const Duration(milliseconds: 100));
+
       final bytes = await file.readAsBytes();
       debugPrint('DrawThingsGrpcService: Read ${bytes.length} bytes');
 
