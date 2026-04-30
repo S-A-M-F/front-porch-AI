@@ -162,6 +162,7 @@ try:
         steps=STEPS,
         guidance_scale=CFG_SCALE,
         strength=1.0,
+        shift=3.0,
         sampler=Sampler.DDIM_TRAILING,
         seed_mode=SeedMode.SCALE_ALIKE,
         refiner_start=0.1,
