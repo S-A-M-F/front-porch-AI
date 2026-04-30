@@ -227,6 +227,8 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
         size: size,
       );
 
+      debugPrint('ImageGenDialog: generateImage returned ${bytes?.length ?? 0} bytes');
+
       if (mounted) {
         setState(() {
           _generatingImage = false;

@@ -232,7 +232,11 @@ finally:
         throw Exception('Output file not created');
       }
 
-      return await file.readAsBytes();
+      final fileSize = await file.length();
+      debugPrint('DrawThingsGrpcService: Output file size: $fileSize bytes');
+      final bytes = await file.readAsBytes();
+      debugPrint('DrawThingsGrpcService: Read ${bytes.length} bytes');
+      return bytes;
     } finally {
       // Clean up temp directory
       try {

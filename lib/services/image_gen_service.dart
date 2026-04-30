@@ -278,6 +278,7 @@ class ImageGenService extends ChangeNotifier {
 
       _lastGeneratedImage = imageBytes;
       _statusMessage = 'Image generated successfully.';
+      debugPrint('ImageGen: Returning ${imageBytes?.length ?? 0} bytes');
       notifyListeners();
       return imageBytes;
     } catch (e) {
