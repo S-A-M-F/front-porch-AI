@@ -132,8 +132,10 @@ class UpdateService extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Use the general /releases endpoint to find both stable and pre-releases.
+      // GitHub's /releases/latest endpoint ignores everything marked as pre-release.
       final response = await http.get(
-        Uri.parse('https://api.github.com/repos/$_repoOwner/$_repoName/releases/latest'),
+        Uri.parse('https://api.github.com/repos/$_repoOwner/$_repoName/releases'),
         headers: {'Accept': 'application/vnd.github.v3+json'},
       );
 
@@ -142,29 +144,40 @@ class UpdateService extends ChangeNotifier {
         return false;
       }
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final tagName = (data['tag_name'] as String? ?? '').replaceFirst(RegExp(r'^[vV]'), '');
-      final assets = data['assets'] as List<dynamic>? ?? [];
+      final List<dynamic> allReleases = jsonDecode(response.body);
+      if (allReleases.isEmpty) return false;
 
-      // Guard: stable builds must never be offered a pre-release update.
-      // GitHub's /releases/latest API already skips prereleases when the release
-      // is marked prerelease:true in CI — this is a second line of defence for
-      // edge cases (e.g. a release accidentally published without the flag).
-      final tagLower = tagName.toLowerCase();
-      final releaseIsBeta = tagLower.contains('beta') ||
-          tagLower.contains('alpha') ||
-          tagLower.contains('-rc') ||
-          tagLower.contains('-dev');
-      if (!isPreRelease && releaseIsBeta) {
-        debugPrint('[Update] Stable build — ignoring pre-release $tagName');
-        return false;
+      Map<String, dynamic>? targetRelease;
+
+      for (final release in allReleases) {
+        final tagName = (release['tag_name'] as String? ?? '').replaceFirst(RegExp(r'^[vV]'), '');
+        final isPrerelease = release['prerelease'] as bool? ?? false;
+        final tagLower = tagName.toLowerCase();
+        
+        // Manual check for beta strings if the flag isn't set
+        final hasBetaString = tagLower.contains('beta') ||
+            tagLower.contains('alpha') ||
+            tagLower.contains('-rc') ||
+            tagLower.contains('-dev');
+        
+        final effectivelyBeta = isPrerelease || hasBetaString;
+
+        // Channel matching logic:
+        // 1. If we are on stable, we ONLY want stable releases.
+        // 2. If we are on beta, we take the absolute latest release (beta or stable).
+        if (!isPreRelease && effectivelyBeta) {
+          continue; // Skip beta releases for stable builds
+        }
+
+        // We found our candidate (the list is sorted by date by default)
+        targetRelease = release;
+        break;
       }
-      // Beta builds only update within the beta stream, not from beta→stable
-      // (stable will be offered via the stable build on its own schedule).
-      if (isPreRelease && !releaseIsBeta) {
-        debugPrint('[Update] Beta build — ignoring stable release $tagName');
-        return false;
-      }
+
+      if (targetRelease == null) return false;
+
+      final tagName = (targetRelease['tag_name'] as String? ?? '').replaceFirst(RegExp(r'^[vV]'), '');
+      final assets = targetRelease['assets'] as List<dynamic>? ?? [];
 
       // Find the platform-specific update asset
       final targetAsset = _platformAsset;
@@ -177,13 +190,13 @@ class UpdateService extends ChangeNotifier {
       }
 
       if (installerUrl == null) {
-        debugPrint('No update asset ($targetAsset) found in latest release');
+        debugPrint('No update asset ($targetAsset) found in release $tagName');
         return false;
       }
 
       _latestVersion = tagName;
       _downloadUrl = installerUrl;
-      _releaseNotes = data['body'] as String? ?? '';
+      _releaseNotes = targetRelease['body'] as String? ?? '';
       _updateAvailable = _isNewerVersion(tagName, _currentVersion);
 
       return _updateAvailable;
