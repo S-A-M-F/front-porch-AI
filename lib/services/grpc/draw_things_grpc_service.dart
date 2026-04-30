@@ -240,13 +240,13 @@ finally:
       debugPrint('DrawThingsGrpcService: Output file size: $fileSize bytes');
       final bytes = await file.readAsBytes();
       debugPrint('DrawThingsGrpcService: Read ${bytes.length} bytes');
-      return bytes;
-    } finally {
-      // Clean up temp directory
+
+      // Clean up temp directory BEFORE returning
       try {
         await tempDir.delete(recursive: true);
       } catch (_) {}
-    }
+
+      return bytes;
   }
 
   Future<File> _writePythonScript(String content) async {
