@@ -89,8 +89,8 @@ import imageService_pb2 as pb2
 
 client = DrawThingsClient('HOST', PORT)
 try:
-    stub = client._stub
-    response = stub.Echo(pb2.EchoRequest(name='models'))
+    client._connect()
+    response = client._stub.Echo(pb2.EchoRequest(name='models'))
     files = []
     for f in response.files:
         lower = f.lower()
