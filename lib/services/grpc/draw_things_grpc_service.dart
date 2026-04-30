@@ -4,201 +4,120 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:flat_buffers/flat_buffers.dart' as fb;
 import 'package:flutter/foundation.dart';
-import 'package:grpc/grpc.dart';
 
-import 'image_service.pbgrpc.dart';
-import 'draw_things_generated.dart';
-
-/// Accepts Draw Things' self-signed TLS certificate
-bool allowBadCertificates(X509Certificate certificate) {
-  debugPrint('DrawThingsGrpcService: Accepting self-signed certificate');
-  return true;
-}
-
+/// Progress update from image generation
 class ImageGenProgress {
   final int step;
   final int totalSteps;
-  final Uint8List? previewImage;
+  final String message;
 
-  const ImageGenProgress(this.step, this.totalSteps, {this.previewImage});
+  const ImageGenProgress(this.step, this.totalSteps, {this.message = ''});
 }
 
+/// Draw Things gRPC service - uses Python client as bridge
 class DrawThingsGrpcService {
   final String host;
   final int port;
-  final bool useTls;
-
-  ClientChannel? _channel;
-  ImageGenerationServiceClient? _client;
+  final String pythonPath;
+  final String pythonClientDir;
 
   DrawThingsGrpcService({
     required this.host,
     this.port = 7859,
-    this.useTls = false,
+    this.pythonPath = 'python3',
+    this.pythonClientDir = '/tmp/dt-grpc-python',
   });
 
-  void connect() {
-    if (_channel != null) return;
-
-    final targetHost = host.replaceAll('http://', '').replaceAll('https://', '').split(':')[0];
-
-    // Draw Things uses self-signed TLS certs, so we need to accept untrusted certs
-    final credentials = !useTls
-        ? const ChannelCredentials.insecure()
-        : ChannelCredentials.secure(
-            onBadCertificate: allowBadCertificates,
-          );
-
-    _channel = ClientChannel(
-      targetHost,
-      port: port,
-      options: ChannelOptions(
-        credentials: credentials,
-        // Some servers on Mac are picky about the authority (Host) header
-        userAgent: 'FrontPorchAI/1.0',
-      ),
-    );
-    _client = ImageGenerationServiceClient(_channel!);
-  }
-
-  Future<void> disconnect() async {
-    await _channel?.shutdown();
-    _channel = null;
-    _client = null;
-  }
-
-  /// Tests connection by making an Hours request (no parameters required)
+  /// Tests connection to Draw Things via Python client
   Future<bool> testConnection() async {
-    final targetHost = host.replaceAll('http://', '').replaceAll('https://', '').split(':')[0];
     try {
-      debugPrint('DrawThingsGrpcService: Initializing channel to $targetHost:$port');
-      connect();
-      
-      debugPrint('DrawThingsGrpcService: Sending Hours request (timeout 30s)...');
-      final request = HoursRequest();
-      final response = await _client!.hours(request, options: CallOptions(timeout: const Duration(seconds: 30)));
+      final scriptFile = await _writePythonScript('''
+import sys
+sys.path.insert(0, 'PYTHON_CLIENT_DIR')
+from client import DrawThingsClient
+client = DrawThingsClient('HOST', PORT)
+try:
+    result = client.echo('test')
+    print('OK')
+    sys.exit(0)
+except Exception as e:
+    print(str(e))
+    sys.exit(1)
+finally:
+    client.close()
+''');
 
-      debugPrint('DrawThingsGrpcService: Hours response received. hasThresholds=${response.hasThresholds()}');
-      return true;
-    } catch (e) {
-      debugPrint('DrawThingsGrpcService: Hours request failed: $e');
-      
-      // Try Echo as a second attempt
-      try {
-        debugPrint('DrawThingsGrpcService: Sending Echo request as fallback (timeout 30s)...');
-        final echoRequest = EchoRequest(name: 'FrontPorchAI', sharedSecret: '');
-        final echoResponse = await _client!.echo(echoRequest, options: CallOptions(timeout: const Duration(seconds: 30)));
-        debugPrint('DrawThingsGrpcService: Echo response received. message=${echoResponse.message}');
+      final result = await _runWithTimeout(
+        pythonPath,
+        [scriptFile.path],
+        const Duration(seconds: 30),
+      );
+      await scriptFile.delete();
+
+      if (result.exitCode == 0 && result.stdout.toString().trim() == 'OK') {
+        debugPrint('DrawThingsGrpcService: Connection test passed');
         return true;
-      } catch (e2) {
-        debugPrint('DrawThingsGrpcService: Echo fallback failed: $e2');
+      } else {
+        debugPrint('DrawThingsGrpcService: Connection test failed: ${result.stdout}');
+        return false;
       }
-
-      // If we failed with localhost, try 127.0.0.1 explicitly as a last resort
-      if (targetHost == 'localhost') {
-        try {
-          debugPrint('DrawThingsGrpcService: Retrying EVERYTHING with 127.0.0.1...');
-          await disconnect();
-
-          final retryCredentials = !useTls
-              ? const ChannelCredentials.insecure()
-              : ChannelCredentials.secure(
-                  onBadCertificate: allowBadCertificates,
-                );
-
-          _channel = ClientChannel(
-            '127.0.0.1',
-            port: port,
-            options: ChannelOptions(
-              credentials: retryCredentials,
-              userAgent: 'FrontPorchAI/1.0',
-            ),
-          );
-          _client = ImageGenerationServiceClient(_channel!);
-          
-          final request = HoursRequest();
-          await _client!.hours(request, options: CallOptions(timeout: const Duration(seconds: 30)));
-          return true;
-        } catch (e2) {
-          debugPrint('DrawThingsGrpcService: Final fallback to 127.0.0.1 failed: $e2');
-        }
-      }
+    } catch (e) {
+      debugPrint('DrawThingsGrpcService: Connection test error: $e');
       return false;
     }
   }
 
-  /// Fetches available checkpoint models from the server
+  /// Fetches available checkpoint models from Draw Things
   Future<List<String>> fetchModels() async {
     try {
-      connect();
-      final request = EchoRequest(name: 'FrontPorchAI');
-      final response = await _client!.echo(request, options: CallOptions(timeout: const Duration(seconds: 30)));
+      final scriptFile = await _writePythonScript('''
+import sys, json
+sys.path.insert(0, 'PYTHON_CLIENT_DIR')
+from client import DrawThingsClient
 
-      List<String> checkpoints;
+client = DrawThingsClient('HOST', PORT)
+try:
+    response = client.echo('models')
+    files = []
+    for f in response.get('files', []):
+        lower = f.lower()
+        if any(x in lower for x in ['lora', 'controlnet', 'clip', 't5', 'encoder', 'gemma', 'llama', 'mistral', 'qwen', 'phi', 'chroma', 'ltx', 'vicuna', 'alpaca']):
+            continue
+        if f.endswith('.ckpt'):
+            files.append(f)
+    print(json.dumps(files))
+except Exception as e:
+    print('[]')
+finally:
+    client.close()
+''');
 
-      // Try parsing the categorized override.models field first (proper SD checkpoints only)
-      if (response.hasOverride() && response.override.models.isNotEmpty) {
-        try {
-          final modelJson = utf8.decode(response.override.models);
-          final parsed = jsonDecode(modelJson);
-          if (parsed is List) {
-            checkpoints = parsed
-                .whereType<Map<String, dynamic>>()
-                .map((m) => m['name']?.toString() ?? m['title']?.toString() ?? '')
-                .where((s) => s.isNotEmpty)
-                .toList();
-            debugPrint('DrawThingsGrpcService: Parsed ${checkpoints.length} checkpoints from override.models');
-            return checkpoints;
-          }
-        } catch (e) {
-          debugPrint('DrawThingsGrpcService: Failed to parse override.models: $e');
-        }
+      final result = await _runWithTimeout(
+        pythonPath,
+        [scriptFile.path],
+        const Duration(seconds: 30),
+      );
+      await scriptFile.delete();
+
+      if (result.exitCode == 0) {
+        final files = jsonDecode(result.stdout.toString()) as List;
+        final checkpoints = files.cast<String>();
+        debugPrint('DrawThingsGrpcService: Fetched ${checkpoints.length} models');
+        return checkpoints;
+      } else {
+        debugPrint('DrawThingsGrpcService: fetchModels failed: ${result.stdout}');
+        return [];
       }
-
-      // Fallback: filter files list by excluding known non-checkpoint types
-      checkpoints = response.files.where((file) {
-        final lower = file.toLowerCase();
-        // Exclude LoRAs, ControlNets, embeddings, upscalers
-        if (lower.contains('lora') ||
-            lower.contains('controlnet') ||
-            lower.contains('control_net') ||
-            lower.contains('embedding') ||
-            lower.contains('upscaler') ||
-            lower.contains('hypernetwork')) {
-          return false;
-        }
-        // Exclude text encoders and LLMs
-        if (lower.contains('clip') ||
-            lower.contains('t5') ||
-            lower.contains('encoder') ||
-            lower.contains('gemma') ||
-            lower.contains('llama') ||
-            lower.contains('mistral') ||
-            lower.contains('qwen') ||
-            lower.contains('phi') ||
-            lower.contains('chroma') ||
-            lower.contains('ltx') ||
-            lower.contains('vicuna') ||
-            lower.contains('alpaca')) {
-          return false;
-        }
-        return true;
-      }).toList();
-
-      debugPrint('DrawThingsGrpcService: Fetched ${checkpoints.length} checkpoints (filtered from ${response.files.length} total)');
-      return checkpoints;
     } catch (e) {
-      debugPrint('DrawThingsGrpcService fetchModels failed: $e');
+      debugPrint('DrawThingsGrpcService: fetchModels error: $e');
       return [];
     }
   }
 
-  /// Generates an image and yields progress updates, ending with the final image bytes
-  Stream<dynamic> generateImage({
+  /// Generates an image via Python client bridge
+  Future<Uint8List> generateImage({
     required String prompt,
     String negativePrompt = '',
     String model = '',
@@ -206,92 +125,119 @@ class DrawThingsGrpcService {
     int height = 1024,
     int steps = 20,
     double cfgScale = 7.0,
-    String samplerName = 'Euler a',
     int seed = -1,
-  }) async* {
-    connect();
+    Function(ImageGenProgress)? onProgress,
+  }) async {
+    final tempDir = await Directory.systemTemp.createTemp('dt_gen_');
+    final outputPath = '${tempDir.path}/output.png';
 
-    // Map sampler name to FlatBuffer enum — matching Python client defaults
-    SamplerType samplerType = SamplerType.EulerA;
-    if (samplerName.toLowerCase().contains('dpm++ 2m karras')) {
-      samplerType = SamplerType.DPMPP2MKarras;
-    } else if (samplerName.toLowerCase().contains('unipc')) {
-      samplerType = SamplerType.UniPC;
-    } else if (samplerName.toLowerCase().contains('lcm')) {
-      samplerType = SamplerType.LCM;
-    } else if (samplerName.toLowerCase().contains('tcd')) {
-      samplerType = SamplerType.TCD;
-    } else if (samplerName.toLowerCase().contains('ddim')) {
-      samplerType = SamplerType.DDIM;
-    } else if (samplerName.toLowerCase().contains('euler')) {
-      samplerType = SamplerType.EulerA;
-    }
+    final scriptFile = await _writePythonScript('''
+import sys, json
+sys.path.insert(0, 'PYTHON_CLIENT_DIR')
+from client import DrawThingsClient, GenerationConfig, Sampler, SeedMode
 
-    // Build FlatBuffer config — matching Python client's full config
-    final builder = fb.Builder(initialSize: 1024);
-    final modelOffset = model.isNotEmpty ? builder.writeString(model) : null;
+client = DrawThingsClient('HOST', PORT)
+try:
+    config = GenerationConfig(
+        model='MODEL',
+        start_width=WIDTH_DIV64,
+        start_height=HEIGHT_DIV64,
+        seed=SEED,
+        steps=STEPS,
+        guidance_scale=CFG_SCALE,
+        strength=1.0,
+        sampler=Sampler.DDIM_TRAILING,
+        seed_mode=SeedMode.SCALE_ALIKE,
+        refiner_start=0.1,
+        resolution_dependent_shift=False,
+        mask_blur=1.5,
+        sharpness=0.0,
+    )
+    
+    result = client.generate(
+        config=config,
+        prompt='PROMPT',
+        negative_prompt='NEGATIVE_PROMPT',
+        verbose=True,
+    )
+    
+    if result.images:
+        img_data = result.images[0]
+        with open('OUTPUT_PATH', 'wb') as f:
+            f.write(img_data)
+        print('SUCCESS')
+    else:
+        print('NO_IMAGE')
+except Exception as e:
+    print('ERROR: ' + str(e))
+finally:
+    client.close()
+''');
 
-    final configBuilder = GenerationConfigurationBuilder(builder)
-      ..begin()
-      ..addStartWidth(width ~/ 64)
-      ..addStartHeight(height ~/ 64)
-      ..addSeed(seed == -1 ? DateTime.now().millisecondsSinceEpoch & 0xFFFFFFFF : seed)
-      ..addSteps(steps)
-      ..addGuidanceScale(cfgScale)
-      ..addStrength(1.0)
-      ..addBatchCount(1)
-      ..addBatchSize(1)
-      ..addSeedMode(SeedMode.ScaleAlike)
-      ..addRefinerStart(0.1)
-      ..addPreserveOriginalAfterInpaint(true)
-      ..addResolutionDependentShift(false)
-      ..addMaskBlur(1.5)
-      ..addSharpness(0.0)
-      ..addSampler(samplerType);
-
-    if (modelOffset != null) {
-      configBuilder.addModelOffset(modelOffset);
-    }
-
-    final configOffset = configBuilder.finish();
-    builder.finish(configOffset);
-
-    final configBytes = builder.buffer;
-    debugPrint('DrawThingsGrpcService: FlatBuffer size=${configBytes.length} bytes, model="$model", latent=${width ~/ 64}x${height ~/ 64}');
-
-    // Build the gRPC request — matching Python client (no chunked/device overrides)
-    final request = ImageGenerationRequest(
-      prompt: prompt,
-      negativePrompt: negativePrompt,
-      configuration: configBytes,
-      scaleFactor: 1,
-      user: 'FrontPorchAI',
-    );
-
-    int currentStep = 0;
+    // Replace placeholders
+    String script = await scriptFile.readAsString();
+    script = script.replaceAll('PYTHON_CLIENT_DIR', pythonClientDir);
+    script = script.replaceAll('HOST', host);
+    script = script.replaceAll('PORT', port.toString());
+    script = script.replaceAll('MODEL', model);
+    script = script.replaceAll('WIDTH_DIV64', (width ~/ 64).toString());
+    script = script.replaceAll('HEIGHT_DIV64', (height ~/ 64).toString());
+    script = script.replaceAll('SEED', (seed == -1 ? 0 : seed).toString());
+    script = script.replaceAll('STEPS', steps.toString());
+    script = script.replaceAll('CFG_SCALE', cfgScale.toString());
+    script = script.replaceAll('PROMPT', prompt.replaceAll("'", "\\'"));
+    script = script.replaceAll('NEGATIVE_PROMPT', negativePrompt.replaceAll("'", "\\'"));
+    script = script.replaceAll('OUTPUT_PATH', outputPath);
 
     try {
-      final stream = _client!.generateImage(request);
-      await for (final response in stream) {
-        if (response.hasCurrentSignpost()) {
-          final signpost = response.currentSignpost;
-          if (signpost.hasSampling()) {
-            currentStep = signpost.sampling.step;
-            Uint8List? preview;
-            if (response.hasPreviewImage()) {
-              preview = Uint8List.fromList(response.previewImage);
-            }
-            yield ImageGenProgress(currentStep, steps, previewImage: preview);
-          }
-        }
+      final result = await _runWithTimeout(
+        pythonPath,
+        [scriptFile.path],
+        const Duration(seconds: 300),
+      );
 
-        if (response.generatedImages.isNotEmpty) {
-          yield Uint8List.fromList(response.generatedImages.first);
-        }
+      debugPrint('DrawThingsGrpcService: Python exit code: ${result.exitCode}');
+      debugPrint('DrawThingsGrpcService: Python stdout: ${result.stdout}');
+      if (result.stderr.isNotEmpty) {
+        debugPrint('DrawThingsGrpcService: Python stderr: ${result.stderr}');
       }
-    } catch (e) {
-      debugPrint('DrawThingsGrpcService generation failed: $e');
-      throw Exception('Generation failed: $e');
+
+      await scriptFile.delete();
+
+      if (result.exitCode != 0 || !result.stdout.toString().contains('SUCCESS')) {
+        throw Exception('Generation failed: ${result.stdout}');
+      }
+
+      final file = File(outputPath);
+      if (!await file.exists()) {
+        throw Exception('Output file not created');
+      }
+
+      return await file.readAsBytes();
+    } finally {
+      // Clean up temp directory
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {}
     }
+  }
+
+  Future<File> _writePythonScript(String content) async {
+    final tempDir = await Directory.systemTemp.createTemp('dt_script_');
+    final scriptFile = File('${tempDir.path}/script.py');
+    await scriptFile.writeAsString(content);
+    return scriptFile;
+  }
+
+  Future<ProcessResult> _runWithTimeout(
+    String executable,
+    List<String> arguments,
+    Duration timeout,
+  ) async {
+    final process = await Process.start(executable, arguments);
+    final stdout = process.stdout.transform(utf8.decoder).join();
+    final stderr = process.stderr.transform(utf8.decoder).join();
+    final exitCode = await process.exitCode.timeout(timeout);
+    return ProcessResult(process.pid, exitCode, await stdout, stderr);
   }
 }
