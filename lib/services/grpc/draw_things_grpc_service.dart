@@ -247,6 +247,12 @@ finally:
       } catch (_) {}
 
       return bytes;
+    } catch (e) {
+      // Clean up temp directory on error
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {}
+      rethrow;
     }
   }
 
