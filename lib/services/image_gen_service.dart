@@ -24,7 +24,6 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
-import 'package:front_porch_ai/services/grpc/draw_things_grpc_service.dart';
 
 /// Available image generation modes.
 enum ImageGenMode {
@@ -131,13 +130,6 @@ class ImageGenService extends ChangeNotifier {
     }
   }
 
-  DrawThingsGrpcService? _drawThingsGrpc;
-
-  DrawThingsGrpcService get _ensureDrawThingsGrpc {
-    _drawThingsGrpc ??= DrawThingsGrpcService(host: '127.0.0.1', port: 7859, useTls: true);
-    return _drawThingsGrpc!;
-  }
-
   ImageGenService(this._storage);
 
   /// Build the images directory path.
@@ -169,65 +161,32 @@ class ImageGenService extends ChangeNotifier {
 
       if (backend == ImageGenBackend.a1111 || backend == ImageGenBackend.drawThings) {
         // ── Local A1111 / Draw Things ──────────────────────────────────
-        final isDrawThings = _storage.imageGenBackend == 'drawthings';
-        
-        if (isDrawThings) {
-          // Use gRPC for Draw Things (TLS required on macOS)
-          _statusMessage = 'Connecting to Draw Things...';
+        final localUrl = _storage.localImageGenUrl;
+        if (localUrl.isEmpty) {
+          _statusMessage = 'No local server URL configured.';
+          _isGenerating = false;
           notifyListeners();
-          
-          try {
-            final grpcService = _ensureDrawThingsGrpc;
-            final imageSize = size ?? _storage.imageGenSize;
-            final (width, height) = _parseSize(imageSize);
-            final modelCheckpoint = model ?? _storage.imageGenModel;
-            final steps = _storage.imageGenSteps;
-            final cfgScale = _storage.imageGenCfgScale;
-            final seed = _storage.imageGenSeed;
-            
-            imageBytes = await _generateViaDrawThingsGrpc(
-              grpcService: grpcService,
-              prompt: prompt,
-              negativePrompt: negativePrompt,
-              model: modelCheckpoint,
-              width: width,
-              height: height,
-              steps: steps,
-              cfgScale: cfgScale,
-              seed: seed,
-            );
-          } catch (e) {
-            _statusMessage = 'Draw Things connection failed: $e';
-            _isGenerating = false;
-            notifyListeners();
-            return null;
-          }
-        } else {
-          // Use HTTP for A1111
-          final localUrl = _storage.localImageGenUrl;
-          if (localUrl.isEmpty) {
-            _statusMessage = 'No local server URL configured.';
-            _isGenerating = false;
-            notifyListeners();
-            return null;
-          }
-          final imageSize = size ?? _storage.imageGenSize;
-          final modelCheckpoint = model ?? _storage.imageGenModel;
-          imageBytes = await _generateViaA1111(
-            baseUrl: localUrl,
-            prompt: prompt,
-            negativePrompt: negativePrompt,
-            size: imageSize,
-            modelCheckpoint: modelCheckpoint,
-            switchModelFirst: modelCheckpoint.isNotEmpty,
-            loraName: _storage.imageGenLora,
-            loraWeight: _storage.imageGenLoraWeight,
-            steps: _storage.imageGenSteps,
-            cfgScale: _storage.imageGenCfgScale,
-            samplerName: _storage.imageGenSampler,
-            seed: _storage.imageGenSeed,
-          );
+          return null;
         }
+        final imageSize = size ?? _storage.imageGenSize;
+        final modelCheckpoint = model ?? _storage.imageGenModel;
+        // LoRAs only supported on A1111/Forge/SDNext — not Draw Things
+        final isDrawThings = _storage.imageGenBackend == 'drawthings';
+        imageBytes = await _generateViaA1111(
+          baseUrl: localUrl,
+          prompt: prompt,
+          negativePrompt: negativePrompt,
+          size: imageSize,
+          modelCheckpoint: modelCheckpoint,
+          // Switch to the selected checkpoint before each generation
+          switchModelFirst: modelCheckpoint.isNotEmpty,
+          loraName:   isDrawThings ? '' : _storage.imageGenLora,
+          loraWeight: _storage.imageGenLoraWeight,
+          steps:      _storage.imageGenSteps,
+          cfgScale:   _storage.imageGenCfgScale,
+          samplerName: _storage.imageGenSampler,
+          seed:       _storage.imageGenSeed,
+        );
 
       } else {
         // ── Remote API ─────────────────────────────────────────────────
@@ -830,17 +789,6 @@ class ImageGenService extends ChangeNotifier {
     }
   }
 
-  /// Test connection to Draw Things via gRPC.
-  Future<bool> testDrawThingsConnection() async {
-    try {
-      final grpcService = _ensureDrawThingsGrpc;
-      return await grpcService.testConnection();
-    } catch (e) {
-      debugPrint('ImageGen: Draw Things connection test failed: $e');
-      return false;
-    }
-  }
-
   /// Fetch available checkpoints from an A1111 / Draw Things server.
   ///
   /// Returns model title strings, e.g. `["v1-5-pruned.safetensors [hash]"]`.
@@ -865,16 +813,12 @@ class ImageGenService extends ChangeNotifier {
     }
   }
 
-  /// Fetch models from a Draw Things server via gRPC.
-  Future<List<String>> fetchDrawThingsModels(String baseUrl) async {
-    try {
-      final grpcService = _ensureDrawThingsGrpc;
-      return await grpcService.fetchModels();
-    } catch (e) {
-      debugPrint('ImageGen: fetchDrawThingsModels failed: $e');
-      return [];
-    }
-  }
+  /// Fetch models from a Draw Things server.
+  ///
+  /// Draw Things exposes the same `/sdapi/v1/sd-models` endpoint as A1111.
+  /// Falls back to an empty list if the endpoint is not available.
+  Future<List<String>> fetchDrawThingsModels(String baseUrl) =>
+      fetchA1111Models(baseUrl);
 
   /// Fetch LoRAs from an A1111 / Forge / SD.Next server.
   ///
@@ -1143,47 +1087,6 @@ class ImageGenService extends ChangeNotifier {
     } finally {
       client.close();
     }
-  }
-
-  /// Generate via Draw Things gRPC service.
-  Future<Uint8List> _generateViaDrawThingsGrpc({
-    required DrawThingsGrpcService grpcService,
-    required String prompt,
-    String negativePrompt = '',
-    String model = '',
-    int width = 1024,
-    int height = 1024,
-    int steps = 20,
-    double cfgScale = 7.0,
-    int seed = -1,
-  }) async {
-    _statusMessage = 'Generating image via Draw Things...';
-    notifyListeners();
-
-    Uint8List? result;
-    await for (final output in grpcService.generateImage(
-      prompt: prompt,
-      negativePrompt: negativePrompt,
-      model: model,
-      width: width,
-      height: height,
-      steps: steps,
-      cfgScale: cfgScale,
-      seed: seed,
-    )) {
-      if (output is ImageGenProgress) {
-        _statusMessage = 'Step ${output.step}/${output.totalSteps}';
-        notifyListeners();
-      } else if (output is Uint8List) {
-        result = output;
-      }
-    }
-
-    if (result == null) {
-      throw Exception('No image received from Draw Things');
-    }
-
-    return result;
   }
 
   /// Detect if URL is an OpenRouter-style API (uses chat/completions for images).
