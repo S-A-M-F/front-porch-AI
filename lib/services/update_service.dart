@@ -445,20 +445,63 @@ open -n "$destPath"
     // Relaunch is handled by the update shell script
   }
 
-  /// Compare version strings (e.g. "0.0.4.1" vs "0.0.4")
+  /// Compare version strings (e.g. "0.9.8-Beta6" vs "0.9.8-Beta5")
   /// Returns true if remote is newer than local.
   bool _isNewerVersion(String remote, String local) {
-    final remoteParts = remote.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-    final localParts = local.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    // Standardize: remove 'v' prefix and split into numeric vs suffix parts
+    String clean(String v) => v.toLowerCase().replaceFirst(RegExp(r'^[vV]'), '');
+    final rClean = clean(remote);
+    final lClean = clean(local);
 
-    // Normalize lengths
-    while (remoteParts.length < localParts.length) remoteParts.add(0);
-    while (localParts.length < remoteParts.length) localParts.add(0);
+    if (rClean == lClean) return false;
 
-    for (int i = 0; i < remoteParts.length; i++) {
-      if (remoteParts[i] > localParts[i]) return true;
-      if (remoteParts[i] < localParts[i]) return false;
+    // Split at the first hyphen (e.g. "0.9.8-beta6" -> ["0.9.8", "beta6"])
+    final rSplit = rClean.split('-');
+    final lSplit = lClean.split('-');
+
+    final rBase = rSplit[0].split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final lBase = lSplit[0].split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+    // Normalize lengths for the numeric base
+    while (rBase.length < lBase.length) rBase.add(0);
+    while (lBase.length < rBase.length) lBase.add(0);
+
+    // 1. Compare numeric base parts
+    for (int i = 0; i < rBase.length; i++) {
+      if (rBase[i] > lBase[i]) return true;
+      if (rBase[i] < lBase[i]) return false;
     }
-    return false; // Equal
+
+    // 2. Base version is identical, compare suffixes (e.g. "-beta6" vs "-beta5")
+    final rSuffix = rSplit.length > 1 ? rSplit[1] : '';
+    final lSuffix = lSplit.length > 1 ? lSplit[1] : '';
+
+    if (rSuffix.isEmpty && lSuffix.isNotEmpty) return true; // Stable is newer than beta
+    if (rSuffix.isNotEmpty && lSuffix.isEmpty) return false; // Beta is older than stable
+
+    // Both have suffixes, do a natural comparison
+    return _compareAlphanumeric(rSuffix, lSuffix) > 0;
+  }
+
+  /// Helper for natural string comparison (handles "beta10" > "beta9")
+  int _compareAlphanumeric(String a, String b) {
+    final re = RegExp(r'(\d+)|(\D+)');
+    final aMatches = re.allMatches(a).toList();
+    final bMatches = re.allMatches(b).toList();
+
+    for (int i = 0; i < min(aMatches.length, bMatches.length); i++) {
+      final aVal = aMatches[i].group(0)!;
+      final bVal = bMatches[i].group(0)!;
+
+      final aNum = int.tryParse(aVal);
+      final bNum = int.tryParse(bVal);
+
+      if (aNum != null && bNum != null) {
+        if (aNum != bNum) return aNum.compareTo(bNum);
+      } else {
+        if (aVal != bVal) return aVal.compareTo(bVal);
+      }
+    }
+    return aMatches.length.compareTo(bMatches.length);
   }
 }
