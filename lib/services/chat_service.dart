@@ -387,6 +387,7 @@ class ChatService extends ChangeNotifier {
   int _lastOnnxMessageCount = 0;
   String? _lastOnnxMessageText;
   bool _onnxClassifying = false;
+  Timer? _onnxDebounce;
 
   // Passage of time
   String _timeOfDay = 'morning';
@@ -909,17 +910,31 @@ class ChatService extends ChangeNotifier {
 
     // ONNX mode: trigger classification if needed and return cached result
     if (_storageService.expressionClassificationMode == 'onnx') {
+      // ── STABILITY: Keep previous expression while generating ───────────────
+      // As requested, we don't want "live" updates. We keep the current
+      // face until the message is complete.
+      if (_isGenerating) {
+        return _onnxExpressionLabel ?? EmotionLabels.nuancedToStandard(lower);
+      }
+
       // Trigger async ONNX classification if a new message arrived, text changed, or emotion changed
       if ((_onnxCachedForEmotion != lower || 
            messageCount != _lastOnnxMessageCount || 
-           lastAiMsgText != _lastOnnxMessageText) && !_onnxClassifying) {
-        _classifyWithOnnxAsync(lower);
+           lastAiMsgText != _lastOnnxMessageText) && 
+          !_onnxClassifying && 
+          _onnxDebounce == null) {
+        
+        // Use a small debounce to avoid rapid re-triggering during UI transitions
+        _onnxDebounce = Timer(const Duration(milliseconds: 500), () {
+          _onnxDebounce = null;
+          _classifyWithOnnxAsync(lower);
+        });
       }
 
       if (_onnxCachedForEmotion == lower && _onnxExpressionLabel != null) {
         return _onnxExpressionLabel;
       }
-      return _onnxExpressionLabel ?? 'neutral';
+      return _onnxExpressionLabel ?? EmotionLabels.nuancedToStandard(lower);
     }
 
     if (_characterEmotion.isEmpty) return 'neutral';

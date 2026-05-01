@@ -163,10 +163,11 @@ class UpdateService extends ChangeNotifier {
         final effectivelyBeta = isPrerelease || hasBetaString;
 
         // Channel matching logic:
-        // 1. If we are on stable, we ONLY want stable releases.
-        // 2. If we are on beta, we take the absolute latest release (beta or stable).
-        if (!isPreRelease && effectivelyBeta) {
-          continue; // Skip beta releases for stable builds
+        // We enforce strict isolation because Stable and Beta use different
+        // installation paths and database folders. Cross-updating would 
+        // lead to data loss or duplicate "ghost" installations.
+        if (isPreRelease != effectivelyBeta) {
+          continue; 
         }
 
         // We found our candidate (the list is sorted by date by default)

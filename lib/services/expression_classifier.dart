@@ -142,6 +142,11 @@ class ONNXExpressionClassifier implements ExpressionClassifier {
   final void Function(OnnxDownloadProgress)? onProgress;
   final void Function()? onModelReady;
   bool _modelReady = false;
+  
+  Process? _process;
+  Completer<EmotionResult>? _pendingRequest;
+  StreamSubscription<String>? _stdoutSub;
+  bool _isStopping = false;
 
   ONNXExpressionClassifier({
     required this.storage,
@@ -209,6 +214,7 @@ class ONNXExpressionClassifier implements ExpressionClassifier {
 
   /// Appends a timestamped line to the ONNX debug log file.
   void _logDebug(String message) async {
+    final formattedMessage = '>>> [ONNX:DEBUG] $message';
     try {
       final logFile = File(_debugLogPath);
       final logDir = logFile.parent;
@@ -217,10 +223,13 @@ class ONNXExpressionClassifier implements ExpressionClassifier {
       }
       final timestamp = DateTime.now().toIso8601String();
       final formatted = '[$timestamp] $message';
-      debugPrint('[ONNX:Log] $message'); // Mirror to console for easier troubleshooting
-      await logFile.writeAsString('$formatted\n', mode: FileMode.append);
+      
+      // Use stdout.writeln for guaranteed visibility in Windows CMD
+      stdout.writeln(formattedMessage);
+      await logFile.writeAsString('$formatted\n', mode: FileMode.append, flush: true);
     } catch (e) {
-      debugPrint('[ONNX:Log] Failed to write to log file: $e');
+      stdout.writeln('>>> [ONNX:ERROR] Failed to write to debug log: $e');
+      stdout.writeln(formattedMessage);
     }
   }
 
@@ -294,6 +303,49 @@ class ONNXExpressionClassifier implements ExpressionClassifier {
 
   @override
   Future<EmotionResult> classify(String text) async {
+    if (_isStopping) return const EmotionResult(emotion: 'neutral', confidence: 0.0);
+
+    // Ensure the sidecar process is running
+    final started = await _ensureProcessStarted();
+    if (!started || _process == null) {
+      return const EmotionResult(emotion: 'neutral', confidence: 0.0);
+    }
+
+    // Cancel any previous pending request (though ChatService should already be debouncing)
+    if (_pendingRequest != null && !_pendingRequest!.isCompleted) {
+      _pendingRequest!.completeError('Superseded by new request');
+    }
+
+    _pendingRequest = Completer<EmotionResult>();
+    
+    try {
+      _logDebug('classify() called for text: "${text.length > 50 ? '${text.substring(0, 50)}...' : text}"');
+      
+      final request = jsonEncode({'text': text});
+      final lineEnding = Platform.isWindows ? '\r\n' : '\n';
+      _process!.stdin.write('$request$lineEnding');
+      await _process!.stdin.flush();
+
+      // Wait for the response from stdout (handled in _listenStdout)
+      // With a 10s timeout to prevent hanging if the script crashes
+      return await _pendingRequest!.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          _logDebug('Classification timed out after 10s');
+          _pendingRequest = null;
+          return const EmotionResult(emotion: 'neutral', confidence: 0.0);
+        },
+      );
+    } catch (e) {
+      _logDebug('classify() error: $e');
+      return const EmotionResult(emotion: 'neutral', confidence: 0.0);
+    }
+  }
+
+  /// Starts the sidecar process if it's not already running.
+  Future<bool> _ensureProcessStarted() async {
+    if (_process != null) return true;
+
     final cacheDir = _modelCacheDir;
     final (exe, args) = _resolveCommand(['--cache-dir', cacheDir]);
 
@@ -303,47 +355,83 @@ class ONNXExpressionClassifier implements ExpressionClassifier {
         final msg = '[ExpressionClassifier] Script not found: ${args[0]}';
         debugPrint(msg);
         _logDebug(msg);
-        return const EmotionResult(emotion: 'neutral', confidence: 0.0);
+        return false;
       }
     }
 
-    _logDebug('classify() called for text: "${text.length > 50 ? '${text.substring(0, 50)}...' : text}"');
-    _logDebug('Executing: $exe ${args.join(' ')}');
-
+    _logDebug('Starting persistent classifier: $exe ${args.join(' ')}');
     try {
-      final process = await Process.start(exe, args);
-      _listenStderr(process);
+      _process = await Process.start(exe, args);
+      
+      // Listen to stderr for model loading status and progress
+      _listenStderr(_process!);
+      
+      // Listen to stdout for classification results
+      _listenStdout(_process!);
 
-      final request = jsonEncode({'text': text});
-      final lineEnding = Platform.isWindows ? '\r\n' : '\n';
-      process.stdin.write('$request$lineEnding');
-      await process.stdin.close();
+      // Handle unexpected process exit
+      unawaited(_process!.exitCode.then((code) {
+        if (!_isStopping) {
+          _logDebug('Classifier process exited unexpectedly with code $code');
+          _stopProcess();
+        }
+      }));
 
-      final output = await process.stdout
-          .transform(utf8.decoder)
-          .join()
-          .then((s) => s.trim());
-      final exitCode = await process.exitCode;
+      return true;
+    } catch (e) {
+      _logDebug('Failed to start classifier: $e');
+      return false;
+    }
+  }
 
-      _logDebug('Process exited: code=$exitCode stdout_length=${output.length}');
-      if (output.isNotEmpty && output.length < 500) {
-        _logDebug('stdout: $output');
+  /// Streams stdout lines from the persistent process.
+  void _listenStdout(Process process) {
+    _stdoutSub = process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) return;
+
+      _logDebug('stdout: $trimmed');
+
+      try {
+        final json = jsonDecode(trimmed) as Map<String, dynamic>;
+        
+        if (json.containsKey('emotion')) {
+          final result = EmotionResult.fromJson(json);
+          if (_pendingRequest != null && !_pendingRequest!.isCompleted) {
+            _pendingRequest!.complete(result);
+            _pendingRequest = null;
+          }
+        } else if (json.containsKey('error')) {
+          _logDebug('Classification error from script: ${json['error']}');
+          if (_pendingRequest != null && !_pendingRequest!.isCompleted) {
+            _pendingRequest!.complete(const EmotionResult(emotion: 'neutral', confidence: 0.0));
+            _pendingRequest = null;
+          }
+        }
+      } catch (e) {
+        _logDebug('Failed to decode stdout JSON: $e (Raw: $trimmed)');
       }
+    });
+  }
 
-      if (exitCode != 0 || output.isEmpty) {
-        final msg = '[ExpressionClassifier] ONNX classifier failed (exit: $exitCode)';
-        debugPrint(msg);
-        _logDebug(msg);
-        return const EmotionResult(emotion: 'neutral', confidence: 0.0);
-      }
+  void _stopProcess() {
+    _stdoutSub?.cancel();
+    _stdoutSub = null;
+    _process?.kill();
+    _process = null;
+    if (_pendingRequest != null && !_pendingRequest!.isCompleted) {
+      _pendingRequest!.completeError('Process stopped');
+      _pendingRequest = null;
+    }
+  }
 
-      final json = jsonDecode(output) as Map<String, dynamic>;
-      if (json.containsKey('error')) {
-        final msg = '[ExpressionClassifier] ${json['error']}';
-        debugPrint(msg);
-        _logDebug(msg);
-        return const EmotionResult(emotion: 'neutral', confidence: 0.0);
-      }
+  void dispose() {
+    _isStopping = true;
+    _stopProcess();
+  }
 
       _modelReady = true;
       _logDebug('Classification success: ${json['emotion']}');
@@ -420,6 +508,12 @@ class ExpressionClassifierService extends ChangeNotifier {
     if (mode == _activeMode && _activeClassifier != null) return;
 
     debugPrint('[ExpressionClassifierService] Switching from $_activeMode to $mode');
+    
+    // Clean up old classifier if it was persistent
+    if (_activeClassifier is ONNXExpressionClassifier) {
+      (_activeClassifier as ONNXExpressionClassifier).dispose();
+    }
+    
     _activeMode = mode;
 
     switch (mode) {
@@ -527,7 +621,9 @@ class ExpressionClassifierService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _activeClassifier = null;
+    if (_activeClassifier is ONNXExpressionClassifier) {
+      (_activeClassifier as ONNXExpressionClassifier).dispose();
+    }
     super.dispose();
   }
 }
