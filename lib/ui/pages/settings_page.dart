@@ -4169,8 +4169,96 @@ class _SettingsPageState extends State<SettingsPage> {
     BuildContext context, {
     int? divisions,
     String? tooltip,
+    bool showInput = false,
+    bool isInteger = false,
+    int decimalPlaces = 2,
   }) {
     final theme = Theme.of(context);
+
+    if (!showInput) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.textTheme.bodySmall?.color,
+                    ),
+                  ),
+                  if (tooltip != null)
+                    Tooltip(
+                      message: tooltip,
+                      child: const Padding(
+                        padding: EdgeInsets.only(left: 4),
+                        child: Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.white38,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              Text(
+                isInteger ? value.toInt().toString() : value.toStringAsFixed(decimalPlaces),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: divisions,
+            onChanged: onChanged,
+          ),
+        ],
+      );
+    }
+
+    final focusNode = FocusNode();
+    final controller = TextEditingController(
+      text: isInteger ? value.toInt().toString() : value.toStringAsFixed(decimalPlaces),
+    );
+    String formattedValue = isInteger
+        ? value.toInt().toString()
+        : value.toStringAsFixed(decimalPlaces);
+
+    void commitValue() {
+      final text = controller.text.trim();
+      if (text.isEmpty) {
+        controller.text = formattedValue;
+        return;
+      }
+      final num? parsed = isInteger
+          ? int.tryParse(text)
+          : double.tryParse(text);
+      if (parsed == null) {
+        controller.text = formattedValue;
+        return;
+      }
+      final double clamped = parsed.toDouble().clamp(min, max);
+      onChanged(clamped);
+      formattedValue = isInteger
+          ? clamped.toInt().toString()
+          : clamped.toStringAsFixed(decimalPlaces);
+      controller.text = formattedValue;
+    }
+
+    focusNode.addListener(() {
+      if (!focusNode.hasFocus) {
+        commitValue();
+      }
+    });
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4200,10 +4288,37 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
               ],
             ),
-            Text(
-              value.toStringAsFixed(2),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+            SizedBox(
+              width: 80,
+              child: TextField(
+                controller: controller,
+                focusNode: focusNode,
+                keyboardType: isInteger
+                    ? TextInputType.number
+                    : const TextInputType.numberWithOptions(decimal: true),
+                textAlign: TextAlign.right,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide(color: Colors.white24, width: 1),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide(color: Colors.white24, width: 1),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide(color: Colors.blueAccent, width: 1.5),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.05),
+                ),
+                onSubmitted: (_) => commitValue(),
               ),
             ),
           ],
@@ -4848,6 +4963,8 @@ class _SettingsPageState extends State<SettingsPage> {
             (val) => storage.setTemperature(val),
             context,
             divisions: 20,
+            showInput: true,
+            decimalPlaces: 1,
           ),
           _buildSlider(
             'Min-P',
@@ -4857,6 +4974,8 @@ class _SettingsPageState extends State<SettingsPage> {
             (val) => storage.setMinP(val),
             context,
             divisions: 100,
+            showInput: true,
+            decimalPlaces: 2,
           ),
           _buildSlider(
             'Repeat Penalty',
@@ -4866,6 +4985,8 @@ class _SettingsPageState extends State<SettingsPage> {
             (val) => storage.setRepeatPenalty(val),
             context,
             divisions: 200,
+            showInput: true,
+            decimalPlaces: 2,
           ),
           _buildSlider(
             'Repeat Penalty Tokens',
@@ -4875,6 +4996,8 @@ class _SettingsPageState extends State<SettingsPage> {
             (val) => storage.setRepeatPenaltyTokens(val.toInt()),
             context,
             divisions: 512,
+            showInput: true,
+            isInteger: true,
           ),
           _buildSlider(
             'XTC Threshold',
@@ -4884,6 +5007,8 @@ class _SettingsPageState extends State<SettingsPage> {
             (val) => storage.setXtcThreshold(val),
             context,
             divisions: 50,
+            showInput: true,
+            decimalPlaces: 2,
           ),
           _buildSlider(
             'XTC Probability',
@@ -4893,6 +5018,8 @@ class _SettingsPageState extends State<SettingsPage> {
             (val) => storage.setXtcProbability(val),
             context,
             divisions: 20,
+            showInput: true,
+            decimalPlaces: 2,
           ),
           const SizedBox(height: 8),
           Row(
@@ -4918,6 +5045,8 @@ class _SettingsPageState extends State<SettingsPage> {
               (val) => storage.setDynamicTempRange(val),
               context,
               divisions: 20,
+              showInput: true,
+              decimalPlaces: 1,
             ),
           const SizedBox(height: 24),
 
@@ -4931,6 +5060,8 @@ class _SettingsPageState extends State<SettingsPage> {
             16384,
             (val) => storage.setMaxLength(val.toInt()),
             context,
+            showInput: true,
+            isInteger: true,
           ),
           _buildSlider(
             'Min Output Tokens',
@@ -4940,40 +5071,23 @@ class _SettingsPageState extends State<SettingsPage> {
             (val) => storage.setMinLength(val.toInt()),
             context,
             divisions: 512,
+            showInput: true,
+            isInteger: true,
           ),
           // Context size — wider range for remote backends
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Context Size',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  Text(
-                    storage.contextSize.toString(),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-              Slider(
-                value: storage.contextSize.toDouble().clamp(
-                  512,
-                  isRemote ? 500000.0 : 131072.0,
-                ),
-                min: 512,
-                max: isRemote ? 500000.0 : 131072.0,
-                divisions: isRemote ? null : ((131072 - 512) ~/ 512),
-                onChanged: (val) => storage.setContextSize(val.toInt()),
-                activeColor: Colors.blueAccent,
-                inactiveColor: Colors.white24,
-              ),
-            ],
+          _buildSlider(
+            'Context Size',
+            storage.contextSize.toDouble().clamp(
+              512,
+              isRemote ? 500000.0 : 131072.0,
+            ),
+            512,
+            isRemote ? 500000.0 : 131072.0,
+            (val) => storage.setContextSize(val.toInt()),
+            context,
+            divisions: isRemote ? null : ((131072 - 512) ~/ 512),
+            showInput: true,
+            isInteger: true,
           ),
           const SizedBox(height: 24),
 
