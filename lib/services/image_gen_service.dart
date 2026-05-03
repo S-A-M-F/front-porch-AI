@@ -347,30 +347,73 @@ class ImageGenService extends ChangeNotifier {
     }
   }
 
-  /// Common image generation models available on popular API providers.
+  /// Common image generation models available on Nano-GPT and similar providers.
   /// These are always shown so the user can pick one even when the API's
-  /// /models endpoint doesn't list image models separately.
-  /// IDs verified from Nano-GPT pricing page (Feb 2026).
+  /// /models endpoint doesn't list image models separately (Nano-GPT's /models
+  /// endpoint only returns text models; image models have no discovery endpoint).
+  ///
+  /// Model IDs sourced from https://nano-gpt.com/models/image (May 2026).
   static const _commonImageModels = <ImageModelInfo>[
     // ── Included with Nano-GPT Pro subscription ($8/mo) ──
     ImageModelInfo(id: 'hidream', name: 'HiDream', isPaid: false),
     ImageModelInfo(id: 'chroma', name: 'Chroma', isPaid: false),
     ImageModelInfo(id: 'z-image-turbo', name: 'Z Image Turbo', isPaid: false),
     ImageModelInfo(id: 'qwen-image', name: 'Qwen Image', isPaid: false),
-    // ── Pay-per-prompt models ──
+    // ── Pay-per-prompt: OpenAI ──
+    ImageModelInfo(id: 'gpt-image-2', name: 'GPT Image 2'),
     ImageModelInfo(id: 'dall-e-3', name: 'DALL-E 3'),
+    // ── Pay-per-prompt: Black Forest Labs (FLUX) ──
     ImageModelInfo(id: 'flux-1-pro', name: 'FLUX.1 Pro'),
     ImageModelInfo(id: 'flux-1-dev', name: 'FLUX.1 Dev'),
     ImageModelInfo(id: 'flux-1-schnell', name: 'FLUX.1 Schnell'),
+    ImageModelInfo(id: 'flux-2-klein-4b', name: 'FLUX.2 Klein 4B'),
+    ImageModelInfo(id: 'flux-2-klein-9b', name: 'FLUX.2 Klein 9B'),
+    // ── Pay-per-prompt: Ideogram ──
     ImageModelInfo(id: 'ideogram-v3-default', name: 'Ideogram V3'),
     ImageModelInfo(id: 'ideogram-v3-turbo', name: 'Ideogram V3 Turbo'),
-    ImageModelInfo(id: 'cogview-4', name: 'CogView-4'),
+    ImageModelInfo(id: 'ideogram-v3-generate-transparent', name: 'Ideogram V3 Transparent'),
+    ImageModelInfo(id: 'ideogram-v3-remove-text', name: 'Ideogram V3 Remove Text'),
+    // ── Pay-per-prompt: Alibaba (WAN / Qwen) ──
+    ImageModelInfo(id: 'wan2.7-image', name: 'WAN 2.7 Image'),
+    ImageModelInfo(id: 'wan2.7-image-pro', name: 'WAN 2.7 Image Pro'),
+    ImageModelInfo(id: 'qwen-image-2.0', name: 'Qwen Image 2.0'),
+    ImageModelInfo(id: 'qwen-image-2.0-pro', name: 'Qwen Image 2.0 Pro'),
+    ImageModelInfo(id: 'qwen-image-max', name: 'Qwen Image Max'),
+    ImageModelInfo(id: 'qwen-image-max-edit', name: 'Qwen Image Max Edit'),
+    // ── Pay-per-prompt: Google (Nano Banana) ──
+    ImageModelInfo(id: 'nano-banana-2', name: 'Nano Banana 2 (Gemini Image)'),
+    ImageModelInfo(id: 'nano-banana-2-fast', name: 'Nano Banana 2 Fast'),
+    // ── Pay-per-prompt: ByteDance (Seedream) ──
+    ImageModelInfo(id: 'seedream-v5.0-lite', name: 'Seedream 5.0 Lite'),
+    ImageModelInfo(id: 'seedream-v5.0-lite-sequential', name: 'Seedream 5.0 Lite Sequential'),
+    // ── Pay-per-prompt: Z.AI (GLM / CogView) ──
+    ImageModelInfo(id: 'cogview-4', name: 'Z.AI CogView-4'),
+    ImageModelInfo(id: 'z-image-base', name: 'Z Image Base'),
+    ImageModelInfo(id: 'glm-image', name: 'Z.AI GLM Image'),
+    ImageModelInfo(id: 'glm-image-edit', name: 'GLM Image Edit'),
+    // ── Pay-per-prompt: Tencent (Hunyuan) ──
+    ImageModelInfo(id: 'hunyuan-image-3-instruct', name: 'Hunyuan Image 3 Instruct'),
+    // ── Pay-per-prompt: Baidu (ERNIE) ──
+    ImageModelInfo(id: 'ernie-image', name: 'ERNIE Image'),
+    ImageModelInfo(id: 'ernie-image/turbo', name: 'ERNIE Image Turbo'),
+    // ── Pay-per-prompt: xAI ──
+    ImageModelInfo(id: 'grok-imagine-image', name: 'Grok Imagine Image'),
+    // ── Pay-per-prompt: MiniMax ──
+    ImageModelInfo(id: 'minimax-image-01', name: 'MiniMax Image-01'),
+    // ── Pay-per-prompt: Bria ──
+    ImageModelInfo(id: 'bria-fibo', name: 'Bria Fibo'),
+    ImageModelInfo(id: 'bria-fibo-edit', name: 'Bria Fibo Edit'),
+    // ── Pay-per-prompt: Sourceful (Riverflow) ──
+    ImageModelInfo(id: 'riverflow-2.0-pro', name: 'Riverflow 2.0 Pro'),
+    // ── Pay-per-prompt: Other / Utility ──
+    ImageModelInfo(id: 'juggernaut-z', name: 'Juggernaut Z'),
     ImageModelInfo(id: 'mjv6', name: 'Flux Midjourney (MJV6)'),
     ImageModelInfo(id: 'dreamshaper-xl', name: 'Dreamshaper XL'),
     ImageModelInfo(id: 'nsfw-gen-illustrious', name: 'Animagine XL 4.0'),
     ImageModelInfo(id: 'atomix-xl', name: 'Atomix XL'),
     ImageModelInfo(id: 'background-remover', name: 'Background Remover'),
     ImageModelInfo(id: 'esrgan-4x', name: 'ESRGAN 4x Upscaler'),
+    ImageModelInfo(id: 'custom-civitai', name: 'Custom CivitAI Model'),
   ];
 
   /// Fetch available image models.
@@ -383,9 +426,8 @@ class ImageGenService extends ChangeNotifier {
   /// - If API fails: returns empty list with error logged
   ///
   /// **Nano-GPT and others**:
-  /// - Returns hardcoded list of common image models (since Nano-GPT doesn't
-  ///   expose image models via /models endpoint)
-  /// - No API polling attempt
+  /// - Returns the curated list of known image models (Nano-GPT's /models
+  ///   endpoint only returns text models; there is no image-specific listing API)
   Future<List<ImageModelInfo>> fetchImageModels() async {
     final apiUrl = _storage.remoteApiUrl;
     final apiKey = _storage.remoteApiKey;
@@ -397,7 +439,7 @@ class ImageGenService extends ChangeNotifier {
     if (isOpenRouter) {
       return _fetchOpenRouterImageModels(apiUrl, apiKey);
     } else {
-      // For Nano-GPT and other providers: return hardcoded list
+      // For Nano-GPT and other providers: return curated list
       return List.from(_commonImageModels);
     }
   }
