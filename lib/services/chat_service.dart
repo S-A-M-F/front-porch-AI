@@ -2947,6 +2947,19 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       notifyListeners();
     }
 
+    // If cancellation was requested during realism evaluation, abort generation
+    if (_realismEvalCancelled) {
+      _messages.add(ChatMessage(
+        text: 'Realism evaluation interrupted, regenerate response to retry',
+        sender: _activeCharacter?.name ?? 'Interruption',
+        isUser: false,
+      ));
+      await _saveChat();
+      _realismEvalCancelled = false;
+      notifyListeners();
+      return;
+    }
+
     await _generateResponse(GenerationMode.normal);
   }
 
@@ -6917,9 +6930,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
           onChunk?.call(chunk);
         }
         if (cancelledDuringStream) {
-          // Return an empty result to indicate cancellation without metadata issues.
+          // Return null to indicate cancellation to callers.
           debugPrint('[Realism] streaming terminated via cancel (early exit)');
-          return '';
+          return null;
         }
         break; // stream completed cleanly — exit retry loop
       } catch (e) {
