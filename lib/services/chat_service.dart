@@ -2949,11 +2949,6 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     // If cancellation was requested during realism evaluation, abort generation
     if (_realismEvalCancelled) {
-      _messages.add(ChatMessage(
-        text: 'Realism evaluation interrupted, regenerate response to retry',
-        sender: _activeCharacter?.name ?? 'Interruption',
-        isUser: false,
-      ));
       await _saveChat();
       _realismEvalCancelled = false;
       notifyListeners();
@@ -6905,7 +6900,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     // Retry loop: thinking models can cause KoboldCPP to drop the connection
     // briefly (OOM during dense thinking sessions). One retry after a short
     // pause is enough to recover without user-visible impact.
-    for (int attempt = 0; attempt < 2; attempt++) {
+  for (int attempt = 0; attempt < 2; attempt++) {
+    // If cancellation has been requested, abort before attempting a new stream
+    if (_isCancellingRealismEval || _realismEvalCancelled) {
+      debugPrint('[Realism] evaluation cancelled before attempt ${attempt + 1}');
+      return null;
+    }
 
       // If cancellation was requested, abort immediately
       if (_isCancellingRealismEval) {
@@ -6921,6 +6921,11 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
           await _llmProvider!.koboldService.ensureServerIdle();
         }
         response = ''; // reset for clean retry
+      }
+      // If cancellation occurred during setup, bail out before streaming
+      if (_isCancellingRealismEval || _realismEvalCancelled) {
+        debugPrint('[Realism] eval cancelled before streaming');
+        return null;
       }
       try {
         // Streaming loop with cancellation support
@@ -6985,6 +6990,17 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     // Signal to any ongoing realism evaluation that a cancel has been requested.
     _realismEvalCancelled = true;
     notifyListeners();
+
+    // Immediately show interruption message in UI
+    final senderName = _activeCharacter?.name ?? 'Interruption';
+    _messages.add(ChatMessage(
+      text: 'Realism evaluation interrupted, regenerate response to retry',
+      sender: senderName,
+      isUser: false,
+    ));
+    notifyListeners();
+    // Save in background - don't await
+    Future.microtask(() => _saveChat());
 
     final llmService = _llmProvider?.activeService ?? _koboldService;
     debugPrint('[Realism] Realism eval cancel requested');
