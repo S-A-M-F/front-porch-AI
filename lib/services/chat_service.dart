@@ -346,6 +346,7 @@ class ChatService extends ChangeNotifier {
   // ── Realism Mode ──
   bool _realismEnabled = false; // master toggle
   bool _isEvaluatingRealism = false;
+  bool _isCancellingRealismEval = false;
   bool _isProcessingGreeting =
       false; // true while post-greeting baseline eval runs
   bool _greetingEvalPending =
@@ -637,6 +638,7 @@ class ChatService extends ChangeNotifier {
   int get longTermTier => _longTermTier;
   bool get realismEnabled => _realismEnabled;
   bool get isEvaluatingRealism => _isEvaluatingRealism;
+  bool get isCancellingRealismEval => _isCancellingRealismEval;
   bool get isProcessingGreeting => _isProcessingGreeting;
   String get realismEvalStreamText => _realismEvalStreamText;
   String get characterEmotion => _characterEmotion;
@@ -6882,9 +6884,22 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         response = ''; // reset for clean retry
       }
       try {
+        // Streaming loop with cancellation support
+        bool cancelledDuringStream = false;
         await for (final chunk in llm.generateStream(params)) {
+          // If a cancellation has been requested, terminate streaming gracefully.
+          if (_isCancellingRealismEval) {
+            debugPrint('[Realism] streaming terminated via cancel');
+            cancelledDuringStream = true;
+            break;
+          }
           response += chunk;
           onChunk?.call(chunk);
+        }
+        if (cancelledDuringStream) {
+          // Return an empty result to indicate cancellation without metadata issues.
+          debugPrint('[Realism] streaming terminated via cancel (early exit)');
+          return '';
         }
         break; // stream completed cleanly — exit retry loop
       } catch (e) {
@@ -6905,6 +6920,49 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       '[Realism:RawEval] len=${response.length} | ${preview.replaceAll('\n', '↵')}',
     );
     return response.isEmpty ? null : response;
+  }
+
+  /// Cancel an in-progress Realism evaluation stream (if any).
+  ///
+  /// Behavior:
+  /// - If there is no active realism evaluation and no post-greeting processing,
+  ///   this is a no-op.
+  /// - Mark cancelling flag, attempt to abort the underlying generation, then
+  ///   reset all related UI/state and emit a final notification.
+  /// - Do not restart any ongoing flow automatically after cancellation.
+  Future<void> cancelRealismEval() async {
+    // No-op if there is nothing to cancel
+    if (!_isEvaluatingRealism && !_isProcessingGreeting) {
+      debugPrint('[Realism] Cancel request ignored — no active realism eval.');
+      return;
+    }
+
+    _isCancellingRealismEval = true;
+    notifyListeners();
+
+    final llmService = _llmProvider?.activeService ?? _koboldService;
+    debugPrint('[Realism] Realism eval cancel requested');
+    try {
+      if (llmService != null) {
+        try {
+          await llmService.abortGeneration();
+          debugPrint('[Realism] abortGeneration invoked');
+        } catch (e) {
+          debugPrint('[Realism:Abort] abortGeneration failed: $e');
+        }
+      }
+    } catch (e) {
+      // Ensure we always proceed to reset state even if abortion fails unexpectedly
+      debugPrint('[Realism cancel] Unexpected error during abort: $e');
+    } finally {
+      // Reset all realism-related state
+      _realismEvalStreamText = '';
+      _pendingRealismMetadata = null;
+      _isEvaluatingRealism = false;
+      _isProcessingGreeting = false;
+      _isCancellingRealismEval = false;
+      notifyListeners();
+    }
   }
 
   // ── Prompt Injection Builders ──

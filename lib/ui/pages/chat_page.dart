@@ -10074,6 +10074,24 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
                               ),
                             ),
                           ),
+                          if (widget.chatService.isEvaluatingRealism || widget.chatService.isProcessingGreeting) ...[
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: ElevatedButton(
+                                onPressed: widget.chatService.isCancellingRealismEval
+                                    ? null
+                                    : () => widget.chatService.cancelRealismEval(),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                                child: const Text(
+                                  'Cancel Realism',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
                         ] else ...[
                           Padding(
                             padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
