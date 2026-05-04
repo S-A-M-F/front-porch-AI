@@ -2668,7 +2668,16 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       );
                     }).toList(),
-                    onChanged: (val) {
+                    onChanged: (val) async {
+                      final koboldService = Provider.of<KoboldService>(context, listen: false);
+                      if (koboldService.isRunning) {
+                        await koboldService.stopKobold();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Backend stopped to switch models.'),
+                          ),
+                        );
+                      }
                       setState(() {
                         _selectedModelPath = val;
                       });

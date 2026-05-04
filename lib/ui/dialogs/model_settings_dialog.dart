@@ -511,7 +511,16 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                           child: Text(p.split(Platform.pathSeparator).last),
                         ))
                     .toList(),
-                onChanged: (val) {
+                onChanged: (val) async {
+                  final koboldService = Provider.of<KoboldService>(context, listen: false);
+                  if (koboldService.isRunning) {
+                    await koboldService.stopKobold();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Backend stopped to switch models.'),
+                      ),
+                    );
+                  }
                   setState(() { _selectedModelPath = val; });
                   Provider.of<StorageService>(context, listen: false).setLastUsedModelPath(val);
                   _applyAutoConfiguration();
