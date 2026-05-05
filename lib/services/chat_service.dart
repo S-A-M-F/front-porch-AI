@@ -2682,7 +2682,22 @@ class ChatService extends ChangeNotifier {
       // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
       // HTTP requests being dropped before headers are received.
       await _evaluateEmotionalStateCall();
+      
+      // Check for cancellation after each eval
+      if (_realismEvalCancelled) {
+        debugPrint('[Realism] Post-greeting eval cancelled');
+        _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+        return;
+      }
+      
       await _evaluateRelationshipCall();
+      
+      // Check for cancellation after each eval
+      if (_realismEvalCancelled) {
+        debugPrint('[Realism] Post-greeting eval cancelled');
+        _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+        return;
+      }
 
       // Store initial emotion in metadata on the greeting message itself
       if (_messages.isNotEmpty) {
@@ -2719,13 +2734,51 @@ class ChatService extends ChangeNotifier {
     try {
       if (_storageService.realismOneShotEval) {
         await _evaluateOneShotCall();
+        
+        // Check for cancellation after one-shot eval
+        if (_realismEvalCancelled) {
+          debugPrint('[Realism] Retroactive scan cancelled');
+          _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+          return;
+        }
       } else {
         // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
         // HTTP requests being dropped before headers are received.
         await _evaluateRelationshipCall();
+        
+        // Check for cancellation after each eval
+        if (_realismEvalCancelled) {
+          debugPrint('[Realism] Retroactive scan cancelled');
+          _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+          return;
+        }
+        
         await _evaluateEmotionalStateCall();
+        
+        // Check for cancellation after each eval
+        if (_realismEvalCancelled) {
+          debugPrint('[Realism] Retroactive scan cancelled');
+          _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+          return;
+        }
+        
         await _evaluatePhysicalStateCall();
+        
+        // Check for cancellation after each eval
+        if (_realismEvalCancelled) {
+          debugPrint('[Realism] Retroactive scan cancelled');
+          _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+          return;
+        }
+        
         await _evaluateNarrativeCall();
+        
+        // Check for cancellation after each eval
+        if (_realismEvalCancelled) {
+          debugPrint('[Realism] Retroactive scan cancelled');
+          _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+          return;
+        }
       }
 
       // Stamp the baseline on the most recent message so it persists
@@ -2901,6 +2954,17 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       if (_pendingTrustRepair) {
         _pendingTrustRepair = false; // consume — resets for next drop
         await _evaluateTrustRepairCall(text, onChunk: handleChunk);
+        
+        // Check for cancellation after trust repair eval
+        if (_realismEvalCancelled) {
+          debugPrint('[Realism] Evaluation cancelled during trust repair, aborting');
+          _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+          _evalChunkTimer?.cancel();
+          _evalChunkTimer = null;
+          _isEvaluatingRealism = false;
+          notifyListeners();
+          return;
+        }
       } else {
         final isLocalKobold = _llmProvider == null || _llmProvider!.isLocal;
 
@@ -2927,6 +2991,17 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
               _evaluateNarrativeCall(onChunk: handleChunk),
             ]);
           }
+        }
+
+        // Check for cancellation after evals complete but before saving
+        if (_realismEvalCancelled) {
+          debugPrint('[Realism] Evaluation cancelled during/after evals, aborting');
+          _realismEvalCancelled = false;  // Reset the flag so future messages can proceed
+          _evalChunkTimer?.cancel();
+          _evalChunkTimer = null;
+          _isEvaluatingRealism = false;
+          notifyListeners();
+          return;
         }
 
         // Synthesize metadata after all evals complete
@@ -7019,6 +7094,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       _isEvaluatingRealism = false;
       _isProcessingGreeting = false;
       _isCancellingRealismEval = false;
+      // NOTE: Do NOT reset _realismEvalCancelled here. It must remain true so that
+      // sendMessage() can detect the cancellation and return early. The flag is only
+      // reset in sendMessage() after the cancellation is properly handled.
       notifyListeners();
     }
   }
