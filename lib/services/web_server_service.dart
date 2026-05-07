@@ -1690,6 +1690,7 @@ class WebServerService extends ChangeNotifier {
       await kobold.startKobold(
         execPath,
         modelPath,
+        kcppsPath: s.activeKcppsPath,
         port: 5001,
         gpuLayers: s.gpuLayers,
         contextSize: s.contextSize,

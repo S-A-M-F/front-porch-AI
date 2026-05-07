@@ -19,11 +19,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/app_version.dart';
+import '../models/character_card.dart';
 
 class StorageService extends ChangeNotifier {
   final Completer<void> _initCompleter = Completer<void>();
@@ -83,6 +84,18 @@ class StorageService extends ChangeNotifier {
   double _minP = 0.1;
   double _temperature = 0.7;
   double _bubbleOpacity = 1.0;
+
+  // Global chat color defaults
+  Color _globalUserBubbleColor = const Color(0xFF3B82F6);
+  Color _globalUserTextColor = Colors.white;
+  Color _globalAiBubbleColor = const Color(0xFF374151);
+  Color _globalAiTextColor = Colors.white;
+  Color _globalDialogueColor = Colors.amberAccent;
+  Color _globalActionColor = const Color(0xFF90CAF9);
+
+  // Global chat font family
+  String _globalChatFontFamily = '';
+
   double _repeatPenalty = 1.1;
   int _repeatPenaltyTokens = 64;
   bool _dynamicTempEnabled = false;
@@ -105,6 +118,8 @@ class StorageService extends ChangeNotifier {
   int _minLength = 0;
   bool _autostartBackend = true;
   String? _lastUsedModelPath;
+  String? _activeKcppsPath;
+  Map<String, String> _modelPresetMap = {};
   int _gpuLayers = 0;
   int _contextSize = 8192;
   List<String> _stopSequences = [
@@ -255,6 +270,13 @@ class StorageService extends ChangeNotifier {
   double get minP => _minP;
   double get temperature => _temperature;
   double get bubbleOpacity => _bubbleOpacity;
+  Color get globalUserBubbleColor => _globalUserBubbleColor;
+  Color get globalUserTextColor => _globalUserTextColor;
+  Color get globalAiBubbleColor => _globalAiBubbleColor;
+  Color get globalAiTextColor => _globalAiTextColor;
+  Color get globalDialogueColor => _globalDialogueColor;
+  Color get globalActionColor => _globalActionColor;
+  String get globalChatFontFamily => _globalChatFontFamily;
   double get repeatPenalty => _repeatPenalty;
   int get repeatPenaltyTokens => _repeatPenaltyTokens;
   bool get dynamicTempEnabled => _dynamicTempEnabled;
@@ -273,6 +295,8 @@ class StorageService extends ChangeNotifier {
   int get minLength => _minLength;
   bool get autostartBackend => _autostartBackend;
   String? get lastUsedModelPath => _lastUsedModelPath;
+  String? get activeKcppsPath => _activeKcppsPath;
+  Map<String, String> get modelPresetMap => Map.unmodifiable(_modelPresetMap);
   int get gpuLayers => _gpuLayers;
   int get contextSize => _contextSize;
   List<String> get stopSequences => List.unmodifiable(_stopSequences);
@@ -405,6 +429,13 @@ class StorageService extends ChangeNotifier {
     _minP = _prefs?.getDouble(_k('min_p')) ?? _minP;
     _temperature = _prefs?.getDouble(_k('temperature')) ?? _temperature;
     _bubbleOpacity = _prefs?.getDouble(_k('bubble_opacity')) ?? _bubbleOpacity;
+    _globalUserBubbleColor = Color(_prefs?.getInt(_k('global_user_bubble_color')) ?? _globalUserBubbleColor.value);
+    _globalUserTextColor = Color(_prefs?.getInt(_k('global_user_text_color')) ?? _globalUserTextColor.value);
+    _globalAiBubbleColor = Color(_prefs?.getInt(_k('global_ai_bubble_color')) ?? _globalAiBubbleColor.value);
+    _globalAiTextColor = Color(_prefs?.getInt(_k('global_ai_text_color')) ?? _globalAiTextColor.value);
+    _globalDialogueColor = Color(_prefs?.getInt(_k('global_dialogue_color')) ?? _globalDialogueColor.value);
+    _globalActionColor = Color(_prefs?.getInt(_k('global_action_color')) ?? _globalActionColor.value);
+    _globalChatFontFamily = _prefs?.getString(_k('global_chat_font_family')) ?? _globalChatFontFamily;
     _repeatPenalty = _prefs?.getDouble(_k('repeat_penalty')) ?? _repeatPenalty;
     _repeatPenaltyTokens =
         _prefs?.getInt(_k('repeat_penalty_tokens')) ?? _repeatPenaltyTokens;
@@ -429,6 +460,15 @@ class StorageService extends ChangeNotifier {
     _autostartBackend =
         _prefs?.getBool(_k('autostart_backend')) ?? _autostartBackend;
     _lastUsedModelPath = _prefs?.getString(_k('last_used_model_path'));
+    _activeKcppsPath = _prefs?.getString(_k('active_kcpps_path'));
+    final presetMapJson = _prefs?.getString(_k('model_preset_map'));
+    if (presetMapJson != null) {
+      try {
+        _modelPresetMap = Map<String, String>.from(jsonDecode(presetMapJson) as Map);
+      } catch (_) {
+        _modelPresetMap = {};
+      }
+    }
     _gpuLayers = _prefs?.getInt(_k('gpu_layers')) ?? _gpuLayers;
     _contextSize = _prefs?.getInt(_k('context_size')) ?? _contextSize;
     _stopSequences = _prefs?.getStringList(_k('stop_sequences')) ?? _stopSequences;
@@ -836,6 +876,26 @@ class StorageService extends ChangeNotifier {
     } else {
       await _prefs?.remove(_k('last_used_model_path'));
     }
+    notifyListeners();
+  }
+
+  Future<void> setActiveKcppsPath(String? value) async {
+    _activeKcppsPath = value;
+    if (value != null) {
+      await _prefs?.setString(_k('active_kcpps_path'), value);
+    } else {
+      await _prefs?.remove(_k('active_kcpps_path'));
+    }
+    notifyListeners();
+  }
+
+  Future<void> setModelPreset(String modelPath, String? kcppsPath) async {
+    if (kcppsPath != null) {
+      _modelPresetMap[modelPath] = kcppsPath;
+    } else {
+      _modelPresetMap.remove(modelPath);
+    }
+    await _prefs?.setString(_k('model_preset_map'), jsonEncode(_modelPresetMap));
     notifyListeners();
   }
 
@@ -1375,6 +1435,84 @@ class StorageService extends ChangeNotifier {
     _passageOfTimeDefault = value;
     await _prefs?.setBool(_k('passage_of_time_default'), value);
     notifyListeners();
+  }
+
+  // Global chat color and font setters
+  Future<void> setGlobalUserBubbleColor(Color value) async {
+    _globalUserBubbleColor = value;
+    await _prefs?.setInt(_k('global_user_bubble_color'), value.value);
+    notifyListeners();
+  }
+
+  Future<void> setGlobalUserTextColor(Color value) async {
+    _globalUserTextColor = value;
+    await _prefs?.setInt(_k('global_user_text_color'), value.value);
+    notifyListeners();
+  }
+
+  Future<void> setGlobalAiBubbleColor(Color value) async {
+    _globalAiBubbleColor = value;
+    await _prefs?.setInt(_k('global_ai_bubble_color'), value.value);
+    notifyListeners();
+  }
+
+  Future<void> setGlobalAiTextColor(Color value) async {
+    _globalAiTextColor = value;
+    await _prefs?.setInt(_k('global_ai_text_color'), value.value);
+    notifyListeners();
+  }
+
+  Future<void> setGlobalDialogueColor(Color value) async {
+    _globalDialogueColor = value;
+    await _prefs?.setInt(_k('global_dialogue_color'), value.value);
+    notifyListeners();
+  }
+
+  Future<void> setGlobalActionColor(Color value) async {
+    _globalActionColor = value;
+    await _prefs?.setInt(_k('global_action_color'), value.value);
+    notifyListeners();
+  }
+
+  Future<void> setGlobalChatFontFamily(String value) async {
+    _globalChatFontFamily = value;
+    await _prefs?.setString(_k('global_chat_font_family'), value);
+    notifyListeners();
+  }
+
+  /// Get effective user bubble color (per-character overrides global)
+  Color getUserBubbleColor(CharacterCard? character) {
+    return character?.frontPorchExtensions?.userBubbleColor ?? _globalUserBubbleColor;
+  }
+
+  /// Get effective user text color (per-character overrides global)
+  Color getUserTextColor(CharacterCard? character) {
+    return character?.frontPorchExtensions?.userTextColor ?? _globalUserTextColor;
+  }
+
+  /// Get effective AI bubble color (per-character overrides global)
+  Color getAiBubbleColor(CharacterCard? character) {
+    return character?.frontPorchExtensions?.aiBubbleColor ?? _globalAiBubbleColor;
+  }
+
+  /// Get effective AI text color (per-character overrides global)
+  Color getAiTextColor(CharacterCard? character) {
+    return character?.frontPorchExtensions?.aiTextColor ?? _globalAiTextColor;
+  }
+
+  /// Get effective dialogue color (per-character overrides global)
+  Color getDialogueColor(CharacterCard? character) {
+    return character?.frontPorchExtensions?.dialogueColor ?? _globalDialogueColor;
+  }
+
+  /// Get effective action color (per-character overrides global)
+  Color getActionColor(CharacterCard? character) {
+    return character?.frontPorchExtensions?.actionColor ?? _globalActionColor;
+  }
+
+  /// Get effective chat font family (per-character overrides global)
+  String getChatFontFamily(CharacterCard? character) {
+    return character?.frontPorchExtensions?.chatFontFamily ?? _globalChatFontFamily;
   }
 
   // Expression Images settings

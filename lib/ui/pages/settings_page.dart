@@ -19,8 +19,10 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
@@ -73,6 +75,9 @@ class _SettingsPageState extends State<SettingsPage> {
   List<RemoteModelInfo> _availableModels = [];
   bool _isFetchingModels = false;
   bool _isCheckingConnection = false;
+
+  // Local Preset state
+  List<File> _localPresets = [];
 
   @override
   void initState() {
@@ -134,7 +139,35 @@ class _SettingsPageState extends State<SettingsPage> {
 
       // Auto-fetch available models if API is configured
       _autoFetchModels();
+      
+      // Auto-fetch .kcpps presets
+      _scanLocalPresets();
     });
+  }
+
+  void _scanLocalPresets() {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final binDir = storage.binDir;
+    if (!binDir.existsSync()) {
+      if (mounted) setState(() => _localPresets = []);
+      return;
+    }
+    try {
+      final files = binDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
+          .toList()
+        ..sort((a, b) => p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()));
+      if (mounted) {
+        setState(() {
+          _localPresets = files;
+        });
+      }
+    } catch (e) {
+      debugPrint('SettingsPage: Failed to scan presets: $e');
+      if (mounted) setState(() => _localPresets = []);
+    }
   }
 
   /// Fetch available models from the configured API on startup.
@@ -547,6 +580,7 @@ class _SettingsPageState extends State<SettingsPage> {
       koboldService.startKobold(
         backendManager.backendPath!,
         _selectedModelPath!,
+        kcppsPath: storage.activeKcppsPath,
         gpuLayers: gpuLayers,
         contextSize: contextSize,
         useVulkan: _useVulkan,
@@ -881,8 +915,41 @@ class _SettingsPageState extends State<SettingsPage> {
             context,
             divisions: 13,
           ),
-          const SizedBox(height: 24),
-          _buildSectionHeader('Realism Mode', context),
+           const SizedBox(height: 24),
+           _buildSectionHeader('Chat Appearance', context),
+           const SizedBox(height: 8),
+           _buildColorRow(
+             'User Bubble',
+             storageService.globalUserBubbleColor,
+             (color) => storageService.setGlobalUserBubbleColor(color),
+           ),
+           _buildColorRow(
+             'User Text',
+             storageService.globalUserTextColor,
+             (color) => storageService.setGlobalUserTextColor(color),
+           ),
+           _buildColorRow(
+             'AI Bubble',
+             storageService.globalAiBubbleColor,
+             (color) => storageService.setGlobalAiBubbleColor(color),
+           ),
+           _buildColorRow(
+             'AI Text',
+             storageService.globalAiTextColor,
+             (color) => storageService.setGlobalAiTextColor(color),
+           ),
+           _buildColorRow(
+             'Dialogue (Quoted)',
+             storageService.globalDialogueColor,
+             (color) => storageService.setGlobalDialogueColor(color),
+           ),
+           _buildColorRow(
+             'Actions (*text*)',
+             storageService.globalActionColor,
+             (color) => storageService.setGlobalActionColor(color),
+           ),
+           const SizedBox(height: 24),
+           _buildSectionHeader('Realism Mode', context),
           const SizedBox(height: 8),
           Consumer<StorageService>(
             builder: (context, storageService, _) =>
@@ -988,6 +1055,31 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             onChanged: (val) => storageService.setSystemPrompt(val),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildColorRow(String label, Color color, void Function(Color) onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          const Spacer(),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.white24, width: 1),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.color_lens, size: 20, color: Colors.white),
+              onPressed: () => _showColorPicker(context, color, onChanged),
+            ),
           ),
         ],
       ),
@@ -2681,15 +2773,135 @@ class _SettingsPageState extends State<SettingsPage> {
                       setState(() {
                         _selectedModelPath = val;
                       });
-                      Provider.of<StorageService>(
-                        context,
-                        listen: false,
-                      ).setLastUsedModelPath(val);
+                      final storage = Provider.of<StorageService>(context, listen: false);
+                      storage.setLastUsedModelPath(val);
+                      
+                      // Auto-load preset for this model if one exists
+                      if (val != null) {
+                        final savedPreset = storage.modelPresetMap[val];
+                        if (savedPreset != null && savedPreset.isNotEmpty && File(savedPreset).existsSync()) {
+                          storage.setActiveKcppsPath(savedPreset);
+                        } else {
+                          storage.setActiveKcppsPath(null);
+                        }
+                      }
+                      
                       _applyAutoConfiguration(silent: true);
                     },
                   ),
                 ),
               ),
+
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildSectionHeader('Configuration Preset', context),
+                TextButton.icon(
+                  onPressed: _scanLocalPresets,
+                  icon: const Icon(Icons.refresh, size: 14),
+                  label: const Text('Rescan', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white54,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.settings_applications, size: 18, color: Colors.blueAccent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Preset overrides all other generation settings. Use .kcpps files placed in your bin directory.',
+                          style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _localPresets.any((f) => f.path == storageService.activeKcppsPath)
+                                ? storageService.activeKcppsPath
+                                : null,
+                            isExpanded: true,
+                            hint: const Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
+                            dropdownColor: theme.cardColor,
+                            style: theme.textTheme.bodyMedium,
+                            icon: Icon(Icons.arrow_drop_down, color: theme.iconTheme.color),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: null,
+                                child: Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
+                              ),
+                              ..._localPresets.map((file) {
+                                return DropdownMenuItem<String>(
+                                  value: file.path,
+                                  child: Text(p.basename(file.path), style: const TextStyle(fontSize: 13)),
+                                );
+                              }),
+                            ],
+                            onChanged: (val) {
+                              storageService.setActiveKcppsPath(val);
+                              // Auto-associate with current model if one is selected
+                              if (_selectedModelPath != null && val != null) {
+                                storageService.setModelPreset(_selectedModelPath!, val);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Preset saved for model: ${p.basename(_selectedModelPath!)}')),
+                                );
+                              } else if (_selectedModelPath != null && val == null) {
+                                // Clear association if "None" is selected
+                                storageService.setModelPreset(_selectedModelPath!, '');
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final result = await FilePicker.platform.pickFiles(
+                            type: FileType.custom,
+                            allowedExtensions: ['kcpps'],
+                          );
+                          if (result != null && result.files.single.path != null) {
+                            final path = result.files.single.path!;
+                            storageService.setActiveKcppsPath(path);
+                            if (_selectedModelPath != null) {
+                              storageService.setModelPreset(_selectedModelPath!, path);
+                            }
+                            // Rescan to include the new file if it's not already there
+                            _scanLocalPresets();
+                          }
+                        },
+                        icon: const Icon(Icons.folder_open, size: 16),
+                        label: const Text('Browse'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
 
             const SizedBox(height: 24),
             SizedBox(
@@ -2728,6 +2940,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final hardwareService = Provider.of<HardwareService>(context);
     final llmProvider = Provider.of<LLMProvider>(context);
     final theme = Theme.of(context);
+    final isPresetActive = storageService.activeKcppsPath != null && storageService.activeKcppsPath!.isNotEmpty;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -3297,8 +3510,39 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
 
           const SizedBox(height: 16),
-          // Context Size — slider with presets + text field
-          Container(
+          if (isPresetActive) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.1),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'A configuration preset is active. Advanced settings are managed by the preset and cannot be edited here.',
+                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.amber),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          
+          IgnorePointer(
+            ignoring: isPresetActive,
+            child: Opacity(
+              opacity: isPresetActive ? 0.4 : 1.0,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Context Size — slider with presets + text field
+                  Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: theme.cardColor,
@@ -3689,6 +3933,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
           // \u2500\u2500 Advanced Launch Options \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
           _buildAdvancedLaunchOptions(context, storageService),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -3984,6 +4232,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             koboldService.startKobold(
                               backendManager.backendPath!,
                               storage.lastUsedModelPath!,
+                              kcppsPath: storage.activeKcppsPath,
                               gpuLayers: storage.gpuLayers,
                               contextSize: storage.contextSize,
                               useVulkan: storage.useVulkan ?? false,
@@ -3999,6 +4248,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             koboldService.startKobold(
                               backendManager.backendPath!,
                               storage.lastUsedModelPath!,
+                              kcppsPath: storage.activeKcppsPath,
                               gpuLayers: storage.gpuLayers,
                               contextSize: storage.contextSize,
                               useVulkan: storage.useVulkan ?? false,
@@ -5357,3 +5607,121 @@ String _expressionDisplayLabel(String mode) {
       return mode;
   }
 }
+
+Future<void> _showColorPicker(
+  BuildContext context,
+  Color initialColor,
+  void Function(Color) onChanged,
+) async {
+  // Preset colors for quick selection
+  const presetColors = [
+    Color(0xFF3B82F6), // Blue - User default
+    Color(0xFF10B981), // Emerald
+    Color(0xFFF59E0B), // Amber
+    Color(0xFFEF4444), // Red
+    Color(0xFF8B5CF6), // Purple
+    Color(0xFFEC4899), // Pink
+    Color(0xFF14B8A6), // Teal
+    Color(0xFFF97316), // Orange
+    Color(0xFF6366F1), // Indigo
+    Color(0xFF06B6D4), // Cyan
+    Color(0xFF10B981), // Emerald
+    Color(0xFF84CC16), // Lime
+  ];
+
+  final picked = await showDialog<Color>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Select Color'),
+        content: SizedBox(
+          width: 380,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Preset colors row
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Quick Select',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: presetColors.map((color) => GestureDetector(
+                    onTap: () => Navigator.pop(context, color),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: color == initialColor 
+                            ? Colors.blueAccent 
+                            : Colors.white24,
+                          width: 2,
+                        ),
+                      ),
+                      child: color == initialColor
+                        ? const Icon(
+                            Icons.check,
+                            size: 18,
+                            color: Colors.white,
+                          )
+                        : null,
+                    ),
+                  )).toList(),
+                ),
+                const SizedBox(height: 12),
+                // Color picker - use wheel picker for full color spectrum
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: ColorPicker(
+                    color: initialColor,
+                    onColorChanged: (color) => setState(() {}),
+                    wheelDiameter: 160,
+                    pickersEnabled: const <ColorPickerType, bool>{
+                      ColorPickerType.wheel: true,
+                    },
+                    showColorCode: true,
+                    colorCodeHasColor: true,
+                    copyPasteBehavior: const ColorPickerCopyPasteBehavior(
+                      copyButton: true,
+                      pasteButton: true,
+                    ),
+                  ),
+                ),
+                 const SizedBox(height: 16),
+               ],
+             ),
+           ),
+         ),
+         actions: [
+           TextButton(
+             onPressed: () => Navigator.pop(context),
+             child: const Text('Cancel'),
+           ),
+           ElevatedButton(
+             onPressed: () => Navigator.pop(context, initialColor),
+             style: ElevatedButton.styleFrom(
+               backgroundColor: Colors.blueAccent,
+               foregroundColor: Colors.white,
+             ),
+             child: const Text('OK'),
+           ),
+         ],
+       ),
+     ),
+   );
+   if (picked != null) {
+     onChanged(picked);
+   }
+ }

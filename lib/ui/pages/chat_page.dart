@@ -478,173 +478,179 @@ class _ChatPageState extends State<ChatPage> {
                                               )
                                             : null;
                                       }
-                                      return _MessageBubble(
-                                        message: msg,
-                                        characterImage: senderImage,
-                                        index: reversedIndex,
-                                        senderColor: senderColor,
-                                        externalImagesAllowed:
-                                            _externalImagesAllowed,
-                                        onRequestImagePermission: () async {
-                                          if (_externalImagesAllowed != null)
-                                            return _externalImagesAllowed!;
-                                          // Check persisted consent first
-                                          if (!_imageConsentChecked) {
-                                            _imageConsentChecked = true;
-                                            final prefs =
-                                                await SharedPreferences.getInstance();
-                                            final consented =
-                                                prefs.getStringList(
-                                                  'image_consent_characters',
-                                                ) ??
-                                                [];
-                                            final charName =
-                                                Provider.of<ChatService>(
-                                                  context,
-                                                  listen: false,
-                                                ).activeCharacter?.name ??
-                                                '';
-                                            if (charName.isNotEmpty &&
-                                                consented.contains(charName)) {
-                                              if (mounted)
-                                                setState(
-                                                  () => _externalImagesAllowed =
-                                                      true,
-                                                );
-                                              return true;
-                                            }
-                                          }
-                                          final result = await showDialog<bool>(
-                                            context: context,
-                                            barrierDismissible: false,
-                                            builder: (ctx) => AlertDialog(
-                                              backgroundColor: const Color(
-                                                0xFF1E293B,
-                                              ),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                              ),
-                                              icon: const Icon(
-                                                Icons.shield_outlined,
-                                                color: Colors.orangeAccent,
-                                                size: 36,
-                                              ),
-                                              title: const Text(
-                                                'External Image Detected',
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              content: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  const Text(
-                                                    'This message contains images hosted on an external server. '
-                                                    'Loading them carries security risks:',
-                                                    style: TextStyle(
-                                                      color: Colors.white70,
-                                                      fontSize: 13,
-                                                      height: 1.5,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 12),
-                                                  _buildRiskItem(
-                                                    Icons.visibility,
-                                                    'Your IP address will be exposed to the image host',
-                                                  ),
-                                                  _buildRiskItem(
-                                                    Icons.bug_report,
-                                                    'Maliciously crafted images could potentially exploit vulnerabilities',
-                                                  ),
-                                                  _buildRiskItem(
-                                                    Icons.track_changes,
-                                                    'The URL may be used for tracking',
-                                                  ),
-                                                  const SizedBox(height: 16),
-                                                  Text(
-                                                    'The source has not been verified as safe.',
-                                                    style: TextStyle(
-                                                      color: Colors.orangeAccent
-                                                          .withValues(
-                                                            alpha: 0.8,
-                                                          ),
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(ctx, false),
-                                                  child: const Text(
-                                                    'Block Images',
-                                                    style: TextStyle(
-                                                      color: Colors.white54,
-                                                    ),
-                                                  ),
-                                                ),
-                                                ElevatedButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(ctx, true),
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                        backgroundColor:
-                                                            Colors.orangeAccent,
-                                                        foregroundColor:
-                                                            Colors.black87,
-                                                      ),
-                                                  child: const Text(
-                                                    'Accept Risk & Load',
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                          final allowed = result ?? false;
-                                          if (allowed) {
-                                            // Persist consent for this character
-                                            final prefs =
-                                                await SharedPreferences.getInstance();
-                                            final charName =
-                                                Provider.of<ChatService>(
-                                                  context,
-                                                  listen: false,
-                                                ).activeCharacter?.name ??
-                                                '';
-                                            if (charName.isNotEmpty) {
-                                              final consented =
-                                                  prefs.getStringList(
-                                                    'image_consent_characters',
-                                                  ) ??
-                                                  [];
-                                              if (!consented.contains(
-                                                charName,
-                                              )) {
-                                                consented.add(charName);
-                                                await prefs.setStringList(
-                                                  'image_consent_characters',
-                                                  consented,
-                                                );
-                                              }
-                                            }
-                                          }
-                                          if (mounted) {
-                                            setState(
-                                              () => _externalImagesAllowed =
-                                                  allowed,
-                                            );
-                                          }
-                                          return allowed;
-                                        },
-                                      );
+                                       return _MessageBubble(
+                                         message: msg,
+                                         characterImage: senderImage,
+                                         index: reversedIndex,
+                                         senderColor: senderColor,
+                                         externalImagesAllowed:
+                                             _externalImagesAllowed,
+                                         onRequestImagePermission: () async {
+                                           if (_externalImagesAllowed != null)
+                                             return _externalImagesAllowed!;
+                                           // Check persisted consent first
+                                           if (!_imageConsentChecked) {
+                                             _imageConsentChecked = true;
+                                             final prefs =
+                                                 await SharedPreferences.getInstance();
+                                             final consented =
+                                                 prefs.getStringList(
+                                                   'image_consent_characters',
+                                                 ) ??
+                                                 [];
+                                             final charName =
+                                                 Provider.of<ChatService>(
+                                                   context,
+                                                   listen: false,
+                                                 ).activeCharacter?.name ??
+                                                 '';
+                                             if (charName.isNotEmpty &&
+                                                 consented.contains(charName)) {
+                                               if (mounted)
+                                                 setState(
+                                                   () => _externalImagesAllowed =
+                                                       true,
+                                                 );
+                                               return true;
+                                             }
+                                           }
+                                           final result = await showDialog<bool>(
+                                             context: context,
+                                             barrierDismissible: false,
+                                             builder: (ctx) => AlertDialog(
+                                               backgroundColor: const Color(
+                                                 0xFF1E293B,
+                                               ),
+                                               shape: RoundedRectangleBorder(
+                                                 borderRadius:
+                                                     BorderRadius.circular(16),
+                                               ),
+                                               icon: const Icon(
+                                                 Icons.shield_outlined,
+                                                 color: Colors.orangeAccent,
+                                                 size: 36,
+                                               ),
+                                               title: const Text(
+                                                 'External Image Detected',
+                                                 style: TextStyle(
+                                                   color: Colors.white,
+                                                   fontSize: 18,
+                                                   fontWeight: FontWeight.bold,
+                                                 ),
+                                               ),
+                                               content: Column(
+                                                 mainAxisSize: MainAxisSize.min,
+                                                 crossAxisAlignment:
+                                                     CrossAxisAlignment.start,
+                                                 children: [
+                                                   const Text(
+                                                     'This message contains images hosted on an external server. '
+                                                     'Loading them carries security risks:',
+                                                     style: TextStyle(
+                                                       color: Colors.white70,
+                                                       fontSize: 13,
+                                                       height: 1.5,
+                                                     ),
+                                                   ),
+                                                   const SizedBox(height: 12),
+                                                   _buildRiskItem(
+                                                     Icons.visibility,
+                                                     'Your IP address will be exposed to the image host',
+                                                   ),
+                                                   _buildRiskItem(
+                                                     Icons.bug_report,
+                                                     'Maliciously crafted images could potentially exploit vulnerabilities',
+                                                   ),
+                                                   _buildRiskItem(
+                                                     Icons.track_changes,
+                                                     'The URL may be used for tracking',
+                                                   ),
+                                                   const SizedBox(height: 16),
+                                                   Text(
+                                                     'The source has not been verified as safe.',
+                                                     style: TextStyle(
+                                                       color: Colors.orangeAccent
+                                                           .withValues(
+                                                             alpha: 0.8,
+                                                           ),
+                                                       fontSize: 12,
+                                                       fontWeight:
+                                                           FontWeight.w600,
+                                                     ),
+                                                   ),
+                                                 ],
+                                               ),
+                                               actions: [
+                                                 TextButton(
+                                                   onPressed: () =>
+                                                       Navigator.pop(ctx, false),
+                                                   child: const Text(
+                                                     'Block Images',
+                                                     style: TextStyle(
+                                                       color: Colors.white54,
+                                                     ),
+                                                   ),
+                                                 ),
+                                                 ElevatedButton(
+                                                   onPressed: () =>
+                                                       Navigator.pop(ctx, true),
+                                                   style:
+                                                       ElevatedButton.styleFrom(
+                                                         backgroundColor:
+                                                             Colors.orangeAccent,
+                                                         foregroundColor:
+                                                             Colors.black87,
+                                                       ),
+                                                   child: const Text(
+                                                     'Accept Risk & Load',
+                                                   ),
+                                                 ),
+                                               ],
+                                             ),
+                                           );
+                                           final allowed = result ?? false;
+                                           if (allowed) {
+                                             // Persist consent for this character
+                                             final prefs =
+                                                 await SharedPreferences.getInstance();
+                                             final charName =
+                                                 Provider.of<ChatService>(
+                                                   context,
+                                                   listen: false,
+                                                 ).activeCharacter?.name ??
+                                                 '';
+                                             if (charName.isNotEmpty) {
+                                               final consented =
+                                                   prefs.getStringList(
+                                                     'image_consent_characters',
+                                                   ) ??
+                                                   [];
+                                               if (!consented.contains(
+                                                 charName,
+                                               )) {
+                                                 consented.add(charName);
+                                                 await prefs.setStringList(
+                                                   'image_consent_characters',
+                                                   consented,
+                                                 );
+                                               }
+                                             }
+                                           }
+                                           if (mounted) {
+                                             setState(
+                                               () => _externalImagesAllowed =
+                                                   allowed,
+                                             );
+                                           }
+                                           return allowed;
+                                         },
+                                         character: isGroup && !msg.isUser
+                                             ? chatService.groupCharacters
+                                                 .where((c) => c.name == msg.sender)
+                                                 .firstOrNull
+                                             : character,
+                                         chatService: chatService,
+                                       );
                                     },
                                   ),
                                 ],
@@ -4087,18 +4093,22 @@ class _MessageBubble extends StatefulWidget {
   final Color? senderColor;
   final bool? externalImagesAllowed;
   final Future<bool> Function()? onRequestImagePermission;
+  final CharacterCard? character;
+  final ChatService? chatService;
 
   const _MessageBubble({
-    required this.message,
-    this.characterImage,
-    required this.index,
-    this.senderColor,
-    this.externalImagesAllowed,
-    this.onRequestImagePermission,
-  });
+     required this.message,
+     this.characterImage,
+     required this.index,
+     this.senderColor,
+     this.externalImagesAllowed,
+     this.onRequestImagePermission,
+     this.character,
+     this.chatService,
+   });
 
-  @override
-  State<_MessageBubble> createState() => _MessageBubbleState();
+   @override
+   State<_MessageBubble> createState() => _MessageBubbleState();
 }
 
 class _MessageBubbleState extends State<_MessageBubble> {
@@ -4107,15 +4117,17 @@ class _MessageBubbleState extends State<_MessageBubble> {
   ChatMessage get message => widget.message;
   File? get characterImage => widget.characterImage;
   int get index => widget.index;
+  CharacterCard? get character => widget.character;
 
   @override
   Widget build(BuildContext context) {
     final isDirectorNote = message.characterId == '__director__';
     final isChanceTimeNarration =
         message.activeMetadata?['is_chance_time_narration'] == true;
-    final bubbleOpacity = Provider.of<StorageService>(context).bubbleOpacity;
+     final bubbleOpacity = Provider.of<StorageService>(context).bubbleOpacity;
+     final storage = Provider.of<StorageService>(context);
 
-    // Chance Time narrations get a special centered banner
+     // Chance Time narrations get a special centered banner
     if (isChanceTimeNarration) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 32),
@@ -4176,16 +4188,16 @@ class _MessageBubbleState extends State<_MessageBubble> {
           Flexible(
             child: Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDirectorNote
-                    ? Colors.amberAccent.withValues(alpha: 0.1 * bubbleOpacity)
-                    : message.isUser
-                    ? const Color(0xFF3B82F6).withValues(alpha: bubbleOpacity)
-                    : widget.senderColor != null
-                    ? widget.senderColor!.withValues(
-                        alpha: 0.15 * bubbleOpacity,
-                      )
-                    : const Color(0xFF374151).withValues(alpha: bubbleOpacity),
+               decoration: BoxDecoration(
+                 color: isDirectorNote
+                     ? Colors.amberAccent.withValues(alpha: 0.1 * bubbleOpacity)
+                     : message.isUser
+                     ? storage.getUserBubbleColor(character).withValues(alpha: bubbleOpacity)
+                     : widget.senderColor != null
+                     ? widget.senderColor!.withValues(
+                         alpha: 0.15 * bubbleOpacity,
+                       )
+                     : storage.getAiBubbleColor(character).withValues(alpha: bubbleOpacity),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(12),
                   topRight: const Radius.circular(12),
@@ -4232,14 +4244,14 @@ class _MessageBubbleState extends State<_MessageBubble> {
                               context,
                               listen: false,
                             );
-                            final nameWidget = Text(
-                              message.sender,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                                color: widget.senderColor ?? Colors.blueAccent,
-                              ),
-                            );
+                             final nameWidget = Text(
+                               message.sender,
+                               style: TextStyle(
+                                 fontWeight: FontWeight.bold,
+                                 fontSize: 12,
+                                 color: widget.senderColor ?? storage.getDialogueColor(character),
+                               ),
+                             );
                             if (chatService.isGroupMode) {
                               return GestureDetector(
                                 onTap: () {
@@ -4553,12 +4565,13 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         );
                       },
                     ),
-                  _StyledChatMessage(
-                    text: message.displayText,
-                    isUser: message.isUser,
-                    externalImagesAllowed: widget.externalImagesAllowed,
-                    onRequestImagePermission: widget.onRequestImagePermission,
-                  ),
+                    _StyledChatMessage(
+                      text: message.displayText,
+                      isUser: message.isUser,
+                      externalImagesAllowed: widget.externalImagesAllowed,
+                      onRequestImagePermission: widget.onRequestImagePermission,
+                      character: widget.character ?? widget.chatService?.activeCharacter,
+                    ),
                   if (message.activeMetadata != null)
                     _buildRealismIndicator(message.activeMetadata!),
                   // Swipe arrows for alternate greetings on first message
@@ -5254,12 +5267,14 @@ class _StyledChatMessage extends StatelessWidget {
   final bool isUser;
   final bool? externalImagesAllowed;
   final Future<bool> Function()? onRequestImagePermission;
+  final CharacterCard? character;
 
   const _StyledChatMessage({
     required this.text,
     required this.isUser,
     this.externalImagesAllowed,
     this.onRequestImagePermission,
+    this.character,
   });
 
   @override
@@ -5271,7 +5286,7 @@ class _StyledChatMessage extends StatelessWidget {
     final imageMatches = _markdownImageRegex.allMatches(text).toList();
     if (imageMatches.isEmpty) {
       // No images — use existing fast path
-      return _buildStyledText(text, scaledSize);
+      return _buildStyledText(context, text, scaledSize, character);
     }
 
     // Split text into segments: [text, image, text, image, text]
@@ -5283,7 +5298,7 @@ class _StyledChatMessage extends StatelessWidget {
       if (match.start > lastEnd) {
         final textBefore = text.substring(lastEnd, match.start).trim();
         if (textBefore.isNotEmpty) {
-          widgets.add(_buildStyledText(textBefore, scaledSize));
+          widgets.add(_buildStyledText(context, textBefore, scaledSize, character));
         }
       }
 
@@ -5307,7 +5322,7 @@ class _StyledChatMessage extends StatelessWidget {
     if (lastEnd < text.length) {
       final textAfter = text.substring(lastEnd).trim();
       if (textAfter.isNotEmpty) {
-        widgets.add(_buildStyledText(textAfter, scaledSize));
+        widgets.add(_buildStyledText(context, textAfter, scaledSize, character));
       }
     }
 
@@ -5317,16 +5332,29 @@ class _StyledChatMessage extends StatelessWidget {
     );
   }
 
-  Widget _buildStyledText(String segment, double scaledSize) {
-    final plainStyle = TextStyle(color: Colors.white, fontSize: scaledSize);
+  Widget _buildStyledText(BuildContext context, String segment, double scaledSize, CharacterCard? character) {
+    final storageService = Provider.of<StorageService>(context);
+    final plainStyle = TextStyle(
+      color: storageService.getAiTextColor(character),
+      fontSize: scaledSize,
+      fontFamily: storageService.getChatFontFamily(character).isNotEmpty
+          ? storageService.getChatFontFamily(character)
+          : null,
+    );
     final dialogueStyle = TextStyle(
-      color: Colors.amberAccent,
+      color: storageService.getDialogueColor(character),
       fontWeight: FontWeight.w500,
       fontSize: scaledSize,
+      fontFamily: storageService.getChatFontFamily(character).isNotEmpty
+          ? storageService.getChatFontFamily(character)
+          : null,
     );
     final actionStyle = TextStyle(
-      color: const Color(0xFF90CAF9),
+      color: storageService.getActionColor(character),
       fontSize: scaledSize,
+      fontFamily: storageService.getChatFontFamily(character).isNotEmpty
+          ? storageService.getChatFontFamily(character)
+          : null,
     );
 
     final quoteRegex = RegExp(r'"[^"]*"');
@@ -5368,9 +5396,12 @@ class _StyledChatMessage extends StatelessWidget {
         child: Text(
           segment,
           style: TextStyle(
-            color: Colors.white,
+            color: storageService.getAiTextColor(character),
             fontSize: scaledSize,
             height: 1.4,
+            fontFamily: storageService.getChatFontFamily(character).isNotEmpty
+                ? storageService.getChatFontFamily(character)
+                : null,
           ),
         ),
       );
@@ -5380,10 +5411,12 @@ class _StyledChatMessage extends StatelessWidget {
       child: RichText(
         text: TextSpan(
           style: TextStyle(
-            color: Colors.white,
+            color: storageService.getAiTextColor(character),
             fontSize: scaledSize,
             height: 1.4,
-            fontFamily: 'Roboto',
+            fontFamily: storageService.getChatFontFamily(character).isNotEmpty
+                ? storageService.getChatFontFamily(character)
+                : null,
           ),
           children: spans,
         ),

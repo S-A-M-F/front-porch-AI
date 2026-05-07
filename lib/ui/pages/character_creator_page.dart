@@ -874,6 +874,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       await kobold.startKobold(
         execPath,
         modelPath,
+        kcppsPath: storage.activeKcppsPath,
         port: 5001,
         gpuLayers: storage.gpuLayers,
         contextSize: storage.contextSize,

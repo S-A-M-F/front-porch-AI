@@ -18,6 +18,7 @@
 
 import 'dart:io';
 import 'package:path/path.dart' as pathLib;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
@@ -53,6 +54,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   String? _connectionStatus;
   bool _isTesting = false;
 
+  // Preset fields
+  List<File> _localPresets = [];
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +73,32 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     _apiUrlController.text = storage.remoteApiUrl;
     _apiKeyController.text = storage.remoteApiKey;
     _modelNameController.text = storage.remoteModelName;
+    
+    _scanLocalPresets();
+  }
+
+  void _scanLocalPresets() {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final binDir = storage.binDir;
+    if (!binDir.existsSync()) {
+      if (mounted) setState(() => _localPresets = []);
+      return;
+    }
+    try {
+      final files = binDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
+          .toList()
+        ..sort((a, b) => pathLib.basename(a.path).toLowerCase().compareTo(pathLib.basename(b.path).toLowerCase()));
+      if (mounted) {
+        setState(() {
+          _localPresets = files;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _localPresets = []);
+    }
   }
 
   @override
@@ -173,6 +203,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     koboldService.startKobold(
       backendManager.backendPath!,
       _selectedModelPath!,
+      kcppsPath: storage.activeKcppsPath,
       gpuLayers: int.tryParse(_gpuLayersController.text) ?? 0,
       contextSize: int.tryParse(_contextSizeController.text) ?? 4096,
       useVulkan: _useVulkan,
@@ -522,7 +553,18 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     );
                   }
                   setState(() { _selectedModelPath = val; });
-                  Provider.of<StorageService>(context, listen: false).setLastUsedModelPath(val);
+                  final storage = Provider.of<StorageService>(context, listen: false);
+                  storage.setLastUsedModelPath(val);
+                  
+                  if (val != null) {
+                    final savedPreset = storage.modelPresetMap[val];
+                    if (savedPreset != null && savedPreset.isNotEmpty && File(savedPreset).existsSync()) {
+                      storage.setActiveKcppsPath(savedPreset);
+                    } else {
+                      storage.setActiveKcppsPath(null);
+                    }
+                  }
+                  
                   _applyAutoConfiguration();
                 },
               ),
@@ -532,7 +574,93 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
          
         const SizedBox(height: 16),
          
-        // Hardware Info
+        // Preset selection
+        Consumer<StorageService>(
+          builder: (context, storage, _) {
+            final isPresetActive = storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Configuration Preset', style: TextStyle(fontSize: 13, color: Colors.white70)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF374151),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _localPresets.any((f) => f.path == storage.activeKcppsPath)
+                                ? storage.activeKcppsPath
+                                : null,
+                            isExpanded: true,
+                            hint: const Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
+                            dropdownColor: const Color(0xFF374151),
+                            style: const TextStyle(color: Colors.white, fontSize: 13),
+                            icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: null,
+                                child: Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
+                              ),
+                              ..._localPresets.map((file) {
+                                return DropdownMenuItem<String>(
+                                  value: file.path,
+                                  child: Text(pathLib.basename(file.path), style: const TextStyle(fontSize: 13)),
+                                );
+                              }),
+                            ],
+                            onChanged: (val) {
+                              storage.setActiveKcppsPath(val);
+                              if (_selectedModelPath != null && val != null) {
+                                storage.setModelPreset(_selectedModelPath!, val);
+                              } else if (_selectedModelPath != null && val == null) {
+                                storage.setModelPreset(_selectedModelPath!, '');
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () async {
+                        final result = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: ['kcpps'],
+                        );
+                        if (result != null && result.files.single.path != null) {
+                          final path = result.files.single.path!;
+                          storage.setActiveKcppsPath(path);
+                          if (_selectedModelPath != null) {
+                            storage.setModelPreset(_selectedModelPath!, path);
+                          }
+                          _scanLocalPresets();
+                        }
+                      },
+                      icon: const Icon(Icons.folder_open, size: 20),
+                      tooltip: 'Browse',
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFF374151),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                IgnorePointer(
+                  ignoring: isPresetActive,
+                  child: Opacity(
+                    opacity: isPresetActive ? 0.4 : 1.0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Hardware Info
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -605,6 +733,11 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             ),
           ],
         ),
+                      ],
+                    ),
+                  ),
+                ),
+                
         const SizedBox(height: 12),
         // Thinking model toggle — must be ON when using QwQ, Deepseek-R1,
         // Qwen3, Precog, or any model that outputs <think>...</think> blocks.
@@ -633,6 +766,14 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           );
         }),
         const SizedBox(height: 16),
+                
+                IgnorePointer(
+                  ignoring: isPresetActive,
+                  child: Opacity(
+                    opacity: isPresetActive ? 0.4 : 1.0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -714,6 +855,14 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               ),
             ),
           ],
+        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
          
         const SizedBox(height: 24),

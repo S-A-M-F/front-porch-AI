@@ -19,6 +19,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
@@ -845,6 +846,65 @@ void _editLoreEntry(int index) {
               ),
             ],
           ),
+          const SizedBox(height: 24),
+          // Chat Colors
+          const Text('Chat Colors', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white54)),
+          const SizedBox(height: 8),
+          _buildColorRow(
+            'User Bubble',
+            widget.character.frontPorchExtensions?.userBubbleColor ?? Provider.of<StorageService>(context, listen: false).globalUserBubbleColor,
+            (color) => _updateColor('userBubbleColor', color),
+          ),
+          _buildColorRow(
+            'User Text',
+            widget.character.frontPorchExtensions?.userTextColor ?? Provider.of<StorageService>(context, listen: false).globalUserTextColor,
+            (color) => _updateColor('userTextColor', color),
+          ),
+          _buildColorRow(
+            'AI Bubble',
+            widget.character.frontPorchExtensions?.aiBubbleColor ?? Provider.of<StorageService>(context, listen: false).globalAiBubbleColor,
+            (color) => _updateColor('aiBubbleColor', color),
+          ),
+          _buildColorRow(
+            'AI Text',
+            widget.character.frontPorchExtensions?.aiTextColor ?? Provider.of<StorageService>(context, listen: false).globalAiTextColor,
+            (color) => _updateColor('aiTextColor', color),
+          ),
+          _buildColorRow(
+            'Dialogue (Quoted)',
+            widget.character.frontPorchExtensions?.dialogueColor ?? Provider.of<StorageService>(context, listen: false).globalDialogueColor,
+            (color) => _updateColor('dialogueColor', color),
+          ),
+          _buildColorRow(
+            'Actions (*text*)',
+            widget.character.frontPorchExtensions?.actionColor ?? Provider.of<StorageService>(context, listen: false).globalActionColor,
+            (color) => _updateColor('actionColor', color),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildColorRow(String label, Color color, void Function(Color) onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          const Spacer(),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.white24, width: 1),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.color_lens, size: 20, color: Colors.white),
+              onPressed: () => _showColorPicker(context, color, onChanged),
+            ),
+          ),
         ],
       ),
     );
@@ -1197,5 +1257,75 @@ void _editLoreEntry(int index) {
         ),
       ],
     );
+  }
+
+  Future<void> _updateColor(String fieldName, Color color) async {
+    FrontPorchExtensions extensions;
+    if (widget.character.frontPorchExtensions == null) {
+      extensions = FrontPorchExtensions();
+    } else {
+      extensions = widget.character.frontPorchExtensions!.copyWith();
+    }
+    
+    switch (fieldName) {
+      case 'userBubbleColor':
+        extensions.userBubbleColor = color;
+        break;
+      case 'userTextColor':
+        extensions.userTextColor = color;
+        break;
+      case 'aiBubbleColor':
+        extensions.aiBubbleColor = color;
+        break;
+      case 'aiTextColor':
+        extensions.aiTextColor = color;
+        break;
+      case 'dialogueColor':
+        extensions.dialogueColor = color;
+        break;
+      case 'actionColor':
+        extensions.actionColor = color;
+        break;
+    }
+    
+    widget.character.frontPorchExtensions = extensions;
+    
+    if (mounted) {
+      setState(() {}); // Refresh UI
+    }
+  }
+
+  Future<void> _showColorPicker(
+    BuildContext context,
+    Color initialColor,
+    void Function(Color) onChanged,
+  ) async {
+    final picked = await showDialog<Color>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Color'),
+        content: SizedBox(
+          width: 300,
+          height: 375,
+          child: ColorPicker(
+            color: initialColor,
+            onColorChanged: (color) => Navigator.pop(context, color),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, initialColor),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (picked != null) {
+      onChanged(picked);
+    }
   }
 }

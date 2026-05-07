@@ -198,6 +198,7 @@ class KoboldService extends ChangeNotifier
   Future<void> startKobold(
     String executablePath,
     String modelPath, {
+    String? kcppsPath,
     int port = 5001,
     int gpuLayers = 0,
     int contextSize = 4096,
@@ -222,16 +223,32 @@ class KoboldService extends ChangeNotifier
     // Store the executable path for cleanup
     _executablePath = executablePath;
 
-    final args = [
-      '--model',
-      modelPath,
-      '--port',
-      port.toString(),
-      '--contextsize',
-      contextSize.toString(),
-      '--gpulayers',
-      gpuLayers.toString(),
-    ];
+    List<String> args;
+
+    if (kcppsPath != null) {
+      // ── Preset mode (.kcpps) ────────────────────────────────────────────────
+      // When a config preset is active, we bypass ALL UI-derived arguments 
+      // (model, context, GPU layers, GPU backend, flash attention, mlock, etc.)
+      // and let KoboldCpp load everything from the file. We only force the port
+      // so the app's _baseUrl doesn't break.
+      args = [
+        '--config',
+        kcppsPath,
+        '--port',
+        port.toString(),
+      ];
+    } else {
+      // ── Standard UI-driven mode ─────────────────────────────────────────────
+      args = [
+        '--model',
+        modelPath,
+        '--port',
+        port.toString(),
+        '--contextsize',
+        contextSize.toString(),
+        '--gpulayers',
+        gpuLayers.toString(),
+      ];
 
     // \u2500\u2500 GPU backend flags \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
@@ -292,6 +309,7 @@ class KoboldService extends ChangeNotifier
       // Only pass the flag when non-default so KoboldCPP\u2019s built-in default
       // applies for users who haven\u2019t changed this setting.
       args.addAll(['--blasbatchsize', _storageService.blasBatchSize.toString()]);
+    }
     }
 
     try {
