@@ -313,12 +313,7 @@ jobs:
           Copy-Item "installers\windows\Front_Porch_AI_Beta_Setup.exe" -Destination "."
         shell: pwsh
 
-      - name: Package Windows (zip)
-        if: matrix.platform == 'windows'
-        run: |
-          cd ${{ matrix.build_path }}
-          Compress-Archive -Path * -DestinationPath ../../../../../${{ matrix.asset_name }}
-        shell: pwsh
+
 
       - name: Package MacOS (zip)
         if: matrix.platform == 'macos'
@@ -377,22 +372,20 @@ jobs:
           cd ${{ matrix.build_path }}
           tar -czvf ../../../../../${{ matrix.asset_name }} .
 
-      - name: Upload Build Artifacts
+       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v5
         with:
           name: build-${{ matrix.platform }}
           path: |
-            ${{ matrix.asset_name }}
             Front_Porch_AI_Beta_Setup.exe
             Front_Porch_AI-Linux.AppImage
           if-no-files-found: ignore
 
-      - name: Create or Update Release
+       - name: Create or Update Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ matrix.asset_name }}
             Front_Porch_AI_Beta_Setup.exe
             Front_Porch_AI-Linux.AppImage
           generate_release_notes: true

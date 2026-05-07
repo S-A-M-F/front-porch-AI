@@ -280,12 +280,7 @@ jobs:
           codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_NAME"
           echo "✓ Ad-hoc signature applied with entitlements"
 
-      - name: Package Windows (zip)
-        if: matrix.platform == 'windows'
-        run: |
-          cd ${{ matrix.build_path }}
-          Compress-Archive -Path * -DestinationPath ../../../../../${{ matrix.asset_name }}
-        shell: pwsh
+
 
       - name: Download VC++ Redistributable
         if: matrix.platform == 'windows'
@@ -466,12 +461,11 @@ jobs:
           cd ${{ matrix.build_path }}
           tar -czvf ../../../../../${{ matrix.asset_name }} .
 
-      - name: Upload Build Artifacts
+       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v5
         with:
           name: build-${{ matrix.platform }}
           path: |
-            ${{ matrix.asset_name }}
             Front_Porch_AI-Linux.AppImage
             Front_Porch_AI-Linux.deb
             Front_Porch_AI-Linux.rpm
@@ -479,12 +473,11 @@ jobs:
             Front_Porch_AI.dmg
           if-no-files-found: ignore
 
-      - name: Create or Update Release
+       - name: Create or Update Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ matrix.asset_name }}
             Front_Porch_AI-Linux.AppImage
             Front_Porch_AI-Linux.deb
             Front_Porch_AI-Linux.rpm
