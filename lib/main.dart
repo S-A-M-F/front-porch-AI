@@ -73,6 +73,10 @@ import 'package:front_porch_ai/services/web_chat_bridge.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
 import 'package:front_porch_ai/app_version.dart';
 
+/// Prefix SharedPreferences keys for beta builds so window state is
+/// isolated from the stable installation.  Unchanged for stable builds.
+String _k(String key) => isPreRelease ? 'beta_$key' : key;
+
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
@@ -127,6 +131,32 @@ void main(List<String> args) async {
   );
 
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    // Restore saved window state (size, position, maximized)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final windowWidth = prefs.getDouble(_k('window_width'));
+      final windowHeight = prefs.getDouble(_k('window_height'));
+      final windowX = prefs.getDouble(_k('window_x'));
+      final windowY = prefs.getDouble(_k('window_y'));
+      final windowMaximized = prefs.getBool(_k('window_maximized')) ?? false;
+
+      if (windowMaximized) {
+        // Restore maximized: apply saved size, then maximize
+        // (position is handled by the OS when maximized)
+        if (windowWidth != null && windowHeight != null) {
+          await windowManager.setSize(Size(windowWidth, windowHeight));
+        }
+        await windowManager.maximize();
+      } else if (windowX != null && windowY != null && windowWidth != null && windowHeight != null) {
+        // Restore saved position + size
+        await windowManager.setBounds(
+          Rect.fromLTWH(windowX, windowY, windowWidth, windowHeight),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to restore window state: $e');
+    }
+
     await windowManager.show();
     await windowManager.focus();
     await windowManager.setPreventClose(true);
@@ -671,6 +701,22 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
   @override
   void onWindowClose() async {
+    // Save window state (size, position, maximized) before cleanup.
+    // Must happen early while the window is still alive and queryable.
+    try {
+      final size = await windowManager.getSize();
+      final position = await windowManager.getPosition();
+      final isMax = await windowManager.isMaximized();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_k('window_width'), size.width);
+      await prefs.setDouble(_k('window_height'), size.height);
+      await prefs.setDouble(_k('window_x'), position.dx);
+      await prefs.setDouble(_k('window_y'), position.dy);
+      await prefs.setBool(_k('window_maximized'), isMax);
+    } catch (e) {
+      debugPrint('Failed to save window state: $e');
+    }
+
     // Stop KoboldCPP backend BEFORE destroying the window.
     // This prevents orphaned processes when the app closes.
     try {
