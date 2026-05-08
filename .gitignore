@@ -90,6 +90,8 @@ front_porch_ai.png
 .gemini/
 .claw/
 .sandbox-*/
+.opencode/
+.sisyphus/
 aur/src/
 aur/pkg/
 aur/*.pkg.tar*
