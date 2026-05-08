@@ -948,6 +948,8 @@ class _SettingsPageState extends State<SettingsPage> {
              storageService.globalActionColor,
              (color) => storageService.setGlobalActionColor(color),
            ),
+           const SizedBox(height: 12),
+           _buildFontRow(storageService),
            const SizedBox(height: 24),
            _buildSectionHeader('Realism Mode', context),
           const SizedBox(height: 8),
@@ -5721,7 +5723,70 @@ Future<void> _showColorPicker(
        ),
      ),
    );
-   if (picked != null) {
-     onChanged(picked);
-   }
- }
+    if (picked != null) {
+      onChanged(picked);
+    }
+  }
+
+Widget _buildFontRow(StorageService storageService) {
+  // Curated list of popular Google Fonts suitable for chat
+  const chatFonts = [
+    ('Default (Inter)', ''),
+    ('Roboto', 'Roboto'),
+    ('Open Sans', 'Open Sans'),
+    ('Lato', 'Lato'),
+    ('Source Sans 3', 'Source Sans 3'),
+    ('Nunito', 'Nunito'),
+    ('Poppins', 'Poppins'),
+    ('Montserrat', 'Montserrat'),
+    ('Raleway', 'Raleway'),
+    ('Work Sans', 'Work Sans'),
+    ('DM Sans', 'DM Sans'),
+    ('Quicksand', 'Quicksand'),
+    ('Rubik', 'Rubik'),
+    ('Karla', 'Karla'),
+    ('Merriweather', 'Merriweather'),
+    ('Playfair Display', 'Playfair Display'),
+    ('Roboto Mono', 'Roboto Mono'),
+    ('Fira Code', 'Fira Code'),
+  ];
+
+  final currentFont = storageService.globalChatFontFamily;
+
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        const Text('Chat Font', style: TextStyle(color: Colors.white70, fontSize: 13)),
+        const Spacer(),
+        Container(
+          constraints: const BoxConstraints(maxWidth: 200),
+          child: DropdownButton<String>(
+            value: currentFont.isEmpty ? '' : currentFont,
+            isExpanded: true,
+            dropdownColor: const Color(0xFF1E293B),
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            underline: const SizedBox.shrink(),
+            items: chatFonts.map((font) {
+              return DropdownMenuItem<String>(
+                value: font.$2,
+                child: Text(
+                  font.$1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: font.$2.isEmpty ? null : font.$2,
+                    color: Colors.white,
+                    fontSize: 13,
+                  ),
+                ),
+              );
+            }).toList(),
+            onChanged: (value) {
+              storageService.setGlobalChatFontFamily(value ?? '');
+            },
+          ),
+        ),
+      ],
+    ),
+  );
+}

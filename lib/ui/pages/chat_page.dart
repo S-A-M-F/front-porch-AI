@@ -26,6 +26,7 @@ import 'package:front_porch_ai/database/database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
@@ -61,6 +62,50 @@ import 'package:front_porch_ai/ui/widgets/chance_time_overlay.dart';
 import 'package:front_porch_ai/ui/widgets/onnx_download_overlay.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
 import 'package:file_picker/file_picker.dart';
+
+/// Applies a Google Font to a base TextStyle dynamically.
+TextStyle _applyGoogleFont(String? fontFamily, TextStyle baseStyle) {
+  if (fontFamily == null || fontFamily.isEmpty) return baseStyle;
+
+  switch (fontFamily) {
+    case 'Roboto':
+      return GoogleFonts.roboto(textStyle: baseStyle);
+    case 'Open Sans':
+      return GoogleFonts.openSans(textStyle: baseStyle);
+    case 'Lato':
+      return GoogleFonts.lato(textStyle: baseStyle);
+    case 'Source Sans 3':
+      return GoogleFonts.sourceSans3(textStyle: baseStyle);
+    case 'Nunito':
+      return GoogleFonts.nunito(textStyle: baseStyle);
+    case 'Poppins':
+      return GoogleFonts.poppins(textStyle: baseStyle);
+    case 'Montserrat':
+      return GoogleFonts.montserrat(textStyle: baseStyle);
+    case 'Raleway':
+      return GoogleFonts.raleway(textStyle: baseStyle);
+    case 'Work Sans':
+      return GoogleFonts.workSans(textStyle: baseStyle);
+    case 'DM Sans':
+      return GoogleFonts.dmSans(textStyle: baseStyle);
+    case 'Quicksand':
+      return GoogleFonts.quicksand(textStyle: baseStyle);
+    case 'Rubik':
+      return GoogleFonts.rubik(textStyle: baseStyle);
+    case 'Karla':
+      return GoogleFonts.karla(textStyle: baseStyle);
+    case 'Merriweather':
+      return GoogleFonts.merriweather(textStyle: baseStyle);
+    case 'Playfair Display':
+      return GoogleFonts.playfairDisplay(textStyle: baseStyle);
+    case 'Roboto Mono':
+      return GoogleFonts.robotoMono(textStyle: baseStyle);
+    case 'Fira Code':
+      return GoogleFonts.firaCode(textStyle: baseStyle);
+    default:
+      return baseStyle;
+  }
+}
 
 class _StyledTextController extends TextEditingController {
   static final _pattern = RegExp(r'("[^"]*")|(\*[^*]*\*)');
@@ -5334,27 +5379,28 @@ class _StyledChatMessage extends StatelessWidget {
 
   Widget _buildStyledText(BuildContext context, String segment, double scaledSize, CharacterCard? character) {
     final storageService = Provider.of<StorageService>(context);
-    final plainStyle = TextStyle(
-      color: storageService.getAiTextColor(character),
-      fontSize: scaledSize,
-      fontFamily: storageService.getChatFontFamily(character).isNotEmpty
-          ? storageService.getChatFontFamily(character)
-          : null,
+    final fontFamily = storageService.getChatFontFamily(character);
+    final plainStyle = _applyGoogleFont(
+      fontFamily,
+      TextStyle(
+        color: storageService.getAiTextColor(character),
+        fontSize: scaledSize,
+      ),
     );
-    final dialogueStyle = TextStyle(
-      color: storageService.getDialogueColor(character),
-      fontWeight: FontWeight.w500,
-      fontSize: scaledSize,
-      fontFamily: storageService.getChatFontFamily(character).isNotEmpty
-          ? storageService.getChatFontFamily(character)
-          : null,
+    final dialogueStyle = _applyGoogleFont(
+      fontFamily,
+      TextStyle(
+        color: storageService.getDialogueColor(character),
+        fontWeight: FontWeight.w500,
+        fontSize: scaledSize,
+      ),
     );
-    final actionStyle = TextStyle(
-      color: storageService.getActionColor(character),
-      fontSize: scaledSize,
-      fontFamily: storageService.getChatFontFamily(character).isNotEmpty
-          ? storageService.getChatFontFamily(character)
-          : null,
+    final actionStyle = _applyGoogleFont(
+      fontFamily,
+      TextStyle(
+        color: storageService.getActionColor(character),
+        fontSize: scaledSize,
+      ),
     );
 
     final quoteRegex = RegExp(r'"[^"]*"');
@@ -5395,13 +5441,13 @@ class _StyledChatMessage extends StatelessWidget {
       return SelectionArea(
         child: Text(
           segment,
-          style: TextStyle(
-            color: storageService.getAiTextColor(character),
-            fontSize: scaledSize,
-            height: 1.4,
-            fontFamily: storageService.getChatFontFamily(character).isNotEmpty
-                ? storageService.getChatFontFamily(character)
-                : null,
+          style: _applyGoogleFont(
+            fontFamily,
+            TextStyle(
+              color: storageService.getAiTextColor(character),
+              fontSize: scaledSize,
+              height: 1.4,
+            ),
           ),
         ),
       );
@@ -5410,13 +5456,13 @@ class _StyledChatMessage extends StatelessWidget {
     return SelectionArea(
       child: RichText(
         text: TextSpan(
-          style: TextStyle(
-            color: storageService.getAiTextColor(character),
-            fontSize: scaledSize,
-            height: 1.4,
-            fontFamily: storageService.getChatFontFamily(character).isNotEmpty
-                ? storageService.getChatFontFamily(character)
-                : null,
+          style: _applyGoogleFont(
+            fontFamily,
+            TextStyle(
+              color: storageService.getAiTextColor(character),
+              fontSize: scaledSize,
+              height: 1.4,
+            ),
           ),
           children: spans,
         ),
