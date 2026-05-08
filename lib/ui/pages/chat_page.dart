@@ -344,8 +344,8 @@ class _ChatPageState extends State<ChatPage> {
           return const Center(child: Text('No character selected.'));
         }
 
-        return Stack(
-          children: [
+                                   return Stack(
+                                [
             Scaffold(
               backgroundColor: const Color(
                 0xFF111827,
@@ -403,19 +403,31 @@ class _ChatPageState extends State<ChatPage> {
                                     'assets/backgrounds/waifu_beach.png',
                               };
                               final bgPath = bgAssets[bgKey];
+                              final bgPathExists = bgPath != null;
+
+                              // Check for matching custom background
+                              Map<String, String>? customEntry;
+                              if (!bgPathExists) {
+                                try {
+                                  customEntry = storageService.customBackgrounds
+                                      .firstWhere((e) => e['id'] == bgKey);
+                                } catch (_) {}
+                              }
+                              final hasCustomBg = customEntry != null &&
+                                  File(customEntry!['filePath']!).existsSync();
 
                               return Stack(
                                 children: [
-                                   if (bgPath != null) ...[
-                                     Positioned.fill(
-                                       child: IgnorePointer(
-                                         child: Image.asset(
-                                           bgPath,
-                                           fit: BoxFit.cover,
-                                         ),
-                                       ),
-                                     ),
-                                   ],
+                                  if (bgPath != null) ...[
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: Image.asset(
+                                          bgPath,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                   // Expression background sprite
                                   Consumer<ChatService>(
                                     builder: (context, chat, _) {
@@ -429,60 +441,87 @@ class _ChatPageState extends State<ChatPage> {
                                       if (!isEnabled ||
                                            displayMode == 'sidebar' ||
                                            chat.isEvaluatingRealism) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        final char = character;
-                                        if (char == null ||
-                                            char.avatarImages == null ||
-                                            char.avatarImages!.isEmpty) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        final avatar = chat.resolveExpressionAvatar(
-                                        char,
-                                        rerollIfSame: storage.expressionRerollSame,
+                                         return const SizedBox.shrink();
+                                       }
+                                       final char = character;
+                                       if (char == null ||
+                                           char.avatarImages == null ||
+                                           char.avatarImages!.isEmpty) {
+                                         return const SizedBox.shrink();
+                                       }
+                                       final avatar = chat.resolveExpressionAvatar(
+                                       char,
+                                       rerollIfSame: storage.expressionRerollSame,
+                                     );
+                                     if (avatar == null) {
+                                       return const SizedBox.shrink();
+                                     }
+                                     final avatarDir = storage.characterAvatarDir(
+                                       char.name,
+                                     );
+                                     final avatarFile = File(
+                                       '${avatarDir.path}/${avatar.filename}',
+                                     );
+                                      return Positioned.fill(
+                                        child: IgnorePointer(
+                                          child: AnimatedSwitcher(
+                                            duration: const Duration(
+                                              milliseconds: 500,
+                                            ),
+                                            child: Container(
+                                              key: ValueKey(
+                                                'expr_bg_${avatar.id}',
+                                              ),
+                                              decoration: BoxDecoration(
+                                                image: DecorationImage(
+                                                  image: FileImage(avatarFile),
+                                                  fit: BoxFit.cover,
+                                                  opacity: 0.15,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       );
-                                      if (avatar == null) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      final avatarDir = storage.characterAvatarDir(
-                                        char.name,
-                                      );
-                                      final avatarFile = File(
-                                        '${avatarDir.path}/${avatar.filename}',
-                                      );
-                                       return Positioned.fill(
-                                         child: IgnorePointer(
-                                           child: AnimatedSwitcher(
-                                             duration: const Duration(
-                                               milliseconds: 500,
-                                             ),
-                                             child: Container(
-                                               key: ValueKey(
-                                                 'expr_bg_${avatar.id}',
-                                               ),
-                                               decoration: BoxDecoration(
-                                                 image: DecorationImage(
-                                                   image: FileImage(avatarFile),
-                                                   fit: BoxFit.cover,
-                                                   opacity: 0.15,
-                                                 ),
-                                               ),
-                                             ),
-                                           ),
-                                         ),
-                                       );
                                     },
                                   ),
-                                   if (bgPath != null)
-                                     Positioned.fill(
-                                       child: IgnorePointer(
-                                         child: Container(
-                                           color: Colors.black.withValues(
-                                             alpha: 0.45,
-                                           ),
-                                         ),
-                                       ),
-                                     ),
+                                  if (bgPath != null)
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: Container(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.45,
+                                          ),
+                                        ),
+                                      ),
+                                   ),
+                                  if (!bgPathExists && hasCustomBg) ...[
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            image: DecorationImage(
+                                              image: FileImage(
+                                                File(
+                                                  customEntry!['filePath']!,
+                                                ),
+                                              ),
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: Container(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.45,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                   ListView.builder(
                                     controller: _scrollController,
                                     reverse: true,
@@ -699,6 +738,8 @@ class _ChatPageState extends State<ChatPage> {
                                     },
                                   ),
                                 ],
+                              );
+                                },
                               );
                             },
                           ),

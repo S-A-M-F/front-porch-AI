@@ -138,6 +138,7 @@ class StorageService extends ChangeNotifier {
   ];
   double _textScale = 1.0;
   String _chatBackground = 'none';
+  List<Map<String, String>> _customBackgrounds = [];
   List<Map<String, String>> _savedPrompts = [];
   bool _displayBufferEnabled = true;
   double _targetDisplayTps = 6.0; // ~250 WPM average human reading speed
@@ -265,6 +266,9 @@ class StorageService extends ChangeNotifier {
   bool _realismOneShotEval =
       false; // fuse relationship + scene eval into one LLM call
 
+  Directory get customBackgroundDir =>
+      Directory(path.join(_rootPath ?? '', 'custom_backgrounds'));
+
   // Getters
   String get systemPrompt => _systemPrompt;
   double get minP => _minP;
@@ -302,6 +306,8 @@ class StorageService extends ChangeNotifier {
   List<String> get stopSequences => List.unmodifiable(_stopSequences);
   double get textScale => _textScale;
   String get chatBackground => _chatBackground;
+  List<Map<String, String>> get customBackgrounds =>
+      List.unmodifiable(_customBackgrounds);
   List<Map<String, String>> get savedPrompts =>
       List.unmodifiable(_savedPrompts);
   bool get displayBufferEnabled => _displayBufferEnabled;
@@ -423,6 +429,7 @@ class StorageService extends ChangeNotifier {
     await modelsDir.create(recursive: true);
     await worldsDir.create(recursive: true);
     await charactersDir.create(recursive: true);
+    await customBackgroundDir.create(recursive: true);
 
     // Load settings
     _systemPrompt = _prefs?.getString(_k('system_prompt')) ?? _systemPrompt;
@@ -486,6 +493,16 @@ class StorageService extends ChangeNotifier {
     }
     _textScale = _prefs?.getDouble(_k('text_scale')) ?? 1.0;
     _chatBackground = _prefs?.getString(_k('chat_background')) ?? 'none';
+    final customBgJson = _prefs?.getString(_k('custom_backgrounds'));
+    if (customBgJson != null) {
+      try {
+        _customBackgrounds = (jsonDecode(customBgJson) as List)
+            .map((e) => Map<String, String>.from(e as Map))
+            .toList();
+      } catch (_) {
+        _customBackgrounds = [];
+      }
+    }
     _displayBufferEnabled = _prefs?.getBool(_k('display_buffer_enabled')) ?? true;
     _targetDisplayTps = _prefs?.getDouble(_k('target_display_tps')) ?? 30.0;
     _bufferDurationSeconds =
@@ -942,6 +959,26 @@ class StorageService extends ChangeNotifier {
     _chatBackground = value;
     await _prefs?.setString(_k('chat_background'), value);
     notifyListeners();
+  }
+
+  Future<void> addCustomBackground(String id, String name, String filePath) async {
+    _customBackgrounds.add({'id': id, 'name': name, 'filePath': filePath});
+    await _persistCustomBackgrounds();
+    notifyListeners();
+  }
+
+  Future<void> removeCustomBackground(String id) async {
+    _customBackgrounds.removeWhere((bg) => bg['id'] == id);
+    await _persistCustomBackgrounds();
+    notifyListeners();
+  }
+
+  bool hasCustomBackgroundWithName(String name) {
+    return _customBackgrounds.any((bg) => bg['name'] == name);
+  }
+
+  Future<void> _persistCustomBackgrounds() async {
+    await _prefs?.setString(_k('custom_backgrounds'), jsonEncode(_customBackgrounds));
   }
 
   Future<void> setDisplayBufferEnabled(bool value) async {
