@@ -66,11 +66,12 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 500,
-        height: 680,
         padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // ── Header ──────────────────────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -149,16 +150,17 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
             // ── Chat Background ─────────────────────────────────────────
             const Text('Chat Background', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
             const SizedBox(height: 12),
-            Expanded(
-              child: GridView.count(
-                crossAxisCount: 3,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.4,
-                children: backgrounds,
-              ),
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 3,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.4,
+              children: backgrounds,
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
