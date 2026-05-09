@@ -23,11 +23,9 @@ jobs:
         include:
           - os: windows-latest
             platform: windows
-            asset_name: Front_Porch_AI_Windows.zip
             build_path: build/windows/x64/runner/Release
           - os: macos-latest
             platform: macos
-            asset_name: Front_Porch_AI_MacOS.zip
             build_path: build/macos/Build/Products/Release
           - os: ubuntu-22.04
             platform: linux
@@ -483,7 +481,6 @@ jobs:
             Front_Porch_AI-Linux.rpm
             Front_Porch_AI_Setup.exe
             Front_Porch_AI.dmg
-          generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, 'beta') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

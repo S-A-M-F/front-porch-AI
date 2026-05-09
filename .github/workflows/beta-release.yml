@@ -28,11 +28,9 @@ jobs:
         include:
           - os: windows-latest
             platform: windows
-            asset_name: Front_Porch_AI_Windows.zip
             build_path: build/windows/x64/runner/Release
           - os: macos-latest
             platform: macos
-            asset_name: Front_Porch_AI_MacOS.zip
             build_path: build/macos/Build/Products/Release
           - os: ubuntu-22.04
             platform: linux
@@ -315,13 +313,19 @@ jobs:
 
 
 
-      - name: Package MacOS (zip)
+      - name: Build macOS DMG
         if: matrix.platform == 'macos'
         run: |
+          brew install create-dmg
           cd build/macos/Build/Products/Release
           APP_NAME=$(ls -d *.app | head -1)
           echo "Found app bundle: $APP_NAME"
-          zip -r ../../../../../${{ matrix.asset_name }} "$APP_NAME"
+          create-dmg \
+            --volname "Front Porch AI" \
+            --window-size 600 400 \
+            --app-drop-link 400 100 \
+            "../../../../../Front_Porch_AI_MacOS.dmg" \
+            "$APP_NAME"
 
       - name: Get Version
         id: get_version
@@ -378,6 +382,7 @@ jobs:
           name: build-${{ matrix.platform }}
           path: |
             Front_Porch_AI_Beta_Setup.exe
+            Front_Porch_AI_MacOS.dmg
             Front_Porch_AI-Linux.AppImage
           if-no-files-found: ignore
 
@@ -387,8 +392,8 @@ jobs:
         with:
           files: |
             Front_Porch_AI_Beta_Setup.exe
+            Front_Porch_AI_MacOS.dmg
             Front_Porch_AI-Linux.AppImage
-          generate_release_notes: true
           prerelease: true
           name: "${{ github.ref_name }} (Pre-Release)"
         env:
