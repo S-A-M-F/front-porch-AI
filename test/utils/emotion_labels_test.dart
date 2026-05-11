@@ -6,9 +6,9 @@ import 'package:front_porch_ai/utils/emotion_labels.dart';
 
 void main() {
   group('EmotionLabels', () {
-    test('all labels count is 28', () {
-      expect(EmotionLabels.all.length, equals(28));
-    });
+test('all labels count is 30', () {
+  expect(EmotionLabels.all.length, equals(30));
+});
 
     test('all labels have emoji mappings', () {
       for (final label in EmotionLabels.all) {

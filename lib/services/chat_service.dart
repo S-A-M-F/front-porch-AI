@@ -371,8 +371,9 @@ class ChatService extends ChangeNotifier {
   // Long-Term Bond
   int _longTermScore = 0;
   int _longTermTier = 0;
-  int _turnsSinceLongTermCheck = 0;
-  int _shortTermDeltasSummary = 0;
+   int _turnsSinceLongTermCheck = 0;
+   int _shortTermDeltasSummary = 0;
+   int _turnsSinceDecayCheck = 0; // counter for short-term relationship decay (every 10 turns)
 
   // Short-term mood
   int _moodDecayCounter = 0;
@@ -414,7 +415,44 @@ class ChatService extends ChangeNotifier {
   int _cooldownTurnsRemaining = 0;
   int _cooldownTurnsTotal =
       0; // original refractory duration (for phased prompt)
-  int _arousalLevel = 0; // -10 to +10 scale
+  int _arousalLevel = 0; // -100 to +100 scale (tier-based, matching relationship system)
+
+  /// Calculate arousal tier from level score (-100 to +100)
+  int get arousalTier {
+    // Convert -100 to +100 scale to tier index -10 to +10
+    // Each tier represents 10 points
+    final raw = _arousalLevel ~/ 10; // integer division
+    final tierIndex = raw > 10 ? 10 : (raw < -10 ? -10 : raw);
+    return tierIndex;
+  }
+
+  /// Get arousal tier name matching the relationship system
+  String get arousalTierName {
+    final tier = arousalTier;
+    // Use same tier names as relationship system but adapted for arousal
+    if (tier >= 10) return 'Feverish';
+    if (tier == 9) return 'Ecstatic';
+    if (tier == 8) return 'Overwhelming';
+    if (tier == 7) return 'Overcome';
+    if (tier == 6) return 'Intense';
+    if (tier == 5) return 'Aroused';
+    if (tier == 4) return 'Stimulated';
+    if (tier == 3) return 'Interested';
+    if (tier == 2) return 'Aware';
+    if (tier == 1) return 'Noticed';
+    if (tier == 0) return 'Neutral';
+    if (tier == -1) return 'Disinterested';
+    if (tier == -2) return 'Apathetic';
+    if (tier == -3) return 'Distant';
+    if (tier == -4) return 'Cold';
+    if (tier == -5) return 'Rejected';
+    if (tier == -6) return 'Repelled';
+    if (tier == -7) return 'Revolted';
+    if (tier == -8) return 'Abhorrent';
+    if (tier == -9) return 'Loathing';
+    if (tier <= -10) return 'Deserted';
+    return 'Unknown';
+  }
 
   // ── Chaos Mode / Chance Time ──
   bool _chaosModeEnabled = false;
@@ -711,22 +749,28 @@ class ChatService extends ChangeNotifier {
 
   int get shortTermProgressTarget {
     final absScore = _affectionScore.abs();
-    if (absScore < 10) return 10;
-    if (absScore < 25) return 25;
-    if (absScore < 45) return 45;
-    if (absScore < 70) return 70;
-    if (absScore < 100) return 100;
-    return 150; // max
+    if (absScore < 15) return 15;
+    if (absScore < 30) return 30;
+    if (absScore < 50) return 50;
+    if (absScore < 80) return 80;
+    if (absScore < 120) return 120;
+    if (absScore < 160) return 160;
+    if (absScore < 200) return 200;
+    if (absScore < 250) return 250;
+    return 300; // max for ±300 range
   }
 
   int get shortTermProgressBase {
     final absScore = _affectionScore.abs();
-    if (absScore < 10) return 0;
-    if (absScore < 25) return 10;
-    if (absScore < 45) return 25;
-    if (absScore < 70) return 45;
-    if (absScore < 100) return 70;
-    return 100;
+    if (absScore < 15) return 0;
+    if (absScore < 30) return 15;
+    if (absScore < 50) return 30;
+    if (absScore < 80) return 50;
+    if (absScore < 120) return 80;
+    if (absScore < 160) return 120;
+    if (absScore < 200) return 160;
+    if (absScore < 250) return 200;
+    return 250;
   }
 
   double get shortTermProgressPercent {
@@ -737,22 +781,28 @@ class ChatService extends ChangeNotifier {
 
   int get longTermProgressTarget {
     final absScore = _longTermScore.abs();
-    if (absScore < 10) return 10;
-    if (absScore < 25) return 25;
-    if (absScore < 45) return 45;
-    if (absScore < 70) return 70;
-    if (absScore < 100) return 100;
-    return 150; // max
+    if (absScore < 15) return 15;
+    if (absScore < 30) return 30;
+    if (absScore < 50) return 50;
+    if (absScore < 80) return 80;
+    if (absScore < 120) return 120;
+    if (absScore < 160) return 160;
+    if (absScore < 200) return 200;
+    if (absScore < 250) return 250;
+    return 300; // max for ±300 range
   }
 
   int get longTermProgressBase {
     final absScore = _longTermScore.abs();
-    if (absScore < 10) return 0;
-    if (absScore < 25) return 10;
-    if (absScore < 45) return 25;
-    if (absScore < 70) return 45;
-    if (absScore < 100) return 70;
-    return 100;
+    if (absScore < 15) return 0;
+    if (absScore < 30) return 15;
+    if (absScore < 50) return 30;
+    if (absScore < 80) return 50;
+    if (absScore < 120) return 80;
+    if (absScore < 160) return 120;
+    if (absScore < 200) return 160;
+    if (absScore < 250) return 200;
+    return 250;
   }
 
   double get longTermProgressPercent {
@@ -762,40 +812,93 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Human-readable tier name for the current relationship level.
+  /// Calculate tier for 21-tier system (-10 to +10) for short/long-term bonds
+  /// with new range ±300.
   int _calculateTier(int score) {
     final absScore = score.abs();
-    if (absScore < 10) return 0;
-    if (absScore < 25) return score > 0 ? 1 : -1;
-    if (absScore < 45) return score > 0 ? 2 : -2;
-    if (absScore < 70) return score > 0 ? 3 : -3;
-    if (absScore < 100) return score > 0 ? 4 : -4;
-    return score > 0 ? 5 : -5;
+    if (absScore < 5) return 0;
+    if (absScore < 15) return score > 0 ? 1 : -1;
+    if (absScore < 30) return score > 0 ? 2 : -2;
+    if (absScore < 50) return score > 0 ? 3 : -3;
+    if (absScore < 80) return score > 0 ? 4 : -4;
+    if (absScore < 120) return score > 0 ? 5 : -5;
+    if (absScore < 160) return score > 0 ? 6 : -6;
+    if (absScore < 200) return score > 0 ? 7 : -7;
+    if (absScore < 250) return score > 0 ? 8 : -8;
+    if (absScore < 300) return score > 0 ? 9 : -9;
+    return score > 0 ? 10 : -10;
+  }
+
+  /// Migration: scale old short-term scores (±150) to new range (±300)
+  int _migrateShortTermScore(int rawScore) {
+    if (rawScore.abs() <= 150) {
+      return (rawScore * 2).clamp(-300, 300);
+    }
+    return rawScore;
+  }
+
+  /// Migration: scale old long-term scores (±150) to new range (±300)
+  int _migrateLongTermScore(int rawScore) {
+    if (rawScore.abs() <= 150) {
+      return (rawScore * 2).clamp(-300, 300);
+    }
+    return rawScore;
+  }
+
+  /// Calculate short-term decay (2 points per 10 turns toward 0)
+  void _applyShortTermDecay() {
+    if (_affectionScore > 0) {
+      _affectionScore = (_affectionScore - 1).clamp(-300, 300);
+    } else if (_affectionScore < 0) {
+      _affectionScore = (_affectionScore + 1).clamp(-300, 300);
+    }
+    _turnsSinceDecayCheck = 0;
   }
 
   String get shortTermTierName {
     switch (_relationshipTier) {
-      case 5:
+      case 10:
+        return 'Soulbound';
+      case 9:
+        return 'Enamored';
+      case 8:
+        return 'Devoted';
+      case 7:
         return 'Intimate';
+      case 6:
+        return 'Close';
+      case 5:
+        return 'Amiable';
       case 4:
-        return 'Close Friend';
-      case 3:
-        return 'Friend';
-      case 2:
-        return 'Acquaintance';
-      case 1:
         return 'Friendly';
+      case 3:
+        return 'Warm';
+      case 2:
+        return 'Receptive';
+      case 1:
+        return 'Neutral';
       case 0:
-        return 'Stranger / Neutral';
+        return 'Neutral';
       case -1:
-        return 'Annoyed';
+        return 'Reserved';
       case -2:
-        return 'Frustrated';
+        return 'Cool';
       case -3:
-        return 'Disliked';
+        return 'Unimpressed';
       case -4:
-        return 'Hostile';
+        return 'Annoyed';
       case -5:
-        return 'Bitter Enemy';
+        return 'Disliked';
+      case -6:
+        return 'Hostile';
+      case -7:
+        return 'Adversarial';
+      case -8:
+        return 'Disdain';
+      case -9:
+        return 'Contempt';
+      case -10:
+        return 'Vitriolic';
       default:
         return 'Unknown';
     }
@@ -803,28 +906,48 @@ class ChatService extends ChangeNotifier {
 
   String get longTermTierName {
     switch (_longTermTier) {
-      case 5:
+      case 10:
         return 'Soulmate / Devoted';
+      case 9:
+        return 'Life Partner';
+      case 8:
+        return 'Devoted';
+      case 7:
+        return 'Deeply Attached';
+      case 6:
+        return 'Intimate';
+      case 5:
+        return 'Close';
       case 4:
-        return 'Unbreakable Bond';
+        return 'Friendly';
       case 3:
-        return 'Deep Connection';
+        return 'Warm';
       case 2:
-        return 'Growing Trust';
+        return 'Receptive';
       case 1:
-        return 'Establishing Trust';
+        return 'Neutral';
       case 0:
-        return 'No Deep Ties';
+        return 'Neutral';
       case -1:
-        return 'Distant';
+        return 'Reserved';
       case -2:
-        return 'Fractured';
+        return 'Cool';
       case -3:
-        return 'Broken Trust';
+        return 'Disappointed';
       case -4:
-        return 'Deep Resentment';
+        return 'Fractured';
       case -5:
-        return 'Nemesis';
+        return 'Broken Trust';
+      case -6:
+        return 'Deep Resentment';
+      case -7:
+        return 'Hostile';
+      case -8:
+        return 'Adversarial';
+      case -9:
+        return 'Contempt';
+      case -10:
+        return 'Vitriolic';
       default:
         return 'Unknown';
     }
@@ -836,28 +959,36 @@ class ChatService extends ChangeNotifier {
 
   String get trustTierName {
     switch (trustTier) {
-      case 5:
+      case 7:
         return 'Blind Trust';
-      case 4:
+      case 6:
         return 'Implicit Trust';
-      case 3:
+      case 5:
         return 'Deeply Trusting';
-      case 2:
+      case 4:
+        return 'Confident Trust';
+      case 3:
         return 'Trusting';
+      case 2:
+        return 'Leaning Positive';
       case 1:
-        return 'Benefit of Doubt';
+        return 'Cautious';
       case 0:
-        return 'Neutral / Guarded';
+        return 'Neutral';
       case -1:
-        return 'Wary';
+        return 'Cautious';
       case -2:
-        return 'Suspicious';
+        return 'Guarded';
       case -3:
-        return 'Distrustful';
+        return 'Skeptical';
       case -4:
-        return 'Paranoid';
+        return 'Wary';
       case -5:
-        return 'Absolute Distrust';
+        return 'Suspicious';
+      case -6:
+        return 'Distrustful';
+      case -7:
+        return 'Paranoid';
       default:
         return 'Unknown';
     }
@@ -1973,10 +2104,11 @@ class ChatService extends ChangeNotifier {
     _sessionDescription = lastSession.description;
     _parentSessionId = lastSession.parentSession;
     _forkIndex = lastSession.forkIndex;
-    _affectionScore = lastSession.affectionScore;
-    _relationshipTier = lastSession.relationshipTier;
-    _longTermScore = lastSession.longTermScore;
-    _longTermTier = lastSession.longTermTier;
+     // Migration: scale old scores (±150) to new range (±300)
+     _affectionScore = _migrateShortTermScore(lastSession.affectionScore);
+     _relationshipTier = _calculateTier(_affectionScore);
+     _longTermScore = _migrateLongTermScore(lastSession.longTermScore);
+     _longTermTier = _calculateTier(_longTermScore);
     _turnsSinceLongTermCheck = lastSession.turnsSinceLongTermCheck;
     _shortTermDeltasSummary = lastSession.shortTermDeltasSummary;
     _realismEnabled = lastSession.realismEnabled;
@@ -2555,8 +2687,9 @@ class ChatService extends ChangeNotifier {
           _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
 
       _realismEnabled = extSeed.realismEnabled;
-      _affectionScore = extSeed.shortTermBond.clamp(-150, 150);
-      _longTermScore = extSeed.longTermBond.clamp(-150, 150);
+       // Migration: scale old scores (±150) to new range (±300)
+       _affectionScore = _migrateShortTermScore(extSeed.shortTermBond.clamp(-150, 150));
+       _longTermScore = _migrateLongTermScore(extSeed.longTermBond.clamp(-150, 150));
       _trustLevel = extSeed.trustLevel.clamp(-100, 100);
       _dayCount = extSeed.dayCount.clamp(1, 9999);
       _timeOfDay = extSeed.timeOfDay;
@@ -3144,19 +3277,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
           final trustDelta =
               lastMsg.activeMetadata!['trust_delta'] as int? ?? 0;
 
-          if (bondDelta != 0) {
-            _affectionScore = (_affectionScore - bondDelta).clamp(-10, 15);
-            if (_affectionScore < 0)
-              _relationshipTier = 1;
-            else if (_affectionScore <= 3)
-              _relationshipTier = 2;
-            else if (_affectionScore <= 7)
-              _relationshipTier = 3;
-            else if (_affectionScore <= 11)
-              _relationshipTier = 4;
-            else
-              _relationshipTier = 5;
-          }
+           if (bondDelta != 0) {
+             _affectionScore = (_affectionScore - bondDelta).clamp(-300, 300);
+             _relationshipTier = _calculateTier(_affectionScore);
+           }
           if (moodDelta != 0) {
             _moodDecayCounter = 0;
           }
@@ -3179,7 +3303,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             );
           } else if (arousalDelta != 0 && _nsfwCooldownEnabled) {
             // Normal arousal delta revert (no climax involved)
-            _arousalLevel = (_arousalLevel - arousalDelta).clamp(-3, 10);
+            _arousalLevel = (_arousalLevel - arousalDelta).clamp(-100, 100);
           }
         }
 
@@ -7135,49 +7259,98 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     final charName = _activeCharacter?.name ?? 'the character';
 
     String bondGuidance;
-    if (_longTermTier >= 4) {
+    if (_longTermTier >= 7) {
       bondGuidance =
           'Their Long-Term Commitment is unbreakable: $charName fully trusts {{user}} and views them as a soulmate/life partner.';
-    } else if (_longTermTier >= 2) {
+    } else if (_longTermTier >= 4) {
       bondGuidance =
-          'Their Long-Term Trust is strong: $charName feels a deepening, stable connection and sees a real future with {{user}}.';
-    } else if (_longTermTier <= -2) {
+          'Their Long-Term Trust is strong: $charName feels a deepening, stable connection and sees a real future with {{user}.';
+    } else if (_longTermTier <= -4) {
       bondGuidance =
-          'Their Long-Term Trust is broken: $charName holds deep-seated resentment and fundamentally distrusts {{user}}. Even if short-term mood improves, the underlying hostility remains.';
+          'Their Long-Term Trust is broken: $charName holds deep-seated resentment and fundamentally distrusts {{user}. Even if short-term mood improves, the underlying hostility remains.';
     } else {
       bondGuidance = 'Their Long-Term Bond is developing normally.';
     }
 
     String tensionGuidance;
     switch (_relationshipTier) {
-      case 5:
+      case 10:
+        tensionGuidance =
+            'Short-Term Tension is Soulbound: $charName is completely open, vulnerable, and emotionally intertwined with {{user}}.';
+        break;
+      case 9:
+      case 8:
+        tensionGuidance =
+            'Short-Term Tension is Enamored/Devoted: $charName is deeply attached and prioritizes {{user}} above their own needs.';
+        break;
+      case 7:
         tensionGuidance =
             'Short-Term Tension is Intimate: $charName is exceptionally close, vulnerable, and completely open right now.';
         break;
+      case 6:
+        tensionGuidance =
+            'Short-Term Tension is Close: $charName shares personal thoughts and feels emotionally connected.';
+        break;
+      case 5:
+        tensionGuidance =
+            'Short-Term Tension is Amiable: $charName is warm and friendly, engaging openly.';
+        break;
       case 4:
-      case 3:
         tensionGuidance =
             'Short-Term Tension is Friendly: $charName is warm, playful, and shares personal thoughts freely.';
         break;
-      case 2:
-      case 1:
+      case 3:
         tensionGuidance =
-            'Short-Term Tension is Acquaintance: $charName is polite but keeps a safe emotional distance.';
+            'Short-Term Tension is Warm: $charName is comfortable and approachable.';
         break;
+      case 2:
+        tensionGuidance =
+            'Short-Term Tension is Receptive: $charName is open to conversation and mildly interested.';
+        break;
+      case 1:
       case 0:
         tensionGuidance =
-            'Short-Term Tension is Neutral/Stranger: $charName is guarded, formal, and deflects personal subjects.';
+            'Short-Term Tension is Neutral: $charName engages naturally based on their established personality — neither particularly warm nor distant.';
         break;
       case -1:
+        tensionGuidance =
+            'Short-Term Tension is Reserved: $charName is cautious and holding back.';
+        break;
       case -2:
         tensionGuidance =
-            'Short-Term Tension is Frustrated: $charName is actively annoyed, short-tempered, and likely to snap or withdraw.';
+            'Short-Term Tension is Cool: $charName is polite but maintains emotional distance.';
         break;
       case -3:
+        tensionGuidance =
+            'Short-Term Tension is Unimpressed: $charName is indifferent and unengaged.';
+        break;
       case -4:
+        tensionGuidance =
+            'Short-Term Tension is Annoyed: $charName is mildly bothered and slightly sarcastic.';
+        break;
       case -5:
         tensionGuidance =
-            'Short-Term Tension is Hostile: $charName actively dislikes {{user}} right now, responding with venom, sarcasm, or pure spite.';
+            'Short-Term Tension is Disliked: $charName is cold and dismissive.';
+        break;
+      case -6:
+        tensionGuidance =
+            'Short-Term Tension is Hostile: $charName is openly antagonistic.';
+        break;
+      case -7:
+        tensionGuidance =
+            'Short-Term Tension is Adversarial: $charName is combative and argumentative.';
+        break;
+      case -8:
+        tensionGuidance =
+            'Short-Term Tension is Disdain: $charName holds contemptuous views of {{user}}.';
+        break;
+      case -9:
+        tensionGuidance =
+            'Short-Term Tension is Contempt: $charName is demeaning and disrespectful.';
+        break;
+      case -10:
+        tensionGuidance =
+            'Short-Term Tension is Vitriolic: $charName actively hates {{user}} with pure hostility.';
         break;
       default:
         tensionGuidance = '';
@@ -7185,11 +7358,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     return '[OOC Note regarding Relationship:\n'
         ' Long-Term Status: $longTermTierName ($_longTermScore points)\n'
-        ' Short-Term Tension: $shortTermTierName\n'
-        ' Current Mood: $moodLabel\n'
-        ' $bondGuidance\n'
-        ' $tensionGuidance\n'
-        ' CRITICAL: Do NOT mention out-of-character terms or UI logic like tiers, scores, levels, or relationship states in your dialogue. Show, do not tell.]\n';
+         ' Short-Term Tension: $shortTermTierName\n'
+         ' Current Mood: $moodLabel\n'
+         '$bondGuidance\n'
+         '$tensionGuidance\n]';
   }
 
   String _getEmotionInjection() {
@@ -7220,10 +7392,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     if (_activeFixation.isNotEmpty && _fixationLifespan > 0) {
       final charName = _activeCharacter?.name ?? 'the character';
       block +=
-          '[Background Thought: $charName has a lingering preoccupation about "$_activeFixation". '
-          'This should manifest as subconscious coloring — a stray thought, a loaded pause, '
-          'a flicker of expression — NOT as $charName suddenly bringing it up in conversation. '
-          'Only surface it overtly if the conversation naturally touches the topic.]\n';
+          '[Background Thought: $charName has a thought that stays with them about "$_activeFixation". '
+          'This might surface as a subtle mood shift, a moment of reflection, or colored reactions. '
+          'It does NOT override their personality or current focus, and only surfaces overtly if conversation naturally touches the topic.]\n';
     }
 
     // 3. Spatial Stance Mapping
@@ -7257,40 +7428,43 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   }
 
   /// Injects a trust-calibrated behavioral frame based on existing _trustLevel.
-  /// Tells the model how much of the character's inner self to surface —  but
+  /// Tells the model how much of the character's inner self to surface — but
   /// deliberately avoids prescribing specific behaviors, letting the character
   /// persona define what "opening up" actually looks like for THIS character.
+  /// Trust tier 0 is now truly neutral — neither trusting nor distrustful.
   String _getTrustBehaviorInjection() {
     if (!_realismEnabled || _activeCharacter == null) return '';
     final charName = _activeCharacter!.name;
-    final tier = trustTier; // already clamped -5 to +5
+    final tier = trustTier; // now -7 to +7
 
     String frame;
-    if (tier <= -3) {
+    if (tier <= -5) {
       frame =
-          'has closed off completely. They are guarded, deflect personal questions, '
-          'keep responses short, and maintain maximum emotional distance. '
-          'They do not volunteer anything personal and do not engage beyond necessity.';
+          'is deeply distrustful and paranoid. They question every motive, remain highly '
+          'evasive, and actively suspect harmful intentions. Even positive gestures are met with skepticism.';
+    } else if (tier <= -3) {
+      frame =
+          'is skeptical and guarded. They keep conversations surface-level, avoid vulnerability, '
+          'and actively test the user intentions before opening up.';
     } else if (tier <= -1) {
       frame =
-          'is wary and on guard. They keep things surface-level, avoid anything vulnerable, '
-          'and are subtly defensive. They may cooperate but remain emotionally unavailable.';
+          'is cautious and reserved. They are neither trusting nor hostile — engaging based on the immediate '
+          'context while maintaining emotional distance.';
     } else if (tier == 0) {
       frame =
-          'is neutral — neither open nor closed. They engage normally but do not '
-          'volunteer personal feelings or lower their social mask. Default baseline behavior.';
+          'is neutral — neither trusting nor distrustful. They engage based on the immediate context and their '
+          'personality, without assuming the best or worst of the user. A naturally warm character remains warm, '
+          'a naturally cold character remains cold.';
     } else if (tier <= 2) {
       frame =
-          'is beginning to feel comfortable. They may let small authentic moments through — '
-          'a glimpse of their real opinion, a slightly less guarded tone. Do not force warmth; '
-          'let it emerge naturally in ways consistent with ${charName}\'s specific personality.';
+          'is leaning toward trust. They may show slightly more openness than usual, giving the user '
+          'the benefit of doubt in ambiguous situations. Do not force it — let it emerge naturally.';
     } else if (tier <= 4) {
       frame =
-          'genuinely trusts this person. Their social mask is down. They share real feelings, '
-          'admit uncertainty, and speak more candidly than they would with most people. '
-          'What this looks like depends entirely on ${charName}\'s own character — an introverted '
-          'character might simply hold eye contact longer or say one true thing; an expressive one '
-          'might open up more dramatically. Follow ${charName}\'s persona.';
+          'genuinely trusts this person. Their social mask is down. They share real feelings and speak more '
+          'candidly than they would with most people. What this looks like depends entirely on ${charName}\'s '
+          'own character — an introverted character might simply hold eye contact longer or say one true thing; '
+          'an expressive one might open up more dramatically. Follow ${charName}\'s persona.';
     } else {
       frame =
           'has reached a level of deep trust that is rare for them. They are fully themselves — '
@@ -7397,7 +7571,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             "built to that point through {{user}}'s direct actions. $charName is desperate "
             'and aching but still in the moment, not past it.\n';
       }
-      if (_arousalLevel < 10) {
+      if (arousalTier < 6) {
         statePrompt += ' $charName is currently $arousalDesc.\n';
       }
     }
@@ -7448,9 +7622,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     String personalityInjection = '';
     if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality.length > 200
-          ? _activeCharacter!.personality.substring(0, 200)
-          : _activeCharacter!.personality;
+      final p = _activeCharacter!.personality;
       personalityInjection =
           'Account for $charName\'s specific personality traits:\n"$p"\n\n';
     }
@@ -7461,19 +7633,18 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         'IMPORTANT: Reactions are entirely subjective based on $charName\'s personality. '
         'Most normal interactions should score 0 or slightly positive. '
         'Reserve negative scores ONLY for clear rudeness, hostility, manipulation, or betrayal.\n\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-50 to +50)\n'
-        '   +50: Life-changing — a moment that fundamentally redefines the relationship\n'
-        '   +30: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
-        '   +20: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
-        '   +10: Meaningfully warmed — a moment that clearly strengthens the connection\n'
-        '   +5: Moved — a sweet, kind, or thoughtful exchange | +2: Warmed up | +1: Mildly pleasant\n'
-        '   0: No change (DEFAULT for normal conversation)\n'
-        '   -1: Slightly put off | -2: Annoyed | -5: Hurt — a clearly unkind or dismissive moment\n'
-        '   -10: Wounded — a significant emotional injury\n'
-        '   -20: Deeply hurt — a cruel or callous act that damages the bond\n'
-        '   -30: Devastated — a severe betrayal of emotional trust\n'
-        '   -50: Devastating betrayal — a relationship-destroying act\n'
-        '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
+         '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
+         '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
+         '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
+         '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
+         '   +5: Meaningfully warmed — a moment that clearly strengthens the connection\n'
+         '   +3: Moved | +2: Warmed up | +1: Mildly pleasant\n'
+         '   -1: Slightly put off | -2: Annoyed | -3: Hurt — a clearly unkind or dismissive moment\n'
+         '   -5: Wounded — a significant emotional injury\n'
+         '   -8: Deeply hurt — a cruel or callous act that damages the bond\n'
+         '   -10: Devastated — a severe betrayal of emotional trust\n'
+         '   -15: Devastating betrayal — a relationship-destroying act\n'
+         '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
         '2. "bond_reason": One brief in-character thought from $charName explaining the tension shift, e.g. "His warmth made me feel safe." or "That dismissal stung." Use "none" if delta is 0.\n'
         '3. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
         '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
@@ -7538,7 +7709,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             -10,
             10,
           );
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-3, 10);
+          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
         }
       }
 
@@ -7597,9 +7768,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     // ── Personality injection (same as relationship eval) ──
     String personalityInjection = '';
     if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality.length > 200
-          ? _activeCharacter!.personality.substring(0, 200)
-          : _activeCharacter!.personality;
+      final p = _activeCharacter!.personality;
       personalityInjection =
           '$charName\'s personality traits (evaluate emotion THROUGH these):\n"$p"\n\n';
     }
@@ -7614,7 +7783,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         : '';
     final arousalInstr = _nsfwCooldownEnabled
         ? '3. "arousal_delta": Physical arousal shift this turn. (-10 to +10)\n'
-              '   Current arousal: $_arousalLevel/10. '
+              '   Current arousal: $_arousalLevel/100. '
               'Arousal measures DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   It can spike suddenly (+7 from an unexpected intimate moment) or crash (-8 from embarrassment/disgust).\n'
               '   High arousal = the character is intensely turned on, NOT that they are about to climax '
@@ -7679,7 +7848,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         if (arousalMatch != null) {
           final arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0)
               .clamp(-10, 10);
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-3, 10);
+          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
           if (arousalDelta != 0) {
             _pendingRealismMetadata ??= {};
             _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
@@ -7874,12 +8043,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     final oPrompt = primaryObjective != null
         ? '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Must be a significant personal, social, or narrative goal triggered by a STRONG, specific event THIS turn. NOT a trivial step, and NOT a restatement of the primary quest.\n'
               '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n'
-        : '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue, triggered by a strong specific event THIS turn — a significant hidden agenda, emotional need, personal conflict, or moral dilemma.\n'
+         : '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue, triggered by a strong specific event THIS turn — could be emotional (confess feelings), practical (plan a surprise), or personal (achieve something they\'ve been working toward). Default: "none".\n'
               '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n';
     final prompt =
         'You are an autonomous story engine evaluating narrative progression for $charName.\n\n'
         '$oPrompt'
-        '2. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — something that haunts them across multiple scenes, not a temporary reaction to this turn. Must be significant enough to color their behavior unprompted. Default: "none".\n\n'
+        '2. "fixation_topic": A persistent thought or concern that colors $charName\'s perspective — could be a hope, worry, ambition, or memory. Not a temporary reaction, but something that lingers across scenes. Default: "none".\n\n'
         'Recent conversation:\n$recent\n\n'
         'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic".';
 
@@ -7970,9 +8139,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     String personalityInjection = '';
     if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality.length > 300
-          ? _activeCharacter!.personality.substring(0, 300)
-          : _activeCharacter!.personality;
+      final p = _activeCharacter!.personality;
       personalityInjection =
           'Account for $charName\'s specific personality traits:\n"$p"\n\n';
     }
@@ -7993,7 +8160,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     // Arousal is field 7 (after posture), objective is 8, fixation 9, reason 10
     final arousalInstr = _nsfwCooldownEnabled
         ? '7. "arousal_delta": Physical arousal shift this turn. (-10 to +10)\n'
-              '   Current arousal: $_arousalLevel/10. '
+              '   Current arousal: $_arousalLevel/100. '
               'Arousal = DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   Can spike suddenly (unexpected intimacy) or crash (embarrassment/disgust).\n'
               '   High arousal = intensely turned on, NOT about to climax — climax only during active sexual contact at peak arousal.\n'
@@ -8019,13 +8186,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         '   -1: Slightly put off | -2: Annoyed | -5: Hurt\n'
         '   -10: Wounded | -20: Deeply hurt | -30: Devastated | -50: Devastating betrayal\n'
         '   ⚠ Default to 0 for normal conversation.\n'
-        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
-        '   Trust is SUBJECTIVE to $charName\'s personality. What builds trust for one character may break it for another.\n'
-        '   +30 to +50: EXTRAORDINARY trust — selfless sacrifice, proving loyalty beyond doubt, protecting $charName at real personal cost\n'
-        '   +10 to +20: Meaningfully trustworthy — kept a hard promise, showed real vulnerability, stood firm under pressure\n'
-        '   +5: Did what $charName craves or values | +2: acted respectably | 0: Neutral\n'
-        '   -5: acted in a way $charName finds personally untrustworthy | -30: deliberate betrayal | -200: unforgivable\n'
-        '   ⚠ Default to 0. If $charName is the one acting (e.g. $charName lied, felt guilty): always 0.\n'
+         '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-50 to +30)\n'
+         '   Trust is SUBJECTIVE to $charName\'s personality. What builds trust for one character may break it for another.\n'
+         '   +25 to +30: EXTRAORDINARY trust — selfless sacrifice, proving loyalty beyond doubt, protecting $charName at real personal cost\n'
+         '   +10 to +15: Meaningfully trustworthy — kept a hard promise, showed vulnerability, stood firm under pressure\n'
+         '   +5: Did what $charName craves or values | +2: acted respectably | 0: Neutral\n'
+         '   -5: acted in a way $charName finds personally untrustworthy | -15: deliberate betrayal | -50: unforgivable\n'
+         '   ⚠ Default to 0. If $charName is the one acting (e.g. $charName lied, felt guilty): always 0.\n'
         '3. "emotion": $charName\'s overarching emotional state (one nuanced word).\n'
         '   NOT generic ("happy"/"sad") — find the specific texture: wistful not sad, flustered not happy, prickly not angry.\n'
         '   Filter through $charName\'s personality — a stoic character in deep pain shows "guarded", not "devastated".\n'
@@ -8095,7 +8262,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             -10,
             10,
           );
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-3, 10);
+          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
         }
       }
 
@@ -8220,9 +8387,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     if (!_realismEnabled || _activeCharacter == null) return;
 
     final charName = _activeCharacter!.name;
-    final persona = _activeCharacter!.personality.length > 600
-        ? _activeCharacter!.personality.substring(0, 600)
-        : _activeCharacter!.personality;
+    final persona = _activeCharacter!.personality;
     final recentCount = _messages.length < 10 ? _messages.length : 10;
     final history = _messages.reversed
         .take(recentCount)
@@ -8379,9 +8544,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     String personalityInjection = '';
     if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality.length > 600
-          ? _activeCharacter!.personality.substring(0, 600)
-          : _activeCharacter!.personality;
+      final p = _activeCharacter!.personality;
       personalityInjection = 'Character Personality Traits:\n"$p"\n\n';
     }
 
@@ -8479,11 +8642,23 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     final oldLTScore = _longTermScore;
     final oldLTTier = _longTermTier;
 
-    if (_shortTermDeltasSummary >= 2 && _relationshipTier >= 0) {
-      _longTermScore = (_longTermScore + 1).clamp(-150, 150);
-    } else if (_shortTermDeltasSummary <= -2 && _relationshipTier <= 0) {
-      _longTermScore = (_longTermScore - 1).clamp(-150, 150);
+    // Proportional growth based on average short-term tier over the evaluation window
+    final avgTier = _relationshipTier; // Use current tier as proxy for recent average
+
+    if (avgTier >= 7) {
+      _longTermScore = (_longTermScore + 3).clamp(-300, 300);
+    } else if (avgTier >= 4) {
+      _longTermScore = (_longTermScore + 2).clamp(-300, 300);
+    } else if (avgTier >= 2) {
+      _longTermScore = (_longTermScore + 1).clamp(-300, 300);
+    } else if (avgTier <= -7) {
+      _longTermScore = (_longTermScore - 3).clamp(-300, 300);
+    } else if (avgTier <= -4) {
+      _longTermScore = (_longTermScore - 2).clamp(-300, 300);
+    } else if (avgTier <= -2) {
+      _longTermScore = (_longTermScore - 1).clamp(-300, 300);
     }
+    // Between -1 and +1: no long-term change (neutral drift doesn't cement)
 
     _longTermTier = _calculateTier(_longTermScore);
     _turnsSinceLongTermCheck = 0;
@@ -8494,16 +8669,36 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         '[Realism] Long-Term Bond updated: $oldLTScore \u2192 $_longTermScore, '
         'Tier: $oldLTTier \u2192 $_longTermTier ($longTermTierName)',
       );
-    } else {
-      debugPrint(
-        '[Realism] Long-Term Bond check (No change) - Status: $_longTermScore ($longTermTierName)',
-      );
-    }
+     } else {
+       debugPrint(
+         '[Realism] Long-Term Bond check (No change) - Status: $_longTermScore ($longTermTierName)',
+       );
+     }
   }
 
-  void _applyMoodDecay() {}
 
-  // ── Public Toggle Methods ──
+   /// Apply short-term relationship decay (2 points per 10 turns toward 0)
+   /// This prevents relationships from being permanently stuck at extremes.
+   void _applyMoodDecay() {
+     // Decay mechanism: every 10 turns, move score toward 0 by 2 points
+     _turnsSinceDecayCheck++;
+     if (_turnsSinceDecayCheck >= 10) {
+       if (_affectionScore > 0) {
+         _affectionScore = (_affectionScore - 1).clamp(-300, 300);
+       } else if (_affectionScore < 0) {
+         _affectionScore = (_affectionScore + 1).clamp(-300, 300);
+       }
+       _turnsSinceDecayCheck = 0;
+       if (_affectionScore != 0) {
+         debugPrint(
+           '[Realism] Short-term decay applied: $_affectionScore',
+         );
+       }
+     }
+   }
+
+    // ── Public Toggle Methods ──
+
 
   Future<void> setRealismEnabled(bool enabled) async {
     _realismEnabled = enabled;

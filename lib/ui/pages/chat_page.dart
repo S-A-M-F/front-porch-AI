@@ -8788,68 +8788,60 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                 if (widget.chat.nsfwCooldownEnabled) ...[
                   Row(
                     children: [
-                      Icon(
-                        widget.chat.arousalLevel >= 4
-                            ? Icons.local_fire_department
-                            : widget.chat.arousalLevel <= -1
-                            ? Icons.ac_unit
-                            : Icons.favorite_border,
-                        size: 13,
-                        color: widget.chat.arousalLevel >= 4
-                            ? Colors.deepOrangeAccent
-                            : widget.chat.arousalLevel <= -1
-                            ? Colors.lightBlueAccent
-                            : Colors.white38,
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          'Lust: ${widget.chat.arousalLevel >= 9
-                              ? 'Feverish'
-                              : widget.chat.arousalLevel >= 6
-                              ? 'Heavy'
-                              : widget.chat.arousalLevel >= 3
-                              ? 'Mild'
-                              : widget.chat.arousalLevel < 0
-                              ? 'Deadened'
-                              : 'Dormant'}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: widget.chat.arousalLevel >= 4
-                                ? Colors.deepOrangeAccent
-                                : widget.chat.arousalLevel <= -1
-                                ? Colors.lightBlueAccent
-                                : Colors.white54,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${widget.chat.arousalLevel.clamp(0, 10)}/10',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.white38,
-                        ),
-                      ),
+                       Icon(
+                         widget.chat.arousalTier >= 6
+                             ? Icons.local_fire_department
+                             : widget.chat.arousalTier <= -1
+                             ? Icons.ac_unit
+                             : Icons.favorite_border,
+                         size: 13,
+                         color: widget.chat.arousalTier >= 6
+                             ? Colors.deepOrangeAccent
+                             : widget.chat.arousalTier <= -1
+                             ? Colors.lightBlueAccent
+                             : Colors.white38,
+                       ),
+                       const SizedBox(width: 5),
+                       Expanded(
+                         child: Text(
+                           'Lust: ${widget.chat.arousalTierName}',
+                           style: TextStyle(
+                             fontSize: 12,
+                             color: widget.chat.arousalTier >= 6
+                                 ? Colors.deepOrangeAccent
+                                 : widget.chat.arousalTier <= -1
+                                 ? Colors.lightBlueAccent
+                                 : Colors.white54,
+                           ),
+                           overflow: TextOverflow.ellipsis,
+                         ),
+                       ),
+                       const SizedBox(width: 8),
+                       Text(
+                         '${widget.chat.arousalLevel.clamp(0, 100)}/100',
+                         style: const TextStyle(
+                           fontSize: 10,
+                           color: Colors.white38,
+                         ),
+                       ),
                     ],
                   ),
                   const SizedBox(height: 3),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(
-                      value: (widget.chat.arousalLevel / 10).clamp(0.0, 1.0),
-                      minHeight: 4,
-                      backgroundColor: Colors.white10,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        widget.chat.arousalLevel >= 4
-                            ? Colors.deepOrangeAccent
-                            : widget.chat.arousalLevel <= -1
-                            ? Colors.lightBlueAccent
-                            : Colors.white30,
-                      ),
-                    ),
-                  ),
+                   ClipRRect(
+                     borderRadius: BorderRadius.circular(3),
+                     child: LinearProgressIndicator(
+                       value: (widget.chat.arousalLevel / 100).clamp(0.0, 1.0),
+                       minHeight: 4,
+                       backgroundColor: Colors.white10,
+                       valueColor: AlwaysStoppedAnimation<Color>(
+                         widget.chat.arousalTier >= 6
+                             ? Colors.deepOrangeAccent
+                             : widget.chat.arousalTier <= -1
+                             ? Colors.lightBlueAccent
+                             : Colors.white30,
+                       ),
+                     ),
+                   ),
                   const SizedBox(height: 12),
                 ],
 
