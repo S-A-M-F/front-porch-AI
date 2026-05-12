@@ -4097,9 +4097,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
           );
 
           if (memories.isNotEmpty) {
-            // Cap memory injection to ~30% of the total context budget
+            // Cap memory injection to ~10% of the total context budget.
+            // The summary carries the weight of context compression; RAG only
+            // supplements with specific details the summary missed. Too much
+            // RAG (2500+ tokens) overwhelms the model and causes it to
+            // reference stale events as if they're current ("going back in time").
             final contextSize = _storageService.contextSize;
-            final memoryBudget = (contextSize * 0.30).round();
+            final memoryBudget = (contextSize * 0.10).round();
             final includedMemories = <String>[];
             int usedTokens = 0;
             for (final m in memories) {
@@ -4116,7 +4120,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             }
             if (includedMemories.isNotEmpty) {
               memoriesBlock =
-                  '[Relevant memories from past conversations:\n${includedMemories.join('\n')}]\n';
+                  '[Earlier in this conversation (already happened, do not revisit):\n${includedMemories.join('\n')}]\n';
               debugPrint(
                 '[RAG:Chat] ✅ Injecting ${includedMemories.length}/${memories.length} memories (~$usedTokens tokens, budget: $memoryBudget)',
               );
@@ -6082,7 +6086,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         temperature: 0.2,
         repeatPenalty: 1.15,
         stopSequences: isThinkingModel ? [] : [']\n', ']'],
-        grammar: _buildKoboldGrammar(_kGbnfJsonStringArray),
+        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonStringArray),
         banEosToken: isThinkingModel && _llmProvider!.isLocal,
         trimStop: !(isThinkingModel && _llmProvider!.isLocal),
       );
@@ -6201,7 +6206,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
       final raw = await _fireLLMEval(
         consolidationPrompt,
-        grammar: _buildKoboldGrammar(_kGbnfJsonStringArray),
+        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonStringArray),
       );
       if (raw == null) {
         // LLM failed — fall back to simple truncation (keep first N facts)
@@ -7054,22 +7060,6 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     return cleaned;
   }
 
-  /// Returns a GBNF grammar string only when it is safe to use one:
-  /// - Backend must be KoboldCPP (local)
-  /// - Reasoning/thinking mode must be OFF (grammar would block <think> tokens)
-  /// Never call this for the API (OpenRouter) path.
-  String? _buildKoboldGrammar(String grammar) {
-    if (_llmProvider == null) return null;
-    // Only apply grammar to the local KoboldCPP backend
-    if (_llmProvider!.isLocal == false) return null;
-    // If the user has flagged a local thinking model, skip grammar entirely —
-    // grammar would block <think> tokens and produce zero output.
-    if (_storageService.koboldThinkingModel) return null;
-    // Legacy: also skip if the remote reasoning flag is on (belt-and-suspenders)
-    if (_storageService.reasoningEnabled) return null;
-    return grammar;
-  }
-
   /// Shared helper: fire a lightweight LLM eval call and return the raw response.
   ///
   /// Always adds `}\n` as a stop sequence so the model halts the moment it
@@ -7077,11 +7067,11 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   /// Thinking models (Kimi 2.5, GLM 5) will still think freely — they produce
   /// the <think> block, then output the JSON, then hit `}\n` and stop.
   ///
-  /// [grammar] is an optional GBNF string for KoboldCPP local + non-thinking
-  /// models only. Pass via [_buildKoboldGrammar] to get safe auto-gating.
+  /// NOTE: GBNF grammar is intentionally NOT used. Many KoboldCPP models return
+  /// empty output when they can't satisfy grammar constraints. Rely on stop
+  /// sequences + regex parsing instead (same approach as remote APIs).
   Future<String?> _fireLLMEval(
     String prompt, {
-    String? grammar,
     void Function(String)? onChunk,
   }) async {
     if (_llmProvider == null) return null;
@@ -7103,7 +7093,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       // immediately when busy — this await blocks until it is actually idle.
       // Critical for thinking models that keep generating long after the socket drops.
       debugPrint('[Realism:Eval] Waiting for KoboldCPP to become idle...');
-      await kobold.ensureServerIdle();
+      await kobold.waitForIdle();
       debugPrint('[Realism:Eval] KoboldCPP idle, starting eval request.');
     } else {
       if (!llm.isReady) return null;
@@ -7126,9 +7116,14 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     final isThinkingModel = _llmProvider!.isLocal
         ? _storageService.koboldThinkingModel
         : _storageService.reasoningEnabled;
+    // KoboldCPP's stop_sequence handling is unreliable for short JSON evals —
+    // models enter repetition loops until maxLength is hit. Use a small ceiling
+    // (150 tokens) for local evals since a JSON object is 10-30 tokens.
+    // API backends get 4000 for thinking model runway.
+    final evalMaxLength = _llmProvider!.isLocal ? 150 : 4000;
     final params = GenerationParams(
       prompt: prompt,
-      maxLength: 8000,
+      maxLength: evalMaxLength,
       temperature: 0.1,
       // Prevent repetition loops at low temperature.
       // Without this, non-grammar-constrained models (e.g. thinking models
@@ -7143,7 +7138,6 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       stopSequences: _llmProvider!.isLocal
           ? (isThinkingModel ? [] : ['}\n', '}'])
           : [],
-      grammar: grammar,
       // Thinking model KoboldCPP fixes:
       //  banEosToken: prevents KoboldCPP from treating the chat template's
       //    built-in stop tokens (<|im_end|> etc.) as EOS mid-generation —
@@ -7694,7 +7688,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       debugPrint('[Realism] Evaluating relationship dynamic...');
       final raw = await _fireLLMEval(
         prompt,
-        grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -7853,7 +7848,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     try {
       final raw = await _fireLLMEval(
         prompt,
-        grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -7944,7 +7940,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       try {
         final raw = await _fireLLMEval(
           holdPrompt,
-          grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+          // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
           onChunk: onChunk,
         );
         if (raw != null) {
@@ -8037,7 +8034,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       try {
         final raw = await _fireLLMEval(
           posturePrompt,
-          grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+          // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
           onChunk: onChunk,
         );
         if (raw != null) {
@@ -8087,7 +8085,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     try {
       final raw = await _fireLLMEval(
         prompt,
-        grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -8243,7 +8242,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       debugPrint('[Realism:OneShot] Evaluating (fused call)...');
       final raw = await _fireLLMEval(
         prompt,
-        grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -8450,7 +8450,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       debugPrint('[Realism:TrustRepair] Evaluating repair attempt...');
       final raw = await _fireLLMEval(
         prompt,
-        grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
+        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -8597,9 +8598,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     try {
       debugPrint('[Realism:Climax] Checking AI response for climax...');
+      // NOTE: GBNF grammar disabled — many KoboldCPP models return empty
+      // output when they can't satisfy grammar constraints. Rely on stop
+      // sequences + regex parsing instead (same as remote APIs).
       final raw = await _fireLLMEval(
         prompt,
-        grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
       );
       if (raw == null) return;
 

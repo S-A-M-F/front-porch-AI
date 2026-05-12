@@ -64,6 +64,10 @@ class KoboldService extends ChangeNotifier
   String get baseUrl => _baseUrl;
   http.Client? _activeClient;
 
+  /// Tracks the completion of the current generation stream.
+  /// Used by waitForIdle() to serialize requests without aborting in-flight ones.
+  Future<void>? _pendingRequest;
+
   // LLMService interface
   @override
   /// True only when the process is running AND the model is fully loaded.
@@ -454,6 +458,13 @@ class KoboldService extends ChangeNotifier
 
     final client = http.Client();
     _activeClient = client;
+
+    // Track this request's lifecycle so waitForIdle() can await completion
+    // without aborting. The completer resolves when the stream fully closes
+    // (success or error).
+    final _completer = Completer<void>();
+    _pendingRequest = _completer.future;
+
     try {
       // Thinking models (especially large ones like 24B+) can take several
       // minutes during the prefill phase before the first token is generated.
@@ -543,6 +554,11 @@ class KoboldService extends ChangeNotifier
     } finally {
       _activeClient = null;
       client.close();
+      // Signal that this request is fully complete so waitForIdle() unblocks.
+      if (!_completer.isCompleted) {
+        _completer.complete();
+      }
+      _pendingRequest = null;
     }
   }
 
@@ -601,6 +617,16 @@ class KoboldService extends ChangeNotifier
       // If the abort endpoint isn't available (older KoboldCPP build) or
       // the server isn't running, swallow the error — the generation request
       // will simply fail naturally.
+    }
+  }
+
+  /// Wait for any in-flight generation to complete naturally.
+  /// Unlike [ensureServerIdle], this does NOT abort the active request —
+  /// it simply awaits the stream to close. Returns immediately if idle.
+  Future<void> waitForIdle() async {
+    final pending = _pendingRequest;
+    if (pending != null) {
+      await pending;
     }
   }
 
