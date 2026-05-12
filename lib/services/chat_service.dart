@@ -8188,9 +8188,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     final arousalField = _nsfwCooldownEnabled
         ? ', "arousal_delta": <number -10 to +10>'
         : '';
-    // Arousal is field 7 (after posture), objective is 8, fixation 9, reason 10
+    // Arousal is field 8 (after posture), objective is 9, fixation 10, reason 11
     final arousalInstr = _nsfwCooldownEnabled
-        ? '7. "arousal_delta": Physical arousal shift this turn. (-10 to +10)\n'
+        ? '8. "arousal_delta": Physical arousal shift this turn. (-10 to +10)\n'
               '   Current arousal: $_arousalLevel/100. '
               'Arousal = DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   Can spike suddenly (unexpected intimacy) or crash (embarrassment/disgust).\n'
@@ -8198,7 +8198,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         : '';
 
     // Determine the next field number after arousal (or after posture if arousal disabled)
-    final objNum = _nsfwCooldownEnabled ? 8 : 7;
+    final objNum = _nsfwCooldownEnabled ? 9 : 8;
     final fixNum = objNum + 1;
     final reasonNum = fixNum + 1;
 
@@ -8224,13 +8224,14 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
          '   +5: Did what $charName craves or values | +2: acted respectably | 0: Neutral\n'
          '   -5: acted in a way $charName finds personally untrustworthy | -15: deliberate betrayal | -50: unforgivable\n'
          '   ⚠ Default to 0. If $charName is the one acting (e.g. $charName lied, felt guilty): always 0.\n'
-        '3. "emotion": $charName\'s overarching emotional state (one nuanced word).\n'
+        '3. "trust_reason": One brief in-character thought from $charName explaining the trust shift in $userName, or "none" if delta is 0.\n'
+        '4. "emotion": $charName\'s overarching emotional state (one nuanced word).\n'
         '   NOT generic ("happy"/"sad") — find the specific texture: wistful not sad, flustered not happy, prickly not angry.\n'
         '   Filter through $charName\'s personality — a stoic character in deep pain shows "guarded", not "devastated".\n'
         '${_storageService.expressionEnabled ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
-        '4. "emotion_intensity": mild, moderate, or strong\n'
-        '5. "bond_reason": One brief in-character thought from $charName explaining the relationship shift, or "none" if delta is 0.\n'
-        '6. "posture": $charName\'s current physical position and location (brief grounded phrase), or "none". Match the current scene context — update if the setting changed, time passed, or scene broke. Maintain continuity only within the same scene.\n'
+        '5. "emotion_intensity": mild, moderate, or strong\n'
+        '6. "bond_reason": One brief in-character thought from $charName explaining the relationship shift, or "none" if delta is 0.\n'
+        '7. "posture": $charName\'s current physical position and location (brief grounded phrase), or "none". Match the current scene context — update if the setting changed, time passed, or scene broke. Maintain continuity only within the same scene.\n'
         '$arousalInstr'
         '${primaryObjective != null ? '$objNum. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Triggered by a STRONG event THIS turn.\n   ⚠ Default to "none". 90% of turns should produce "none".\n' : '$objNum. "proposed_objective": A meaningful, emotionally-driven goal triggered by a strong event THIS turn. Default: "none". 90% of turns should produce "none".\n'}'
         '$fixNum. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — haunts them across scenes, not a temporary reaction. Default: "none".\n'
@@ -8298,12 +8299,37 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         }
       }
 
+      // Extract and store per-chip reasons for hover tooltips
+      final bondReasonMatch = RegExp(
+        r'"bond_reason"\s*:\s*"([^"]*)"',
+      ).firstMatch(text);
+      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
+      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
+        _pendingRealismMetadata ??= {};
+        _pendingRealismMetadata!['bond_reason'] = bondReason;
+      }
+
+      final trustReasonMatch = RegExp(
+        r'"trust_reason"\s*:\s*"([^"]*)"',
+      ).firstMatch(text);
+      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
+      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
+        _pendingRealismMetadata ??= {};
+        _pendingRealismMetadata!['trust_reason'] = trustReason;
+      }
+
       if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
         _pendingRealismMetadata = {
           'bond_delta': bondDelta,
           if (arousalDelta != 0) 'arousal_delta': arousalDelta,
           if (trustDelta != 0) 'trust_delta': trustDelta,
+          if (bondReason.isNotEmpty) 'bond_reason': bondReason,
+          if (trustReason.isNotEmpty) 'trust_reason': trustReason,
         };
+      } else if (bondReason.isNotEmpty || trustReason.isNotEmpty) {
+        _pendingRealismMetadata ??= {};
+        if (bondReason.isNotEmpty) _pendingRealismMetadata!['bond_reason'] = bondReason;
+        if (trustReason.isNotEmpty) _pendingRealismMetadata!['trust_reason'] = trustReason;
       }
 
       // ── Autonomous Objective ──
