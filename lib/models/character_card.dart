@@ -28,8 +28,8 @@ import 'package:flutter/material.dart';
 /// own DB-persisted state and are not affected.
 class FrontPorchExtensions {
   bool realismEnabled;
-  int shortTermBond; // -150 to 150
-  int longTermBond; // -150 to 150
+  int shortTermBond; // -300 to 300
+  int longTermBond; // -300 to 300
   int trustLevel; // -100 to 100
   int dayCount; // starts at 1
   String timeOfDay; // dawn/morning/late_morning/afternoon/evening/night
