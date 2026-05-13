@@ -3691,19 +3691,33 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             : '${lastMsg.sender}: ${lastMsg.text}';
       }
 
-      final prompt =
-          "$systemPrompt\n"
-          "$loreContent"
-          "$personaBlock\n"
-          "$userPersonaBlock"
-          "Scenario: $scenario\n"
-          "$mesExampleBlock"
-          "<START>\n"
-          "$history"
-          "$postHistoryBlock"
-          "$authorNoteBlock"
-          "$impersonateInstruction"
-          "$suffix";
+      // For chat APIs (OpenRouter, LM Studio), separate the system prompt
+      // so it can be sent as a proper 'system' role message.
+      final isRemoteApi = _llmProvider != null && !_llmProvider!.isLocal;
+      final chatSystemPrompt = isRemoteApi
+          ? "$systemPrompt\n$loreContent$personaBlock\n$userPersonaBlock"
+                "Scenario: $scenario\n$mesExampleBlock"
+          : null;
+
+      final prompt = isRemoteApi
+          ? "<START>\n"
+                "$history"
+                "$postHistoryBlock"
+                "$authorNoteBlock"
+                "$impersonateInstruction"
+                "$suffix"
+          : "$systemPrompt\n"
+                "$loreContent"
+                "$personaBlock\n"
+                "$userPersonaBlock"
+                "Scenario: $scenario\n"
+                "$mesExampleBlock"
+                "<START>\n"
+                "$history"
+                "$postHistoryBlock"
+                "$authorNoteBlock"
+                "$impersonateInstruction"
+                "$suffix";
 
       // Stop sequences: character names only (not user — we ARE the user)
       final g = _sessionGenSettings;
@@ -3721,6 +3735,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       final llmService = _llmProvider?.activeService ?? _koboldService;
       final genParams = GenerationParams(
         prompt: prompt,
+        systemPrompt: chatSystemPrompt,
         maxLength: g.resolveMaxLength(_storageService),
         minLength: g.resolveMinLength(_storageService),
         minP: g.resolveMinP(_storageService),
@@ -3985,6 +4000,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       // ── Continue mode: remove the last message from history ──
       // For continue mode, we exclude the last message from the chat history
       // and place it as the prompt suffix so the LLM continues from it naturally.
+      // Wrapped in try-finally to guarantee restoration even on exception.
       ChatMessage? _continuePoppedMessage;
       if (mode == GenerationMode.continue_ && _messages.isNotEmpty) {
         _continuePoppedMessage = _messages.removeLast();
@@ -3993,74 +4009,82 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             "\n${_continuePoppedMessage.sender}: ${_continuePoppedMessage.text}";
       }
 
-      String history = _buildChatHistory();
-
-      // ── Context Shift: budget-aware history trimming ──
-
-      // Realism injection blocks — compute early so they're in the token budget
+      // Declare variables before try block so they're accessible after finally
+      String history = '';
       String realismBlock = '';
-      if (_realismEnabled && _activeGroup == null) {
-        final relationship = _getRelationshipInjection();
-        final emotion = _getEmotionInjection();
-        final time = _getTimeInjection();
-        final trustBehavior = _getTrustBehaviorInjection();
-        final cooldown = _getNsfwCooldownInjection();
-        final behavioral = _getBehavioralMechanicsInjection();
-        realismBlock =
-            '$relationship$emotion$time$trustBehavior$cooldown$behavioral';
-      }
-
-      // Chance Time injection — independent of realism mode
-      final chanceTimeBlock = _getChanceTimeInjection();
-
-      // Objective injection — always injected regardless of realism mode
-      // Must sit in a fixed prompt section so it is NEVER trimmed by the budget system.
-      final objectiveBlock = _getObjectiveInjection();
-
-      // Calculate token cost of all fixed sections to determine chat history budget
-      final fixedContent =
-          "$systemPrompt\n"
-          "$loreContent"
-          "$personaBlock\n"
-          "$userPersonaBlock"
-          "Scenario: $scenario\n"
-          "$mesExampleBlock"
-          "<START>\n"
-          "$summaryBlock"
-          "$postHistoryBlock"
-          "$authorNoteBlock"
-          "$objectiveBlock"
-          "$realismBlock"
-          "$suffix"
-          "$chanceTimeBlock";
-      final fixedTokens = await _countTokens(fixedContent);
-      final contextBudget = _sessionGenSettings.resolveContextSize(
-        _storageService,
-      );
-      final generationReserve =
-          _sessionGenSettings.resolveMaxLength(_storageService) +
-          50; // +50 safety margin
-      final historyBudget = contextBudget - fixedTokens - generationReserve;
-
+      String chanceTimeBlock = '';
+      String objectiveBlock = '';
       int droppedMessages = 0;
-      if (historyBudget > 0) {
-        final result = await _buildChatHistoryWithBudget(historyBudget);
-        history = result.history;
-        droppedMessages = result.droppedCount;
-      }
-      // If budget is zero or negative, fixed sections already fill the context — use minimal history
-      if (historyBudget <= 0 && _messages.isNotEmpty) {
-        // Include at least the last message for continuity
-        final lastMsg = _messages.last;
-        history = lastMsg.characterId == '__director__'
-            ? '[Director: ${lastMsg.text}]'
-            : '${lastMsg.sender}: ${lastMsg.text}';
-        droppedMessages = _messages.length - 1;
-      }
 
-      // ── Restore the popped continue message back into the list ──
-      if (_continuePoppedMessage != null) {
-        _messages.add(_continuePoppedMessage);
+      // Ensure the popped message is always restored, even if prompt assembly throws
+      try {
+        history = _buildChatHistory();
+
+        // ── Context Shift: budget-aware history trimming ──
+
+        // Realism injection blocks — compute early so they're in the token budget
+        if (_realismEnabled && _activeGroup == null) {
+          final relationship = _getRelationshipInjection();
+          final emotion = _getEmotionInjection();
+          final time = _getTimeInjection();
+          final trustBehavior = _getTrustBehaviorInjection();
+          final cooldown = _getNsfwCooldownInjection();
+          final behavioral = _getBehavioralMechanicsInjection();
+          realismBlock =
+              '$relationship$emotion$time$trustBehavior$cooldown$behavioral';
+        }
+
+        // Chance Time injection — independent of realism mode
+        chanceTimeBlock = _getChanceTimeInjection();
+
+        // Objective injection — always injected regardless of realism mode
+        // Must sit in a fixed prompt section so it is NEVER trimmed by the budget system.
+        objectiveBlock = _getObjectiveInjection();
+
+        // Calculate token cost of all fixed sections to determine chat history budget
+        final fixedContent =
+            "$systemPrompt\n"
+            "$loreContent"
+            "$personaBlock\n"
+            "$userPersonaBlock"
+            "Scenario: $scenario\n"
+            "$mesExampleBlock"
+            "<START>\n"
+            "$summaryBlock"
+            "$postHistoryBlock"
+            "$authorNoteBlock"
+            "$objectiveBlock"
+            "$realismBlock"
+            "$suffix"
+            "$chanceTimeBlock";
+        final fixedTokens = await _countTokens(fixedContent);
+        final contextBudget = _sessionGenSettings.resolveContextSize(
+          _storageService,
+        );
+        final generationReserve =
+            _sessionGenSettings.resolveMaxLength(_storageService) +
+            50; // +50 safety margin
+        final historyBudget = contextBudget - fixedTokens - generationReserve;
+
+        if (historyBudget > 0) {
+          final result = await _buildChatHistoryWithBudget(historyBudget);
+          history = result.history;
+          droppedMessages = result.droppedCount;
+        }
+        // If budget is zero or negative, fixed sections already fill the context — use minimal history
+        if (historyBudget <= 0 && _messages.isNotEmpty) {
+          // Include at least the last message for continuity
+          final lastMsg = _messages.last;
+          history = lastMsg.characterId == '__director__'
+              ? '[Director: ${lastMsg.text}]'
+              : '${lastMsg.sender}: ${lastMsg.text}';
+          droppedMessages = _messages.length - 1;
+        }
+      } finally {
+        // ── Restore the popped continue message back into the list ──
+        if (_continuePoppedMessage != null) {
+          _messages.add(_continuePoppedMessage);
+        }
       }
 
       // ── RAG Memory Retrieval ──
@@ -8270,7 +8294,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         r'"trust_delta"\s*:\s*(-?\d+)',
       ).firstMatch(text);
       if (trustMatch != null) {
-        trustDelta = (int.tryParse(trustMatch.group(1)!) ?? 0).clamp(-200, 50);
+        trustDelta = (int.tryParse(trustMatch.group(1)!) ?? 0).clamp(-50, 30);
         if (trustDelta != 0) {
           _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
           debugPrint(
