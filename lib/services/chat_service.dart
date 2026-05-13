@@ -858,7 +858,7 @@ class ChatService extends ChangeNotifier {
   String get shortTermTierName {
     switch (_relationshipTier) {
       case 10:
-        return 'Soulbound';
+        return 'Devoted';
       case 9:
         return 'Enamored';
       case 8:
@@ -7326,7 +7326,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     switch (_relationshipTier) {
       case 10:
         tensionGuidance =
-            'Short-Term Tension is Soulbound: $charName is completely open, vulnerable, and emotionally intertwined with {{user}}.';
+            'Short-Term Tension is Devoted: $charName is completely open, vulnerable, and emotionally intertwined with {{user}}.';
         break;
       case 9:
       case 8:
