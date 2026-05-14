@@ -7142,9 +7142,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         : _storageService.reasoningEnabled;
     // KoboldCPP's stop_sequence handling is unreliable for short JSON evals —
     // models enter repetition loops until maxLength is hit. Use a small ceiling
-    // (150 tokens) for local evals since a JSON object is 10-30 tokens.
+    // (150 tokens) for non-thinking local evals since a JSON object is 10-30 tokens.
+    // Thinking models need ~2K tokens for their internal reasoning block before
+    // they produce the JSON answer, so they get a higher limit (2500).
     // API backends get 4000 for thinking model runway.
-    final evalMaxLength = _llmProvider!.isLocal ? 150 : 4000;
+    final evalMaxLength = _llmProvider!.isLocal
+        ? (isThinkingModel ? 2500 : 150)
+        : 4000;
     final params = GenerationParams(
       prompt: prompt,
       maxLength: evalMaxLength,
