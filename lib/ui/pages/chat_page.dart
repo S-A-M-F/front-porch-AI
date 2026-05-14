@@ -8117,32 +8117,27 @@ class _RealismSectionState extends State<_RealismSection> {
 
         // Bond colors per tier
         Color getTierColor(int tier) {
-          switch (tier) {
-            case 5:
-              return Colors.pinkAccent;
-            case 4:
-              return Colors.orangeAccent;
-            case 3:
-              return Colors.greenAccent;
-            case 2:
-              return Colors.lightBlue;
-            case 1:
-              return Colors.blueGrey;
-            case 0:
-              return Colors.white54;
-            case -1:
-              return Colors.orangeAccent.shade100;
-            case -2:
-              return Colors.redAccent.shade100;
-            case -3:
-              return Colors.redAccent;
-            case -4:
-              return Colors.red;
-            case -5:
-              return Colors.red.shade900;
-            default:
-              return Colors.white30;
-          }
+          if (tier >= 10) return Colors.deepPurpleAccent;
+          if (tier >= 9) return Colors.purpleAccent;
+          if (tier >= 8) return Colors.pinkAccent;
+          if (tier >= 7) return Colors.pink;
+          if (tier >= 6) return Colors.pink.shade200;
+          if (tier >= 5) return Colors.orangeAccent;
+          if (tier >= 4) return Colors.greenAccent;
+          if (tier >= 3) return Colors.lightBlue;
+          if (tier >= 2) return Colors.blueGrey;
+          if (tier >= 1) return Colors.grey.shade400;
+          if (tier == 0) return Colors.white54;
+          if (tier >= -1) return Colors.orangeAccent.shade100;
+          if (tier >= -2) return Colors.redAccent.shade100;
+          if (tier >= -3) return Colors.redAccent;
+          if (tier >= -4) return Colors.red;
+          if (tier >= -5) return Colors.red.shade900;
+          if (tier >= -6) return Colors.brown.shade900;
+          if (tier >= -7) return Colors.deepOrange.shade900;
+          if (tier >= -8) return Colors.amber.shade900;
+          if (tier >= -9) return Colors.orange.shade900;
+          return Colors.black87;
         }
 
         final shortTermColor = getTierColor(chat.relationshipTier);
@@ -8848,55 +8843,21 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                     ],
                   ),
                   const SizedBox(height: 3),
-                   ClipRRect(
-                     borderRadius: BorderRadius.circular(3),
-                     child: Stack(
-                       children: [
-                         // Background track
-                         Container(
-                           height: 4,
-                           decoration: BoxDecoration(
-                             color: Colors.white10,
-                             borderRadius: BorderRadius.circular(3),
-                           ),
-                         ),
-                         // Positive arousal bar (fills left to right)
-                         if (widget.chat.arousalLevel > 0)
-                           Positioned.fill(
-                             child: ClipRRect(
-                               borderRadius: BorderRadius.only(
-                                 topLeft: Radius.circular(3),
-                                 bottomLeft: Radius.circular(3),
-                               ),
-                               child: Container(
-                                 width: (widget.chat.arousalLevel / 100) * 100,
-                                 decoration: BoxDecoration(
-                                   color: widget.chat.arousalTier >= 6
-                                       ? Colors.deepOrangeAccent
-                                       : Colors.lightBlueAccent,
-                                 ),
-                               ),
-                             ),
-                           ),
-                         // Negative arousal bar (fills right to left)
-                         if (widget.chat.arousalLevel < 0)
-                           Positioned.fill(
-                             child: ClipRRect(
-                               borderRadius: BorderRadius.only(
-                                 topRight: Radius.circular(3),
-                                 bottomRight: Radius.circular(3),
-                               ),
-                               child: Container(
-                                 width: (widget.chat.arousalLevel.abs() / 100) * 100,
-                                 decoration: BoxDecoration(
-                                   color: Colors.lightBlueAccent,
-                                 ),
-                               ),
-                             ),
-                           ),
-                       ],
-                     ),
-                   ),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: (widget.chat.arousalLevel.abs() / 100).clamp(0.0, 1.0),
+                      minHeight: 4,
+                      backgroundColor: Colors.white10,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        widget.chat.arousalTier >= 6
+                            ? Colors.deepOrangeAccent
+                            : widget.chat.arousalLevel < 0
+                                ? Colors.lightBlueAccent
+                                : Colors.lightBlueAccent,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                 ],
 

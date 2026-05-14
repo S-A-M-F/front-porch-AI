@@ -2352,9 +2352,9 @@ class ChatService extends ChangeNotifier {
       _parentSessionId = session.parentSession;
       _forkIndex = session.forkIndex;
       _affectionScore = session.affectionScore;
-      _relationshipTier = session.relationshipTier;
+      _relationshipTier = _calculateTier(_affectionScore);
       _longTermScore = session.longTermScore;
-      _longTermTier = session.longTermTier;
+      _longTermTier = _calculateTier(_longTermScore);
 
       // Realism Engine 2.0 Compatibility Migration
       // Old scale was 0-15. New scale is 0-150.
@@ -7154,6 +7154,11 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       // where grammar is disabled) can get stuck generating the same JSON
       // key forever: "trust_reason": "...", "trust_reason": "...",  ...
       repeatPenalty: 1.15,
+      // Constrain token selection for reliable JSON structure.
+      topP: 0.5,
+      // Disable XTC (Temperature Extinction) — its per-token coin-flip
+      // introduces non-determinism that corrupts JSON at low temperature.
+      xtcProbability: 0.0,
       reasoningEnabled: false,
       // Non-thinking models: stop the moment the JSON object closes.
       // Thinking models: no '}' stops — the think block is full of them.
