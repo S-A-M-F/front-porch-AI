@@ -314,18 +314,29 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                             _save();
                           },
                         ),
-                        SliderWithInput(
-                          label: 'Context Size',
-                          value: _gen.resolveContextSize(storage).toDouble().clamp(512, isRemote ? 500000 : 131072),
-                          min: 512,
-                          max: isRemote ? 500000.0 : 131072.0,
-                          isInteger: true,
-                          divisions: ((isRemote ? 500000.0 : 131072.0) - 512) ~/ 512,
-                          context: context,
-                          onChanged: (val) {
-                            setState(() => _gen.contextSize = val.toInt());
-                            _save();
-                          },
+                        IgnorePointer(
+                          ignoring: storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty,
+                          child: Opacity(
+                            opacity: storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty ? 0.5 : 1.0,
+                            child: Tooltip(
+                              message: storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty
+                                  ? 'Context size is controlled by the active .kcpps preset and cannot be edited here.'
+                                  : null,
+                              child: SliderWithInput(
+                                label: 'Context Size',
+                                value: _gen.resolveContextSize(storage).toDouble().clamp(512, isRemote ? 500000 : 131072),
+                                min: 512,
+                                max: isRemote ? 500000.0 : 131072.0,
+                                isInteger: true,
+                                divisions: ((isRemote ? 500000.0 : 131072.0) - 512) ~/ 512,
+                                context: context,
+                                onChanged: (val) {
+                                  setState(() => _gen.contextSize = val.toInt());
+                                  _save();
+                                },
+                              ),
+                            ),
+                          ),
                         ),
 
                        const SizedBox(height: 16),

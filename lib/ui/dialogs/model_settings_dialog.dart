@@ -40,7 +40,7 @@ class ModelSettingsDialog extends StatefulWidget {
 class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   // Local backend fields
   final _gpuLayersController = TextEditingController(text: '0');
-  final _contextSizeController = TextEditingController(text: '8192');
+  final _contextSizeController = TextEditingController(text: '');
   bool _useVulkan = false;
   bool _useCublas = false;
   bool _useMetal = false;
@@ -243,7 +243,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
       effectiveModel,
       kcppsPath: storage.activeKcppsPath,
       gpuLayers: int.tryParse(_gpuLayersController.text) ?? 0,
-      contextSize: int.tryParse(_contextSizeController.text) ?? 4096,
+      contextSize: int.tryParse(_contextSizeController.text) ?? 8192,
       useVulkan: _useVulkan,
       useCublas: _useCublas,
       useMetal: _useMetal,
@@ -785,10 +785,21 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: _buildTextField(
-                label: 'Context Size',
-                controller: _contextSizeController,
-                isNumber: true,
+              child: IgnorePointer(
+                ignoring: _isPresetActive(context),
+                child: Opacity(
+                  opacity: _isPresetActive(context) ? 0.5 : 1.0,
+                  child: Tooltip(
+                    message: _isPresetActive(context)
+                        ? 'Context size is controlled by the active .kcpps preset and cannot be edited here.'
+                        : null,
+                    child: _buildTextField(
+                      label: 'Context Size',
+                      controller: _contextSizeController,
+                      isNumber: true,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],

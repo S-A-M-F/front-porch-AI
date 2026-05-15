@@ -476,9 +476,13 @@ class StorageService extends ChangeNotifier {
         _prefs?.getBool(_k('autostart_backend')) ?? _autostartBackend;
     _lastUsedModelPath = _prefs?.getString(_k('last_used_model_path'));
     _activeKcppsPath = _prefs?.getString(_k('active_kcpps_path'));
-    // Restore the kcppsHasModel flag from the persisted preset path so the UI
+    // Restore the kcppsHasModel flag and context size from the persisted preset path so the UI
     // is correct immediately after a hot restart or app relaunch.
-    _kcppsHasModel = _parseKcppsHasModel(_activeKcppsPath);
+    final parsed = _parseKcppsFile(_activeKcppsPath);
+    _kcppsHasModel = parsed != null && parsed['model'] is String && (parsed['model'] as String).trim().isNotEmpty;
+    if (parsed != null && parsed['contextsize'] is int) {
+      _contextSize = parsed['contextsize'] as int;
+    }
     final presetMapJson = _prefs?.getString(_k('model_preset_map'));
     if (presetMapJson != null) {
       try {
@@ -909,8 +913,14 @@ class StorageService extends ChangeNotifier {
 
   Future<void> setActiveKcppsPath(String? value) async {
     _activeKcppsPath = value;
-    // Parse synchronously so _kcppsHasModel is accurate in the same notifyListeners call.
-    _kcppsHasModel = _parseKcppsHasModel(value);
+    // Parse synchronously so _kcppsHasModel and _contextSize are accurate in the same notifyListeners call.
+    final parsed = _parseKcppsFile(value);
+    _kcppsHasModel = parsed != null && parsed['model'] is String && (parsed['model'] as String).trim().isNotEmpty;
+    // Update context size from preset if present
+    if (parsed != null && parsed['contextsize'] is int) {
+      _contextSize = parsed['contextsize'] as int;
+      await _prefs?.setInt(_k('context_size'), _contextSize);
+    }
     if (value != null) {
       await _prefs?.setString(_k('active_kcpps_path'), value);
     } else {
@@ -919,18 +929,16 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Parse a .kcpps JSON file and return true if it contains a non-empty
-  /// "model" key. Any I/O or parse error returns false (safe default).
-  static bool _parseKcppsHasModel(String? kcppsPath) {
-    if (kcppsPath == null || kcppsPath.isEmpty) return false;
+  /// Parse a .kcpps JSON file and return the parsed map.
+  /// Returns null if the path is invalid or parsing fails.
+  static Map<String, dynamic>? _parseKcppsFile(String? kcppsPath) {
+    if (kcppsPath == null || kcppsPath.isEmpty) return null;
     try {
       final file = File(kcppsPath);
-      if (!file.existsSync()) return false;
-      final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-      final model = json['model'];
-      return model is String && model.trim().isNotEmpty;
+      if (!file.existsSync()) return null;
+      return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
     } catch (_) {
-      return false;
+      return null;
     }
   }
 

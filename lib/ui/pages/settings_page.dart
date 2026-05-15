@@ -3579,11 +3579,15 @@ class _SettingsPageState extends State<SettingsPage> {
             ignoring: isPresetActive,
             child: Opacity(
               opacity: isPresetActive ? 0.4 : 1.0,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Context Size — slider with presets + text field
-                  Container(
+              child: Tooltip(
+                message: isPresetActive
+                    ? 'Context size is controlled by the active .kcpps preset and cannot be edited here.'
+                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Context Size — slider with presets + text field
+                    Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: theme.cardColor,
@@ -3822,6 +3826,11 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
+        ], // Close Tooltip's Column children
+      ), // Close Tooltip's Column
+    ), // Close Tooltip
+  ), // Close Opacity
+), // Close IgnorePointer
 
           const SizedBox(height: 16),
           // GPU Layers
@@ -3974,10 +3983,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
           // \u2500\u2500 Advanced Launch Options \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
           _buildAdvancedLaunchOptions(context, storageService),
-                ],
-              ),
-            ),
-          ),
           const SizedBox(height: 24),
         ],
       ),
