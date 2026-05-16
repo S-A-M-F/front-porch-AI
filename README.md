@@ -15,9 +15,8 @@
 ---
 
 <p align="center">
-  <strong>Download v0.9.8 (Stable)</strong><br><br>
-  <a href="https://github.com/linux4life1/front-porch-ai/releases/latest"><strong>Windows • macOS • Linux</strong></a><br>
-  <sub><a href="https://github.com/linux4life1/front-porch-ai/releases">Beta releases available</a></sub>
+  <strong>Download v0.9.8</strong><br><br>
+  <a href="https://github.com/linux4life1/front-porch-ai/releases/latest"><strong>Windows • macOS • Linux</strong></a>
 </p>
 
 ---
