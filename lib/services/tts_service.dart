@@ -102,8 +102,35 @@ class TtsService extends ChangeNotifier {
   /// Whether the current engine is Piper (legacy path).
   bool get _isPiperEngine => _storageService.ttsEngine == 'piper';
 
-  /// Available voices for the active engine.
-  List<TtsVoiceInfo> get activeVoices => activeEngine.availableVoices;
+  /// Cached voices for the currently selected engine.
+  /// This is the source of truth used by UI pickers.
+  List<TtsVoiceInfo> _currentAvailableVoices = const [];
+
+  /// Available voices for the currently selected TTS engine.
+  ///
+  /// When the engine is 'piper', this returns real installed voices
+  /// (including manually added custom voices) instead of falling back to Kokoro.
+  List<TtsVoiceInfo> get activeVoices => _currentAvailableVoices.isNotEmpty
+      ? _currentAvailableVoices
+      : activeEngine.availableVoices;
+
+  /// Refreshes the voice list for the currently selected engine.
+  /// Particularly important for Piper, where voices can be added manually
+  /// (custom .onnx files) or via the Voice Browser.
+  Future<void> refreshAvailableVoices() async {
+    if (_isPiperEngine) {
+      try {
+        _currentAvailableVoices =
+            await _voiceManager.getInstalledPiperVoicesAsTtsVoiceInfo();
+      } catch (e) {
+        print('TTS: Failed to refresh Piper voices: $e');
+        _currentAvailableVoices = const [];
+      }
+    } else {
+      _currentAvailableVoices = activeEngine.availableVoices;
+    }
+    notifyListeners();
+  }
 
   /// Manually download / ensure the model for the active engine is ready.
   /// Returns true if the model is ready after this call.
@@ -131,7 +158,10 @@ class TtsService extends ChangeNotifier {
   /// Whether the active engine's model files are already downloaded.
   Future<bool> isModelDownloaded() => activeEngine.isAvailable;
 
-  TtsService(this._storageService, this._voiceManager);
+  TtsService(this._storageService, this._voiceManager) {
+    // Prime the voice list for the current engine (important for Piper + custom voices)
+    unawaited(refreshAvailableVoices());
+  }
 
   @override
   void dispose() {
@@ -155,12 +185,24 @@ class TtsService extends ChangeNotifier {
     await stop();
 
     // Resolve voice
-    final voice = (voiceKey != null && voiceKey.isNotEmpty)
+    var voice = (voiceKey != null && voiceKey.isNotEmpty)
         ? voiceKey
         : _storageService.ttsVoiceModel;
     if (voice.isEmpty) {
       print('TTS: no voice configured');
       return;
+    }
+
+    // Defensive check: if the resolved voice key is clearly incompatible
+    // with the current engine (e.g. Kokoro voice assigned to a character while
+    // Piper is selected), fall back to the global voice for this engine.
+    if (_isPiperEngine && !await _voiceManager.isVoiceInstalled(voice)) {
+      print(
+          'TTS WARNING: Character voice "$voice" not found for Piper engine. '
+          'Falling back to global Piper voice. (This usually means a character '
+          'was assigned a Kokoro voice while Piper was selected.)');
+      voice = _storageService.ttsVoiceModel;
+      if (voice.isEmpty) return;
     }
 
     final sanitized = _sanitizeText(text);
@@ -493,12 +535,19 @@ class TtsService extends ChangeNotifier {
     await stop();
 
     // Resolve voice
-    final voice = (voiceKey != null && voiceKey.isNotEmpty)
+    var voice = (voiceKey != null && voiceKey.isNotEmpty)
         ? voiceKey
         : _storageService.ttsVoiceModel;
     if (voice.isEmpty) {
       print('TTS streaming: no voice configured');
       return;
+    }
+
+    // Defensive mismatch protection (same as in speak())
+    if (_isPiperEngine && !await _voiceManager.isVoiceInstalled(voice)) {
+      print('TTS WARNING (streaming): Character voice "$voice" not found for Piper. Falling back.');
+      voice = _storageService.ttsVoiceModel;
+      if (voice.isEmpty) return;
     }
 
     // For Piper, check model exists
@@ -656,10 +705,17 @@ class TtsService extends ChangeNotifier {
   Future<File?> generateAudioFile(String text, {String? voiceKey}) async {
     if (!_storageService.ttsEnabled) return null;
 
-    final voice = (voiceKey != null && voiceKey.isNotEmpty)
+    var voice = (voiceKey != null && voiceKey.isNotEmpty)
         ? voiceKey
         : _storageService.ttsVoiceModel;
     if (voice.isEmpty) return null;
+
+    // Defensive mismatch protection (same as in speak())
+    if (_isPiperEngine && !await _voiceManager.isVoiceInstalled(voice)) {
+      print('TTS WARNING (generateAudioFile): Character voice "$voice" not found for Piper. Falling back.');
+      voice = _storageService.ttsVoiceModel;
+      if (voice.isEmpty) return null;
+    }
 
     final sanitized = _sanitizeText(text);
     if (sanitized.trim().isEmpty) return null;

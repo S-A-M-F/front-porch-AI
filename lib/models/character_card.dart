@@ -224,7 +224,12 @@ class CharacterCard {
   String? folderId;
   Lorebook? lorebook;
   List<String> worldNames;
-  String? ttsVoice; // Piper voice key for per-character TTS
+  /// Per-character TTS voice assignment.
+  ///
+  /// This must be a valid voice key for the *currently selected* TTS engine
+  /// (e.g. 'af_heart' for Kokoro, 'en_US-lessac-medium' for Piper, etc.).
+  /// The UI now prevents (and warns about) cross-engine assignments.
+  String? ttsVoice;
   String? dbId; // UUID primary key (runtime only, not serialized)
   FrontPorchExtensions? frontPorchExtensions; // V2.5 Realism Engine defaults
   Map<String, dynamic>?
