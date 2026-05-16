@@ -3,6 +3,10 @@
 //
 // Kokoro-safe text chunking.
 
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
 import 'package:front_porch_ai/services/kokoro_debug.dart';
 //
 // The goal is to break user-provided text (especially long, stylized RP narration)
@@ -396,7 +400,8 @@ class KokoroChunker {
   }) {
     final safeIndex = index.toString().padLeft(4, '0');
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final path = '/tmp/${prefix}_${timestamp}_$safeIndex.wav';
+    final tempDir = Directory.systemTemp.path;
+    final path = p.join(tempDir, '${prefix}_${timestamp}_$safeIndex.wav');
 
     return KokoroChunk(
       originalIndex: index,

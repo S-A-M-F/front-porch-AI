@@ -419,6 +419,12 @@ When working, you will see "RAG: X chunks retrieved" in the debug logs for relev
    - Kokoro downloads ~300 MB models on first use to `<data>/system/kokoro_models/`.
    - If download fails, delete the partial `.onnx` / `.bin` files and toggle TTS off/on.
 
+4. **Per-character voices not working (especially with Piper or custom voices)**:
+   - Voice assignments on individual characters (or group members) must match the **currently selected TTS engine**.
+   - If you switch from Kokoro → Piper (or vice versa), previously assigned character voices may become incompatible.
+   - The character voice picker now shows "(incompatible with ...)" warnings.
+   - Fix: Open the character voice picker and re-assign a voice that matches your current engine (or choose "Use global default").
+
 4. **No audio output device / muted**:
    - The app uses `audioplayers` package. On some Linux systems you must install `libgstreamer-plugins-base` or `pulseaudio-utils`.
    - On macOS it falls back to the `afplay` system command for the generated WAV.

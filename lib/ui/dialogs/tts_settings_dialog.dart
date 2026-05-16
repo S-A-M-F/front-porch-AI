@@ -714,6 +714,11 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                 builder: (_) => const VoiceBrowserDialog(),
               );
               await _loadInstalledVoices();
+
+              // Also refresh TtsService's engine-aware voice cache
+              // (especially important when user added custom Piper voices)
+              final tts = Provider.of<TtsService>(context, listen: false);
+              await tts.refreshAvailableVoices();
             },
             icon: const Icon(Icons.download, size: 16),
             label: const Text('Browse'),

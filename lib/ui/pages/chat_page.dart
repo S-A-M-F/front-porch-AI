@@ -3816,7 +3816,16 @@ class _ChatPageState extends State<ChatPage> {
                             ),
                           ),
                           subtitle: Text(
-                            '${v.language} · ${v.gender}',
+                            () {
+                              final base = '${v.language} · ${v.gender}';
+                              final currentEngine =
+                                  Provider.of<StorageService>(ctx, listen: false)
+                                      .ttsEngine;
+                              if (v.engine != currentEngine) {
+                                return '$base (incompatible with $currentEngine)';
+                              }
+                              return base;
+                            }(),
                             style: const TextStyle(
                               color: Colors.white38,
                               fontSize: 10,
