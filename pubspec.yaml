@@ -64,6 +64,7 @@ dependencies:
   page_flip: ^0.2.5+1
   html: ^0.15.6
   syncfusion_flutter_pdf: ^33.1.46
+  flex_color_picker: ^3.8.0
 
 dev_dependencies:
   flutter_test:
