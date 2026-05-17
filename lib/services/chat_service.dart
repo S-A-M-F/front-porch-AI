@@ -8673,7 +8673,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   }
 
   Map<String, dynamic> _captureRealismState() {
-    return {
+    final state = {
       'affectionScore': _affectionScore,
       'relationshipTier': _relationshipTier,
       'longTermScore': _longTermScore,
@@ -8693,6 +8693,16 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       'fixationLifespan': _fixationLifespan,
       'spatialStance': _spatialStance,
     };
+
+    // Include needs snapshot when the simulation is active (clean port)
+    if (_needsSimEnabled && _needsVector.isNotEmpty) {
+      state['needs'] = {
+        'enabled': true,
+        'vector': _needsVector,
+      };
+    }
+
+    return state;
   }
 
   void _restoreRealismStateFromMessage(ChatMessage? msg) {
@@ -8738,6 +8748,16 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     _activeFixation = state['activeFixation'] as String? ?? _activeFixation;
     _fixationLifespan = state['fixationLifespan'] as int? ?? _fixationLifespan;
     _spatialStance = state['spatialStance'] as String? ?? _spatialStance;
+
+    // Needs simulation snapshot (clean port)
+    if (state.containsKey('needs') && state['needs'] is Map) {
+      final needsData = state['needs'] as Map;
+      _needsSimEnabled = needsData['enabled'] as bool? ?? _needsSimEnabled;
+      if (needsData['vector'] is Map) {
+        final vector = Map<String, int>.from(needsData['vector'] as Map);
+        _needsVector = vector;
+      }
+    }
 
     debugPrint(
       '[Realism] Engine state successfully rolled back to match timeline.',
