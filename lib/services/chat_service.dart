@@ -3136,6 +3136,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             if (!_realismEvalCancelled) {
               await _evaluatePhysicalStateCall(onChunk: handleChunk);
             }
+            if (!_realismEvalCancelled && _needsSimEnabled) {
+              await _verifyNeedFulfillmentCall(onChunk: handleChunk);
+            }
             if (!_realismEvalCancelled) {
               await _evaluateNarrativeCall(onChunk: handleChunk);
             }
@@ -4042,8 +4045,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
           final trustBehavior = _getTrustBehaviorInjection();
           final cooldown = _getNsfwCooldownInjection();
           final behavioral = _getBehavioralMechanicsInjection();
+          final needs = _getNeedsInjection();
           realismBlock =
-              '$relationship$emotion$time$trustBehavior$cooldown$behavioral';
+              '$relationship$emotion$time$trustBehavior$cooldown$behavioral$needs';
         }
 
         // Chance Time injection — independent of realism mode
