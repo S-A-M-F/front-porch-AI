@@ -1746,6 +1746,32 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _needsSimEnabledMeta = const VerificationMeta(
+    'needsSimEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> needsSimEnabled = GeneratedColumn<bool>(
+    'needs_sim_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("needs_sim_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _needsVectorMeta = const VerificationMeta(
+    'needsVector',
+  );
+  @override
+  late final GeneratedColumn<String> needsVector = GeneratedColumn<String>(
+    'needs_vector',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _evolvedPersonalityMeta =
       const VerificationMeta('evolvedPersonality');
   @override
@@ -1900,6 +1926,8 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     trustRepairPending,
     chaosModeEnabled,
     chaosPressure,
+    needsSimEnabled,
+    needsVector,
     evolvedPersonality,
     evolvedScenario,
     evolutionCount,
@@ -2210,6 +2238,24 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         ),
       );
     }
+    if (data.containsKey('needs_sim_enabled')) {
+      context.handle(
+        _needsSimEnabledMeta,
+        needsSimEnabled.isAcceptableOrUnknown(
+          data['needs_sim_enabled']!,
+          _needsSimEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('needs_vector')) {
+      context.handle(
+        _needsVectorMeta,
+        needsVector.isAcceptableOrUnknown(
+          data['needs_vector']!,
+          _needsVectorMeta,
+        ),
+      );
+    }
     if (data.containsKey('evolved_personality')) {
       context.handle(
         _evolvedPersonalityMeta,
@@ -2440,6 +2486,14 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.int,
         data['${effectivePrefix}chaos_pressure'],
       )!,
+      needsSimEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}needs_sim_enabled'],
+      )!,
+      needsVector: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}needs_vector'],
+      ),
       evolvedPersonality: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}evolved_personality'],
@@ -2525,6 +2579,8 @@ class Session extends DataClass implements Insertable<Session> {
   final bool trustRepairPending;
   final bool chaosModeEnabled;
   final int chaosPressure;
+  final bool needsSimEnabled;
+  final String? needsVector;
   final String evolvedPersonality;
   final String evolvedScenario;
   final int evolutionCount;
@@ -2571,6 +2627,8 @@ class Session extends DataClass implements Insertable<Session> {
     required this.trustRepairPending,
     required this.chaosModeEnabled,
     required this.chaosPressure,
+    required this.needsSimEnabled,
+    this.needsVector,
     required this.evolvedPersonality,
     required this.evolvedScenario,
     required this.evolutionCount,
@@ -2636,6 +2694,10 @@ class Session extends DataClass implements Insertable<Session> {
     map['trust_repair_pending'] = Variable<bool>(trustRepairPending);
     map['chaos_mode_enabled'] = Variable<bool>(chaosModeEnabled);
     map['chaos_pressure'] = Variable<int>(chaosPressure);
+    map['needs_sim_enabled'] = Variable<bool>(needsSimEnabled);
+    if (!nullToAbsent || needsVector != null) {
+      map['needs_vector'] = Variable<String>(needsVector);
+    }
     map['evolved_personality'] = Variable<String>(evolvedPersonality);
     map['evolved_scenario'] = Variable<String>(evolvedScenario);
     map['evolution_count'] = Variable<int>(evolutionCount);
@@ -2708,6 +2770,10 @@ class Session extends DataClass implements Insertable<Session> {
       trustRepairPending: Value(trustRepairPending),
       chaosModeEnabled: Value(chaosModeEnabled),
       chaosPressure: Value(chaosPressure),
+      needsSimEnabled: Value(needsSimEnabled),
+      needsVector: needsVector == null && nullToAbsent
+          ? const Value.absent()
+          : Value(needsVector),
       evolvedPersonality: Value(evolvedPersonality),
       evolvedScenario: Value(evolvedScenario),
       evolutionCount: Value(evolutionCount),
@@ -2778,6 +2844,8 @@ class Session extends DataClass implements Insertable<Session> {
       trustRepairPending: serializer.fromJson<bool>(json['trustRepairPending']),
       chaosModeEnabled: serializer.fromJson<bool>(json['chaosModeEnabled']),
       chaosPressure: serializer.fromJson<int>(json['chaosPressure']),
+      needsSimEnabled: serializer.fromJson<bool>(json['needsSimEnabled']),
+      needsVector: serializer.fromJson<String?>(json['needsVector']),
       evolvedPersonality: serializer.fromJson<String>(
         json['evolvedPersonality'],
       ),
@@ -2839,6 +2907,8 @@ class Session extends DataClass implements Insertable<Session> {
       'trustRepairPending': serializer.toJson<bool>(trustRepairPending),
       'chaosModeEnabled': serializer.toJson<bool>(chaosModeEnabled),
       'chaosPressure': serializer.toJson<int>(chaosPressure),
+      'needsSimEnabled': serializer.toJson<bool>(needsSimEnabled),
+      'needsVector': serializer.toJson<String?>(needsVector),
       'evolvedPersonality': serializer.toJson<String>(evolvedPersonality),
       'evolvedScenario': serializer.toJson<String>(evolvedScenario),
       'evolutionCount': serializer.toJson<int>(evolutionCount),
@@ -2890,6 +2960,8 @@ class Session extends DataClass implements Insertable<Session> {
     bool? trustRepairPending,
     bool? chaosModeEnabled,
     int? chaosPressure,
+    bool? needsSimEnabled,
+    Value<String?> needsVector = const Value.absent(),
     String? evolvedPersonality,
     String? evolvedScenario,
     int? evolutionCount,
@@ -2943,6 +3015,8 @@ class Session extends DataClass implements Insertable<Session> {
     trustRepairPending: trustRepairPending ?? this.trustRepairPending,
     chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
     chaosPressure: chaosPressure ?? this.chaosPressure,
+    needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
+    needsVector: needsVector.present ? needsVector.value : this.needsVector,
     evolvedPersonality: evolvedPersonality ?? this.evolvedPersonality,
     evolvedScenario: evolvedScenario ?? this.evolvedScenario,
     evolutionCount: evolutionCount ?? this.evolutionCount,
@@ -3052,6 +3126,12 @@ class Session extends DataClass implements Insertable<Session> {
       chaosPressure: data.chaosPressure.present
           ? data.chaosPressure.value
           : this.chaosPressure,
+      needsSimEnabled: data.needsSimEnabled.present
+          ? data.needsSimEnabled.value
+          : this.needsSimEnabled,
+      needsVector: data.needsVector.present
+          ? data.needsVector.value
+          : this.needsVector,
       evolvedPersonality: data.evolvedPersonality.present
           ? data.evolvedPersonality.value
           : this.evolvedPersonality,
@@ -3117,6 +3197,8 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('trustRepairPending: $trustRepairPending, ')
           ..write('chaosModeEnabled: $chaosModeEnabled, ')
           ..write('chaosPressure: $chaosPressure, ')
+          ..write('needsSimEnabled: $needsSimEnabled, ')
+          ..write('needsVector: $needsVector, ')
           ..write('evolvedPersonality: $evolvedPersonality, ')
           ..write('evolvedScenario: $evolvedScenario, ')
           ..write('evolutionCount: $evolutionCount, ')
@@ -3168,6 +3250,8 @@ class Session extends DataClass implements Insertable<Session> {
     trustRepairPending,
     chaosModeEnabled,
     chaosPressure,
+    needsSimEnabled,
+    needsVector,
     evolvedPersonality,
     evolvedScenario,
     evolutionCount,
@@ -3218,6 +3302,8 @@ class Session extends DataClass implements Insertable<Session> {
           other.trustRepairPending == this.trustRepairPending &&
           other.chaosModeEnabled == this.chaosModeEnabled &&
           other.chaosPressure == this.chaosPressure &&
+          other.needsSimEnabled == this.needsSimEnabled &&
+          other.needsVector == this.needsVector &&
           other.evolvedPersonality == this.evolvedPersonality &&
           other.evolvedScenario == this.evolvedScenario &&
           other.evolutionCount == this.evolutionCount &&
@@ -3266,6 +3352,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<bool> trustRepairPending;
   final Value<bool> chaosModeEnabled;
   final Value<int> chaosPressure;
+  final Value<bool> needsSimEnabled;
+  final Value<String?> needsVector;
   final Value<String> evolvedPersonality;
   final Value<String> evolvedScenario;
   final Value<int> evolutionCount;
@@ -3313,6 +3401,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.trustRepairPending = const Value.absent(),
     this.chaosModeEnabled = const Value.absent(),
     this.chaosPressure = const Value.absent(),
+    this.needsSimEnabled = const Value.absent(),
+    this.needsVector = const Value.absent(),
     this.evolvedPersonality = const Value.absent(),
     this.evolvedScenario = const Value.absent(),
     this.evolutionCount = const Value.absent(),
@@ -3361,6 +3451,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.trustRepairPending = const Value.absent(),
     this.chaosModeEnabled = const Value.absent(),
     this.chaosPressure = const Value.absent(),
+    this.needsSimEnabled = const Value.absent(),
+    this.needsVector = const Value.absent(),
     this.evolvedPersonality = const Value.absent(),
     this.evolvedScenario = const Value.absent(),
     this.evolutionCount = const Value.absent(),
@@ -3409,6 +3501,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<bool>? trustRepairPending,
     Expression<bool>? chaosModeEnabled,
     Expression<int>? chaosPressure,
+    Expression<bool>? needsSimEnabled,
+    Expression<String>? needsVector,
     Expression<String>? evolvedPersonality,
     Expression<String>? evolvedScenario,
     Expression<int>? evolutionCount,
@@ -3463,6 +3557,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
         'trust_repair_pending': trustRepairPending,
       if (chaosModeEnabled != null) 'chaos_mode_enabled': chaosModeEnabled,
       if (chaosPressure != null) 'chaos_pressure': chaosPressure,
+      if (needsSimEnabled != null) 'needs_sim_enabled': needsSimEnabled,
+      if (needsVector != null) 'needs_vector': needsVector,
       if (evolvedPersonality != null) 'evolved_personality': evolvedPersonality,
       if (evolvedScenario != null) 'evolved_scenario': evolvedScenario,
       if (evolutionCount != null) 'evolution_count': evolutionCount,
@@ -3515,6 +3611,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<bool>? trustRepairPending,
     Value<bool>? chaosModeEnabled,
     Value<int>? chaosPressure,
+    Value<bool>? needsSimEnabled,
+    Value<String?>? needsVector,
     Value<String>? evolvedPersonality,
     Value<String>? evolvedScenario,
     Value<int>? evolutionCount,
@@ -3566,6 +3664,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       trustRepairPending: trustRepairPending ?? this.trustRepairPending,
       chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
       chaosPressure: chaosPressure ?? this.chaosPressure,
+      needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
+      needsVector: needsVector ?? this.needsVector,
       evolvedPersonality: evolvedPersonality ?? this.evolvedPersonality,
       evolvedScenario: evolvedScenario ?? this.evolvedScenario,
       evolutionCount: evolutionCount ?? this.evolutionCount,
@@ -3698,6 +3798,12 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (chaosPressure.present) {
       map['chaos_pressure'] = Variable<int>(chaosPressure.value);
     }
+    if (needsSimEnabled.present) {
+      map['needs_sim_enabled'] = Variable<bool>(needsSimEnabled.value);
+    }
+    if (needsVector.present) {
+      map['needs_vector'] = Variable<String>(needsVector.value);
+    }
     if (evolvedPersonality.present) {
       map['evolved_personality'] = Variable<String>(evolvedPersonality.value);
     }
@@ -3776,6 +3882,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('trustRepairPending: $trustRepairPending, ')
           ..write('chaosModeEnabled: $chaosModeEnabled, ')
           ..write('chaosPressure: $chaosPressure, ')
+          ..write('needsSimEnabled: $needsSimEnabled, ')
+          ..write('needsVector: $needsVector, ')
           ..write('evolvedPersonality: $evolvedPersonality, ')
           ..write('evolvedScenario: $evolvedScenario, ')
           ..write('evolutionCount: $evolutionCount, ')
@@ -9952,6 +10060,8 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<bool> trustRepairPending,
       Value<bool> chaosModeEnabled,
       Value<int> chaosPressure,
+      Value<bool> needsSimEnabled,
+      Value<String?> needsVector,
       Value<String> evolvedPersonality,
       Value<String> evolvedScenario,
       Value<int> evolutionCount,
@@ -10001,6 +10111,8 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<bool> trustRepairPending,
       Value<bool> chaosModeEnabled,
       Value<int> chaosPressure,
+      Value<bool> needsSimEnabled,
+      Value<String?> needsVector,
       Value<String> evolvedPersonality,
       Value<String> evolvedScenario,
       Value<int> evolutionCount,
@@ -10195,6 +10307,16 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<int> get chaosPressure => $composableBuilder(
     column: $table.chaosPressure,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get needsSimEnabled => $composableBuilder(
+    column: $table.needsSimEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get needsVector => $composableBuilder(
+    column: $table.needsVector,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10433,6 +10555,16 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get needsSimEnabled => $composableBuilder(
+    column: $table.needsSimEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get needsVector => $composableBuilder(
+    column: $table.needsVector,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get evolvedPersonality => $composableBuilder(
     column: $table.evolvedPersonality,
     builder: (column) => ColumnOrderings(column),
@@ -10654,6 +10786,16 @@ class $$SessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get needsSimEnabled => $composableBuilder(
+    column: $table.needsSimEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get needsVector => $composableBuilder(
+    column: $table.needsVector,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get evolvedPersonality => $composableBuilder(
     column: $table.evolvedPersonality,
     builder: (column) => column,
@@ -10762,6 +10904,8 @@ class $$SessionsTableTableManager
                 Value<bool> trustRepairPending = const Value.absent(),
                 Value<bool> chaosModeEnabled = const Value.absent(),
                 Value<int> chaosPressure = const Value.absent(),
+                Value<bool> needsSimEnabled = const Value.absent(),
+                Value<String?> needsVector = const Value.absent(),
                 Value<String> evolvedPersonality = const Value.absent(),
                 Value<String> evolvedScenario = const Value.absent(),
                 Value<int> evolutionCount = const Value.absent(),
@@ -10809,6 +10953,8 @@ class $$SessionsTableTableManager
                 trustRepairPending: trustRepairPending,
                 chaosModeEnabled: chaosModeEnabled,
                 chaosPressure: chaosPressure,
+                needsSimEnabled: needsSimEnabled,
+                needsVector: needsVector,
                 evolvedPersonality: evolvedPersonality,
                 evolvedScenario: evolvedScenario,
                 evolutionCount: evolutionCount,
@@ -10858,6 +11004,8 @@ class $$SessionsTableTableManager
                 Value<bool> trustRepairPending = const Value.absent(),
                 Value<bool> chaosModeEnabled = const Value.absent(),
                 Value<int> chaosPressure = const Value.absent(),
+                Value<bool> needsSimEnabled = const Value.absent(),
+                Value<String?> needsVector = const Value.absent(),
                 Value<String> evolvedPersonality = const Value.absent(),
                 Value<String> evolvedScenario = const Value.absent(),
                 Value<int> evolutionCount = const Value.absent(),
@@ -10905,6 +11053,8 @@ class $$SessionsTableTableManager
                 trustRepairPending: trustRepairPending,
                 chaosModeEnabled: chaosModeEnabled,
                 chaosPressure: chaosPressure,
+                needsSimEnabled: needsSimEnabled,
+                needsVector: needsVector,
                 evolvedPersonality: evolvedPersonality,
                 evolvedScenario: evolvedScenario,
                 evolutionCount: evolutionCount,

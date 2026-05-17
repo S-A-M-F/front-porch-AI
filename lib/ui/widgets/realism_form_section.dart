@@ -44,6 +44,8 @@ class RealismFormSection extends StatelessWidget {
   final ValueChanged<bool> onNsfwCooldownChanged;
   final bool chaosModeEnabled;
   final ValueChanged<bool> onChaosModeChanged;
+  final bool needsSimEnabled;
+  final ValueChanged<bool> onNeedsSimChanged;
   final String currentTask;
   final ValueChanged<String> onCurrentTaskChanged;
 
@@ -69,6 +71,8 @@ class RealismFormSection extends StatelessWidget {
     required this.onNsfwCooldownChanged,
     required this.chaosModeEnabled,
     required this.onChaosModeChanged,
+    required this.needsSimEnabled,
+    required this.onNeedsSimChanged,
     required this.currentTask,
     required this.onCurrentTaskChanged,
   });
@@ -435,6 +439,14 @@ class RealismFormSection extends StatelessWidget {
                   subtitle: 'Random narrative events during roleplay',
                   value: chaosModeEnabled,
                   onChanged: onChaosModeChanged,
+                ),
+                const Divider(color: Colors.white10, height: 24),
+                _toggleRow(
+                  icon: Icons.battery_std,
+                  label: 'Needs Simulation',
+                  subtitle: 'Hunger, bladder, energy, social, fun, hygiene, comfort — influences prompts & behavior',
+                  value: needsSimEnabled,
+                  onChanged: onNeedsSimChanged,
                 ),
               ],
             ),

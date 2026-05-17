@@ -8532,6 +8532,79 @@ class _RealismSectionState extends State<_RealismSection> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Needs Simulation Toggle + Bars ──
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.battery_std,
+                            size: 14,
+                            color: Colors.white54,
+                          ),
+                          const SizedBox(width: 5),
+                          const Expanded(
+                            child: Text(
+                              'Needs Simulation',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 24,
+                            child: Switch(
+                              value: chat.needsSimEnabled,
+                              activeColor: Colors.tealAccent,
+                              onChanged: chat.isGenerating
+                                  ? null
+                                  : (val) => chat.setNeedsSimEnabled(val),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Tracks hunger, bladder, energy, social, fun, hygiene, comfort. Affects AI prompts & behavior when low.',
+                        style: TextStyle(color: Colors.white54, fontSize: 10),
+                      ),
+                      if (chat.needsSimEnabled && chat.needsVector.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        for (final entry in chat.needsVector.entries)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 58,
+                                  child: Text(
+                                    entry.key[0].toUpperCase() + entry.key.substring(1),
+                                    style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(2),
+                                    child: LinearProgressIndicator(
+                                      value: (entry.value / 100.0).clamp(0.0, 1.0),
+                                      minHeight: 4,
+                                      backgroundColor: Colors.white10,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        entry.value <= ChatService.needCriticalThreshold
+                                            ? Colors.redAccent
+                                            : Colors.tealAccent,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text('${entry.value}', style: const TextStyle(fontSize: 9, color: Colors.white38)),
+                              ],
+                            ),
+                          ),
+                      ],
+                      const SizedBox(height: 12),
+
                       // ── NSFW Enhancements Submenu ──
                       _NsfwEnhancementsSection(chat: chat),
 

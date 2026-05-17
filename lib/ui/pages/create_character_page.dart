@@ -89,6 +89,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   String _realismEmotionIntensity = 'mild';
   bool _realismNsfwCooldown = false;
   bool _realismChaosMode = false;
+  bool _realismNeedsSim = false;
   String _realismCurrentTask = '';
 
   // ── Token counter ──
@@ -1017,6 +1018,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 onNsfwCooldownChanged: (v) => setState(() => _realismNsfwCooldown = v),
                 chaosModeEnabled: _realismChaosMode,
                 onChaosModeChanged: (v) => setState(() => _realismChaosMode = v),
+                needsSimEnabled: _realismNeedsSim,
+                onNeedsSimChanged: (v) => setState(() => _realismNeedsSim = v),
                 currentTask: _realismCurrentTask,
                 onCurrentTaskChanged: (v) => setState(() => _realismCurrentTask = v),
               ),
@@ -1698,6 +1701,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         nsfwCooldownEnabled: _realismNsfwCooldown,
         passageOfTimeEnabled: true, // default on; user can toggle later
         chaosModeEnabled: _realismChaosMode,
+        needsSimEnabled: _realismNeedsSim,
         currentTask: _realismCurrentTask,
       );
 

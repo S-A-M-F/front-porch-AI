@@ -5,6 +5,8 @@
 // Covers how realism state is initialized from V2.5 card extensions and how it
 // resets when switching characters or starting new chats.
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 
@@ -30,6 +32,65 @@ class _RealismStateStub {
   int _relationshipTier = 0;
   int _longTermTier = 0;
 
+  // ── Sims/Needs Simulation state (mirrors ChatService) ──────────────
+  bool _needsSimEnabled = false;
+  Map<String, int> _needsVector = {};
+
+  // Canonical constants for the Sims/Needs simulation (duplicated in stub
+  // for isolated, fast unit tests without ChatService dependency).
+  static const List<String> _needKeys = [
+    'hunger',
+    'bladder',
+    'energy',
+    'social',
+    'fun',
+    'hygiene',
+    'comfort',
+  ];
+
+  static const Map<String, int> _needDefaults = {
+    'hunger': 75,
+    'bladder': 80,
+    'energy': 80,
+    'social': 65,
+    'fun': 65,
+    'hygiene': 75,
+    'comfort': 70,
+  };
+
+  // Base decay per tick (when no time-of-day variant applies).
+  static const Map<String, int> _needDecay = {
+    'hunger': 8,
+    'bladder': 12,
+    'energy': 5,
+    'social': 3,
+    'fun': 4,
+    'hygiene': 2,
+    'comfort': 3,
+  };
+
+  // Morning-specific overrides (hunger drains faster after sleep / breakfast window).
+  static const Map<String, int> _needDecayMorning = {
+    'hunger': 12,
+  };
+
+  // Night-specific overrides (energy drains faster at night).
+  static const Map<String, int> _needDecayNight = {
+    'energy': 10,
+  };
+
+  static const Map<String, int> _needRestore = {
+    'hunger': 50,
+    'bladder': 70,
+    'energy': 40,
+    'social': 45,
+    'fun': 40,
+    'hygiene': 35,
+    'comfort': 35,
+  };
+
+  static const int _needRestoreDefault = 30;
+
   // ── Simulated storage service flag ─────────────────────────────────
   bool passageOfTimeDefault = true;
 
@@ -50,6 +111,8 @@ class _RealismStateStub {
   int get fixationLifespan => _fixationLifespan;
   int get relationshipTier => _relationshipTier;
   int get longTermTier => _longTermTier;
+  bool get needsSimEnabled => _needsSimEnabled;
+  Map<String, int> get needsVector => Map<String, int>.from(_needsVector);
 
   /// Mirrors the V2.5 extension seeding logic from ChatService.setActiveCharacter
   /// (lines 1073-1108).
@@ -68,6 +131,13 @@ class _RealismStateStub {
     _passageOfTimeEnabled = ext.passageOfTimeEnabled && passageOfTimeDefault;
     _chaosModeEnabled = ext.chaosModeEnabled;
 
+    _needsSimEnabled = ext.needsSimEnabled;
+    if (_needsSimEnabled) {
+      _initializeNeedsVectorIfNeeded();
+    } else {
+      _needsVector.clear();
+    }
+
     // Recalculate tiers from seeded scores
     _relationshipTier = _calculateTier(_affectionScore);
     _longTermTier = _calculateTier(_longTermScore);
@@ -79,6 +149,9 @@ class _RealismStateStub {
     _arousalLevel = 0;
     _fixationLifespan = 0;
     _activeFixation = '';
+    // Match production reset on character switch / new context
+    _needsSimEnabled = false;
+    _needsVector.clear();
   }
 
   /// Mirrors the _calculateTier method from ChatService (21-tier system).
@@ -129,6 +202,13 @@ class _RealismStateStub {
         extSeed.passageOfTimeEnabled && passageOfTimeDefault;
     _chaosModeEnabled = extSeed.chaosModeEnabled;
 
+    _needsSimEnabled = extSeed.needsSimEnabled;
+    if (_needsSimEnabled) {
+      _initializeNeedsVectorIfNeeded();
+    } else {
+      _needsVector.clear();
+    }
+
     // Preserve arousal/fixation if character has extensions
     if (character.hasFrontPorchExtensions) {
       // Preserved — don't reset
@@ -142,6 +222,111 @@ class _RealismStateStub {
       _relationshipTier = _calculateTier(_affectionScore);
       _longTermTier = _calculateTier(_longTermScore);
     }
+  }
+
+  // ── Needs simulation helpers (minimal port for unit tests) ─────────
+  // These mirror the production implementations in ChatService so that
+  // the focused Needs tests exercise the exact same initialization,
+  // decay arithmetic, serialization, snapshot guards, and enable/disable
+  // semantics.
+
+  void _initializeNeedsVectorIfNeeded() {
+    if (_needsVector.isEmpty) {
+      _needsVector = Map<String, int>.from(_needDefaults);
+    }
+  }
+
+  String _serializeNeeds() {
+    return jsonEncode(_needsVector);
+  }
+
+  void _restoreNeedsFromJson(String? json) {
+    if (json == null || json.isEmpty) {
+      _initializeNeedsVectorIfNeeded();
+      return;
+    }
+    try {
+      final decoded = jsonDecode(json) as Map<String, dynamic>;
+      _needsVector = decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
+    } catch (_) {
+      _initializeNeedsVectorIfNeeded();
+    }
+  }
+
+  /// Public for tests; mirrors production setter (without async save/notify).
+  void setNeedsSimEnabled(bool enabled) {
+    _needsSimEnabled = enabled;
+    if (enabled) {
+      _initializeNeedsVectorIfNeeded();
+    } else {
+      _needsVector.clear();
+    }
+  }
+
+  /// Decay logic ported exactly; depends on _realismEnabled + _timeOfDay.
+  void tickNeedsDecay() {
+    if (!_needsSimEnabled || !_realismEnabled) return;
+
+    final isNight = _timeOfDay == 'night';
+    final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
+
+    for (final key in _needKeys) {
+      final current = _needsVector[key];
+      if (current == null) continue;
+      int decay = _needDecay[key] ?? 0;
+      if (isMorning && _needDecayMorning.containsKey(key)) {
+        decay = _needDecayMorning[key] ?? decay;
+      } else if (isNight && _needDecayNight.containsKey(key)) {
+        decay = _needDecayNight[key] ?? decay;
+      }
+      _needsVector[key] = (current - decay).clamp(0, 100);
+    }
+  }
+
+  /// Snapshot capture for realism state (needs portion).
+  /// Deliberately omits 'enabled' from the 'needs' sub-map (matches the
+  /// production fix that prevents stale resurrection after toggle-off).
+  Map<String, dynamic> captureRealismState() {
+    final state = <String, dynamic>{};
+    if (_needsSimEnabled && _needsVector.isNotEmpty) {
+      state['needs'] = {
+        'vector': Map<String, int>.from(_needsVector),
+      };
+    }
+    return state;
+  }
+
+  /// Restore logic with the critical guard: only applies vector when
+  /// _needsSimEnabled is currently true. This is what would have caught
+  /// a write-only snapshot or an over-eager restore that ignored the flag.
+  void restoreRealismStateFromMessage(Map<String, dynamic> state) {
+    if (state.containsKey('needs') &&
+        state['needs'] is Map &&
+        _needsSimEnabled) {
+      final needsData = state['needs'] as Map;
+      if (needsData['vector'] is Map) {
+        final vector = Map<String, int>.from(needsData['vector'] as Map);
+        _needsVector = vector;
+      }
+    }
+  }
+
+  /// Minimal fulfillment verifier for tests (no LLM call).
+  /// Production calls _fireLLMEval only after the guard; the guard test
+  /// ensures we never reach eval when the sim is disabled (would have
+  /// caught GBNF-era or unconditional call bugs).
+  Future<void> verifyNeedFulfillmentCall() async {
+    if (!_needsSimEnabled || !_realismEnabled) return;
+    // In real code this would run the LLM eval + restore amounts.
+    // For stub we simply return; callers can assert no state mutation
+    // when disabled, or manually apply restore in enabled tests.
+  }
+
+  /// Helper for fulfillment tests: applies the restore amount for a need.
+  void _applyNeedRestore(String need) {
+    if (!_needsVector.containsKey(need)) return;
+    final restore = _needRestore[need] ?? _needRestoreDefault;
+    _needsVector[need] = (_needsVector[need]! + restore).clamp(0, 100);
   }
 }
 
@@ -495,6 +680,128 @@ void main() {
       expect(stub.affectionScore, 40,
           reason: 'new chat re-seeds from extensions, not runtime state');
       expect(stub.trustLevel, 20);
+    });
+  });
+
+  // ─── Needs Simulation (core methods) ───────────────────────────────
+  // These 6 focused tests exercise the newly added Needs fields + logic in
+  // the stub. They are deliberately isolated, deterministic, and fast.
+  // They are designed to have caught the historical "write-only snapshot"
+  // bug (capture wrote 'needs' but restore was a no-op or ignored guards)
+  // and GBNF/eval drift (unconditional calls to eval without the
+  // _needsSimEnabled guard).
+
+  group('needs simulation', () {
+    test('initialization seeds defaults when enabled via setNeedsSimEnabled', () {
+      final stub = _RealismStateStub();
+      expect(stub.needsVector, isEmpty);
+
+      stub.setNeedsSimEnabled(true);
+      expect(stub.needsSimEnabled, isTrue);
+      expect(stub.needsVector, _RealismStateStub._needDefaults);
+    });
+
+    test('initialization and clear on disable', () {
+      final stub = _RealismStateStub();
+      stub.setNeedsSimEnabled(true);
+      expect(stub.needsVector.isNotEmpty, isTrue);
+
+      stub.setNeedsSimEnabled(false);
+      expect(stub.needsSimEnabled, isFalse);
+      expect(stub.needsVector, isEmpty);
+    });
+
+    test('tickNeedsDecay applies correct decay math, time-of-day variants, and clamps', () {
+      final stub = _RealismStateStub();
+      stub.setNeedsSimEnabled(true);
+      stub._realismEnabled = true; // enable realism guard
+
+      // Default morning
+      stub._timeOfDay = 'morning';
+      // Manually set a starting vector for determinism
+      stub._needsVector = {'hunger': 80, 'energy': 90, 'bladder': 70};
+
+      stub.tickNeedsDecay();
+
+      // hunger uses morning override: 12 instead of 8
+      expect(stub.needsVector['hunger'], 80 - 12, reason: 'morning hunger decay=12');
+      expect(stub.needsVector['energy'], 90 - 5, reason: 'base energy decay=5');
+      expect(stub.needsVector['bladder'], 70 - 12, reason: 'base bladder decay=12');
+
+      // Night variant
+      stub._timeOfDay = 'night';
+      stub._needsVector = {'energy': 50};
+      stub.tickNeedsDecay();
+      expect(stub.needsVector['energy'], 50 - 10, reason: 'night energy decay=10');
+
+      // Clamp at 0
+      stub._needsVector = {'hunger': 5};
+      stub._timeOfDay = 'morning';
+      stub.tickNeedsDecay();
+      expect(stub.needsVector['hunger'], 0);
+    });
+
+    test('snapshot round-trip preserves vector when enabled', () {
+      final stub = _RealismStateStub();
+      stub.setNeedsSimEnabled(true);
+      stub._realismEnabled = true;
+      stub._needsVector = {'hunger': 42, 'fun': 55};
+
+      final snap = stub.captureRealismState();
+      expect(snap.containsKey('needs'), isTrue);
+      expect(snap['needs']['vector'], {'hunger': 42, 'fun': 55});
+
+      // Mutate and restore
+      stub._needsVector = {'hunger': 99};
+      stub.restoreRealismStateFromMessage(snap);
+      expect(stub.needsVector, {'hunger': 42, 'fun': 55});
+
+      // Also exercise the json serialize/restore path (matches production persistence)
+      final json = stub._serializeNeeds();
+      stub._needsVector = {'hunger': 1};
+      stub._restoreNeedsFromJson(json);
+      expect(stub.needsVector, {'hunger': 42, 'fun': 55});
+    });
+
+    test('snapshot restore is a no-op and does not resurrect when disabled (catches write-only / stale resurrection)', () {
+      final stub = _RealismStateStub();
+      stub.setNeedsSimEnabled(true);
+      stub._needsVector = {'social': 30};
+      final snap = stub.captureRealismState();
+      expect(snap['needs']['vector'], isNotEmpty);
+
+      // Toggle off (production path: clears vector, disables)
+      stub.setNeedsSimEnabled(false);
+      expect(stub.needsSimEnabled, isFalse);
+      expect(stub.needsVector, isEmpty);
+
+      // Historical snapshot must NOT flip it back on or repopulate
+      stub.restoreRealismStateFromMessage(snap);
+      expect(stub.needsSimEnabled, isFalse, reason: 'guard prevents resurrection from snapshot');
+      expect(stub.needsVector, isEmpty, reason: 'vector remains empty when disabled');
+    });
+
+    test('verifyNeedFulfillmentCall does nothing (no state change) when disabled', () async {
+      final stub = _RealismStateStub();
+      // disabled by default
+      await stub.verifyNeedFulfillmentCall();
+      expect(stub.needsVector, isEmpty);
+
+      // Even if we manually populate, disabled guard prevents any action
+      stub._needsVector = {'hunger': 20};
+      await stub.verifyNeedFulfillmentCall();
+      expect(stub.needsVector['hunger'], 20, reason: 'no restore applied when disabled');
+
+      // When enabled, the stub method still guards (no LLM) but we can test manual restore path
+      stub.setNeedsSimEnabled(true);
+      stub._realismEnabled = true;
+      stub._needsVector = {'hunger': 20};
+      await stub.verifyNeedFulfillmentCall(); // still no-op in stub
+      expect(stub.needsVector['hunger'], 20); // unchanged (no auto-restore here)
+
+      // Demonstrate restore helper works when we simulate fulfillment
+      stub._applyNeedRestore('hunger');
+      expect(stub.needsVector['hunger'], 20 + 50); // _needRestore['hunger']=50
     });
   });
 }

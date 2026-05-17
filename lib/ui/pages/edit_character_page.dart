@@ -85,6 +85,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   bool _realismNsfwCooldown = false;
   bool _realismPassageOfTime = true;
   bool _realismChaosMode = false;
+  bool _realismNeedsSim = false;
   String _realismCurrentTask = '';
 
   @override
@@ -142,6 +143,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       _realismNsfwCooldown = ext.nsfwCooldownEnabled;
       _realismPassageOfTime = ext.passageOfTimeEnabled;
       _realismChaosMode = ext.chaosModeEnabled;
+      _realismNeedsSim = ext.needsSimEnabled;
       _realismCurrentTask = ext.currentTask;
     }
 
@@ -421,6 +423,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         nsfwCooldownEnabled: _realismNsfwCooldown,
         passageOfTimeEnabled: _realismPassageOfTime,
         chaosModeEnabled: _realismChaosMode,
+        needsSimEnabled: _realismNeedsSim,
         currentTask: _realismCurrentTask,
       );
     }
@@ -1793,6 +1796,11 @@ class _EditCharacterPageState extends State<EditCharacterPage>
           chaosModeEnabled: _realismChaosMode,
           onChaosModeChanged: (v) => setState(() {
             _realismChaosMode = v;
+            _realismSettingsModified = true;
+          }),
+          needsSimEnabled: _realismNeedsSim,
+          onNeedsSimChanged: (v) => setState(() {
+            _realismNeedsSim = v;
             _realismSettingsModified = true;
           }),
           currentTask: _realismCurrentTask,

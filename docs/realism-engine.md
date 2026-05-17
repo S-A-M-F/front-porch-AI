@@ -18,8 +18,9 @@ The Realism Engine is Front Porch AI's system for tracking character relationshi
 10. [Fixation Engine](#fixation-engine)
 11. [NSFW Cooldown](#nsfw-cooldown)
 12. [One-Shot Eval Mode](#one-shot-eval-mode)
-13. [Performance Considerations](#performance-considerations)
-14. [Troubleshooting](#troubleshooting)
+13. [Sims/Needs Simulation](#simsneeds-simulation)
+14. [Performance Considerations](#performance-considerations)
+15. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -296,12 +297,53 @@ Most users leave it off for maximum fidelity and only enable it when they need m
 
 ---
 
+## Sims/Needs Simulation
+
+**(Experimental / Bleeding Edge)**
+
+The Sims/Needs Simulation is an optional extension to the Realism Engine that introduces a parallel life-simulation layer. When enabled, the character tracks seven needs on a 0–100 scale. These decay each turn (with morning/night modifiers) and subtly (or urgently) influence dialogue and behavior through an OOC prompt injection when they drop low. An LLM post-response verification step detects actual in-scene fulfillment and restores the affected needs.
+
+It runs alongside — but is independent of — the classic realism systems (bond, trust, emotion, arousal, time, fixations). The master Realism toggle must be on; the needs layer is an additional per-session opt-in.
+
+### The Seven Needs
+
+- **Hunger** — Character grows hungry; stomach may growl and they may suggest eating (drains faster in the morning window).
+- **Bladder** — Needs to use the restroom (produces a special tension note when NSFW cooldown is active and arousal is high).
+- **Energy** — Becomes tired or genuinely exhausted (drains faster at night).
+- **Social** — Craves genuine connection or companionship.
+- **Fun** — Grows restless and bored; wants stimulation or an activity.
+- **Hygiene** — Feels grimy or unkempt; wants to freshen up.
+- **Comfort** — Physically uncomfortable; may want to move, shift, or change position.
+
+Urgent threshold: ≤ 35. Critical: ≤ 20. Only the most pressing need(s) generate an injection; the LLM is told the character should voice or act on critical needs immediately.
+
+### Integration
+
+- **Per-session flag**: Stored as `needsSimEnabled` in the `sessions` table (plus a JSON `needsVector`). New chats inherit the value from the character card's `front_porch_extensions.realism_engine.needs_sim_enabled` (see `FrontPorchExtensions` in `character_card.dart`).
+- **Runtime control**: `ChatService.needsSimEnabled` / `setNeedsSimEnabled(bool)`. Enabling mid-chat initializes the default vector; disabling clears it cleanly.
+- **Decay & fulfillment**: `_tickNeedsDecay()` is called every turn before realism evals. After the AI responds (and on trust-repair paths), `_verifyNeedFulfillmentCall()` sends a tiny LLM eval against the recent exchange and restores values for any need the model confirms was *completed* in the scene (e.g. +70 bladder, +50 hunger, +40 energy).
+- **Snapshots for history navigation**: The live vector is captured inside every message's `realism_state['needs']['vector']` (see `_captureRealismState`). Restore logic in `_restoreRealismStateFromMessage`, `_syncRealismStateForSwipe`, regen, and fork paths replays the correct historical values — but only while the session flag remains true (old snapshots cannot re-enable a toggled-off sim).
+- **Prompt injection**: `_getNeedsInjection()` adds a concise OOC directive when any need is urgent. The character never sees numeric values or the word "needs simulation."
+- Works only in 1:1 chats. Adds at most one extra short eval call per turn (only when needs are below the fulfillment scan threshold).
+
+### UI
+
+When the simulation is active, need levels appear as visual bars in the chat header, making it easy to see at a glance which needs are dropping and how close they are to urgent/critical. The per-character default toggle lives in the Realism Engine panel of the character editor/creator (Step 4); per-chat control is available via the usual session realism settings.
+
+### Warnings
+
+- **Bleeding edge**: This is a recent clean-port addition on the 0.9.8 realism architecture. Decay rates, restore amounts, thresholds, and the fulfillment prompt are still being tuned. Test on throwaway chats first.
+- **Separate data directory strongly recommended**: Need state is persisted directly in your normal sessions. Use a dedicated data/profile folder (via Settings or command-line) while experimenting so you do not risk your primary long-running RPs or character libraries.
+- The feature is gated behind *both* the Realism Engine master toggle *and* the specific needs-sim toggle.
+
+---
+
 ## Performance Considerations
 
 The Realism Engine is deliberately lightweight compared to the main chat generation, but it does add work:
 
 - **Extra LLM calls**: Normally 2–4 short eval inferences per user turn (plus an occasional post-generation climax check). Each eval prompt is kept short (last 3–6 messages only) and the model is told to output *only* a tiny JSON object.
-- **Token overhead**: The various OOC injection blocks (`relationship`, `emotion`, `time`, `trust`, `arousal`, `fixation`, `spatial`) typically add a few hundred tokens at most. They are included in the context budget calculation so they never push your history out of the window.
+- **Token overhead**: The various OOC injection blocks (`relationship`, `emotion`, `time`, `trust`, `arousal`, `fixation`, `spatial`, and occasionally `needs`) typically add a few hundred tokens at most. They are included in the context budget calculation so they never push your history out of the window.
 - **Local backend impact**: KoboldCPP is single-threaded, so realism evals are run sequentially (with cancellation support). On a fast GPU this is usually < 1–2 seconds per eval. On CPU or very slow setups the "Reading the room…" overlay can stay up for several seconds.
 - **One-Shot Eval**: Halves the number of calls. Recommended when you value responsiveness over perfect granularity.
 - **Disabling for speed**: Turn the master Realism toggle off in Settings (or per-chat) when you just want fast, lightweight chatting. No evals run at all.

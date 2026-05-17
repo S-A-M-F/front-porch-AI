@@ -513,6 +513,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   String _realismEmotionIntensity = 'mild';
   bool _realismNsfwCooldown = false;
   bool _realismChaosMode = false;
+  bool _realismNeedsSim = false;
   String _realismCurrentTask = '';
 
   // Model selector state
@@ -4600,6 +4601,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 onNsfwCooldownChanged: (v) => setState(() => _realismNsfwCooldown = v),
                 chaosModeEnabled: _realismChaosMode,
                 onChaosModeChanged: (v) => setState(() => _realismChaosMode = v),
+                needsSimEnabled: _realismNeedsSim,
+                onNeedsSimChanged: (v) => setState(() => _realismNeedsSim = v),
                 currentTask: _realismCurrentTask,
                 onCurrentTaskChanged: (v) => setState(() => _realismCurrentTask = v),
               ),
@@ -5963,6 +5966,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           emotionIntensity: _realismEmotionIntensity,
           nsfwCooldownEnabled: _realismNsfwCooldown,
           chaosModeEnabled: _realismChaosMode,
+          needsSimEnabled: _realismNeedsSim,
           currentTask: _realismCurrentTask,
         );
       }

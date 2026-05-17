@@ -1,8 +1,12 @@
-# Front Porch AI
+# Front Porch AI — Rawhide (Nightly)
 
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)
 ![Flutter](https://img.shields.io/badge/Made%20with-Flutter-02569B?logo=flutter)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![Nightly](https://img.shields.io/badge/Branch-Rawhide%20Nightly-orange)
+![Status](https://img.shields.io/badge/Status-Bleeding%20Edge-red)
+
+**This is the automatic Nightly build branch.** All active development happens here. Fresh builds are generated every night from this branch.
 
 **A privacy-first AI companion for Windows, Linux, and macOS.** Runs fully offline with local LLMs (KoboldCpp, etc.) by default, but also supports remote APIs like OpenRouter, Nano-GPT, and OpenAI with no lock-in when you want them.
 
@@ -15,9 +19,24 @@
 ---
 
 <p align="center">
-  <strong>Download v0.9.8</strong><br><br>
-  <a href="https://github.com/linux4life1/front-porch-ai/releases/latest"><strong>Windows • macOS • Linux</strong></a>
+  <strong>🌙 Rawhide Nightly Builds</strong><br><br>
+  <a href="https://github.com/linux4life1/front-porch-ai/releases?q=nightly"><strong>Download Latest Nightly</strong></a><br>
+  <sub>Automatic builds every night • Bleeding edge • For advanced users</sub>
 </p>
+
+> **Warning**: This branch is not stable. Features may be incomplete or broken. Use at your own risk. Stable releases are on the `main` branch.
+
+---
+
+## 🌙 What's New on Rawhide (Nightly)
+
+This branch contains the latest in-progress work. Current major development:
+
+- **Sims-Style Needs Simulation Engine** — Deep character needs, emotional simulation, and autonomous behavior (the main focus of this branch)
+- Ongoing Realism Engine improvements
+- New features and fixes before they land in stable
+
+Nightly builds include everything from this branch.
 
 ---
 

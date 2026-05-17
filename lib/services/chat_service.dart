@@ -49,35 +49,9 @@ import 'package:drift/drift.dart' as drift;
 // to the UI.
 bool _realismEvalCancelled = false;
 
-// ── Realism Engine GBNF Grammars ─────────────────────────────────────────────
-// Used by KoboldCPP local backend when reasoning mode is OFF.
-// Forces JSON-structured output at the token-sampling level, guaranteeing the
-// model can't ramble past the closing } and doesn't need excessive max_tokens.
-//
-// Each grammar accepts any well-formed JSON object so optional fields
-// (e.g. arousal_delta) are naturally handled without a rigid schema.
-
-/// General-purpose JSON object grammar: accepts any flat {"key": value, ...}
-/// where values may be strings, numbers, or booleans. Sufficient for all
-/// Realism Engine evals which return small flat JSON objects.
-const String _kGbnfJsonObject = r'''
-root   ::= ws "{" ws members ws "}" ws
-members ::= pair (ws "," ws pair)*
-pair    ::= string ws ":" ws value
-value   ::= string | number | boolean | "null"
-string  ::= "\"" ([^"\\] | "\\" .)* "\""
-number  ::= "-"? ([0-9] | [1-9][0-9]*) ("." [0-9]+)? (([eE] [+-]? [0-9]+))?
-boolean ::= "true" | "false"
-ws      ::= [ \t\n\r]*
-''';
-
-/// GBNF grammar for a JSON array of strings (e.g. ["fact1", "fact2"]).
-/// Used by the fact extraction eval to constrain LLM output.
-const String _kGbnfJsonStringArray = r'''
-root    ::= ws "[" ws (string (ws "," ws string)*)? ws "]" ws
-string  ::= "\"" ([^"\\] | "\\" .)* "\""
-ws      ::= [ \t\n\r]*
-''';
+// GBNF grammar support for Realism Engine evals (incl. Needs simulation) removed
+// in the 0.9.8 clean port. All JSON outputs now rely on regex extraction + stop
+// sequences inside _fireLLMEval (no _buildKoboldGrammar, no _kGbnf* consts).
 
 enum GenerationMode { normal, continue_, impersonate }
 
@@ -468,6 +442,17 @@ class ChatService extends ChangeNotifier {
   bool _chaosEventDelivered =
       false; // true after the event has been used in at least one generation
 
+  // Needs catastrophe (Phase 2 stepping system) — set when a need hits exactly 0
+  // during decay. Contains the mandatory OOC narrative the AI must roleplay.
+  // Cleared after the generation that consumes it.
+  String? _pendingNeedsCatastrophe;
+
+  // ── Advanced Needs Interplay (v2) ──────────────────────────────────────────
+  // Tracks "afterglow" period after significant sexual/intimate activity.
+  // During this time, decay on Hunger, Energy, and Social is reduced so sex
+  // feels like a net positive without immediately triggering wack-a-mole needs.
+  int _needsAfterglowTurnsRemaining = 0;
+
   // ── Sims/Needs Simulation (clean port on 0.9.8) ──
   bool _needsSimEnabled = false;
   Map<String, int> _needsVector = {};
@@ -495,24 +480,26 @@ class ChatService extends ChangeNotifier {
   };
 
   // Base decay per tick (when no time-of-day variant applies).
+  // Tuned for long scenes (intimate, story, etc.) so needs don't feel like "wack-a-mole".
+  // Bladder and hunger are the most noticeable; they decay slower than the original aggressive values.
   static const Map<String, int> _needDecay = {
-    'hunger': 8,
-    'bladder': 12,
-    'energy': 5,
-    'social': 3,
-    'fun': 4,
-    'hygiene': 2,
-    'comfort': 3,
+    'hunger': 4,
+    'bladder': 6,
+    'energy': 3,
+    'social': 2,
+    'fun': 2,
+    'hygiene': 1,
+    'comfort': 2,
   };
 
   // Morning-specific overrides (hunger drains faster after sleep / breakfast window).
   static const Map<String, int> _needDecayMorning = {
-    'hunger': 12,
+    'hunger': 6,
   };
 
   // Night-specific overrides (energy drains faster at night).
   static const Map<String, int> _needDecayNight = {
-    'energy': 10,
+    'energy': 6,
   };
 
   static const Map<String, int> _needRestore = {
@@ -532,11 +519,151 @@ class ChatService extends ChangeNotifier {
   static const int _needCriticalThreshold = 20;
   static const int _needFulfillmentScanThreshold = 40;
 
-  // Maintenance: _needKeys is the canonical list. All data maps above, the
-  // decay logic, fulfillment scan, restore lookup, _getNeedsInjection() secondary
-  // filter, and the presentation switch (for per-need directive text) must stay
-  // in sync with it. Adding a new need requires updating every map + the switch
-  // cases in _getNeedsInjection (the only remaining place with per-key strings).
+  // Public aliases to the canonical thresholds + keys list for UI presentation
+  // (e.g. progress bar coloring at critical), external consumers, and tests.
+  // These reference the single source of truth; literals live only in the
+  // private _ definitions below.
+  static const int needUrgentThreshold = _needUrgentThreshold;
+  static const int needCriticalThreshold = _needCriticalThreshold;
+  static const int needFulfillmentScanThreshold = _needFulfillmentScanThreshold;
+  static const List<String> needKeys = _needKeys;
+
+  // ── Graduated Stepping Model (Phase 2 — "number two" per user request) ───────
+  // Needs now have 5 discrete urgency steps derived from the 0–100 value.
+  // Step 0 = catastrophic (involuntary event has occurred), 1 = desperate/critical,
+  // 2 = urgent/pressing, 3 = noticeable urge, 4 = mild background awareness.
+  // 5 = comfortable (no injection).
+  // Stepping makes the simulation feel alive: subtle thoughts → physical tells →
+  // desperate pleading → disaster when it hits 0.
+  // All data here is the single source of truth alongside the older maps.
+
+  /// Upper bounds (inclusive) for each step. Value <= threshold means that step.
+  /// [0] = step 0 (catastrophe), [1] = step 1, ..., [4] = step 4.
+  static const List<int> _needStepUpperBounds = [0, 15, 30, 45, 65];
+
+  /// Per-need stepped prompt strings (index = step 0..4, most to least urgent).
+  /// These replace the old binary urgent/critical wording.
+  static const Map<String, List<String>> _needSteppedText = {
+    'hunger': [
+      // 0 — catastrophic
+      'A violent stomach cramp doubles her over — she is genuinely starving. Her vision swims, knees buckle, and she may faint or become too weak to stand without immediate help. The hunger has become a medical emergency.',
+      // 1 — desperate
+      'She is genuinely starving. Sharp cramps, light-headedness, hands trembling. She cannot focus on anything else and must eat something substantial right now or she will collapse.',
+      // 2 — urgent
+      'Her stomach is painfully empty and growling loudly. The hunger is a constant, distracting ache that makes her irritable and unable to think about anything else until she finds food.',
+      // 3 — noticeable
+      'She is getting properly hungry — stomach growling, thoughts drifting to food, a faint light-headed feeling starting to color everything.',
+      // 4 — mild
+      'A pleasant but persistent hunger is making her think about her next meal. It subtly colors her mood and energy.',
+    ],
+    'bladder': [
+      // 0 — catastrophic (the classic Sims disaster)
+      'She couldn\'t hold it another second. A sudden, uncontrollable warm rush floods her — she is wetting herself right here, in front of {{user}} or whoever is present. The fabric darkens visibly, the smell appears, her face burns with utter humiliation. The accident has already happened.',
+      // 1 — desperate
+      'She is absolutely desperate. Thighs locked together, small uncontrollable shifts of weight, breath shallow, voice strained. She is one wrong movement away from losing control completely and is begging for any chance to reach a restroom.',
+      // 2 — urgent
+      'The pressure is constant, painful, and all-consuming. She crosses and uncrosses her legs, cannot stand still, and must find a bathroom in the next few minutes or there will be an accident.',
+      // 3 — noticeable
+      'She needs to pee quite badly now. The urge is a steady, distracting pressure low in her belly. She shifts her stance frequently and is starting to look for an excuse to excuse herself.',
+      // 4 — mild
+      'A faint but growing need to use the restroom is at the back of her mind, making her slightly restless.',
+    ],
+    'energy': [
+      // 0 — catastrophic
+      'Her body simply gives out. Mid-sentence her eyelids flutter and she slumps to the floor, onto the couch, or against {{user}}, completely unconscious from exhaustion. She is out cold and will not wake easily.',
+      // 1 — desperate
+      'She is fighting to stay awake with everything she has — head nodding, eyes unfocused, speech slurring. She may fall asleep standing up or while talking.',
+      // 2 — urgent
+      'Exhaustion is crushing her. Every movement feels heavy, her thoughts are slow and foggy, and she keeps yawning or rubbing her eyes. She needs rest desperately.',
+      // 3 — noticeable
+      'A deep, bone-weary tiredness is settling over her. She is noticeably slower, less animated, and keeps thinking longingly of a bed or quiet place to rest.',
+      // 4 — mild
+      'She is pleasantly tired — the kind of comfortable drowsiness that makes her want to curl up somewhere warm.',
+    ],
+    'social': [
+      // 0
+      'The loneliness has become unbearable. She feels hollow, on the verge of tears or a breakdown if she cannot have real, meaningful connection with someone — anyone — right now.',
+      // 1
+      'She is starving for genuine human contact. The isolation is physically painful; she may become clingy, overly emotional, or quietly desperate for any scrap of real attention.',
+      // 2
+      'The need for real connection is aching inside her. Small talk feels empty — she craves eye contact, touch, someone who actually sees her.',
+      // 3
+      'She is feeling the lack of real companionship. Casual conversation isn\'t enough; she keeps looking for deeper moments or physical closeness.',
+      // 4
+      'A quiet craving for genuine connection colors her mood — she is more affectionate and attentive than usual.',
+    ],
+    'fun': [
+      // 0
+      'The boredom has become a kind of psychological torture. She feels restless to the point of madness and may do something reckless, dangerous, or wildly inappropriate just to feel alive again.',
+      // 1
+      'She is so bored she is going out of her mind. Fidgeting constantly, unable to sit still, voice flat — she will suggest or do almost anything for stimulation or excitement.',
+      // 2
+      'Restlessness is eating at her. Everything feels dull and grey. She keeps proposing activities, games, or changes of scene because she cannot stand the monotony another minute.',
+      // 3
+      'She is growing bored and fidgety. The current situation feels stagnant and she is actively looking for something — anything — more interesting to do.',
+      // 4
+      'A mild restlessness makes her want a change of pace or something fun to break the routine.',
+    ],
+    'hygiene': [
+      // 0
+      'She feels disgusting. The grime, sweat, or smell is so overwhelming she is gagging or on the verge of a breakdown. She may refuse to be touched or seen until she can clean up.',
+      // 1
+      'She is painfully aware of how dirty and unkempt she feels. Every glance in a mirror or from another person makes her cringe. She must wash or freshen up immediately.',
+      // 2
+      'The feeling of being grimy is constant and unpleasant. She keeps touching her hair or clothes, self-conscious and eager to find a sink or shower.',
+      // 3
+      'She is starting to feel noticeably unkempt and uncomfortable in her own skin. A quick wash or change would help a lot.',
+      // 4
+      'A faint sense of being a bit grubby makes her want to freshen up when convenient.',
+    ],
+    'comfort': [
+      // 0
+      'The physical discomfort has become intolerable. She cannot stay in this position, this room, these clothes one second longer — she will push past people, interrupt anything, or even strip if that is what it takes to get relief.',
+      // 1
+      'Every part of her body hurts or itches or feels wrong. She is shifting constantly, wincing, unable to focus on conversation because the physical misery is too great.',
+      // 2
+      'She is physically uncomfortable to the point of distraction — too hot, too cold, cramped, or sore. She needs to move, change position, or adjust her environment soon.',
+      // 3
+      'A growing physical discomfort (stiffness, temperature, pressure) is making it hard to relax. She keeps adjusting and looking for a better spot.',
+      // 4
+      'She is mildly uncomfortable — a slight ache or awkward position that she would like to fix when it is easy.',
+    ],
+  };
+
+  /// Catastrophic narrative (the event that just occurred when the need hit 0).
+  /// This text is injected as a mandatory OOC event the AI must roleplay immediately.
+  static const Map<String, String> _needCatastropheNarrative = {
+    'hunger': 'A violent stomach cramp drops her to her knees or against {{user}}. She hasn\'t eaten in far too long; her blood sugar crashes and she nearly faints or becomes too weak to stand. The hunger has turned into a real physical emergency.',
+    'bladder': 'She loses control completely. A sudden, hot, unstoppable rush — she is wetting herself right now, in the current scene, in front of {{user}} or anyone present. The fabric darkens, liquid runs down her legs, the smell fills the air, and her face is a mask of horror and humiliation. The accident is happening / has just happened.',
+    'energy': 'Her body simply shuts down. Mid-sentence her eyes roll back and she collapses — slumping to the floor, onto furniture, or into {{user}}\'s arms — completely unconscious from exhaustion. She is out cold and will not wake for some time.',
+    'social': 'The isolation finally breaks her. She bursts into tears or a raw, desperate plea for real connection, unable to pretend any longer that she is okay alone.',
+    'fun': 'The boredom has driven her to something reckless or wildly inappropriate — she does something dangerous, sexual, or chaotic purely to feel *anything* again.',
+    'hygiene': 'The accumulated grime and smell finally overwhelm her. She gags, tears up, or has a small breakdown about how disgusting she feels, refusing further contact until she can wash.',
+    'comfort': 'The physical misery becomes too much. She cries out, pushes away from whatever is hurting her (the chair, the ropes, the position, the temperature), and demands — or takes — immediate relief no matter what else is happening in the scene.',
+  };
+
+  /// After a catastrophe fires, the need is lifted to this floor value.
+  /// These are now set high because the character actually resolved the crisis
+  /// in the scene (went to the bathroom, ate, passed out and rested, cleaned up, etc.).
+  /// The user should feel like "she got proper relief" instead of "still almost critical".
+  static const Map<String, int> _needPostCatastropheFloor = {
+    'hunger': 70,
+    'bladder': 85,   // proper bathroom visit → she feels much better
+    'energy': 65,    // after collapsing she rests and recovers
+    'social': 60,
+    'fun': 55,
+    'hygiene': 70,
+    'comfort': 70,
+  };
+
+  // Maintenance: _needKeys (and the *Defaults/*Decay*/*Restore* maps + the three
+  // threshold consts) are the single source of truth for all need simulation data.
+  // The decay logic (now fully map-driven via containsKey for time-of-day variants),
+  // fulfillment scan, restore helper, _getNeedsInjection secondary filter, and
+  // the presentation switch (for per-need directive text) plus the one-off bladder
+  // special-case must stay in sync with _needKeys when extending the set of needs.
+  // The switch in _getNeedsInjection remains the only place with per-key presentation
+  // strings (new needs fall through to _ => '' until a case is added).
 
   void _initializeNeedsVectorIfNeeded() {
     if (_needsVector.isEmpty) {
@@ -823,7 +950,21 @@ class ChatService extends ChangeNotifier {
 
   // Chaos Mode
   bool get chaosModeEnabled => _chaosModeEnabled;
+
+  /// Whether the per-session Needs (Sims-style) simulation is active.
+  ///
+  /// When enabled, [needsVector] holds the current 0–100 levels and the engine
+  /// performs decay, prompt injection, and LLM-verified fulfillment restores.
+  /// New chats seed this from the character's [FrontPorchExtensions.needsSimEnabled].
+  /// Disabling mid-chat clears the vector; historical snapshots cannot re-enable it.
   bool get needsSimEnabled => _needsSimEnabled;
+
+  /// Current need levels (e.g. {'hunger': 65, 'energy': 40, ...}) as an
+  /// unmodifiable map. Empty when [needsSimEnabled] is false.
+  ///
+  /// Exposed primarily for UI (the header bars) and internal prompt building.
+  /// Consumers should check [needsSimEnabled] before using the contents.
+  Map<String, int> get needsVector => Map<String, int>.unmodifiable(_needsVector);
   bool get chaosNsfwEnabled => _chaosNsfwEnabled;
   int get chaosPressure => _chaosPressure;
 
@@ -835,6 +976,10 @@ class ChatService extends ChangeNotifier {
 
   /// True when a chaos event is queued for the next response (blocks manual spin + auto-trigger).
   bool get hasPendingChaosEvent => _pendingChaosInjection != null;
+
+  /// Non-null when a needs catastrophe (e.g. accident, collapse) was just triggered by hitting 0.
+  /// The string is the mandatory narrative the AI must roleplay on the next turn.
+  String? get pendingNeedsCatastrophe => _pendingNeedsCatastrophe;
 
   /// Called by the overlay once it has opened. Clears the auto-trigger flag.
   void consumeChanceTimeTrigger() => _chanceTimePendingTrigger = false;
@@ -1654,6 +1799,7 @@ class ChatService extends ChangeNotifier {
        _activeFixation = '';
        _needsSimEnabled = false;
        _needsVector.clear();
+       _needsAfterglowTurnsRemaining = 0;
        debugPrint(
          '[ChatService] setActiveCharacter: Reset realism state (was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
        );
@@ -2229,7 +2375,10 @@ class ChatService extends ChangeNotifier {
      if (_needsSimEnabled) {
        _initializeNeedsVectorIfNeeded();
        _restoreNeedsFromJson(lastSession.needsVector);
+     } else {
+       _needsVector.clear();
      }
+     _needsAfterglowTurnsRemaining = 0;
     _arousalLevel = lastSession.arousalLevel;
     _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
     _trustLevel = lastSession.trustLevel;
@@ -2497,7 +2646,10 @@ class ChatService extends ChangeNotifier {
       if (_needsSimEnabled) {
         _initializeNeedsVectorIfNeeded();
         _restoreNeedsFromJson(session.needsVector);
+      } else {
+        _needsVector.clear();
       }
+      _needsAfterglowTurnsRemaining = 0;
       _arousalLevel = session.arousalLevel;
       _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
       _trustLevel = session.trustLevel;
@@ -2822,6 +2974,7 @@ class ChatService extends ChangeNotifier {
       } else {
         _needsVector.clear();
       }
+      _needsAfterglowTurnsRemaining = 0;
       if (_activeCharacter!.hasFrontPorchExtensions) {
         // Character has baseline extensions, indicating an ongoing managed relationship where
         // emotional continuity is expected across sessions. Do NOT reset arousal/fixation.
@@ -4173,6 +4326,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       String realismBlock = '';
       String chanceTimeBlock = '';
       String objectiveBlock = '';
+      String needsCatastropheBlock = '';
       int droppedMessages = 0;
 
       // Ensure the popped message is always restored, even if prompt assembly throws
@@ -4201,6 +4355,23 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         // Must sit in a fixed prompt section so it is NEVER trimmed by the budget system.
         objectiveBlock = _getObjectiveInjection();
 
+        // Mandatory Needs Catastrophe (Phase 2 stepping) — when a need hit 0 during
+        // the previous decay tick, we force the AI to roleplay the disaster right now.
+        if (_pendingNeedsCatastrophe != null) {
+          needsCatastropheBlock =
+              '[MANDATORY CATASTROPHIC NEED EVENT — THIS HAS ALREADY OCCURRED THIS TURN:\n'
+              '${_pendingNeedsCatastrophe}\n'
+              'You MUST narrate the immediate physical sensations, the visible evidence '
+              '(wet patch/puddle on clothes or floor, her collapsing or fainting, smell, '
+              'mortified/embarrassed expression, how {{user}} and anyone else present reacts), '
+              'and the emotional/social aftermath in the very first 1-2 paragraphs. '
+              'This is not optional, not a suggestion, and not something the character "might" do — '
+              'the event is canon and has just happened or is happening right now. '
+              'Do not fade to black, do not ask for permission, do not skip it.]\n';
+          // Consume it for this generation
+          _pendingNeedsCatastrophe = null;
+        }
+
         // Calculate token cost of all fixed sections to determine chat history budget
         final fixedContent =
             "$systemPrompt\n"
@@ -4215,6 +4386,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             "$authorNoteBlock"
             "$objectiveBlock"
             "$realismBlock"
+            "$needsCatastropheBlock"
             "$suffix"
             "$chanceTimeBlock";
         final fixedTokens = await _countTokens(fixedContent);
@@ -4340,6 +4512,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
                 "$authorNoteBlock"
                 "$objectiveBlock"
                 "$realismBlock"
+                "$needsCatastropheBlock"
                 "$suffix"
                 "$chanceTimeBlock"
           : "$systemPrompt\n"
@@ -4356,6 +4529,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
                 "$authorNoteBlock"
                 "$objectiveBlock"
                 "$realismBlock"
+                "$needsCatastropheBlock"
                 "$suffix"
                 "$chanceTimeBlock";
 
@@ -4376,6 +4550,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         'Author\'s Note': (authorNoteBlock.length / 4).ceil(),
         'Objectives': (objectiveBlock.length / 4).ceil(),
         'Realism Mode': (realismBlock.length / 4).ceil(),
+        if (needsCatastropheBlock.isNotEmpty) 'Needs Catastrophe': (needsCatastropheBlock.length / 4).ceil(),
         if (droppedMessages > 0) 'Dropped Messages': droppedMessages,
       };
       // Remove zero-value entries
@@ -4875,6 +5050,17 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             _cooldownTurnsRemaining <= 0 &&
             _activeGroup == null) {
           _checkClimaxInResponse(finalResponse); // fire-and-forget
+        }
+
+        // Check for non-climax sexual/intimate activity (heavy petting, oral, fingering, etc.)
+        // so sex still feels rewarding and triggers afterglow even without orgasm.
+        if (_needsSimEnabled && _realismEnabled && _activeGroup == null) {
+          _checkSexualActivityInResponse(finalResponse); // fire-and-forget
+        }
+
+        // Check for other daily activities that have cross-need effects (eating, sleeping, bathing)
+        if (_needsSimEnabled && _realismEnabled && _activeGroup == null) {
+          _checkDailyActivityEffects(finalResponse); // fire-and-forget
         }
 
         // Check if summary needs updating (fire-and-forget)
@@ -6314,8 +6500,6 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         '[RAG:Persona] Sending extraction prompt (${extractionPrompt.length} chars, ${recentUserMsgs.length} user messages)',
       );
 
-      // Use GBNF grammar for local models to ensure valid JSON array output.
-      // For thinking models, grammar is auto-gated off by _buildKoboldGrammar.
       final isThinkingModel = _llmProvider!.isLocal
           ? _storageService.koboldThinkingModel
           : _storageService.reasoningEnabled;
@@ -6326,8 +6510,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         temperature: 0.2,
         repeatPenalty: 1.15,
         stopSequences: isThinkingModel ? [] : [']\n', ']'],
-        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-        // grammar: _buildKoboldGrammar(_kGbnfJsonStringArray),
+
         banEosToken: isThinkingModel && _llmProvider!.isLocal,
         trimStop: !(isThinkingModel && _llmProvider!.isLocal),
       );
@@ -6446,8 +6629,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
       final raw = await _fireLLMEval(
         consolidationPrompt,
-        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-        // grammar: _buildKoboldGrammar(_kGbnfJsonStringArray),
+
       );
       if (raw == null) {
         // LLM failed — fall back to simple truncation (keep first N facts)
@@ -7300,6 +7482,21 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     return cleaned;
   }
 
+  /// Tiny private helpers to deduplicate the ~20+ brittle RegExp patterns used
+  /// to fish bool/int scalars out of the flat JSON-like strings returned by
+  /// _fireLLMEval across all Realism + Needs evaluation sites.
+  int? _extractJsonInt(String text, String key) {
+    final m = RegExp(r'"' + RegExp.escape(key) + r'"\s*:\s*(-?\d+)')
+        .firstMatch(text);
+    return m != null ? int.tryParse(m.group(1)!) : null;
+  }
+
+  bool? _extractJsonBool(String text, String key) {
+    final m = RegExp(r'"' + RegExp.escape(key) + r'"\s*:\s*(true|false)')
+        .firstMatch(text);
+    return m != null ? (m.group(1) == 'true') : null;
+  }
+
   /// Shared helper: fire a lightweight LLM eval call and return the raw response.
   ///
   /// Always adds `}\n` as a stop sequence so the model halts the moment it
@@ -7307,9 +7504,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   /// Thinking models (Kimi 2.5, GLM 5) will still think freely — they produce
   /// the <think> block, then output the JSON, then hit `}\n` and stop.
   ///
-  /// NOTE: GBNF grammar is intentionally NOT used. Many KoboldCPP models return
-  /// empty output when they can't satisfy grammar constraints. Rely on stop
-  /// sequences + regex parsing instead (same approach as remote APIs).
+  /// (Post-0.9.8 clean port: constrained GBNF removed; rely on stop sequences
+  /// + regex post-processing for all Realism/Needs evals.)
   Future<String?> _fireLLMEval(
     String prompt, {
     void Function(String)? onChunk,
@@ -7937,8 +8133,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       debugPrint('[Realism] Evaluating relationship dynamic...');
       final raw = await _fireLLMEval(
         prompt,
-        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -7946,21 +8141,17 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       final searchText = _stripThinkBlocks(raw);
       final text = searchText.isNotEmpty ? searchText : raw;
 
-      final deltaMatch = RegExp(
-        r'"relationship_delta"\s*:\s*(-?\d+)',
-      ).firstMatch(text);
+      final relDelta = _extractJsonInt(text, 'relationship_delta');
       int bondDelta = 0;
-      if (deltaMatch != null) {
-        bondDelta = (int.tryParse(deltaMatch.group(1)!) ?? 0).clamp(-50, 50);
+      if (relDelta != null) {
+        bondDelta = relDelta.clamp(-50, 50);
         _applyScoreDelta(bondDelta);
       }
 
       int trustDelta = 0;
-      final trustMatch = RegExp(
-        r'"trust_delta"\s*:\s*(-?\d+)',
-      ).firstMatch(text);
-      if (trustMatch != null) {
-        trustDelta = (int.tryParse(trustMatch.group(1)!) ?? 0).clamp(-200, 50);
+      final trDelta = _extractJsonInt(text, 'trust_delta');
+      if (trDelta != null) {
+        trustDelta = trDelta.clamp(-200, 50);
         if (trustDelta != 0) {
           _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
           debugPrint(
@@ -7977,14 +8168,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
       int arousalDelta = 0;
       if (_nsfwCooldownEnabled) {
-        final arousalMatch = RegExp(
-          r'"arousal_delta"\s*:\s*(-?\d+)',
-        ).firstMatch(text);
-        if (arousalMatch != null) {
-          arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0).clamp(
-            -25,
-            25,
-          );
+        final arDelta = _extractJsonInt(text, 'arousal_delta');
+        if (arDelta != null) {
+          arousalDelta = arDelta.clamp(-25, 25);
           _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
         }
       }
@@ -8099,8 +8285,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     try {
       final raw = await _fireLLMEval(
         prompt,
-        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -8121,12 +8306,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
 
       if (_nsfwCooldownEnabled) {
-        final arousalMatch = RegExp(
-          r'"arousal_delta"\s*:\s*(-?\d+)',
-        ).firstMatch(text);
-        if (arousalMatch != null) {
-          final arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0)
-              .clamp(-10, 10);
+        final arDelta = _extractJsonInt(text, 'arousal_delta');
+        if (arDelta != null) {
+          final arousalDelta = arDelta.clamp(-10, 10);
           _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
           if (arousalDelta != 0) {
             _pendingRealismMetadata ??= {};
@@ -8195,18 +8377,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         try {
           final raw = await _fireLLMEval(
             holdPrompt,
-            // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-          // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
             onChunk: onChunk,
           );
           if (raw != null) {
             final text = _stripThinkBlocks(raw).isNotEmpty
                 ? _stripThinkBlocks(raw)
                 : raw;
-            final holdMatch = RegExp(
-              r'"hold_time"\s*:\s*(true|false)',
-            ).firstMatch(text);
-            final shouldHold = holdMatch?.group(1) == 'true';
+            final shouldHold = _extractJsonBool(text, 'hold_time') ?? false;
 
             if (!shouldHold) {
               if (currentIndex < validTimes.length - 1) {
@@ -8227,14 +8404,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             }
 
             // Explicit new-day override (e.g. woke up after night)
-            final newDayMatch = RegExp(
-              r'"new_day"\s*:\s*(true|false)',
-            ).firstMatch(text);
-            if (newDayMatch?.group(1) == 'true' &&
+            final isNewDay = _extractJsonBool(text, 'new_day') ?? false;
+            if (isNewDay &&
                 _timeOfDay == 'night' &&
                 !shouldHold) {
               // already handled by rollover above
-            } else if (newDayMatch?.group(1) == 'true' &&
+            } else if (isNewDay &&
                 currentIndex >= validTimes.indexOf('evening')) {
               _dayCount++;
               _timeOfDay = validTimes[0];
@@ -8289,8 +8464,6 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         try {
           final raw = await _fireLLMEval(
             posturePrompt,
-            // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-          // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
             onChunk: onChunk,
           );
           if (raw != null) {
@@ -8332,8 +8505,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       try {
         final raw = await _fireLLMEval(
           posturePrompt,
-          // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+  
           onChunk: onChunk,
         );
         if (raw != null) {
@@ -8383,8 +8555,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     try {
       final raw = await _fireLLMEval(
         prompt,
-        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -8543,8 +8714,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       debugPrint('[Realism:OneShot] Evaluating (fused call)...');
       final raw = await _fireLLMEval(
         prompt,
-        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
+
         onChunk: onChunk,
       );
       if (raw == null) return;
@@ -8554,23 +8724,20 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
       // ── Relationship fields ──
       int bondDelta = 0;
-      final deltaMatch = RegExp(
-        r'"relationship_delta"\s*:\s*(-?\d+)',
-      ).firstMatch(text);
-      if (deltaMatch != null) {
-        bondDelta = (int.tryParse(deltaMatch.group(1)!) ?? 0).clamp(-50, 50);
+      final relDelta = _extractJsonInt(text, 'relationship_delta');
+      if (relDelta != null) {
+        bondDelta = relDelta.clamp(-50, 50);
         _applyScoreDelta(bondDelta);
       }
 
       int moodDelta = 0;
-      final moodMatch = RegExp(r'"mood_shift"\s*:\s*(-?\d+)').firstMatch(text);
+      // (mood_shift extraction omitted — the original RegExp result was never
+      // consumed; legacy dead code left in place to avoid behavior/scope drift)
 
       int trustDelta = 0;
-      final trustMatch = RegExp(
-        r'"trust_delta"\s*:\s*(-?\d+)',
-      ).firstMatch(text);
-      if (trustMatch != null) {
-        trustDelta = (int.tryParse(trustMatch.group(1)!) ?? 0).clamp(-50, 30);
+      final trDelta = _extractJsonInt(text, 'trust_delta');
+      if (trDelta != null) {
+        trustDelta = trDelta.clamp(-50, 30);
         if (trustDelta != 0) {
           _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
           debugPrint(
@@ -8587,14 +8754,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
       int arousalDelta = 0;
       if (_nsfwCooldownEnabled) {
-        final arousalMatch = RegExp(
-          r'"arousal_delta"\s*:\s*(-?\d+)',
-        ).firstMatch(text);
-        if (arousalMatch != null) {
-          arousalDelta = (int.tryParse(arousalMatch.group(1)!) ?? 0).clamp(
-            -25,
-            25,
-          );
+        final arDelta = _extractJsonInt(text, 'arousal_delta');
+        if (arDelta != null) {
+          arousalDelta = arDelta.clamp(-25, 25);
           _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
         }
       }
@@ -8776,23 +8938,18 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       debugPrint('[Realism:TrustRepair] Evaluating repair attempt...');
       final raw = await _fireLLMEval(
         prompt,
-        // GBNF disabled: KoboldCPP returns empty when grammar unsatisfiable
-        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
         onChunk: onChunk,
       );
       if (raw == null) return;
 
       final text = _stripThinkBlocks(raw).trim();
 
-      final recoveryMatch = RegExp(
-        r'"trust_recovery"\s*:\s*(\d+)',
-      ).firstMatch(text);
       final verdictMatch = RegExp(
         r'"verdict"\s*:\s*"([^"]+)"',
       ).firstMatch(text);
       final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(text);
 
-      final recovery = (int.tryParse(recoveryMatch?.group(1) ?? '0') ?? 0)
+      final recovery = (_extractJsonInt(text, 'trust_recovery') ?? 0)
           .clamp(0, 60);
       final verdict = verdictMatch?.group(1) ?? 'rejected';
       final reason = reasonMatch?.group(1) ?? '';
@@ -8869,73 +9026,207 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     for (final key in _needKeys) {
       final current = _needsVector[key];
       if (current == null) continue;
+
       int decay = _needDecay[key] ?? 0;
-      if (isMorning && key == 'hunger') {
+
+      // Time-of-day variants
+      if (isMorning && _needDecayMorning.containsKey(key)) {
         decay = _needDecayMorning[key] ?? decay;
-      } else if (isNight && key == 'energy') {
+      } else if (isNight && _needDecayNight.containsKey(key)) {
         decay = _needDecayNight[key] ?? decay;
       }
+
+      // Afterglow Buffer: significantly reduce decay on Hunger, Energy, and Social
+      // after good sexual/intimate activity so it feels like a net positive.
+      if (_needsAfterglowTurnsRemaining > 0 &&
+          (key == 'hunger' || key == 'energy' || key == 'social')) {
+        decay = (decay * 0.45).round(); // ~55% reduction
+      }
+
+      // State-based decay modifiers (interplay)
+      final energy = _needsVector['energy'] ?? 50;
+      final fun = _needsVector['fun'] ?? 50;
+
+      // Low energy makes hunger feel worse (body needs fuel)
+      if (key == 'hunger' && energy <= 30) {
+        decay = (decay * 1.35).round();
+      }
+
+      // Low energy makes physical comfort worse
+      if (key == 'comfort' && energy <= 25) {
+        decay = (decay * 1.25).round();
+      }
+
+      // Very low fun / boredom makes social need decay faster
+      if (key == 'social' && fun <= 20) {
+        decay = (decay * 1.4).round();
+      }
+
+      // High bladder makes overall comfort worse
+      final bladder = _needsVector['bladder'] ?? 50;
+      if (key == 'comfort' && bladder <= 20) {
+        decay = (decay * 1.2).round();
+      }
+
       _needsVector[key] = (current - decay).clamp(0, 100);
+    }
+
+    // Tick down afterglow buffer at the end of the turn
+    if (_needsAfterglowTurnsRemaining > 0) {
+      _needsAfterglowTurnsRemaining--;
+      if (_needsAfterglowTurnsRemaining == 0) {
+        debugPrint('[Realism:Needs] Afterglow buffer expired');
+      }
+    }
+
+    // ── Phase 2 Catastrophe Trigger (graduated stepping) ─────────────────────
+    // If any need has just hit exactly 0 during this decay tick, fire the
+    // catastrophic involuntary event for the worst one. The engine immediately
+    // lifts the value to a post-event floor so the bar moves and the character
+    // is in a "just suffered the consequence" state. The pending narrative will
+    // force the next AI response to roleplay the disaster (pissing, fainting, etc.).
+    if (_pendingNeedsCatastrophe == null && _needsSimEnabled && _realismEnabled) {
+      String? worstNeed;
+      int worstValue = 999;
+      for (final key in _needKeys) {
+        final v = _needsVector[key] ?? 100;
+        if (v <= 0 && v < worstValue) {
+          worstValue = v;
+          worstNeed = key;
+        }
+      }
+      if (worstNeed != null) {
+        _pendingNeedsCatastrophe = _buildCatastropheText(worstNeed);
+        int floor = _postCatastropheFloor(worstNeed);
+
+        // Give significantly better relief when the event was a successful resolution
+        // rather than a pure accident/collapse (heuristic on the catastrophe text).
+        final text = _pendingNeedsCatastrophe!.toLowerCase();
+        final wasAccidentOrCollapse = text.contains('accident') ||
+            text.contains('wetting') ||
+            text.contains('lost control') ||
+            text.contains('collapsed') ||
+            text.contains('faint') ||
+            text.contains('out cold');
+
+        if (!wasAccidentOrCollapse) {
+          floor = (floor + 12).clamp(0, 100); // successful relief feels much better
+        }
+
+        _needsVector[worstNeed] = floor;
+        debugPrint('[Realism:Needs] ⚠️ CATASTROPHE triggered for $worstNeed → lifted to $floor (accident=$wasAccidentOrCollapse)');
+      }
     }
 
     debugPrint('[Realism:Needs] Tick decay applied');
     _saveChat(); // persist vector changes
+    if (_pendingNeedsCatastrophe != null) {
+      notifyListeners(); // bar jumps + UI can react before generation starts
+    }
+  }
+
+  /// Returns the current stepped urgency (0 = catastrophic ... 5 = fine) for a need.
+  /// Pure function of the current value — no extra state required.
+  int _getNeedStep(String need, int value) {
+    for (int s = 0; s < _needStepUpperBounds.length; s++) {
+      if (value <= _needStepUpperBounds[s]) return s;
+    }
+    return 5; // comfortable
+  }
+
+  /// Returns the catastrophic narrative text for the given need (the event that
+  /// just occurred when it hit 0).
+  String _buildCatastropheText(String need) {
+    return _needCatastropheNarrative[need] ?? 'Something catastrophic just happened because her ${need} need hit zero.';
+  }
+
+  /// Returns the floor value the need should be lifted to immediately after the
+  /// catastrophe is triggered (so the bar moves and the character is in a
+  /// post-event "relief" (still uncomfortable) state).
+  int _postCatastropheFloor(String need) {
+    return _needPostCatastropheFloor[need] ?? 30;
+  }
+
+  /// Applies a map of need deltas (positive or negative) to the current vector.
+  /// If [fromSexualActivity] is true and the deltas are meaningful, this will
+  /// start or refresh the Afterglow Buffer.
+  void _applyNeedsDeltas(Map<String, int> deltas, {bool fromSexualActivity = false}) {
+    if (!_needsSimEnabled || !_realismEnabled || deltas.isEmpty) return;
+
+    bool changed = false;
+    int totalPositiveImpact = 0;
+
+    for (final entry in deltas.entries) {
+      final key = entry.key;
+      if (!_needKeys.contains(key)) continue;
+
+      final current = _needsVector[key] ?? 50;
+      final newValue = (current + entry.value).clamp(0, 100);
+      if (newValue != current) {
+        _needsVector[key] = newValue;
+        changed = true;
+        if (entry.value > 0) totalPositiveImpact += entry.value;
+      }
+    }
+
+    if (!changed) return;
+
+    // Start/refresh afterglow buffer on meaningful positive sexual activity
+    if (fromSexualActivity && totalPositiveImpact >= 8) {
+      _needsAfterglowTurnsRemaining = 4; // 3-4 turns is the sweet spot
+      debugPrint('[Realism:Needs] Afterglow buffer started/refreshed ($totalPositiveImpact impact)');
+    }
+
+    debugPrint('[Realism:Needs] Applied deltas: $deltas');
+    _saveChat();
+    notifyListeners();
   }
 
   String _getNeedsInjection() {
     if (!_needsSimEnabled || !_realismEnabled) return '';
 
     final charName = _activeCharacter?.name ?? 'the character';
-    final userName = _userPersonaService.persona.name;
 
     final sorted = _needsVector.entries.toList()
       ..sort((a, b) => a.value.compareTo(b.value));
 
     final top = sorted.first;
-    if (top.value > _needUrgentThreshold) return '';
+    final step = _getNeedStep(top.key, top.value);
 
-    final isCritical = top.value <= _needCriticalThreshold;
-    final urgencyTag = isCritical
-        ? 'CRITICAL NEED — she cannot ignore this and should voice it immediately.'
-        : 'Urgent need — subtly colors her mood and she should hint at it.';
+    // Step 5 = comfortable → no injection at all (old behavior for high values)
+    if (step >= 5) return '';
 
-    if (top.key == 'bladder' && _nsfwCooldownEnabled && _arousalLevel >= 6) {
-      return '[$urgencyTag $charName urgently needs to use the restroom, and the combination of desperation and current arousal (level: $_arousalLevel/10) creates a charged, uncomfortable tension.]\n';
+    // Preserve the special NSFW bladder+arousal flavor at high urgency steps
+    if (top.key == 'bladder' && _nsfwCooldownEnabled && _arousalLevel >= 6 && step <= 2) {
+      final tension = step <= 1
+          ? 'She is *desperately* holding on while extremely aroused — the combination is overwhelming and humiliating.'
+          : 'The combination of bladder desperation and current arousal (level: $_arousalLevel/10) creates a charged, uncomfortable tension.';
+      return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
     }
 
-    final directive = switch (top.key) {
-      'hunger' => isCritical
-          ? '$charName\'s stomach has been growling — she is genuinely hungry and should mention it and suggest something to eat.'
-          : '$charName is getting hungry. It subtly colors her mood.',
-      'bladder' => isCritical
-          ? '$charName urgently needs to use the restroom — she should excuse herself or acknowledge the need.'
-          : '$charName needs to use the restroom soon.',
-      'energy' => isCritical
-          ? '$charName is genuinely exhausted and should acknowledge it.'
-          : '$charName is growing tired.',
-      'social' => isCritical
-          ? '$charName craves genuine connection right now.'
-          : '$charName is craving more connection.',
-      'fun' => isCritical
-          ? '$charName is restless and should suggest doing something.'
-          : '$charName is starting to feel restless.',
-      'hygiene' => isCritical
-          ? '$charName feels uncomfortably grimy and should mention freshening up.'
-          : '$charName is starting to feel a bit unkempt.',
-      'comfort' => isCritical
-          ? '$charName is physically uncomfortable and should suggest moving.'
-          : '$charName is getting a bit uncomfortable.',
-      _ => '',
+    // Get the graduated text for this exact step (0 = catastrophic language)
+    final texts = _needSteppedText[top.key] ?? const <String>[];
+    final baseText = step < texts.length ? texts[step] : texts.last;
+
+    // Build a strong urgency prefix that escalates with the step
+    final urgencyPrefix = switch (step) {
+      0 => 'CATASTROPHIC — this has already happened and must be narrated now.',
+      1 => 'CRITICAL NEED — she cannot ignore this and is in real distress.',
+      2 => 'URGENT — the pressure is intense and she must act soon.',
+      3 => 'Noticeable need — it is distracting her and coloring her behavior.',
+      _ => 'Mild background need — it subtly affects her mood and focus.',
     };
 
-    if (directive.isEmpty) return '';
+    // Secondary low need note (only for steps 1-3 to avoid noise at catastrophe)
+    String secondaryNote = '';
+    if (step >= 1 && step <= 3) {
+      final secondary = sorted.where((e) => e.key != top.key && _getNeedStep(e.key, e.value) <= 3).firstOrNull;
+      if (secondary != null) {
+        secondaryNote = ' (She is also feeling the ${secondary.key} need.)';
+      }
+    }
 
-    final secondary = sorted.where((e) => e.key != top.key && e.value <= _needUrgentThreshold && e.value > _needCriticalThreshold).firstOrNull;
-    final secondaryNote = secondary != null
-        ? ' (She is also starting to feel the ${secondary.key} need.)'
-        : '';
-
-    return '[$urgencyTag $directive$secondaryNote]\n';
+    return '[$urgencyPrefix $baseText$secondaryNote]\n';
   }
 
   Future<void> _verifyNeedFulfillmentCall({void Function(String)? onChunk}) async {
@@ -8973,8 +9264,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
 
       for (final need in pendingNeeds) {
-        final match = RegExp('"${need}_fulfilled"\\s*:\\s*(true|false)').firstMatch(text);
-        if (match?.group(1) == 'true') {
+        final fulfilled = _extractJsonBool(text, '${need}_fulfilled') ?? false;
+        if (fulfilled) {
           final restore = _needRestoreAmount(need);
           _needsVector[need] = (_needsVector[need]! + restore).clamp(0, 100);
           debugPrint('[Realism:Needs] ✅ $need fulfilled (+$restore)');
@@ -9086,28 +9377,19 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     try {
       debugPrint('[Realism:Climax] Checking AI response for climax...');
-      // NOTE: GBNF grammar disabled — many KoboldCPP models return empty
-      // output when they can't satisfy grammar constraints. Rely on stop
-      // sequences + regex parsing instead (same as remote APIs).
       final raw = await _fireLLMEval(
         prompt,
-        // grammar: _buildKoboldGrammar(_kGbnfJsonObject),
       );
       if (raw == null) return;
 
       final searchText = _stripThinkBlocks(raw);
       final text = searchText.isNotEmpty ? searchText : raw;
 
-      final match = RegExp(
-        r'"climax_detected"\s*:\s*(true|false)',
-      ).firstMatch(text);
-      if (match != null && match.group(1) == 'true') {
+      if (_extractJsonBool(text, 'climax_detected') == true) {
         int turns = 5;
-        final turnMatch = RegExp(
-          r'"refractory_turns"\s*:\s*(\d+)',
-        ).firstMatch(text);
-        if (turnMatch != null) {
-          turns = (int.tryParse(turnMatch.group(1)!) ?? 5).clamp(1, 10);
+        final refTurns = _extractJsonInt(text, 'refractory_turns');
+        if (refTurns != null) {
+          turns = refTurns.clamp(1, 10);
         }
 
         // Save pre-climax state on the message so regen can restore it
@@ -9123,6 +9405,19 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         _cooldownTurnsTotal = turns;
         _cooldownTurnsRemaining = turns;
         _arousalLevel = -3;
+
+        // Apply sexual activity cross-effects + start Afterglow Buffer
+        if (_needsSimEnabled) {
+          _applyNeedsDeltas({
+            'fun': 16,
+            'social': 9,
+            'bladder': 8,
+            'energy': -7,
+            'hunger': -4,
+            'hygiene': -6,
+          }, fromSexualActivity: true);
+        }
+
         debugPrint(
           '[Realism:Climax] Confirmed — refractory cooldown started ($turns turns), '
           'arousal $preClimaxArousal → -3 (pre-climax saved for regen)',
@@ -9134,6 +9429,117 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       }
     } catch (e) {
       debugPrint('[Realism:Climax] Check failed: $e');
+    }
+  }
+
+  /// Lightweight check for significant sexual or intimate activity that did *not*
+  /// result in climax. This ensures ongoing scenes (making out, oral, fingering,
+  /// heavy petting, etc.) still deliver Fun/Social rewards and start the afterglow
+  /// buffer so sex remains a net positive.
+  Future<void> _checkSexualActivityInResponse(String responseText) async {
+    if (responseText.trim().isEmpty) return;
+    if (_activeCharacter == null) return;
+    if (_arousalLevel < 3) return; // only bother if there was real desire
+
+    // Avoid double-applying right after a climax (climax already handled full effects)
+    if (_cooldownTurnsRemaining > 0) return;
+
+    final charName = _activeCharacter!.name;
+
+    final prompt =
+        'Read the following character response.\n\n'
+        'RESPONSE:\n$responseText\n\n'
+        'Did $charName engage in significant sexual or intimate physical activity '
+        '(kissing, touching, oral, fingering, grinding, heavy petting, etc.) even if they did not reach orgasm? '
+        'Answer ONLY with a JSON object: {"sexual_activity": true/false, "intensity": 1-10, "reason": "short"}';
+
+    try {
+      final raw = await _fireLLMEval(prompt);
+      if (raw == null) return;
+
+      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+
+      final sexual = _extractJsonBool(text, 'sexual_activity') ?? false;
+      if (!sexual) return;
+
+      final intensity = _extractJsonInt(text, 'intensity') ?? 5;
+      final strength = (intensity / 10.0).clamp(0.4, 1.0);
+
+      // Milder deltas than full climax
+      _applyNeedsDeltas({
+        'fun': (12 * strength).round(),
+        'social': (7 * strength).round(),
+        'bladder': (5 * strength).round(),
+        'energy': (-4 * strength).round(),
+        'hunger': (-3 * strength).round(),
+        'hygiene': (-4 * strength).round(),
+      }, fromSexualActivity: true);
+
+      debugPrint('[Realism:Needs] Non-climax sexual activity detected (intensity $intensity) → applied effects + afterglow');
+    } catch (e) {
+      debugPrint('[Realism:SexualActivity] Check failed: $e');
+    }
+  }
+
+  /// Detects common daily activities that have natural cross-effects on multiple needs.
+  /// Examples: eating a proper meal, sleeping/napping, taking a bath/shower.
+  Future<void> _checkDailyActivityEffects(String responseText) async {
+    if (responseText.trim().isEmpty) return;
+    if (_activeCharacter == null) return;
+
+    final charName = _activeCharacter!.name;
+
+    final prompt =
+        'Read the following character response.\n\n'
+        'RESPONSE:\n$responseText\n\n'
+        'Did $charName do any of the following in this response?\n'
+        '- Ate or drank a significant meal / snack / drink\n'
+        '- Slept, napped, or had a good rest\n'
+        '- Took a bath, shower, or cleaned up thoroughly\n\n'
+        'Answer ONLY with a flat JSON object:\n'
+        '{"ate": true/false, "slept": true/false, "bathed": true/false, "quality": 1-10}';
+
+    try {
+      final raw = await _fireLLMEval(prompt);
+      if (raw == null) return;
+
+      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+
+      final ate = _extractJsonBool(text, 'ate') ?? false;
+      final slept = _extractJsonBool(text, 'slept') ?? false;
+      final bathed = _extractJsonBool(text, 'bathed') ?? false;
+      final quality = _extractJsonInt(text, 'quality') ?? 5;
+      final strength = (quality / 10.0).clamp(0.5, 1.0);
+
+      final deltas = <String, int>{};
+
+      if (ate) {
+        deltas['hunger'] = (22 * strength).round();
+        deltas['fun'] = (6 * strength).round();
+        deltas['social'] = (4 * strength).round();
+        deltas['energy'] = (5 * strength).round();
+        deltas['bladder'] = (4 * strength).round();
+      }
+
+      if (slept) {
+        deltas['energy'] = (deltas['energy'] ?? 0) + (25 * strength).round();
+        deltas['fun'] = (deltas['fun'] ?? 0) + (5 * strength).round();
+        deltas['hunger'] = (deltas['hunger'] ?? 0) + (-3 * strength).round();
+        deltas['bladder'] = (deltas['bladder'] ?? 0) + (5 * strength).round();
+      }
+
+      if (bathed) {
+        deltas['hygiene'] = (25 * strength).round();
+        deltas['comfort'] = (deltas['comfort'] ?? 0) + (12 * strength).round();
+        deltas['fun'] = (deltas['fun'] ?? 0) + (6 * strength).round();
+      }
+
+      if (deltas.isNotEmpty) {
+        _applyNeedsDeltas(deltas);
+        debugPrint('[Realism:Needs] Daily activities detected → applied cross-effects: $deltas');
+      }
+    } catch (e) {
+      debugPrint('[Realism:DailyActivities] Check failed: $e');
     }
   }
 
@@ -9280,6 +9686,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     notifyListeners();
   }
 
+  /// Toggles the Needs Simulation for the current session.
+  ///
+  /// - `true`: initializes the default need vector (if empty) then begins tracking.
+  /// - `false`: clears the in-memory vector (levels are discarded for this session).
+  ///
+  /// The change is persisted with the session and broadcast via [notifyListeners].
+  /// Matches the side-effect style of [setNsfwCooldownEnabled] and [setChaosModeEnabled].
   Future<void> setNeedsSimEnabled(bool enabled) async {
     _needsSimEnabled = enabled;
     if (enabled) {
