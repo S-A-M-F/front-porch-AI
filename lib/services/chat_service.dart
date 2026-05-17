@@ -467,6 +467,10 @@ class ChatService extends ChangeNotifier {
   _pendingChaosInjection; // event text to inject into the next response prompt
   bool _chaosEventDelivered =
       false; // true after the event has been used in at least one generation
+
+  // ── Sims/Needs Simulation (clean port on 0.9.8) ──
+  bool _needsSimEnabled = false;
+  Map<String, int> _needsVector = {};
   Completer<void>?
   _chanceTimeCompleter; // pauses sendMessage while wheel is active
 
@@ -730,6 +734,7 @@ class ChatService extends ChangeNotifier {
 
   // Chaos Mode
   bool get chaosModeEnabled => _chaosModeEnabled;
+  bool get needsSimEnabled => _needsSimEnabled;
   bool get chaosNsfwEnabled => _chaosNsfwEnabled;
   int get chaosPressure => _chaosPressure;
 

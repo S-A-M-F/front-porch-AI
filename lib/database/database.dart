@@ -159,6 +159,10 @@ class Sessions extends Table {
     const Constant(0),
   )(); // 0-100 escalating trigger chance
 
+  // Sims/Needs Simulation (clean port on 0.9.8)
+  BoolColumn get needsSimEnabled =>
+      boolean().withDefault(const Constant(false))(); // per-session toggle
+
   // Per-session character evolution (v19)
   // 1:1 chats: plain evolved text
   TextColumn get evolvedPersonality => text().withDefault(const Constant(''))();
@@ -516,7 +520,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 25;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -940,6 +944,14 @@ class AppDatabase extends _$AppDatabase {
             "UPDATE personas SET persona = COALESCE(NULLIF(persona, ''), description) WHERE description != ''",
           );
           await customStatement('ALTER TABLE personas DROP COLUMN description');
+        } catch (_) {}
+      }
+      if (from < 27) {
+        // v26->v27: add per-session needs simulation flag (clean Sims port)
+        try {
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN needs_sim_enabled INTEGER NOT NULL DEFAULT 0',
+          );
         } catch (_) {}
       }
     },
