@@ -2025,6 +2025,7 @@ class ChatService extends ChangeNotifier {
         dayCount: drift.Value(_dayCount),
         passageOfTimeEnabled: drift.Value(_passageOfTimeEnabled),
         nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
+        needsSimEnabled: drift.Value(_needsSimEnabled),
         arousalLevel: drift.Value(_arousalLevel),
         cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
         trustLevel: drift.Value(_trustLevel),
@@ -2126,6 +2127,7 @@ class ChatService extends ChangeNotifier {
      _passageOfTimeEnabled =
          lastSession.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
      _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
+     _needsSimEnabled = lastSession.needsSimEnabled;
     _arousalLevel = lastSession.arousalLevel;
     _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
     _trustLevel = lastSession.trustLevel;
@@ -2389,6 +2391,7 @@ class ChatService extends ChangeNotifier {
       _passageOfTimeEnabled =
           session.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
       _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
+      _needsSimEnabled = session.needsSimEnabled;
       _arousalLevel = session.arousalLevel;
       _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
       _trustLevel = session.trustLevel;
@@ -2707,6 +2710,7 @@ class ChatService extends ChangeNotifier {
       _passageOfTimeEnabled =
           extSeed.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
       _chaosModeEnabled = extSeed.chaosModeEnabled;
+      _needsSimEnabled = extSeed.needsSimEnabled;
       if (_activeCharacter!.hasFrontPorchExtensions) {
         // Character has baseline extensions, indicating an ongoing managed relationship where
         // emotional continuity is expected across sessions. Do NOT reset arousal/fixation.
@@ -8961,6 +8965,15 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
   Future<void> setPassageOfTimeEnabled(bool enabled) async {
     _passageOfTimeEnabled = enabled;
+    await _saveChat();
+    notifyListeners();
+  }
+
+  Future<void> setNeedsSimEnabled(bool enabled) async {
+    _needsSimEnabled = enabled;
+    if (!enabled) {
+      _needsVector.clear();
+    }
     await _saveChat();
     notifyListeners();
   }
