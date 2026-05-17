@@ -472,17 +472,75 @@ class ChatService extends ChangeNotifier {
   bool _needsSimEnabled = false;
   Map<String, int> _needsVector = {};
 
+  // Canonical constants for the Sims/Needs simulation. Single source of truth
+  // to eliminate all magic numbers and duplicated key lists / maps / thresholds.
+  static const List<String> _needKeys = [
+    'hunger',
+    'bladder',
+    'energy',
+    'social',
+    'fun',
+    'hygiene',
+    'comfort',
+  ];
+
+  static const Map<String, int> _needDefaults = {
+    'hunger': 75,
+    'bladder': 80,
+    'energy': 80,
+    'social': 65,
+    'fun': 65,
+    'hygiene': 75,
+    'comfort': 70,
+  };
+
+  // Base decay per tick (when no time-of-day variant applies).
+  static const Map<String, int> _needDecay = {
+    'hunger': 8,
+    'bladder': 12,
+    'energy': 5,
+    'social': 3,
+    'fun': 4,
+    'hygiene': 2,
+    'comfort': 3,
+  };
+
+  // Morning-specific overrides (hunger drains faster after sleep / breakfast window).
+  static const Map<String, int> _needDecayMorning = {
+    'hunger': 12,
+  };
+
+  // Night-specific overrides (energy drains faster at night).
+  static const Map<String, int> _needDecayNight = {
+    'energy': 10,
+  };
+
+  static const Map<String, int> _needRestore = {
+    'hunger': 50,
+    'bladder': 70,
+    'energy': 40,
+    'social': 45,
+    'fun': 40,
+    'hygiene': 35,
+    'comfort': 35,
+  };
+
+  static const int _needRestoreDefault = 30;
+
+  /// Thresholds for urgency, criticality, and LLM fulfillment scanning.
+  static const int _needUrgentThreshold = 35;
+  static const int _needCriticalThreshold = 20;
+  static const int _needFulfillmentScanThreshold = 40;
+
+  // Maintenance: _needKeys is the canonical list. All data maps above, the
+  // decay logic, fulfillment scan, restore lookup, _getNeedsInjection() secondary
+  // filter, and the presentation switch (for per-need directive text) must stay
+  // in sync with it. Adding a new need requires updating every map + the switch
+  // cases in _getNeedsInjection (the only remaining place with per-key strings).
+
   void _initializeNeedsVectorIfNeeded() {
     if (_needsVector.isEmpty) {
-      _needsVector = {
-        'hunger': 75,
-        'bladder': 80,
-        'energy': 80,
-        'social': 65,
-        'fun': 65,
-        'hygiene': 75,
-        'comfort': 70,
-      };
+      _needsVector = Map<String, int>.from(_needDefaults);
     }
   }
 
@@ -1594,6 +1652,8 @@ class ChatService extends ChangeNotifier {
        _arousalLevel = 0;
        _fixationLifespan = 0;
        _activeFixation = '';
+       _needsSimEnabled = false;
+       _needsVector.clear();
        debugPrint(
          '[ChatService] setActiveCharacter: Reset realism state (was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
        );
@@ -1620,6 +1680,12 @@ class ChatService extends ChangeNotifier {
           _passageOfTimeEnabled =
               ext.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
           _chaosModeEnabled = ext.chaosModeEnabled;
+          _needsSimEnabled = ext.needsSimEnabled;
+          if (_needsSimEnabled) {
+            _initializeNeedsVectorIfNeeded();
+          } else {
+            _needsVector.clear();
+          }
           // Recalculate tiers from seeded scores
           _relationshipTier = _calculateTier(_affectionScore);
           _longTermTier = _calculateTier(_longTermScore);
@@ -2751,6 +2817,11 @@ class ChatService extends ChangeNotifier {
           extSeed.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
       _chaosModeEnabled = extSeed.chaosModeEnabled;
       _needsSimEnabled = extSeed.needsSimEnabled;
+      if (_needsSimEnabled) {
+        _initializeNeedsVectorIfNeeded();
+      } else {
+        _needsVector.clear();
+      }
       if (_activeCharacter!.hasFrontPorchExtensions) {
         // Character has baseline extensions, indicating an ongoing managed relationship where
         // emotional continuity is expected across sessions. Do NOT reset arousal/fixation.
@@ -3150,7 +3221,28 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       if (_pendingTrustRepair) {
         _pendingTrustRepair = false; // consume — resets for next drop
         await _evaluateTrustRepairCall(text, onChunk: handleChunk);
-        
+
+        // Run fulfillment verification even on trust-repair turns (when the
+        // current backend config would have run it). Fulfillment is independent
+        // of the trust event; skipping it left the needs vector in an
+        // inconsistent post-decay state relative to the prior scene. This is
+        // the minimal safe behavior matching the normal path.
+        if (!_realismEvalCancelled && _needsSimEnabled) {
+          await _verifyNeedFulfillmentCall(onChunk: handleChunk);
+        }
+
+        if (!_realismEvalCancelled) {
+          // Wire the full realism_state (incl. post-decay + post-fulfill needs
+          // vector + updated trust) into pending so the AI response generated
+          // on this turn carries a proper "state at generation time" snapshot.
+          // Previously this path left the snapshot missing (write-only problem
+          // for trust-repair timelines).
+          _pendingRealismMetadata ??= {};
+          _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
+          _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+          _saveChat();
+        }
+
         // Check for cancellation after trust repair eval
         if (_realismEvalCancelled) {
           debugPrint('[Realism] Evaluation cancelled during trust repair, aborting');
@@ -3413,6 +3505,18 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
               previousMessageState['fixationLifespan'] as int? ?? _fixationLifespan;
           _spatialStance =
               previousMessageState['spatialStance'] as String? ?? _spatialStance;
+
+          // Needs simulation snapshot (clean port)
+          // Guard + no enabled override: prevents stale resurrection on regen after toggle-off.
+          if (previousMessageState.containsKey('needs') &&
+              previousMessageState['needs'] is Map &&
+              _needsSimEnabled) {
+            final needsData = previousMessageState['needs'] as Map;
+            if (needsData['vector'] is Map) {
+              final vector = Map<String, int>.from(needsData['vector'] as Map);
+              _needsVector = vector;
+            }
+          }
 
           debugPrint(
             '[Realism:Regen] ✓ Restored baseline from previous accepted message: bond=$_affectionScore, emotion=$_characterEmotion, trust=$_trustLevel, arousal=$_arousalLevel',
@@ -8739,10 +8843,14 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       'spatialStance': _spatialStance,
     };
 
-    // Include needs snapshot when the simulation is active (clean port)
+    // Include needs snapshot when the simulation is active (clean port).
+    // Note: 'enabled' is deliberately omitted from the per-message snapshot.
+    // The enabled flag is authoritative from the character card / current session
+    // (see setNeedsSimEnabled and ext seeding). Snapshots only carry the vector
+    // for timeline continuity while the sim is on. This prevents historical
+    // snapshots from resurrecting a stale enabled state after a mid-chat toggle-off.
     if (_needsSimEnabled && _needsVector.isNotEmpty) {
       state['needs'] = {
-        'enabled': true,
         'vector': _needsVector,
       };
     }
@@ -8758,13 +8866,17 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     final isNight = _timeOfDay == 'night';
     final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
 
-    _needsVector['hunger'] = (_needsVector['hunger']! - (isMorning ? 12 : 8)).clamp(0, 100);
-    _needsVector['bladder'] = (_needsVector['bladder']! - 12).clamp(0, 100);
-    _needsVector['energy'] = (_needsVector['energy']! - (isNight ? 10 : 5)).clamp(0, 100);
-    _needsVector['social'] = (_needsVector['social']! - 3).clamp(0, 100);
-    _needsVector['fun'] = (_needsVector['fun']! - 4).clamp(0, 100);
-    _needsVector['hygiene'] = (_needsVector['hygiene']! - 2).clamp(0, 100);
-    _needsVector['comfort'] = (_needsVector['comfort']! - 3).clamp(0, 100);
+    for (final key in _needKeys) {
+      final current = _needsVector[key];
+      if (current == null) continue;
+      int decay = _needDecay[key] ?? 0;
+      if (isMorning && key == 'hunger') {
+        decay = _needDecayMorning[key] ?? decay;
+      } else if (isNight && key == 'energy') {
+        decay = _needDecayNight[key] ?? decay;
+      }
+      _needsVector[key] = (current - decay).clamp(0, 100);
+    }
 
     debugPrint('[Realism:Needs] Tick decay applied');
     _saveChat(); // persist vector changes
@@ -8780,9 +8892,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       ..sort((a, b) => a.value.compareTo(b.value));
 
     final top = sorted.first;
-    if (top.value > 35) return '';
+    if (top.value > _needUrgentThreshold) return '';
 
-    final isCritical = top.value <= 20;
+    final isCritical = top.value <= _needCriticalThreshold;
     final urgencyTag = isCritical
         ? 'CRITICAL NEED — she cannot ignore this and should voice it immediately.'
         : 'Urgent need — subtly colors her mood and she should hint at it.';
@@ -8818,7 +8930,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     if (directive.isEmpty) return '';
 
-    final secondary = sorted.where((e) => e.key != top.key && e.value <= 35 && e.value > 20).firstOrNull;
+    final secondary = sorted.where((e) => e.key != top.key && e.value <= _needUrgentThreshold && e.value > _needCriticalThreshold).firstOrNull;
     final secondaryNote = secondary != null
         ? ' (She is also starting to feel the ${secondary.key} need.)'
         : '';
@@ -8830,7 +8942,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     if (!_needsSimEnabled || !_realismEnabled || _activeCharacter == null) return;
 
     final pendingNeeds = _needsVector.entries
-        .where((e) => e.value <= 40)
+        .where((e) => e.value <= _needFulfillmentScanThreshold)
         .map((e) => e.key)
         .toList();
     if (pendingNeeds.isEmpty) return;
@@ -8877,16 +8989,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   }
 
   int _needRestoreAmount(String need) {
-    return switch (need) {
-      'hunger' => 50,
-      'bladder' => 70,
-      'energy' => 40,
-      'social' => 45,
-      'fun' => 40,
-      'hygiene' => 35,
-      'comfort' => 35,
-      _ => 30,
-    };
+    return _needRestore[need] ?? _needRestoreDefault;
   }
 
   void _restoreRealismStateFromMessage(ChatMessage? msg) {
@@ -8934,9 +9037,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     _spatialStance = state['spatialStance'] as String? ?? _spatialStance;
 
     // Needs simulation snapshot (clean port)
-    if (state.containsKey('needs') && state['needs'] is Map) {
+    // Only restore the vector if the sim is currently enabled for this session.
+    // Never let a historical snapshot flip _needsSimEnabled back on (supports
+    // clean mid-chat toggle-off via setNeedsSimEnabled without stale state).
+    if (state.containsKey('needs') &&
+        state['needs'] is Map &&
+        _needsSimEnabled) {
       final needsData = state['needs'] as Map;
-      _needsSimEnabled = needsData['enabled'] as bool? ?? _needsSimEnabled;
       if (needsData['vector'] is Map) {
         final vector = Map<String, int>.from(needsData['vector'] as Map);
         _needsVector = vector;
