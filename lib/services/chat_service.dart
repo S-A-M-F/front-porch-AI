@@ -3063,8 +3063,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       }
     }
 
-    // User message counts as a message towards depth
-    _decrementLoreDepth();
+    // Note: depth decrement happens after AI response completes (see _generateResponse finalization).
+    // This ensures lore triggered by the user message is visible in the current turn's prompt.
 
     // Check objective task completion BEFORE generating response
     // so the AI gets the updated task in its prompt
@@ -3210,7 +3210,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     notifyListeners();
 
     _scanLorebook(text);
-    _decrementLoreDepth();
+    // Note: depth decrement happens after AI response completes inside _generateResponse.
+    // Director-triggered lore is visible for the current generate.
 
     await _generateResponse(GenerationMode.normal);
   }
@@ -4672,12 +4673,38 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       // Only finalize if this generation is still current
       if (epoch == _generationEpoch) {
         final finalResponse = accumulatedResponse.trim();
+
+        // Snapshot which entries were already triggered before scanning the AI response.
+        // We will only decrement those — newly AI-triggered entries must keep their
+        // full depth budget so they are visible on the next user turn.
+        final preAiTriggered = <LorebookEntry>{};
+        final charactersForSnapshot = _activeGroup != null
+            ? _groupCharacters
+            : (_activeCharacter != null ? [_activeCharacter!] : <CharacterCard>[]);
+        for (final ch in charactersForSnapshot) {
+          if (ch.lorebook != null) {
+            for (final e in ch.lorebook!.entries) {
+              if (e.isTriggered && !e.constant) preAiTriggered.add(e);
+            }
+          }
+          for (final worldName in ch.worldNames) {
+            final world = _worldRepository.worlds
+                .where((w) => w.name == worldName)
+                .firstOrNull;
+            if (world == null) continue;
+            for (final e in world.lorebook.entries) {
+              if (e.isTriggered && !e.constant) preAiTriggered.add(e);
+            }
+          }
+        }
+
         if (finalResponse.isNotEmpty) {
           _scanLorebook(finalResponse);
         }
 
-        // Bot message counts as a message towards depth
-        _decrementLoreDepth();
+        // Decrement only entries that were active before the AI response.
+        // This preserves full depth for lore discovered in the AI's own words.
+        _decrementLoreDepthForEntries(preAiTriggered);
 
         // Save session after AI message is complete
         await _saveChat();
@@ -4957,6 +4984,28 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
               changed = true;
             }
           }
+        }
+      }
+    }
+
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
+  /// Decrement remainingDepth only for the provided set of entries.
+  /// Used after AI response finalization so that lore entries *discovered in the AI's
+  /// own response* keep their full stickyDepth for the next user turn.
+  void _decrementLoreDepthForEntries(Set<LorebookEntry> entriesToDecrement) {
+    if (entriesToDecrement.isEmpty) return;
+    bool changed = false;
+
+    for (final entry in entriesToDecrement) {
+      if (entry.isTriggered && !entry.constant) {
+        entry.remainingDepth--;
+        if (entry.remainingDepth <= 0) {
+          entry.isTriggered = false;
+          changed = true;
         }
       }
     }
