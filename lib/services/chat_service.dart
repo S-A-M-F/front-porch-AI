@@ -2160,6 +2160,10 @@ class ChatService extends ChangeNotifier {
          lastSession.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
      _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
      _needsSimEnabled = lastSession.needsSimEnabled;
+     if (_needsSimEnabled) {
+       _initializeNeedsVectorIfNeeded();
+       _restoreNeedsFromJson(lastSession.needsVector);
+     }
     _arousalLevel = lastSession.arousalLevel;
     _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
     _trustLevel = lastSession.trustLevel;
