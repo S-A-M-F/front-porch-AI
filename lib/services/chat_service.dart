@@ -3083,6 +3083,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     // Evaluate realism systems before generating response
     if (_realismEnabled && _activeGroup == null) {
       _applyMoodDecay();
+      _tickNeedsDecay();
       if (_cooldownTurnsRemaining > 0) {
         _cooldownTurnsRemaining--;
       }
