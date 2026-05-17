@@ -471,6 +471,37 @@ class ChatService extends ChangeNotifier {
   // ── Sims/Needs Simulation (clean port on 0.9.8) ──
   bool _needsSimEnabled = false;
   Map<String, int> _needsVector = {};
+
+  void _initializeNeedsVectorIfNeeded() {
+    if (_needsVector.isEmpty) {
+      _needsVector = {
+        'hunger': 75,
+        'bladder': 80,
+        'energy': 80,
+        'social': 65,
+        'fun': 65,
+        'hygiene': 75,
+        'comfort': 70,
+      };
+    }
+  }
+
+  String _serializeNeeds() {
+    return jsonEncode(_needsVector);
+  }
+
+  void _restoreNeedsFromJson(String? json) {
+    if (json == null || json.isEmpty) {
+      _initializeNeedsVectorIfNeeded();
+      return;
+    }
+    try {
+      final decoded = jsonDecode(json) as Map<String, dynamic>;
+      _needsVector = decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
+    } catch (_) {
+      _initializeNeedsVectorIfNeeded();
+    }
+  }
   Completer<void>?
   _chanceTimeCompleter; // pauses sendMessage while wheel is active
 
@@ -2026,6 +2057,7 @@ class ChatService extends ChangeNotifier {
         passageOfTimeEnabled: drift.Value(_passageOfTimeEnabled),
         nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
         needsSimEnabled: drift.Value(_needsSimEnabled),
+        needsVector: drift.Value(_needsSimEnabled ? _serializeNeeds() : null),
         arousalLevel: drift.Value(_arousalLevel),
         cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
         trustLevel: drift.Value(_trustLevel),
@@ -2392,6 +2424,10 @@ class ChatService extends ChangeNotifier {
           session.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
       _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
       _needsSimEnabled = session.needsSimEnabled;
+      if (_needsSimEnabled) {
+        _initializeNeedsVectorIfNeeded();
+        _restoreNeedsFromJson(session.needsVector);
+      }
       _arousalLevel = session.arousalLevel;
       _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
       _trustLevel = session.trustLevel;
@@ -8727,6 +8763,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     _needsVector['comfort'] = (_needsVector['comfort']! - 3).clamp(0, 100);
 
     debugPrint('[Realism:Needs] Tick decay applied');
+    _saveChat(); // persist vector changes
   }
 
   String _getNeedsInjection() {
@@ -8829,6 +8866,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
           debugPrint('[Realism:Needs] ✗ $need NOT fulfilled');
         }
       }
+      _saveChat(); // persist restored vector
     } catch (e) {
       debugPrint('[Realism:Needs] Fulfillment verification failed: $e');
     }
@@ -9133,7 +9171,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
   Future<void> setNeedsSimEnabled(bool enabled) async {
     _needsSimEnabled = enabled;
-    if (!enabled) {
+    if (enabled) {
+      _initializeNeedsVectorIfNeeded();
+    } else {
       _needsVector.clear();
     }
     await _saveChat();

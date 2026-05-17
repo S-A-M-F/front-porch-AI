@@ -162,6 +162,8 @@ class Sessions extends Table {
   // Sims/Needs Simulation (clean port on 0.9.8)
   BoolColumn get needsSimEnabled =>
       boolean().withDefault(const Constant(false))(); // per-session toggle
+  TextColumn get needsVector =>
+      text().nullable()(); // JSON map of current need levels
 
   // Per-session character evolution (v19)
   // 1:1 chats: plain evolved text
@@ -947,10 +949,13 @@ class AppDatabase extends _$AppDatabase {
         } catch (_) {}
       }
       if (from < 27) {
-        // v26->v27: add per-session needs simulation flag (clean Sims port)
+        // v26->v27: add per-session needs simulation (flag + vector)
         try {
           await customStatement(
             'ALTER TABLE sessions ADD COLUMN needs_sim_enabled INTEGER NOT NULL DEFAULT 0',
+          );
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN needs_vector TEXT',
           );
         } catch (_) {}
       }
