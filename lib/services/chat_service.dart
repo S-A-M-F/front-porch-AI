@@ -8705,6 +8705,143 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     return state;
   }
 
+  // ── Sims/Needs Simulation Core Logic (ported cleanly) ─────────────────────
+
+  void _tickNeedsDecay() {
+    if (!_needsSimEnabled || !_realismEnabled) return;
+
+    final isNight = _timeOfDay == 'night';
+    final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
+
+    _needsVector['hunger'] = (_needsVector['hunger']! - (isMorning ? 12 : 8)).clamp(0, 100);
+    _needsVector['bladder'] = (_needsVector['bladder']! - 12).clamp(0, 100);
+    _needsVector['energy'] = (_needsVector['energy']! - (isNight ? 10 : 5)).clamp(0, 100);
+    _needsVector['social'] = (_needsVector['social']! - 3).clamp(0, 100);
+    _needsVector['fun'] = (_needsVector['fun']! - 4).clamp(0, 100);
+    _needsVector['hygiene'] = (_needsVector['hygiene']! - 2).clamp(0, 100);
+    _needsVector['comfort'] = (_needsVector['comfort']! - 3).clamp(0, 100);
+
+    debugPrint('[Realism:Needs] Tick decay applied');
+  }
+
+  String _getNeedsInjection() {
+    if (!_needsSimEnabled || !_realismEnabled) return '';
+
+    final charName = _activeCharacter?.name ?? 'the character';
+    final userName = _userPersonaService.persona.name;
+
+    final sorted = _needsVector.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
+    final top = sorted.first;
+    if (top.value > 35) return '';
+
+    final isCritical = top.value <= 20;
+    final urgencyTag = isCritical
+        ? 'CRITICAL NEED — she cannot ignore this and should voice it immediately.'
+        : 'Urgent need — subtly colors her mood and she should hint at it.';
+
+    if (top.key == 'bladder' && _nsfwCooldownEnabled && _arousalLevel >= 6) {
+      return '[$urgencyTag $charName urgently needs to use the restroom, and the combination of desperation and current arousal (level: $_arousalLevel/10) creates a charged, uncomfortable tension.]\n';
+    }
+
+    final directive = switch (top.key) {
+      'hunger' => isCritical
+          ? '$charName\'s stomach has been growling — she is genuinely hungry and should mention it and suggest something to eat.'
+          : '$charName is getting hungry. It subtly colors her mood.',
+      'bladder' => isCritical
+          ? '$charName urgently needs to use the restroom — she should excuse herself or acknowledge the need.'
+          : '$charName needs to use the restroom soon.',
+      'energy' => isCritical
+          ? '$charName is genuinely exhausted and should acknowledge it.'
+          : '$charName is growing tired.',
+      'social' => isCritical
+          ? '$charName craves genuine connection right now.'
+          : '$charName is craving more connection.',
+      'fun' => isCritical
+          ? '$charName is restless and should suggest doing something.'
+          : '$charName is starting to feel restless.',
+      'hygiene' => isCritical
+          ? '$charName feels uncomfortably grimy and should mention freshening up.'
+          : '$charName is starting to feel a bit unkempt.',
+      'comfort' => isCritical
+          ? '$charName is physically uncomfortable and should suggest moving.'
+          : '$charName is getting a bit uncomfortable.',
+      _ => '',
+    };
+
+    if (directive.isEmpty) return '';
+
+    final secondary = sorted.where((e) => e.key != top.key && e.value <= 35 && e.value > 20).firstOrNull;
+    final secondaryNote = secondary != null
+        ? ' (She is also starting to feel the ${secondary.key} need.)'
+        : '';
+
+    return '[$urgencyTag $directive$secondaryNote]\n';
+  }
+
+  Future<void> _verifyNeedFulfillmentCall({void Function(String)? onChunk}) async {
+    if (!_needsSimEnabled || !_realismEnabled || _activeCharacter == null) return;
+
+    final pendingNeeds = _needsVector.entries
+        .where((e) => e.value <= 40)
+        .map((e) => e.key)
+        .toList();
+    if (pendingNeeds.isEmpty) return;
+
+    final recentCount = _messages.length < 2 ? _messages.length : 2;
+    final recent = _messages.reversed
+        .take(recentCount)
+        .toList()
+        .reversed
+        .map((m) => '${m.sender}: ${m.displayText}')
+        .join('\n');
+
+    final charName = _activeCharacter!.name;
+    final needListStr = pendingNeeds.join(', ');
+
+    final prompt =
+        'You are verifying whether character needs were actually fulfilled in a roleplay scene. '
+        'A need is only fulfilled if the action was COMPLETED in the scene — not just mentioned. '
+        'Character needs at critical or urgent level: $needListStr\n\n'
+        'Recent exchange:\n$recent\n\n'
+        'Respond with ONLY a flat JSON object with "<need>_fulfilled": true or false.';
+
+    try {
+      debugPrint('[Realism:Needs] Running fulfillment verification');
+      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
+      if (raw == null) return;
+
+      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+
+      for (final need in pendingNeeds) {
+        final match = RegExp('"${need}_fulfilled"\\s*:\\s*(true|false)').firstMatch(text);
+        if (match?.group(1) == 'true') {
+          final restore = _needRestoreAmount(need);
+          _needsVector[need] = (_needsVector[need]! + restore).clamp(0, 100);
+          debugPrint('[Realism:Needs] ✅ $need fulfilled (+$restore)');
+        } else {
+          debugPrint('[Realism:Needs] ✗ $need NOT fulfilled');
+        }
+      }
+    } catch (e) {
+      debugPrint('[Realism:Needs] Fulfillment verification failed: $e');
+    }
+  }
+
+  int _needRestoreAmount(String need) {
+    return switch (need) {
+      'hunger' => 50,
+      'bladder' => 70,
+      'energy' => 40,
+      'social' => 45,
+      'fun' => 40,
+      'hygiene' => 35,
+      'comfort' => 35,
+      _ => 30,
+    };
+  }
+
   void _restoreRealismStateFromMessage(ChatMessage? msg) {
     if (msg == null) return;
 
