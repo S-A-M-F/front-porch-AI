@@ -3346,6 +3346,15 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     // Evaluate realism systems before generating response
     if (_realismEnabled && _activeGroup == null) {
+      // Capture pre-turn needs vector (before decay + fulfillment) so that
+      // regenerateLastMessage() can use the same delta-revert mechanism the
+      // classic realism fields (bond/trust/arousal) use.
+      if (_needsSimEnabled && _needsVector.isNotEmpty) {
+        _pendingRealismMetadata ??= {};
+        _pendingRealismMetadata!['needs_pre_turn_vector'] =
+            Map<String, int>.from(_needsVector);
+      }
+
       _applyMoodDecay();
       _tickNeedsDecay();
       if (_cooldownTurnsRemaining > 0) {
@@ -3611,6 +3620,19 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             // Normal arousal delta revert (no climax involved)
             _arousalLevel = (_arousalLevel - arousalDelta).clamp(-100, 100);
           }
+
+          // Needs pre-turn vector revert — mirrors the bond/trust/arousal delta
+          // system so regen can undo the decay + fulfillment that ran for this
+          // user turn, even when the previous message's realism_state snapshot
+          // lacks a 'needs' entry (e.g. needs was enabled mid-chat).
+          final preTurnNeeds =
+              lastMsg.activeMetadata!['needs_pre_turn_vector'] as Map?;
+          if (preTurnNeeds != null && _needsSimEnabled) {
+            _needsVector = Map<String, int>.from(preTurnNeeds);
+            debugPrint(
+              '[Realism:Regen] Restored needs vector from pre-turn snapshot on rejected message',
+            );
+          }
         }
 
         // CRITICAL FIX: Restore the baseline state from the previous accepted message.
@@ -3699,6 +3721,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
         if (_storageService.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
+          if (!_realismEvalCancelled &&
+              _needsSimEnabled &&
+              _needsVector.isNotEmpty) {
+            _pendingRealismMetadata ??= {};
+            _pendingRealismMetadata!['needs_pre_turn_vector'] =
+                Map<String, int>.from(_needsVector);
+          }
         } else {
           // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
           // HTTP requests being dropped before headers are received.
@@ -3717,6 +3746,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             _pendingRealismMetadata ??= {};
             _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
             _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+            // Also record the (restored) needs baseline as the pre-turn vector
+            // for this regenerated response, so any future regen of *it* has
+            // a proper anchor even if the deeper historical snapshot is missing.
+            if (_needsSimEnabled && _needsVector.isNotEmpty) {
+              _pendingRealismMetadata!['needs_pre_turn_vector'] =
+                  Map<String, int>.from(_needsVector);
+            }
             _saveChat();
           }
         }
