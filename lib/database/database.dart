@@ -129,6 +129,8 @@ class Sessions extends Table {
       text().withDefault(const Constant('morning'))(); // dawn/morning/etc
   IntColumn get dayCount =>
       integer().withDefault(const Constant(1))(); // starts at Day 1
+  IntColumn get startDayOfWeek =>
+      integer().withDefault(const Constant(0))(); // 1=Mon..7=Sun anchor for narrativeWeekday; 0=legacy/unset (compute on first load)
   BoolColumn get nsfwCooldownEnabled =>
       boolean().withDefault(const Constant(false))(); // sub-toggle
   BoolColumn get passageOfTimeEnabled => boolean().withDefault(
@@ -522,7 +524,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -956,6 +958,14 @@ class AppDatabase extends _$AppDatabase {
           );
           await customStatement(
             'ALTER TABLE sessions ADD COLUMN needs_vector TEXT',
+          );
+        } catch (_) {}
+      }
+      if (from < 28) {
+        // v27->v28: persist narrative weekday anchor (startDayOfWeek) so Day N always maps to the same weekday across app restarts
+        try {
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN start_day_of_week INTEGER NOT NULL DEFAULT 0',
           );
         } catch (_) {}
       }

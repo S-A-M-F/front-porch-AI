@@ -959,6 +959,25 @@ class ChatService extends ChangeNotifier {
     return days[idx];
   }
 
+  /// Resolves the persisted startDayOfWeek (1-7) or computes a stable anchor for legacy rows (0).
+  /// For legacy sessions the computed anchor makes the *current* Day N display the real-world
+  /// weekday of the moment we first load it after the v28 migration. This keeps the narrative
+  /// weekday from jumping on the very next app restart and makes the transition seamless.
+  int _resolveStartDayOfWeek(int persisted, int currentDayCount) {
+    if (persisted >= 1 && persisted <= 7) return persisted;
+
+    // Legacy or unset (0): anchor so that narrative weekday for the loaded dayCount matches "today".
+    // Formula: start = ((today-1 - (dayCount-1)) mod 7) + 1
+    final today = DateTime.now().weekday;
+    final delta = currentDayCount - 1;
+    final start = ((today - 1 - delta) % 7 + 7) % 7 + 1;
+    debugPrint(
+      '[ChatService] Legacy/ unset startDayOfWeek resolved: persisted=$persisted, dayCount=$currentDayCount '
+      '→ start=$start (so Day $currentDayCount will show weekday of today=$today)',
+    );
+    return start;
+  }
+
   /// True if the realism engine has already captured a meaningful baseline
   /// (emotion or bond score). Used to avoid redundant retroactive scans.
   bool get _hasRealismBaseline =>
@@ -2120,6 +2139,7 @@ class ChatService extends ChangeNotifier {
         activeFixation: drift.Value(_activeFixation),
         fixationLifespan: drift.Value(_fixationLifespan),
         spatialStance: drift.Value(_spatialStance),
+        startDayOfWeek: drift.Value(_startDayOfWeek),
         createdAt: drift.Value(DateTime.now()),
         updatedAt: drift.Value(DateTime.now()),
       ),
@@ -2324,6 +2344,7 @@ class ChatService extends ChangeNotifier {
         emotionIntensity: drift.Value(_emotionIntensity),
         timeOfDay: drift.Value(_timeOfDay),
         dayCount: drift.Value(_dayCount),
+        startDayOfWeek: drift.Value(_startDayOfWeek),
         passageOfTimeEnabled: drift.Value(_passageOfTimeEnabled),
         nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
         needsSimEnabled: drift.Value(_needsSimEnabled),
@@ -2426,6 +2447,7 @@ class ChatService extends ChangeNotifier {
      _emotionIntensity = lastSession.emotionIntensity;
      _timeOfDay = lastSession.timeOfDay;
      _dayCount = lastSession.dayCount;
+     _startDayOfWeek = _resolveStartDayOfWeek(lastSession.startDayOfWeek, _dayCount);
      _passageOfTimeEnabled =
          lastSession.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
      _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
@@ -2704,6 +2726,7 @@ class ChatService extends ChangeNotifier {
       _emotionIntensity = session.emotionIntensity;
       _timeOfDay = session.timeOfDay;
       _dayCount = session.dayCount;
+      _startDayOfWeek = _resolveStartDayOfWeek(session.startDayOfWeek, _dayCount);
       _passageOfTimeEnabled =
           session.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
       _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
@@ -9113,6 +9136,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       'emotionIntensity': _emotionIntensity,
       'timeOfDay': _timeOfDay,
       'dayCount': _dayCount,
+      'startDayOfWeek': _startDayOfWeek,
       'arousalLevel': _arousalLevel,
       'cooldownTurnsRemaining': _cooldownTurnsRemaining,
       'cooldownTurnsTotal': _cooldownTurnsTotal,
@@ -9589,6 +9613,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       _timeOfDay = state['timeOfDay'] as String? ?? _timeOfDay;
       _dayCount = state['dayCount'] as int? ?? _dayCount;
     }
+    _startDayOfWeek = state['startDayOfWeek'] as int? ?? _startDayOfWeek;
 
     _arousalLevel = state['arousalLevel'] as int? ?? _arousalLevel;
     _cooldownTurnsRemaining =
@@ -9942,8 +9967,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
   Future<void> setRealismEnabled(bool enabled) async {
     _realismEnabled = enabled;
-    // Anchor the narrative weekday to the real-world day when realism first turns on
-    if (enabled) _startDayOfWeek = DateTime.now().weekday;
+    // Anchor the narrative weekday to the real-world day when realism first turns on for this session.
+    // Only set if not already anchored (0 = legacy/unset). This prevents re-anchoring on toggle-off/on
+    // for long-running sessions, keeping Day N stable across restarts.
+    if (enabled && (_startDayOfWeek < 1 || _startDayOfWeek > 7)) {
+      _startDayOfWeek = DateTime.now().weekday;
+    }
 
     if (enabled && _activeGroup == null && _activeCharacter != null) {
       // ── Solution 1: Pending greeting flag ────────────────────────────
