@@ -42,6 +42,7 @@ class _MainLayoutState extends State<MainLayout> {
     const SettingsPage(),
     const UserPersonaPage(),
     const WorldManagementPage(),
+    const Center(child: Text('Cloud Sync')),
   ];
 
   @override
