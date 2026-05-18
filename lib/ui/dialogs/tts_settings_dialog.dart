@@ -271,10 +271,14 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                         if (storage.ttsVoiceModel.isNotEmpty)
                           Center(
                             child: ElevatedButton.icon(
-                              onPressed: tts.isSpeaking
-                                  ? () => tts.stop()
-                                  : () => tts.speak(
-                                      'Hello! This is a test of the text to speech system. The quick brown fox jumps over the lazy dog.'),
+onPressed: tts.isSpeaking
+    ? () => tts.stop()
+    : () {
+        final testText = storage.ttsNarrateQuotedOnly
+            ? '“Hello! This is a test of the text to speech system.” The quick brown fox jumps over the lazy dog.'
+            : 'Hello! This is a test of the text to speech system. The quick brown fox jumps over the lazy dog.';
+        tts.speak(testText);
+      },
                               icon: Icon(tts.isSpeaking ? Icons.stop : Icons.play_arrow),
                               label: Text(tts.isSpeaking ? 'Stop' : 'Test Voice'),
                               style: ElevatedButton.styleFrom(
