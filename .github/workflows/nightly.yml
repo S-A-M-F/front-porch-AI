@@ -25,7 +25,7 @@ jobs:
           - os: macos-latest
             platform: macos
             build_path: build/macos/Build/Products/Release
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             platform: linux
             asset_name: Front_Porch_AI_Nightly-Linux.tar.gz
             build_path: build/linux/x64/release/bundle
