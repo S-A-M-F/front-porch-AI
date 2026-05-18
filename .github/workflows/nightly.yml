@@ -15,6 +15,9 @@ jobs:
   nightly:
     name: Build Nightly
     runs-on: ${{ matrix.os }}
+    env:
+      CXXFLAGS: "-Wno-unknown-warning-option"
+      CFLAGS: "-Wno-unknown-warning-option"
     strategy:
       fail-fast: false
       matrix:
