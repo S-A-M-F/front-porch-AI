@@ -9434,13 +9434,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
     }
 
-    // Compute effective step for prompt injection only (actual _needsVector is untouched).
-    int effectiveStep = step;
+    // Apply arousal suppression (lust haze) on top of any hygiene inversion
     if (suppressionActive && step >= 1 && step <= 3) {
       // Dampen urgency by 1-2 steps when the character is deep in a lust haze.
       // Stronger effect at very high arousal (tier 6+ or raw >= 60).
       final int dampen = (_arousalLevel >= 60) ? 2 : 1;
-      effectiveStep = (step + dampen).clamp(0, 5);
+      effectiveStep = (effectiveStep + dampen).clamp(0, 5);
     }
 
     // If suppression pushed this need into "comfortable" territory for the LLM,
