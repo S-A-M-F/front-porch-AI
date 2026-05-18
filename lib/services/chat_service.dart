@@ -9442,13 +9442,16 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         _cooldownTurnsRemaining = turns;
         _arousalLevel = -3;
 
-        // Apply sexual activity cross-effects + start Afterglow Buffer
+        // Apply sexual activity cross-effects + start Afterglow Buffer.
+        // Energy is deliberately given a solid positive here (orgasm as a
+        // "shot of adrenaline / monster energy" effect) so characters stay
+        // awake and engaged through intense scenes instead of collapsing.
         if (_needsSimEnabled) {
           _applyNeedsDeltas({
             'fun': 16,
             'social': 9,
             'bladder': 8,
-            'energy': -7,
+            'energy': 10, // was -7; now a noticeable rush (like caffeine/adrenaline)
             'hunger': -4,
             'hygiene': -6,
           }, fromSexualActivity: true);
@@ -9501,12 +9504,17 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       final intensity = _extractJsonInt(text, 'intensity') ?? 5;
       final strength = (intensity / 10.0).clamp(0.4, 1.0);
 
-      // Milder deltas than full climax
+      // Milder deltas than full climax.
+      // Note: energy is now a *small positive* during sexual activity (like a
+      // stimulant/adrenaline/pleasure rush). This prevents characters from
+      // nodding off or passing out mid-sex in long erotic scenes (the classic
+      // "she fell asleep while I was going down on her" problem). The crash
+      // feeling can still arrive later via normal decay + night penalties.
       _applyNeedsDeltas({
         'fun': (12 * strength).round(),
         'social': (7 * strength).round(),
         'bladder': (5 * strength).round(),
-        'energy': (-4 * strength).round(),
+        'energy': (3 * strength).round(), // was negative; now a mild boost (1-3 per turn)
         'hunger': (-3 * strength).round(),
         'hygiene': (-4 * strength).round(),
       }, fromSexualActivity: true);
