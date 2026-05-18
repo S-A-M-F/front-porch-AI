@@ -321,7 +321,7 @@ Urgent threshold: ≤ 35. Critical: ≤ 20. Only the most pressing need(s) gener
 
 - **Per-session flag**: Stored as `needsSimEnabled` in the `sessions` table (plus a JSON `needsVector`). New chats inherit the value from the character card's `front_porch_extensions.realism_engine.needs_sim_enabled` (see `FrontPorchExtensions` in `character_card.dart`).
 - **Runtime control**: `ChatService.needsSimEnabled` / `setNeedsSimEnabled(bool)`. Enabling mid-chat initializes the default vector; disabling clears it cleanly.
-- **Decay & fulfillment**: `_tickNeedsDecay()` is called every turn before realism evals. After the AI responds (and on trust-repair paths), `_verifyNeedFulfillmentCall()` sends a tiny LLM eval against the recent exchange and restores values for any need the model confirms was *completed* in the scene (e.g. +70 bladder, +50 hunger, +40 energy).
+- **Decay & fulfillment**: `_tickNeedsDecay()` is called every turn before realism evals. After the AI responds, `_verifyNeedFulfillmentCall()` sends a tiny LLM eval against the recent exchange and restores values for any need the model confirms was *completed* in the scene (e.g. +70 bladder, +50 hunger, +40 energy). The verification runs post-response (fire-and-forget) so it never adds latency to the visible "Realism Engine processing" phase.
 - **Erotic buffers (v2 interplay)**: Three coordinated transient buffers make long erotic scenes feel realistic and sexy:
   - **Afterglow** (4 turns): 55% reduced decay on hunger/energy/social after good sex.
   - **Lust haze / arousal suppression** (6 turns): Other needs read much milder (or are omitted) in the OOC prompt while arousal is high; light dampening of internal state multipliers.

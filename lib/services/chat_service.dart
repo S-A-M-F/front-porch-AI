@@ -981,7 +981,25 @@ class ChatService extends ChangeNotifier {
   /// New chats seed this from the character's [FrontPorchExtensions.needsSimEnabled].
   /// Disabling mid-chat clears the vector; historical snapshots cannot re-enable it.
   bool get needsSimEnabled => _needsSimEnabled;
-  bool get enjoysLowHygiene => _enjoysLowHygiene;
+  /// Returns whether the currently active character enjoys low hygiene.
+  /// We always prefer the live value from the character's FrontPorchExtensions
+  /// so that toggling the setting on the character immediately affects any
+  /// already-loaded chats (no database change required).
+  bool get enjoysLowHygiene {
+    return _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? _enjoysLowHygiene;
+  }
+
+  /// Re-reads the "Enjoys low hygiene" preference from the currently active
+  /// character's FrontPorchExtensions. Call this after editing the character
+  /// so that existing chats immediately pick up the new setting without a
+  /// database change.
+  void refreshEnjoysLowHygieneFromActiveCharacter() {
+    if (_activeCharacter != null) {
+      _enjoysLowHygiene =
+          _activeCharacter!.frontPorchExtensions?.enjoysLowHygiene ?? false;
+      notifyListeners();
+    }
+  }
 
   /// Current need levels (e.g. {'hunger': 65, 'energy': 40, ...}) as an
   /// unmodifiable map. Empty when [needsSimEnabled] is false.
@@ -2418,6 +2436,11 @@ class ChatService extends ChangeNotifier {
      } else {
        _needsVector.clear();
      }
+
+     // Re-sync from the character's current setting so that toggling
+     // "Enjoys low hygiene" on the character affects existing chats on next load.
+     _enjoysLowHygiene = _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
+
      _needsAfterglowTurnsRemaining = 0;
      _arousalSuppressionTurnsRemaining = 0;
      _postClimaxCrashTurnsRemaining = 0;
@@ -2691,6 +2714,11 @@ class ChatService extends ChangeNotifier {
       } else {
         _needsVector.clear();
       }
+
+      // Re-sync from the character's current setting so toggling
+      // "Enjoys low hygiene" affects existing chats on load.
+      _enjoysLowHygiene = _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
+
       _needsAfterglowTurnsRemaining = 0;
       _arousalSuppressionTurnsRemaining = 0;
       _arousalLevel = session.arousalLevel;
@@ -3429,21 +3457,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         _pendingTrustRepair = false; // consume — resets for next drop
         await _evaluateTrustRepairCall(text, onChunk: handleChunk);
 
-        // Run fulfillment verification even on trust-repair turns (when the
-        // current backend config would have run it). Fulfillment is independent
-        // of the trust event; skipping it left the needs vector in an
-        // inconsistent post-decay state relative to the prior scene. This is
-        // the minimal safe behavior matching the normal path.
-        if (!_realismEvalCancelled && _needsSimEnabled) {
-          await _verifyNeedFulfillmentCall(onChunk: handleChunk);
-        }
-
         if (!_realismEvalCancelled) {
-          // Wire the full realism_state (incl. post-decay + post-fulfill needs
-          // vector + updated trust) into pending so the AI response generated
-          // on this turn carries a proper "state at generation time" snapshot.
-          // Previously this path left the snapshot missing (write-only problem
-          // for trust-repair timelines).
+          // Wire the realism_state into pending for snapshot/timeline use.
+          // (Fulfillment verification is now post-response so it adds zero
+          // latency to the pre-response realism phase.)
           _pendingRealismMetadata ??= {};
           _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
           _pendingRealismMetadata!['realism_state'] = _captureRealismState();
@@ -3474,9 +3491,6 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             }
             if (!_realismEvalCancelled) {
               await _evaluatePhysicalStateCall(onChunk: handleChunk);
-            }
-            if (!_realismEvalCancelled && _needsSimEnabled) {
-              await _verifyNeedFulfillmentCall(onChunk: handleChunk);
             }
             if (!_realismEvalCancelled) {
               await _evaluateNarrativeCall(onChunk: handleChunk);
@@ -5160,6 +5174,15 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         // Check for other daily activities that have cross-need effects (eating, sleeping, bathing)
         if (_needsSimEnabled && _realismEnabled && _activeGroup == null) {
           _checkDailyActivityEffects(finalResponse); // fire-and-forget
+        }
+
+        // Needs fulfillment verification (post-response, fire-and-forget).
+        // Moved out of the pre-response realism eval path so the "Realism
+        // Engine processing" phase is never slowed by the needs system (even
+        // when the per-session flag is true due to old chat state or card
+        // defaults). The restore simply takes effect for the next turn.
+        if (_needsSimEnabled && _realismEnabled && _activeGroup == null) {
+          _verifyNeedFulfillmentCall(); // fire-and-forget, no chunk streaming needed
         }
 
         // Check if summary needs updating (fire-and-forget)
