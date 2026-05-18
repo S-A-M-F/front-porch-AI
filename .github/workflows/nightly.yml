@@ -53,6 +53,7 @@ jobs:
             libsecret-1-dev \
             libwebkit2gtk-4.1-dev \
             libwpewebkit-1.0-dev \
+            wpebackend-fdo-1.0-dev \
             wpewebkit-driver \
             libwpe-1.0-dev \
             ninja-build \
