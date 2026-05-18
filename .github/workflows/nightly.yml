@@ -283,6 +283,24 @@ jobs:
         shell: bash
         run: |
           echo "Artifact naming normalized for Nightly"
+      - name: Re-sign macOS App (ad-hoc with entitlements)
+        if: matrix.platform == 'macos'
+        run: |
+          APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app | head -1)
+          ENTITLEMENTS="${{ github.workspace }}/macos/Runner/Release.entitlements"
+          echo "Re-signing $APP_NAME after ML engine bundling..."
+          echo "Using entitlements: $ENTITLEMENTS"
+          # Sign inner frameworks/helpers first (inside-out signing)
+          find "$APP_NAME/Contents/Frameworks" -name "*.framework" -o -name "*.dylib" | while read f; do
+            codesign --force --sign - "$f" 2>/dev/null || true
+          done
+          find "$APP_NAME/Contents/Resources" -type f -perm +111 | while read f; do
+            codesign --force --sign - "$f" 2>/dev/null || true
+          done
+          # Sign the main app with entitlements
+          codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_NAME"
+          echo "✓ Ad-hoc signature applied with entitlements"
+
 
       - name: Build macOS DMG (Nightly)
         if: matrix.platform == 'macos'
