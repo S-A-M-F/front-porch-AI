@@ -453,6 +453,18 @@ class ChatService extends ChangeNotifier {
   // feels like a net positive without immediately triggering wack-a-mole needs.
   int _needsAfterglowTurnsRemaining = 0;
 
+  // Arousal-driven suppression of other needs urgency (prompt injection only,
+  // plus light dampening of internal state multipliers). Activated by sexual
+  // activity. Makes long erotic scenes feel realistically "consumed by desire"
+  // instead of the character complaining about hunger/bladder/energy.
+  int _arousalSuppressionTurnsRemaining = 0;
+
+  // Delayed post-climax crash (lethargy / "post-nut sleepiness").
+  // Started on confirmed physical orgasm (intensity-scaled).
+  // Effect + countdown are deliberately gated behind expiration of both
+  // afterglow and arousal suppression so the protective "glow + haze" is respected.
+  int _postClimaxCrashTurnsRemaining = 0;
+
   // ── Sims/Needs Simulation (clean port on 0.9.8) ──
   bool _needsSimEnabled = false;
   Map<String, int> _needsVector = {};
@@ -518,6 +530,15 @@ class ChatService extends ChangeNotifier {
   static const int _needUrgentThreshold = 35;
   static const int _needCriticalThreshold = 20;
   static const int _needFulfillmentScanThreshold = 40;
+
+  // Arousal suppression tuning (used by the "high arousal makes other needs
+  // feel distant" erotic realism feature).
+  static const int _arousalSuppressionThreshold = 35; // raw _arousalLevel
+  static const int _arousalSuppressionDefaultTurns = 6;
+
+  // Post-climax crash tuning (see _tickNeedsDecay and climax handler).
+  static const int _postClimaxCrashDefaultTurns = 4;
+  static const double _postClimaxCrashDecayMultiplier = 1.8; // +80% on energy/fun/social
 
   // Public aliases to the canonical thresholds + keys list for UI presentation
   // (e.g. progress bar coloring at critical), external consumers, and tests.
@@ -980,6 +1001,18 @@ class ChatService extends ChangeNotifier {
   /// Non-null when a needs catastrophe (e.g. accident, collapse) was just triggered by hitting 0.
   /// The string is the mandatory narrative the AI must roleplay on the next turn.
   String? get pendingNeedsCatastrophe => _pendingNeedsCatastrophe;
+
+  /// Whether arousal-driven needs suppression ("lust haze") is currently active.
+  /// Other needs will read as less urgent (or be omitted) in the OOC prompt injection.
+  bool get needsArousalSuppressionActive => _arousalSuppressionTurnsRemaining > 0;
+
+  /// Remaining turns of arousal suppression. Primarily for diagnostics, tests, and future UI.
+  int get needsArousalSuppressionTurnsRemaining => _arousalSuppressionTurnsRemaining;
+
+  /// Remaining turns of post-climax crash (lethargy). Effect only applies after
+  /// afterglow + lust haze have fully expired. For diagnostics/tests.
+  int get needsPostClimaxCrashTurnsRemaining => _postClimaxCrashTurnsRemaining;
+  bool get needsPostClimaxCrashActive => _postClimaxCrashTurnsRemaining > 0;
 
   /// Called by the overlay once it has opened. Clears the auto-trigger flag.
   void consumeChanceTimeTrigger() => _chanceTimePendingTrigger = false;
@@ -1800,6 +1833,8 @@ class ChatService extends ChangeNotifier {
        _needsSimEnabled = false;
        _needsVector.clear();
        _needsAfterglowTurnsRemaining = 0;
+       _arousalSuppressionTurnsRemaining = 0;
+       _postClimaxCrashTurnsRemaining = 0;
        debugPrint(
          '[ChatService] setActiveCharacter: Reset realism state (was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
        );
@@ -2379,6 +2414,8 @@ class ChatService extends ChangeNotifier {
        _needsVector.clear();
      }
      _needsAfterglowTurnsRemaining = 0;
+     _arousalSuppressionTurnsRemaining = 0;
+     _postClimaxCrashTurnsRemaining = 0;
     _arousalLevel = lastSession.arousalLevel;
     _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
     _trustLevel = lastSession.trustLevel;
@@ -2650,6 +2687,7 @@ class ChatService extends ChangeNotifier {
         _needsVector.clear();
       }
       _needsAfterglowTurnsRemaining = 0;
+      _arousalSuppressionTurnsRemaining = 0;
       _arousalLevel = session.arousalLevel;
       _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
       _trustLevel = session.trustLevel;
@@ -2975,6 +3013,7 @@ class ChatService extends ChangeNotifier {
         _needsVector.clear();
       }
       _needsAfterglowTurnsRemaining = 0;
+      _arousalSuppressionTurnsRemaining = 0;
       if (_activeCharacter!.hasFrontPorchExtensions) {
         // Character has baseline extensions, indicating an ongoing managed relationship where
         // emotional continuity is expected across sessions. Do NOT reset arousal/fixation.
@@ -9045,6 +9084,11 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     if (_needsSimEnabled && _needsVector.isNotEmpty) {
       state['needs'] = {
         'vector': _needsVector,
+        // Transient buffers are now snapshotted so regen/swipe during or after
+        // erotic scenes restores the correct "sex haze" and "post-sex glow" state.
+        'afterglowTurns': _needsAfterglowTurnsRemaining,
+        'arousalSuppressionTurns': _arousalSuppressionTurnsRemaining,
+        'postClimaxCrashTurns': _postClimaxCrashTurnsRemaining,
       };
     }
 
@@ -9079,29 +9123,58 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         decay = (decay * 0.45).round(); // ~55% reduction
       }
 
+      // Arousal suppression dampening (erotic "lust haze" effect).
+      // When active, internal state multipliers (energy affecting hunger, etc.)
+      // are softened so the simulation itself feels less punishing while the
+      // character is overwhelmed by desire. Prompt injection is the primary
+      // visible effect; this is the light simulation-side counterpart.
+      final bool suppressionActiveThisTick =
+          _arousalSuppressionTurnsRemaining > 0 ||
+          (_arousalLevel >= _arousalSuppressionThreshold &&
+              (_needsAfterglowTurnsRemaining > 0 || _cooldownTurnsRemaining > 0));
+
+      // Post-climax crash (delayed lethargy) — applies ONLY after the full
+      // protective window (afterglow + lust haze) has expired.
+      final bool postCrashActiveThisTick =
+          _postClimaxCrashTurnsRemaining > 0 &&
+          _needsAfterglowTurnsRemaining == 0 &&
+          _arousalSuppressionTurnsRemaining == 0;
+
       // State-based decay modifiers (interplay)
       final energy = _needsVector['energy'] ?? 50;
       final fun = _needsVector['fun'] ?? 50;
 
       // Low energy makes hunger feel worse (body needs fuel)
       if (key == 'hunger' && energy <= 30) {
-        decay = (decay * 1.35).round();
+        final mult = suppressionActiveThisTick ? 1.15 : 1.35; // softened under lust haze
+        decay = (decay * mult).round();
       }
 
       // Low energy makes physical comfort worse
       if (key == 'comfort' && energy <= 25) {
-        decay = (decay * 1.25).round();
+        final mult = suppressionActiveThisTick ? 1.10 : 1.25;
+        decay = (decay * mult).round();
       }
 
       // Very low fun / boredom makes social need decay faster
       if (key == 'social' && fun <= 20) {
-        decay = (decay * 1.4).round();
+        final mult = suppressionActiveThisTick ? 1.20 : 1.4;
+        decay = (decay * mult).round();
       }
 
       // High bladder makes overall comfort worse
       final bladder = _needsVector['bladder'] ?? 50;
       if (key == 'comfort' && bladder <= 20) {
-        decay = (decay * 1.2).round();
+        final mult = suppressionActiveThisTick ? 1.10 : 1.2;
+        decay = (decay * mult).round();
+      }
+
+      // Post-climax crash (delayed lethargy) — elevated decay on energy/fun/social.
+      // This creates the realistic "we just fucked for hours and now I'm dead"
+      // feeling. Gated so it never fights the afterglow or lust haze.
+      if (postCrashActiveThisTick &&
+          (key == 'energy' || key == 'fun' || key == 'social')) {
+        decay = (decay * _postClimaxCrashDecayMultiplier).round();
       }
 
       _needsVector[key] = (current - decay).clamp(0, 100);
@@ -9112,6 +9185,24 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       _needsAfterglowTurnsRemaining--;
       if (_needsAfterglowTurnsRemaining == 0) {
         debugPrint('[Realism:Needs] Afterglow buffer expired');
+      }
+    }
+
+    // Tick down arousal suppression (lust haze) buffer
+    if (_arousalSuppressionTurnsRemaining > 0) {
+      _arousalSuppressionTurnsRemaining--;
+      if (_arousalSuppressionTurnsRemaining == 0) {
+        debugPrint('[Realism:Needs] Arousal suppression (lust haze) expired');
+      }
+    }
+
+    // Tick down post-climax crash (only counts down once protective windows expire)
+    if (_needsAfterglowTurnsRemaining == 0 &&
+        _arousalSuppressionTurnsRemaining == 0 &&
+        _postClimaxCrashTurnsRemaining > 0) {
+      _postClimaxCrashTurnsRemaining--;
+      if (_postClimaxCrashTurnsRemaining == 0) {
+        debugPrint('[Realism:Needs] Post-climax crash (lethargy / post-nut sleepiness) expired');
       }
     }
 
@@ -9207,10 +9298,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     if (!changed) return;
 
-    // Start/refresh afterglow buffer on meaningful positive sexual activity
+    // Start/refresh afterglow buffer + arousal suppression (lust haze) on
+    // meaningful positive sexual activity. Suppression makes other needs feel
+    // distant in the prompt (and lightly in simulation) while desire is high.
     if (fromSexualActivity && totalPositiveImpact >= 8) {
       _needsAfterglowTurnsRemaining = 4; // 3-4 turns is the sweet spot
-      debugPrint('[Realism:Needs] Afterglow buffer started/refreshed ($totalPositiveImpact impact)');
+      _arousalSuppressionTurnsRemaining = _arousalSuppressionDefaultTurns;
+      debugPrint('[Realism:Needs] Afterglow buffer + arousal suppression started/refreshed ($totalPositiveImpact impact)');
     }
 
     debugPrint('[Realism:Needs] Applied deltas: $deltas');
@@ -9232,20 +9326,42 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     // Step 5 = comfortable → no injection at all (old behavior for high values)
     if (step >= 5) return '';
 
-    // Preserve the special NSFW bladder+arousal flavor at high urgency steps
-    if (top.key == 'bladder' && _nsfwCooldownEnabled && _arousalLevel >= 6 && step <= 2) {
+    // Catastrophe (step 0) is never suppressed — the disaster must be narrated.
+    final bool suppressionActive =
+        _arousalSuppressionTurnsRemaining > 0 ||
+        (_arousalLevel >= _arousalSuppressionThreshold &&
+            (_needsAfterglowTurnsRemaining > 0 || _cooldownTurnsRemaining > 0));
+
+    // Preserve (and keep strong) the special erotic bladder + high-arousal tension case.
+    // This one deliberately uses the *original* step so desperate holding while
+    // extremely turned on can still create charged, kinky flavor even when other
+    // needs are being softened by lust.
+    if (top.key == 'bladder' && _nsfwCooldownEnabled && _arousalLevel >= 40 && step <= 2) {
       final tension = step <= 1
           ? 'She is *desperately* holding on while extremely aroused — the combination is overwhelming and humiliating.'
           : 'The combination of bladder desperation and current arousal (level: $_arousalLevel/10) creates a charged, uncomfortable tension.';
       return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
     }
 
-    // Get the graduated text for this exact step (0 = catastrophic language)
-    final texts = _needSteppedText[top.key] ?? const <String>[];
-    final baseText = step < texts.length ? texts[step] : texts.last;
+    // Compute effective step for prompt injection only (actual _needsVector is untouched).
+    int effectiveStep = step;
+    if (suppressionActive && step >= 1 && step <= 3) {
+      // Dampen urgency by 1-2 steps when the character is deep in a lust haze.
+      // Stronger effect at very high arousal (tier 6+ or raw >= 60).
+      final int dampen = (_arousalLevel >= 60) ? 2 : 1;
+      effectiveStep = (step + dampen).clamp(0, 5);
+    }
 
-    // Build a strong urgency prefix that escalates with the step
-    final urgencyPrefix = switch (step) {
+    // If suppression pushed this need into "comfortable" territory for the LLM,
+    // skip injecting it this turn (it will still decay normally in the background).
+    if (effectiveStep >= 5) return '';
+
+    // Get the graduated text for this *effective* step (so suppressed needs read milder)
+    final texts = _needSteppedText[top.key] ?? const <String>[];
+    final baseText = effectiveStep < texts.length ? texts[effectiveStep] : texts.last;
+
+    // Build a strong urgency prefix that escalates with the (possibly suppressed) step
+    final urgencyPrefix = switch (effectiveStep) {
       0 => 'CATASTROPHIC — this has already happened and must be narrated now.',
       1 => 'CRITICAL NEED — she cannot ignore this and is in real distress.',
       2 => 'URGENT — the pressure is intense and she must act soon.',
@@ -9253,16 +9369,26 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       _ => 'Mild background need — it subtly affects her mood and focus.',
     };
 
-    // Secondary low need note (only for steps 1-3 to avoid noise at catastrophe)
+    // Secondary low need note (only for effective steps 1-3 to avoid noise at catastrophe)
     String secondaryNote = '';
-    if (step >= 1 && step <= 3) {
+    if (effectiveStep >= 1 && effectiveStep <= 3) {
       final secondary = sorted.where((e) => e.key != top.key && _getNeedStep(e.key, e.value) <= 3).firstOrNull;
       if (secondary != null) {
         secondaryNote = ' (She is also feeling the ${secondary.key} need.)';
       }
     }
 
-    return '[$urgencyPrefix $baseText$secondaryNote]\n';
+    // Optional explicit "post-sex crash" flavor when energy surfaces during the active crash phase
+    // (afterglow + haze have expired). Keeps the erotic "sated exhaustion" feeling.
+    final String postCrashSuffix =
+        (_postClimaxCrashTurnsRemaining > 0 &&
+                _needsAfterglowTurnsRemaining == 0 &&
+                _arousalSuppressionTurnsRemaining == 0 &&
+                (top.key == 'energy' || top.key == 'fun'))
+            ? ' (This heavy, sated exhaustion has the warm, post-orgasm quality — limbs like lead, deep drowsiness after intense release.)'
+            : '';
+
+    return '[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n';
   }
 
   Future<void> _verifyNeedFulfillmentCall({void Function(String)? onChunk}) async {
@@ -9375,6 +9501,14 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         final vector = Map<String, int>.from(needsData['vector'] as Map);
         _needsVector = vector;
       }
+      // Restore transient erotic buffers so time-travel (regen/swipe) during
+      // or immediately after sex scenes feels consistent.
+      _needsAfterglowTurnsRemaining =
+          (needsData['afterglowTurns'] as int?) ?? _needsAfterglowTurnsRemaining;
+      _arousalSuppressionTurnsRemaining =
+          (needsData['arousalSuppressionTurns'] as int?) ?? _arousalSuppressionTurnsRemaining;
+      _postClimaxCrashTurnsRemaining =
+          (needsData['postClimaxCrashTurns'] as int?) ?? _postClimaxCrashTurnsRemaining;
     }
 
     debugPrint(
@@ -9404,6 +9538,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         'This must be an event actively occurring or just occurred in the text — '
         '$charName specifically physically reaching orgasm right now. '
         'If the response describes the user climaxing, but NOT $charName, you MUST answer false.\n'
+        'If true, ALSO report "orgasm_intensity" (1-10): how physically powerful and draining the orgasm was for $charName '
+        '(10 = shattering full-body after long intense session; 5 = solid satisfying climax; 1-2 = mild/quick).\n'
         'Do NOT answer true for: dirty talk, innuendo, arousal build-up, '
         'sexual activity that has not yet reached completion, or casual use of words like "cum". '
         'ONLY answer true if $charName\'s orgasm/climax is unambiguously depicted as actively happening.\n'
@@ -9455,6 +9591,23 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             'hunger': -4,
             'hygiene': -6,
           }, fromSexualActivity: true);
+
+          // Delayed post-climax crash (lethargy). Only on confirmed physical orgasm.
+          // Intensity-scaled duration. Gated effect so it respects afterglow + lust haze.
+          final intensity = _extractJsonInt(text, 'orgasm_intensity') ?? 5;
+          int crashDur = 0;
+          if (intensity >= 9) crashDur = 5;
+          else if (intensity >= 7) crashDur = 4;
+          else if (intensity >= 5) crashDur = 3;
+          else if (intensity >= 3) crashDur = 2;
+
+          if (crashDur > 0) {
+            _postClimaxCrashTurnsRemaining =
+                _postClimaxCrashTurnsRemaining > crashDur
+                    ? _postClimaxCrashTurnsRemaining
+                    : crashDur;
+            debugPrint('[Realism:Needs] Post-climax crash scheduled ($crashDur turns, intensity=$intensity)');
+          }
         }
 
         debugPrint(
@@ -9743,6 +9896,8 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       _initializeNeedsVectorIfNeeded();
     } else {
       _needsVector.clear();
+      _needsAfterglowTurnsRemaining = 0;
+      _arousalSuppressionTurnsRemaining = 0;
     }
     await _saveChat();
     notifyListeners();
