@@ -93,7 +93,14 @@ jobs:
         run: flutter pub get
 
       - name: Build Application
+        if: matrix.platform != 'linux'
         run: flutter build ${{ matrix.platform }} --release
+
+      - name: Build Application (Linux)
+        if: matrix.platform == 'linux'
+        env:
+          CXXFLAGS: "-Wno-unknown-warning-option"
+        run: flutter build linux --release
 
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
