@@ -5,7 +5,6 @@ env:
 
 on:
   schedule:
-    # Run every day at 07:00 UTC = 00:00 (midnight) Arizona time (MST, UTC-7)
     - cron: '0 7 * * *'
   workflow_dispatch:
 
@@ -32,9 +31,9 @@ jobs:
 
     steps:
       - name: Checkout Rawhide
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
-          ref: rawhide
+          ref: Rawhide
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -47,7 +46,21 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev libwebkit2gtk-4.1-dev ninja-build pkg-config cmake libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libblkid-dev \
+            liblzma-dev \
+            libsecret-1-dev \
+            libwebkit2gtk-4.1-dev \
+            libwpewebkit-1.0-dev \
+            wpewebkit-driver \
+            libwpe-1.0-dev \
+            ninja-build \
+            pkg-config \
+            cmake \
+            libunwind-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev
 
       - name: Compute Rawhide Nightly Version
         id: version
@@ -59,25 +72,16 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Setting nightly version to: $VERSION"
 
-          # Write version into pubspec and app_version.dart
-          python3 -c "
-          import re
-          v = '$VERSION'
-          with open('pubspec.yaml', 'r') as f: content = f.read()
-          content = re.sub(r'^version: .*$', 'version: ' + v.replace('rawhide.', '0.0.0+')[:20], content, flags=re.MULTILINE)
-          with open('pubspec.yaml', 'w') as f: f.write(content)
+          # Write version file
+          echo '/// Single source of truth for the app version.' > lib/app_version.dart
+          echo "const String appVersion = '$VERSION';" >> lib/app_version.dart
+          echo '' >> lib/app_version.dart
+          echo '/// Whether the current build is a pre-release.' >> lib/app_version.dart
+          echo 'bool get isPreRelease {' >> lib/app_version.dart
+          echo "  final lower = appVersion.toLowerCase();" >> lib/app_version.dart
+          echo "  return lower.contains('rawhide') || lower.contains('-nightly');" >> lib/app_version.dart
+          echo '}' >> lib/app_version.dart
 
-          with open('lib/app_version.dart', 'w') as f:
-              f.write('''/// Single source of truth for the app version.
-const String appVersion = '$v';
-
-/// Whether the current build is a pre-release.
-bool get isPreRelease {
-  final lower = appVersion.toLowerCase();
-  return lower.contains('rawhide') || lower.contains('-nightly');
-}
-''')
-          "
           echo "Version written: $VERSION"
 
       - name: Install dependencies
@@ -263,9 +267,6 @@ bool get isPreRelease {
       - name: Ensure correct Nightly artifact names
         shell: bash
         run: |
-          # Windows - the Inno step above already produces Front_Porch_AI_Nightly_Setup.exe
-          # macOS - handled in the DMG step
-          # Linux - handled below
           echo "Artifact naming normalized for Nightly"
 
       - name: Build macOS DMG (Nightly)
@@ -338,7 +339,7 @@ bool get isPreRelease {
           body: |
             **Rawhide Nightly Build** — `${{ steps.version.outputs.VERSION }}`
 
-            Built from the `rawhide` branch.
+            Built from the `Rawhide` branch.
             This is the bleeding-edge version. Use at your own risk.
 
             Data directory: `FrontPorchAI-Beta`
