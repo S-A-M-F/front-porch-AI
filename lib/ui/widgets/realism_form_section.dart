@@ -46,6 +46,8 @@ class RealismFormSection extends StatelessWidget {
   final ValueChanged<bool> onChaosModeChanged;
   final bool needsSimEnabled;
   final ValueChanged<bool> onNeedsSimChanged;
+  final bool enjoysLowHygiene;
+  final ValueChanged<bool> onEnjoysLowHygieneChanged;
   final String currentTask;
   final ValueChanged<String> onCurrentTaskChanged;
 
@@ -73,6 +75,8 @@ class RealismFormSection extends StatelessWidget {
     required this.onChaosModeChanged,
     required this.needsSimEnabled,
     required this.onNeedsSimChanged,
+    required this.enjoysLowHygiene,
+    required this.onEnjoysLowHygieneChanged,
     required this.currentTask,
     required this.onCurrentTaskChanged,
   });
@@ -448,6 +452,16 @@ class RealismFormSection extends StatelessWidget {
                   value: needsSimEnabled,
                   onChanged: onNeedsSimChanged,
                 ),
+                if (needsSimEnabled) ...[
+                  const SizedBox(height: 8),
+                  _toggleRow(
+                    icon: Icons.water_drop_outlined,
+                    label: 'Enjoys low hygiene',
+                    subtitle: 'Character prefers being sweaty, musky, or filthy (inverts hygiene behavior)',
+                    value: enjoysLowHygiene,
+                    onChanged: onEnjoysLowHygieneChanged,
+                  ),
+                ],
               ],
             ),
           ),

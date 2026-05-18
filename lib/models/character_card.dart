@@ -39,6 +39,7 @@ class FrontPorchExtensions {
   bool passageOfTimeEnabled; // sub-toggle for automatic time advancement
   bool chaosModeEnabled;
   bool needsSimEnabled; // per-character default for the needs simulation toggle
+  bool enjoysLowHygiene; // when true, low hygiene is desirable (inverted behavior for filthy/musky characters)
 
   // Chat appearance colors (null = use global default)
   Color? userBubbleColor;
@@ -66,6 +67,7 @@ class FrontPorchExtensions {
     this.passageOfTimeEnabled = true, // defaults to on when realism is enabled
     this.chaosModeEnabled = false,
     this.needsSimEnabled = false,
+    this.enjoysLowHygiene = false,
 
     // Chat appearance colors (null = use global default)
     this.userBubbleColor,
@@ -97,6 +99,7 @@ class FrontPorchExtensions {
         'passage_of_time_enabled': passageOfTimeEnabled,
         'chaos_mode_enabled': chaosModeEnabled,
         'needs_sim_enabled': needsSimEnabled,
+        'enjoys_low_hygiene': enjoysLowHygiene,
 
         // Chat appearance colors (null = use global default)
         'user_bubble_color': userBubbleColor?.toARGB32(),
@@ -129,6 +132,7 @@ class FrontPorchExtensions {
       passageOfTimeEnabled: realism['passage_of_time_enabled'] as bool? ?? true,
       chaosModeEnabled: realism['chaos_mode_enabled'] as bool? ?? false,
       needsSimEnabled: realism['needs_sim_enabled'] as bool? ?? false,
+      enjoysLowHygiene: realism['enjoys_low_hygiene'] as bool? ?? false,
 
       // Chat appearance colors (null = use global default)
       userBubbleColor: realism['user_bubble_color'] != null
@@ -171,6 +175,7 @@ class FrontPorchExtensions {
     bool? passageOfTimeEnabled,
     bool? chaosModeEnabled,
     bool? needsSimEnabled,
+    bool? enjoysLowHygiene,
 
     // Chat appearance colors (null = use global default)
     Color? userBubbleColor,
@@ -198,6 +203,7 @@ class FrontPorchExtensions {
       passageOfTimeEnabled: passageOfTimeEnabled ?? this.passageOfTimeEnabled,
       chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
       needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
+      enjoysLowHygiene: enjoysLowHygiene ?? this.enjoysLowHygiene,
 
       // Chat appearance colors (null = use global default)
       userBubbleColor: userBubbleColor ?? this.userBubbleColor,

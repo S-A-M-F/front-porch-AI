@@ -5090,6 +5090,57 @@ class _MessageBubbleState extends State<_MessageBubble> {
 
     final chips = <Widget>[];
 
+    // ── Needs Simulation Chips (deltas + reasons) — built into a separate list
+    // so we can render them on their own row underneath the classic realism chips.
+    final needsDeltas = metadata['needs_deltas'] as Map<String, dynamic>?;
+    final List<Widget> needsChipList = [];
+
+    if (needsDeltas != null && needsDeltas.isNotEmpty) {
+      needsDeltas.forEach((need, data) {
+        final delta = (data is Map) ? (data['delta'] as int? ?? 0) : 0;
+        final reason = (data is Map) ? (data['reason'] as String? ?? '') : '';
+
+        if (delta == 0) return;
+
+        IconData icon;
+        Color color;
+        String label = need[0].toUpperCase() + need.substring(1);
+
+        switch (need) {
+          case 'hunger':      icon = Icons.restaurant;     color = Colors.orangeAccent; break;
+          case 'bladder':     icon = Icons.water_drop;     color = Colors.lightBlueAccent; break;
+          case 'energy':      icon = Icons.bolt;           color = Colors.amberAccent; break;
+          case 'social':      icon = Icons.people;         color = Colors.pinkAccent; break;
+          case 'fun':         icon = Icons.celebration;    color = Colors.deepPurpleAccent; break;
+          case 'hygiene':     icon = Icons.shower;         color = Colors.cyanAccent; break;
+          case 'comfort':     icon = Icons.chair;          color = Colors.greenAccent; break;
+          default:            icon = Icons.circle;         color = Colors.grey;
+        }
+
+        final chip = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 11, color: color),
+            const SizedBox(width: 4),
+            Text(
+              '$label ${delta > 0 ? '+$delta' : '$delta'}',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+            if (reason.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              const Icon(Icons.info_outline, size: 10, color: Colors.white38),
+            ],
+          ],
+        );
+
+        needsChipList.add(maybeTooltip(chip, reason));
+      });
+    }
+
     if (bondDelta != 0) {
       final chip = Row(
         mainAxisSize: MainAxisSize.min,
@@ -5282,20 +5333,63 @@ class _MessageBubbleState extends State<_MessageBubble> {
       );
     }
 
+    final classicRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: chips.expand((c) => [c, const SizedBox(width: 10)]).toList()
+        ..removeLast(),
+    );
+
+    if (needsChipList.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black12,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: classicRow,
+        ),
+      );
+    }
+
+    // Two-row layout: Classic Realism chips on top, Needs chips on a dedicated second row below.
+    // This prevents the single-row clutter the user was worried about.
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.black12,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.white10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: chips.expand((c) => [c, const SizedBox(width: 10)]).toList()
-            ..removeLast(),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Row 1: Classic Realism (Bond, Trust, Lust, Mood, Time, Chance Time, etc.)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black12,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: classicRow,
+          ),
+
+          const SizedBox(height: 4),
+
+          // Row 2: Needs Simulation deltas (Energy, Hunger, Bladder, etc.)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: needsChipList.expand((c) => [c, const SizedBox(width: 8)]).toList()
+                ..removeLast(),
+            ),
+          ),
+        ],
       ),
     );
   }

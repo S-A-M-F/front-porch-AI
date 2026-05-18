@@ -467,6 +467,7 @@ class ChatService extends ChangeNotifier {
 
   // ── Sims/Needs Simulation (clean port on 0.9.8) ──
   bool _needsSimEnabled = false;
+  bool _enjoysLowHygiene = false; // inversion for hygiene (enjoys being dirty/sweaty/musky)
   Map<String, int> _needsVector = {};
 
   // Canonical constants for the Sims/Needs simulation. Single source of truth
@@ -973,12 +974,14 @@ class ChatService extends ChangeNotifier {
   bool get chaosModeEnabled => _chaosModeEnabled;
 
   /// Whether the per-session Needs (Sims-style) simulation is active.
+  /// When true and `enjoysLowHygiene` is also true, low hygiene becomes desirable.
   ///
   /// When enabled, [needsVector] holds the current 0–100 levels and the engine
   /// performs decay, prompt injection, and LLM-verified fulfillment restores.
   /// New chats seed this from the character's [FrontPorchExtensions.needsSimEnabled].
   /// Disabling mid-chat clears the vector; historical snapshots cannot re-enable it.
   bool get needsSimEnabled => _needsSimEnabled;
+  bool get enjoysLowHygiene => _enjoysLowHygiene;
 
   /// Current need levels (e.g. {'hunger': 65, 'energy': 40, ...}) as an
   /// unmodifiable map. Empty when [needsSimEnabled] is false.
@@ -1831,6 +1834,7 @@ class ChatService extends ChangeNotifier {
        _fixationLifespan = 0;
        _activeFixation = '';
        _needsSimEnabled = false;
+       _enjoysLowHygiene = false;
        _needsVector.clear();
        _needsAfterglowTurnsRemaining = 0;
        _arousalSuppressionTurnsRemaining = 0;
@@ -1862,6 +1866,7 @@ class ChatService extends ChangeNotifier {
               ext.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
           _chaosModeEnabled = ext.chaosModeEnabled;
           _needsSimEnabled = ext.needsSimEnabled;
+          _enjoysLowHygiene = ext.enjoysLowHygiene;
           if (_needsSimEnabled) {
             _initializeNeedsVectorIfNeeded();
           } else {
@@ -3007,6 +3012,7 @@ class ChatService extends ChangeNotifier {
           extSeed.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
       _chaosModeEnabled = extSeed.chaosModeEnabled;
       _needsSimEnabled = extSeed.needsSimEnabled;
+      _enjoysLowHygiene = extSeed.enjoysLowHygiene;
       if (_needsSimEnabled) {
         _initializeNeedsVectorIfNeeded();
       } else {
@@ -3506,6 +3512,15 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
         _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+
+        // Attach needs deltas + reasons for UI chips (same pattern as bond/trust)
+        if (_needsSimEnabled) {
+          final needsDeltas = _computeNeedsDeltasWithReasons();
+          if (needsDeltas.isNotEmpty) {
+            _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
+          }
+        }
+
         debugPrint(
           '[Realism:Metadata] Synthesized metadata before generation: bond_delta=${_pendingRealismMetadata?['bond_delta']}, trust_delta=${_pendingRealismMetadata?['trust_delta']}, keys=${_pendingRealismMetadata?.keys.toList()}',
         );
@@ -3785,6 +3800,15 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             _pendingRealismMetadata ??= {};
             _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
             _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+
+            // Attach needs deltas + reasons for UI chips (regen path)
+            if (_needsSimEnabled) {
+              final needsDeltas = _computeNeedsDeltasWithReasons();
+              if (needsDeltas.isNotEmpty) {
+                _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
+              }
+            }
+
             // Also record the (restored) needs baseline as the pre-turn vector
             // for this regenerated response, so any future regen of *it* has
             // a proper anchor even if the deeper historical snapshot is missing.
@@ -9090,6 +9114,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         'arousalSuppressionTurns': _arousalSuppressionTurnsRemaining,
         'postClimaxCrashTurns': _postClimaxCrashTurnsRemaining,
       };
+
+      // Attach per-turn deltas + reasons for the beautiful Needs chips
+      // (exactly parallel to bond_delta / trust_delta + reasons).
+      final needsDeltas = _computeNeedsDeltasWithReasons();
+      if (needsDeltas.isNotEmpty) {
+        (state['needs'] as Map<String, dynamic>)['deltas'] = needsDeltas;
+      }
     }
 
     return state;
@@ -9246,6 +9277,21 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     }
 
     debugPrint('[Realism:Needs] Tick decay applied');
+
+    // Enjoys low hygiene inversion - mild scaling bonuses when dirty
+    if (_enjoysLowHygiene) {
+      final hygiene = _needsVector['hygiene'] ?? 50;
+      if (hygiene < 50) {
+        final bonus = ((50 - hygiene) / 10).round().clamp(0, 5); // mild scaling
+        _arousalLevel = (_arousalLevel + bonus).clamp(-100, 100);
+        // Fun and Comfort also get a lift (simulated via small vector adjustment if needed, or LLM feels it)
+      }
+      if (hygiene >= 60) {
+        final penalty = ((hygiene - 60) / 10).round().clamp(0, 5);
+        _arousalLevel = (_arousalLevel - penalty).clamp(-100, 100);
+      }
+    }
+
     _saveChat(); // persist vector changes
     if (_pendingNeedsCatastrophe != null) {
       notifyListeners(); // bar jumps + UI can react before generation starts
@@ -9272,6 +9318,44 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   /// post-event "relief" (still uncomfortable) state).
   int _postCatastropheFloor(String need) {
     return _needPostCatastropheFloor[need] ?? 30;
+  }
+
+  /// Computes per-need deltas since the start of this turn and generates
+  /// human-readable reasons. Used to power the Needs chips under bot messages
+  /// (exactly like bond_delta / trust_delta + reasons for classic realism).
+  Map<String, Map<String, dynamic>> _computeNeedsDeltasWithReasons() {
+    final preTurn = _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
+    if (preTurn == null || preTurn.isEmpty) return {};
+
+    final deltas = <String, Map<String, dynamic>>{};
+
+    for (final key in _needKeys) {
+      final before = preTurn[key] ?? _needDefaults[key] ?? 50;
+      final after = _needsVector[key] ?? before;
+      final delta = after - before;
+
+      if (delta == 0) continue;
+
+      String reason;
+      if (_postClimaxCrashTurnsRemaining > 0 &&
+          _needsAfterglowTurnsRemaining == 0 &&
+          _arousalSuppressionTurnsRemaining == 0) {
+        reason = 'Post-orgasm exhaustion';
+      } else if (_needsAfterglowTurnsRemaining > 0 || _arousalSuppressionTurnsRemaining > 0) {
+        reason = 'Intimate / sexual activity';
+      } else if (delta > 0) {
+        reason = 'Scene action';
+      } else {
+        reason = 'Natural decay';
+      }
+
+      deltas[key] = {
+        'delta': delta,
+        'reason': reason,
+      };
+    }
+
+    return deltas;
   }
 
   /// Applies a map of need deltas (positive or negative) to the current vector.
@@ -9322,6 +9406,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     final top = sorted.first;
     final step = _getNeedStep(top.key, top.value);
+
+    // Hygiene inversion support ("Enjoys low hygiene")
+    int effectiveStep = step;
+    if (_enjoysLowHygiene && top.key == 'hygiene') {
+      // Invert the perceived urgency: low hygiene = "comfortable/good" for these characters
+      effectiveStep = (5 - step).clamp(0, 5);
+    }
 
     // Step 5 = comfortable → no injection at all (old behavior for high values)
     if (step >= 5) return '';

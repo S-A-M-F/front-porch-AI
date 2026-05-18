@@ -86,6 +86,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   bool _realismPassageOfTime = true;
   bool _realismChaosMode = false;
   bool _realismNeedsSim = false;
+  bool _realismEnjoysLowHygiene = false;
   String _realismCurrentTask = '';
 
   @override
@@ -144,6 +145,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       _realismPassageOfTime = ext.passageOfTimeEnabled;
       _realismChaosMode = ext.chaosModeEnabled;
       _realismNeedsSim = ext.needsSimEnabled;
+      _realismEnjoysLowHygiene = ext.enjoysLowHygiene;
       _realismCurrentTask = ext.currentTask;
     }
 
@@ -424,6 +426,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         passageOfTimeEnabled: _realismPassageOfTime,
         chaosModeEnabled: _realismChaosMode,
         needsSimEnabled: _realismNeedsSim,
+        enjoysLowHygiene: _realismEnjoysLowHygiene,
         currentTask: _realismCurrentTask,
       );
     }
@@ -1801,6 +1804,11 @@ class _EditCharacterPageState extends State<EditCharacterPage>
           needsSimEnabled: _realismNeedsSim,
           onNeedsSimChanged: (v) => setState(() {
             _realismNeedsSim = v;
+            _realismSettingsModified = true;
+          }),
+          enjoysLowHygiene: _realismEnjoysLowHygiene,
+          onEnjoysLowHygieneChanged: (v) => setState(() {
+            _realismEnjoysLowHygiene = v;
             _realismSettingsModified = true;
           }),
           currentTask: _realismCurrentTask,
