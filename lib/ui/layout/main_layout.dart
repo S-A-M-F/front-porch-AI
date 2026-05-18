@@ -24,6 +24,7 @@ import 'package:front_porch_ai/ui/pages/model_manager_page.dart';
 import 'package:front_porch_ai/ui/pages/settings_page.dart';
 import 'package:front_porch_ai/ui/pages/user_persona_page.dart';
 import 'package:front_porch_ai/ui/pages/world_management_page.dart';
+import 'package:front_porch_ai/ui/pages/cloud_sync_page.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 
@@ -42,7 +43,7 @@ class _MainLayoutState extends State<MainLayout> {
     const SettingsPage(),
     const UserPersonaPage(),
     const WorldManagementPage(),
-    const Center(child: Text('Cloud Sync')),
+    const CloudSyncPage(),
   ];
 
   @override
