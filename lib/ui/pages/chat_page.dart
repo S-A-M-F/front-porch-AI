@@ -2269,17 +2269,21 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                   const PopupMenuDivider(),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'kobold_log',
                     child: Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.terminal,
                           size: 20,
                           color: Colors.greenAccent,
                         ),
-                        SizedBox(width: 12),
-                        Text('KoboldCpp Log'),
+                        const SizedBox(width: 12),
+                        Text(
+                          Provider.of<LLMProvider>(context).activeBackend == BackendType.pseudoRemote
+                              ? 'Pseudo-Remote Log'
+                              : 'KoboldCpp Log',
+                        ),
                       ],
                     ),
                   ),
