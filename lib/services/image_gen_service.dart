@@ -1182,7 +1182,7 @@ if (personaText != null && personaText.isNotEmpty) {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 300)); // allow time for model load
+          .timeout(const Duration(seconds: 600)); // allow time for model load
 
       if (response.statusCode != 200) {
         String errorMsg = 'HTTP ${response.statusCode}';
