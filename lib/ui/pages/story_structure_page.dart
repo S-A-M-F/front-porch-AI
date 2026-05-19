@@ -50,7 +50,7 @@ class _StoryStructurePageState extends State<StoryStructurePage> {
         }
 
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: AppColors.backgroundOf(context),
           appBar: AppBar(
             title: Text('Structure — ${project.title}'),
             backgroundColor: AppColors.card,

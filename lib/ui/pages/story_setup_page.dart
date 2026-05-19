@@ -177,7 +177,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
         title: const Row(
           children: [

@@ -155,7 +155,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
         backgroundColor: AppColors.card,
         leading: IconButton(

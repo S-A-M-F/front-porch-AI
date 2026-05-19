@@ -614,12 +614,12 @@ class _HomePageState extends State<HomePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: TextField(
                       controller: _searchController,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: AppColors.textPrimary(context)),
                       decoration: InputDecoration(
                         hintText: _activeFolderId != null && _searchScope != SearchScope.allCharacters
                             ? 'Search this folder...'
                             : 'Search by name or tag...',
-                        hintStyle: const TextStyle(color: Colors.white38),
+                        hintStyle: TextStyle(color: AppColors.textTertiary(context)),
                         prefixIcon: _activeFolderId != null
                             ? PopupMenuButton<SearchScope>(
                                 icon: Icon(
@@ -1238,13 +1238,13 @@ class _HomePageState extends State<HomePage> {
             Icon(
               icon,
               size: 18,
-              color: isActive ? Colors.amber.shade400 : Colors.white38,
+              color: isActive ? Colors.amber.shade400 : AppColors.textTertiary(context),
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? Colors.white : Colors.white54,
+                color: isActive ? AppColors.textPrimary(context) : AppColors.textTertiary(context),
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                 fontSize: 14,
               ),
@@ -1504,13 +1504,13 @@ class _HomePageState extends State<HomePage> {
                                       Icon(
                                         Icons.chat_bubble_outline,
                                         size: 11,
-                                        color: Colors.white38,
+                                        color: AppColors.textTertiary(context),
                                       ),
                                       const SizedBox(width: 3),
                                       Text(
                                         '$msgCount',
                                         style: TextStyle(
-                                          color: Colors.white38,
+                                          color: AppColors.textTertiary(context),
                                           fontSize: isCompact ? 10 : 11,
                                         ),
                                       ),
@@ -2148,11 +2148,11 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white54),
+                        TextButton(
+                          onPressed: _cancelSelection,
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(color: AppColors.textTertiary(context)),
             ),
           ),
         ],
@@ -2429,11 +2429,11 @@ class _HomePageState extends State<HomePage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: const Row(
+          title: Row(
             children: [
               Icon(Icons.group_add, color: Colors.purpleAccent),
-              SizedBox(width: 8),
-              Text('Create Group Chat', style: TextStyle(color: Colors.white)),
+              const SizedBox(width: 8),
+              Text('Create Group Chat', style: TextStyle(color: AppColors.textPrimary(context))),
             ],
           ),
           content: SizedBox(

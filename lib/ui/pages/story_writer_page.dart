@@ -74,7 +74,7 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
         final beats = project.beats[_sId] ?? [];
 
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: AppColors.backgroundOf(context),
           appBar: AppBar(
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

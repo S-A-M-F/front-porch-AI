@@ -61,7 +61,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
     return Consumer<WorldRepository>(
       builder: (context, repo, child) {
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: AppColors.backgroundOf(context),
           body: CustomScrollView(
             slivers: [
               // Hero header

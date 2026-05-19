@@ -629,8 +629,8 @@ class _SettingsPageState extends State<SettingsPage> {
               elevation: 0,
               iconTheme: theme.iconTheme,
               bottom: TabBar(
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white60,
+                labelColor: AppColors.textPrimary(context),
+                unselectedLabelColor: AppColors.textTertiary(context),
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 overlayColor: WidgetStateProperty.all(Colors.transparent),
@@ -909,8 +909,31 @@ class _SettingsPageState extends State<SettingsPage> {
               Text('Dark Mode', style: theme.textTheme.titleMedium),
               Switch(
                 value: Provider.of<AppState>(context).darkMode,
-                onChanged: (_) =>
-                    Provider.of<AppState>(context, listen: false).toggleTheme(),
+                onChanged: (value) async {
+                  if (!value) {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Disable Dark Mode'),
+                        content: const Text(
+                          'Are you REALLY sure you want to suffer?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Stay Dark'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('I am sure'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed != true) return;
+                  }
+                  Provider.of<AppState>(context, listen: false).toggleTheme();
+                },
               ),
             ],
           ),
@@ -1091,7 +1114,7 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(label, style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13)),
           const Spacer(),
           Container(
             width: 40,
@@ -1099,10 +1122,10 @@ class _SettingsPageState extends State<SettingsPage> {
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.white24, width: 1),
+              border: Border.all(color: AppColors.textTertiary(context).withValues(alpha: 0.3), width: 1),
             ),
             child: IconButton(
-              icon: const Icon(Icons.color_lens, size: 20, color: Colors.white),
+              icon: Icon(Icons.color_lens, size: 20, color: AppColors.textPrimary(context)),
               onPressed: () => _showColorPicker(context, color, onChanged),
             ),
           ),

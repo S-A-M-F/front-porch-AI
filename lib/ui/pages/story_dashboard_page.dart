@@ -278,7 +278,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
         }
 
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: AppColors.backgroundOf(context),
           appBar: AppBar(
             title: Text(project.title),
             backgroundColor: AppColors.card,

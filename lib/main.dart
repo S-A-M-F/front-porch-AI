@@ -790,11 +790,26 @@ class _MyAppState extends State<MyApp> with WindowListener {
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
+        // Keep StorageService in sync with current brightness
+        Provider.of<StorageService>(context, listen: false).isDark =
+            appState.darkMode;
+
         return MaterialApp(
           title: 'Front Porch AI',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
             brightness: appState.darkMode ? Brightness.dark : Brightness.light,
+            colorScheme: appState.darkMode
+                ? const ColorScheme.dark(
+                    surface: AppColors.background,
+                    onSurface: Colors.white,
+                    primary: Colors.blue,
+                  )
+                : const ColorScheme.light(
+                    surface: Color(0xFFF3F4F6),
+                    onSurface: Colors.black87,
+                    primary: Colors.blue,
+                  ),
             primarySwatch: Colors.blue,
             scaffoldBackgroundColor: appState.darkMode
                 ? AppColors.background

@@ -38,7 +38,6 @@ import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 //  DESIGN TOKENS — Slate / Indigo dark theme
 // ═══════════════════════════════════════════════════════════════
 
-const _bgInput = AppColors.background;
 const _borderSubtle = Color(0x14FFFFFF); // white 8%
 const _borderFocus = Colors.blueAccent;
 
@@ -1062,7 +1061,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                             color: Colors.white,
                             fontSize: 14,
                           ),
-                          decoration: _inputDecoration('Add a tag...'),
+                          decoration: _inputDecoration('Add a tag...', context),
                           onSubmitted: (value) {
                             final trimmed = value.trim().toLowerCase();
                             if (trimmed.isNotEmpty &&
@@ -1939,7 +1938,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             color: enabled ? Colors.white : Colors.white38,
             fontSize: 14,
           ),
-          decoration: _inputDecoration(hint ?? 'Enter $label...'),
+          decoration: _inputDecoration(hint ?? 'Enter $label...', context),
         ),
       ],
     );
@@ -1957,12 +1956,12 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     );
   }
 
-  InputDecoration _inputDecoration(String hint) {
+  InputDecoration _inputDecoration(String hint, BuildContext context) {
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
       filled: true,
-      fillColor: _bgInput,
+      fillColor: AppColors.backgroundOf(context),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: _borderSubtle),

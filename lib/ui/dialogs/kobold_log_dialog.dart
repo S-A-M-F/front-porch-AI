@@ -184,7 +184,7 @@ class _KoboldLogDialogState extends State<KoboldLogDialog>
             : 'Stopped';
 
         return Dialog(
-          backgroundColor: AppColors.background,
+          backgroundColor: AppColors.backgroundOf(context),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(

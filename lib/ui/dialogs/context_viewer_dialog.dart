@@ -53,7 +53,7 @@ class ContextViewerDialog extends StatelessWidget {
     }
 
     return Dialog(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.backgroundOf(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),

@@ -372,9 +372,6 @@ class _ChatPageState extends State<ChatPage> {
         return Stack(
           children: [
             Scaffold(
-              backgroundColor: const Color(
-                0xFF111827,
-              ), // Darker background like Backyard
               appBar: isGroup
                   ? _buildGroupAppBar(context, chatService)
                   : _buildAppBar(context, character!),
@@ -2409,7 +2406,7 @@ class _ChatPageState extends State<ChatPage> {
                   maxLines: 10,
                   minLines: _inputMinLines,
                   textInputAction: TextInputAction.newline,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: AppColors.textPrimary(context)),
                   decoration: InputDecoration(
                     hintText: chatService.observerMode
                         ? 'Direct the scene...'
@@ -2417,7 +2414,7 @@ class _ChatPageState extends State<ChatPage> {
                     hintStyle: TextStyle(
                       color: chatService.observerMode
                           ? Colors.amberAccent.withValues(alpha: 0.5)
-                          : Colors.white38,
+                          : AppColors.textTertiary(context),
                     ),
                     filled: true,
                     fillColor: const Color(0xFF374151),

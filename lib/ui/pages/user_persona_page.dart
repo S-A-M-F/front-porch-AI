@@ -387,7 +387,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
               colors: [
                 accentColor.withValues(alpha: 0.08 + _headerGlowAnimation.value * 0.06),
                 AppColors.card.withValues(alpha: 0.9),
-                AppColors.background.withValues(alpha: 0.95),
+                AppColors.backgroundOf(context).withValues(alpha: 0.95),
               ],
             ),
             border: Border.all(
