@@ -43,19 +43,14 @@ class _LogViewState extends State<LogView> with SingleTickerProviderStateMixin {
     _blinkAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
       CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
     );
-    _updateState();
+    _updateBlinking();
   }
 
   @override
   void didUpdateWidget(LogView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _updateState();
-  }
-
-  void _updateState() {
-    if (!mounted) return;
+    _updateBlinking();
     final logs = widget.logs;
-
     if (logs.length != _lastLogCount) {
       _lastLogCount = logs.length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -64,7 +59,10 @@ class _LogViewState extends State<LogView> with SingleTickerProviderStateMixin {
         }
       });
     }
+  }
 
+  void _updateBlinking() {
+    final logs = widget.logs;
     if (logs.isNotEmpty && _isProgressLine(logs.last)) {
       if (!_blinkController.isAnimating) {
         _blinkController.repeat(reverse: true);
@@ -104,6 +102,69 @@ class _LogViewState extends State<LogView> with SingleTickerProviderStateMixin {
     super.dispose();
   }
 
+  Widget _buildLogContent() {
+    final logs = widget.logs;
+    final isBlinking = _blinkController.isAnimating;
+
+    if (isBlinking && logs.length > 1) {
+      // Split: main lines [0..n-2] in static SelectableText.rich,
+      //        last line in animated SelectableText
+      final mainSpans = <TextSpan>[];
+      for (int i = 0; i < logs.length - 1; i++) {
+        final line = logs[i];
+        mainSpans.add(TextSpan(
+          text: i < logs.length - 2 ? '$line\n' : line,
+          style: TextStyle(color: _lineColor(line), height: 1.45),
+        ));
+      }
+
+      final lastLine = logs.last;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText.rich(
+            TextSpan(children: mainSpans),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+          AnimatedBuilder(
+            animation: _blinkAnimation,
+            builder: (context, _) {
+              return SelectableText(
+                lastLine,
+                style: TextStyle(
+                  color: _lineColor(lastLine).withValues(alpha: _blinkAnimation.value),
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    }
+
+    // All lines in a single SelectableText.rich (stable, cross-selectable)
+    final allSpans = <TextSpan>[];
+    for (int i = 0; i < logs.length; i++) {
+      final line = logs[i];
+      Color color = _lineColor(line);
+      final isProgress = i == logs.length - 1 && _isProgressLine(line);
+      if (isProgress) {
+        color = color.withValues(alpha: 0.45);
+      }
+      allSpans.add(TextSpan(
+        text: i < logs.length - 1 ? '$line\n' : line,
+        style: TextStyle(color: color, height: 1.45),
+      ));
+    }
+
+    return SelectableText.rich(
+      TextSpan(children: allSpans),
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -119,34 +180,7 @@ class _LogViewState extends State<LogView> with SingleTickerProviderStateMixin {
         controller: _scrollController,
         child: SingleChildScrollView(
           controller: _scrollController,
-          child: AnimatedBuilder(
-            animation: _blinkAnimation,
-            builder: (context, _) {
-              final spans = <TextSpan>[];
-              final logs = widget.logs;
-              for (int i = 0; i < logs.length; i++) {
-                final line = logs[i];
-                Color color = _lineColor(line);
-
-                if (i == logs.length - 1 && _isProgressLine(line)) {
-                  color = color.withValues(alpha: _blinkAnimation.value);
-                }
-
-                spans.add(TextSpan(
-                  text: i < logs.length - 1 ? '$line\n' : line,
-                  style: TextStyle(color: color, height: 1.45),
-                ));
-              }
-
-              return SelectableText.rich(
-                TextSpan(children: spans),
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                ),
-              );
-            },
-          ),
+          child: _buildLogContent(),
         ),
       ),
     );

@@ -99,6 +99,64 @@ class _KoboldLogDialogState extends State<KoboldLogDialog>
     }
   }
 
+  Widget _buildLogBody(List<String> logs) {
+    final isBlinking = _blinkController.isAnimating;
+
+    if (isBlinking && logs.length > 1) {
+      final mainSpans = <TextSpan>[];
+      for (int i = 0; i < logs.length - 1; i++) {
+        final line = logs[i];
+        mainSpans.add(TextSpan(
+          text: i < logs.length - 2 ? '$line\n' : line,
+          style: TextStyle(color: _lineColor(line), height: 1.45),
+        ));
+      }
+
+      final lastLine = logs.last;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText.rich(
+            TextSpan(children: mainSpans),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+          AnimatedBuilder(
+            animation: _blinkAnimation,
+            builder: (context, _) {
+              return SelectableText(
+                lastLine,
+                style: TextStyle(
+                  color: _lineColor(lastLine).withValues(alpha: _blinkAnimation.value),
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    }
+
+    final allSpans = <TextSpan>[];
+    for (int i = 0; i < logs.length; i++) {
+      final line = logs[i];
+      Color color = _lineColor(line);
+      final isProgress = i == logs.length - 1 && _isProgressLine(line);
+      if (isProgress) {
+        color = color.withValues(alpha: 0.45);
+      }
+      allSpans.add(TextSpan(
+        text: i < logs.length - 1 ? '$line\n' : line,
+        style: TextStyle(color: color, height: 1.45),
+      ));
+    }
+    return SelectableText.rich(
+      TextSpan(children: allSpans),
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer2<LLMProvider, KoboldService>(
@@ -108,6 +166,9 @@ class _KoboldLogDialogState extends State<KoboldLogDialog>
         final logs = isPseudo ? pseudoRemote.logs : kobold.logs;
         final isRunning = isPseudo ? pseudoRemote.isRunning : kobold.isRunning;
         final isReady = isPseudo ? pseudoRemote.isReady : kobold.isReady;
+
+        // Update blinking animation based on current log content
+        _updateBlinking(logs);
 
         // Auto-scroll whenever new lines arrive, but only if the user hasn't
         // manually scrolled up.
@@ -339,35 +400,7 @@ class _KoboldLogDialogState extends State<KoboldLogDialog>
                               child: SingleChildScrollView(
                                 controller: _scrollController,
                                 padding: const EdgeInsets.all(12),
-                                child: AnimatedBuilder(
-                                  animation: _blinkAnimation,
-                                  builder: (context, _) {
-                                    _updateBlinking(logs);
-
-                                    final spans = <TextSpan>[];
-                                    for (int i = 0; i < logs.length; i++) {
-                                      final line = logs[i];
-                                      Color color = _lineColor(line);
-
-                                      if (i == logs.length - 1 && _isProgressLine(line)) {
-                                        color = color.withValues(alpha: _blinkAnimation.value);
-                                      }
-
-                                      spans.add(TextSpan(
-                                        text: i < logs.length - 1 ? '$line\n' : line,
-                                        style: TextStyle(color: color, height: 1.45),
-                                      ));
-                                    }
-
-                                    return SelectableText.rich(
-                                      TextSpan(children: spans),
-                                      style: const TextStyle(
-                                        fontFamily: 'monospace',
-                                        fontSize: 12,
-                                      ),
-                                    );
-                                  },
-                                ),
+                                child: _buildLogBody(logs),
                               ),
                             ),
                           ),

@@ -38,7 +38,8 @@ class ModelSettingsDialog extends StatefulWidget {
   State<ModelSettingsDialog> createState() => _ModelSettingsDialogState();
 }
 
-class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
+class _ModelSettingsDialogState extends State<ModelSettingsDialog>
+    with SingleTickerProviderStateMixin {
   // Local backend fields
   final _gpuLayersController = TextEditingController(text: '0');
   final _contextSizeController = TextEditingController(text: '');
@@ -58,9 +59,24 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   // Preset fields
   List<File> _localPresets = [];
 
+  // Blinking animation for process logs
+  late final AnimationController _blinkController;
+  late final Animation<double> _blinkAnimation;
+
+  // Scroll controller for the pseudo-remote process log
+  final ScrollController _pseudoLogScrollController = ScrollController();
+  int _lastPseudoLogCount = 0;
+
   @override
   void initState() {
     super.initState();
+    _blinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _blinkAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
+    );
     final storage = Provider.of<StorageService>(context, listen: false);
     // Local settings
     _useCublas = storage.useCublas == true;
@@ -115,6 +131,8 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     _apiUrlController.dispose();
     _apiKeyController.dispose();
     _modelNameController.dispose();
+    _blinkController.dispose();
+    _pseudoLogScrollController.dispose();
     super.dispose();
   }
 
@@ -471,7 +489,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                    ),
                    Expanded(
                      child: _buildToggleButton(
-                       label: 'Pseudo',
+                        label: 'Pseudo-Remote',
                        icon: Icons.laptop,
                        isSelected: backend == BackendType.pseudoRemote,
                        onTap: () => llmProvider.setActiveBackend(BackendType.pseudoRemote),
@@ -1009,12 +1027,117 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     );
   }
 
+  bool _isProgressLine(String line) =>
+      line.startsWith('Generating (') ||
+      RegExp(r'^Processing Prompt', caseSensitive: false).hasMatch(line);
+
+  Color _lineColor(String line) {
+    if (line.toLowerCase().contains('error') ||
+        line.toLowerCase().contains('fail') ||
+        line.toLowerCase().contains('fatal')) {
+      return const Color(0xFFFF6B6B);
+    } else if (line.toLowerCase().contains('warn')) {
+      return const Color(0xFFFFD93D);
+    } else if (line.toLowerCase().contains('ready') ||
+        line.toLowerCase().contains('server listen') ||
+        line.toLowerCase().contains('please connect')) {
+      return Colors.greenAccent;
+    } else if (line.toLowerCase().contains('loading') ||
+        line.toLowerCase().contains('starting')) {
+      return const Color(0xFF93C5FD);
+    }
+    return const Color(0xFF86EFAC);
+  }
+
+  void _updateBlinking(List<String> logs) {
+    if (logs.isNotEmpty && _isProgressLine(logs.last)) {
+      if (!_blinkController.isAnimating) {
+        _blinkController.repeat(reverse: true);
+      }
+    } else {
+      _blinkController.stop();
+      _blinkController.value = 1.0;
+    }
+  }
+
+  Widget _buildLogContent(List<String> logs) {
+    final isBlinking = _blinkController.isAnimating;
+
+    if (isBlinking && logs.length > 1) {
+      final mainSpans = <TextSpan>[];
+      for (int i = 0; i < logs.length - 1; i++) {
+        final line = logs[i];
+        mainSpans.add(TextSpan(
+          text: i < logs.length - 2 ? '$line\n' : line,
+          style: TextStyle(color: _lineColor(line), height: 1.45),
+        ));
+      }
+
+      final lastLine = logs.last;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText.rich(
+            TextSpan(children: mainSpans),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+          AnimatedBuilder(
+            animation: _blinkAnimation,
+            builder: (context, _) {
+              return SelectableText(
+                lastLine,
+                style: TextStyle(
+                  color: _lineColor(lastLine).withValues(alpha: _blinkAnimation.value),
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    }
+
+    final allSpans = <TextSpan>[];
+    for (int i = 0; i < logs.length; i++) {
+      final line = logs[i];
+      Color color = _lineColor(line);
+      final isProgress = i == logs.length - 1 && _isProgressLine(line);
+      if (isProgress) {
+        color = color.withValues(alpha: 0.45);
+      }
+      allSpans.add(TextSpan(
+        text: i < logs.length - 1 ? '$line\n' : line,
+        style: TextStyle(color: color, height: 1.45),
+      ));
+    }
+    return SelectableText.rich(
+      TextSpan(children: allSpans),
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+    );
+  }
+
   Widget _buildPseudoRemoteSettings() {
     final pseudoRemote = Provider.of<PseudoRemoteService>(context);
     final kobold = Provider.of<KoboldService>(context);
     final llmProvider = Provider.of<LLMProvider>(context);
     final anyRunning = llmProvider.hasAnyManagedProcessRunning;
     final storage = Provider.of<StorageService>(context);
+
+    _updateBlinking(pseudoRemote.logs);
+
+    // Auto-scroll when new log lines arrive
+    if (pseudoRemote.logs.length != _lastPseudoLogCount) {
+      _lastPseudoLogCount = pseudoRemote.logs.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pseudoLogScrollController.hasClients) {
+          _pseudoLogScrollController.jumpTo(
+            _pseudoLogScrollController.position.maxScrollExtent,
+          );
+        }
+      });
+    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1107,14 +1230,16 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           height: 200,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.black26,
+            color: Colors.black,
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white10),
           ),
-          child: ListView.builder(
-            itemCount: pseudoRemote.logs.length,
-            itemBuilder: (context, index) => Text(
-              pseudoRemote.logs[index],
-              style: const TextStyle(fontSize: 11, color: Colors.white60, fontFamily: 'monospace'),
+          child: Scrollbar(
+            controller: _pseudoLogScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _pseudoLogScrollController,
+              child: _buildLogContent(pseudoRemote.logs),
             ),
           ),
         ),

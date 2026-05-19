@@ -184,6 +184,7 @@ class _ChatPageState extends State<ChatPage> {
   TtsService? _ttsService;
   ChatService? _chatService;
 
+
   /// Resolve a character [imagePath] (basename or full path) to a [File].
   /// Always use this instead of [File(imagePath)] directly.
   File _resolveCharImage(String imagePath) {
@@ -2269,21 +2270,17 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                   const PopupMenuDivider(),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'kobold_log',
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.terminal,
                           size: 20,
                           color: Colors.greenAccent,
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          Provider.of<LLMProvider>(context).activeBackend == BackendType.pseudoRemote
-                              ? 'Pseudo-Remote Log'
-                              : 'KoboldCpp Log',
-                        ),
+                        SizedBox(width: 12),
+                        Text('Backend Log'),
                       ],
                     ),
                   ),
