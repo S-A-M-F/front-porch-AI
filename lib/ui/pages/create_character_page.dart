@@ -23,6 +23,7 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
@@ -154,9 +155,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Provider.of<AppState>(context, listen: false).setIndex(0),
@@ -277,7 +278,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.4)),
         boxShadow: [
@@ -405,7 +406,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     height: 260,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      color: const Color(0xFF1E293B),
+                      color: AppColors.card,
                       border: Border.all(color: Colors.white12),
                       image: _avatarBytes != null
                           ? DecorationImage(
@@ -728,7 +729,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 Container(
                   padding: const EdgeInsets.all(40),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
+                    color: AppColors.card,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
                   ),
@@ -766,7 +767,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: entry.constant
@@ -860,7 +861,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => Dialog(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: AppColors.background,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
@@ -1330,7 +1331,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withValues(alpha: 0.8),
+        color: AppColors.card.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
@@ -1441,7 +1442,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   height: 260,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    color: const Color(0xFF1E293B),
+                    color: AppColors.card,
                     border: Border.all(color: Colors.white12),
                     image: _avatarBytes != null
                         ? DecorationImage(
@@ -1595,7 +1596,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
+                      color: AppColors.card,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
                     ),
@@ -1640,7 +1641,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5),
             decoration: InputDecoration(
               filled: true,
-              fillColor: const Color(0xFF1E293B),
+              fillColor: AppColors.card,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Colors.white12),
@@ -1838,7 +1839,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       hintText: hint,
       hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 14),
       filled: true,
-      fillColor: const Color(0xFF1E293B),
+      fillColor: AppColors.card,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: Colors.white12),
@@ -1890,7 +1891,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       builder: (ctx) {
         final editController = TextEditingController(text: controller.text);
         return Dialog(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: AppColors.background,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Container(
             width: 700,

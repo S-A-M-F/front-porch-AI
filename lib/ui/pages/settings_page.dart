@@ -23,6 +23,7 @@ import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
@@ -377,7 +378,7 @@ class _SettingsPageState extends State<SettingsPage> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
+          backgroundColor: AppColors.card,
           title: const Text(
             'Auto-Configuration',
             style: TextStyle(color: Colors.white),
@@ -4703,7 +4704,7 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Save Prompt', style: TextStyle(color: Colors.white)),
         content: TextField(
           controller: controller,
@@ -4766,7 +4767,7 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text(
           'Delete Saved Prompt',
           style: TextStyle(color: Colors.white),
@@ -4841,7 +4842,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   }).toList();
 
             return AlertDialog(
-              backgroundColor: const Color(0xFF1F2937),
+              backgroundColor: AppColors.surface,
               title: const Text(
                 'Select Model',
                 style: TextStyle(color: Colors.white),
@@ -5850,7 +5851,7 @@ Widget _buildFontRow(StorageService storageService) {
           child: DropdownButton<String>(
             value: currentFont.isEmpty ? '' : currentFont,
             isExpanded: true,
-            dropdownColor: const Color(0xFF1E293B),
+            dropdownColor: AppColors.card,
             style: const TextStyle(color: Colors.white, fontSize: 13),
             underline: const SizedBox.shrink(),
             items: chatFonts.map((font) {

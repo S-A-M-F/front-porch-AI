@@ -25,6 +25,7 @@ import 'package:drift/drift.dart' as drift;
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/services/embedding_service.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
@@ -334,7 +335,7 @@ class _DataBankDialogState extends State<DataBankDialog> {
     final unembedded = _entries.length - embeddedEntries;
 
     return Dialog(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 650,

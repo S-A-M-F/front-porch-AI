@@ -22,6 +22,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:drift/drift.dart' as drift;
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
@@ -603,10 +604,8 @@ class _ChatPageState extends State<ChatPage> {
                                            final result = await showDialog<bool>(
                                              context: context,
                                              barrierDismissible: false,
-                                             builder: (ctx) => AlertDialog(
-                                               backgroundColor: const Color(
-                                                 0xFF1E293B,
-                                               ),
+                                              builder: (ctx) => AlertDialog(
+                                                backgroundColor: AppColors.card,
                                                shape: RoundedRectangleBorder(
                                                  borderRadius:
                                                      BorderRadius.circular(16),
@@ -808,7 +807,7 @@ class _ChatPageState extends State<ChatPage> {
     CharacterCard character,
   ) {
     return AppBar(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surface,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
@@ -868,7 +867,7 @@ class _ChatPageState extends State<ChatPage> {
     final group = chatService.activeGroup!;
     final chars = chatService.groupCharacters;
     return AppBar(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surface,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
@@ -985,7 +984,7 @@ class _ChatPageState extends State<ChatPage> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surface,
           title: const Text('Import Failed'),
           content: Text('Error importing chat: $e'),
           actions: [
@@ -1048,7 +1047,7 @@ class _ChatPageState extends State<ChatPage> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surface,
           title: const Text('Export Failed'),
           content: Text('Error exporting chat: $e'),
           actions: [
@@ -1078,7 +1077,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: Row(
           children: [
             const Icon(
@@ -1294,7 +1293,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Reset Character Evolution?'),
         content: const Text(
           'This will reset the character\'s personality and scenario back to the original card values. '
@@ -1359,7 +1358,7 @@ class _ChatPageState extends State<ChatPage> {
           // Evolution failed — show error
           if (!isEvolving && error.isNotEmpty) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF1F2937),
+              backgroundColor: AppColors.surface,
               title: Row(
                 children: [
                   const Icon(
@@ -1398,7 +1397,7 @@ class _ChatPageState extends State<ChatPage> {
             final evolvedP = chat.getEffectivePersonality;
             final evolvedS = chat.getEffectiveScenario;
             return AlertDialog(
-              backgroundColor: const Color(0xFF1F2937),
+              backgroundColor: AppColors.surface,
               title: Row(
                 children: [
                   const Icon(
@@ -1511,7 +1510,7 @@ class _ChatPageState extends State<ChatPage> {
 
           // Evolution in progress — show spinner + status
           return AlertDialog(
-            backgroundColor: const Color(0xFF1F2937),
+            backgroundColor: AppColors.surface,
             title: Row(
               children: [
                 const SizedBox(
@@ -1584,7 +1583,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('New Chat'),
         content: const Text(
           'This will clear the current conversation and start fresh. This can\'t be undone. Are you sure?',
@@ -1623,7 +1622,7 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surface,
           title: const Text('Chat History'),
           content: SizedBox(
             width: 420,
@@ -1718,7 +1717,7 @@ class _ChatPageState extends State<ChatPage> {
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
-                                    backgroundColor: const Color(0xFF1F2937),
+                                    backgroundColor: AppColors.surface,
                                     title: const Text('Delete Chat?'),
                                     content: Text(
                                       'This will permanently delete this chat and all its messages.\n\n"${s['preview']}"',
@@ -1799,7 +1798,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Edit Chat Session'),
         content: SizedBox(
           width: 360,
@@ -1923,7 +1922,7 @@ class _ChatPageState extends State<ChatPage> {
       customPrompt = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surface,
           title: const Row(
             children: [
               Icon(Icons.brush, color: Colors.purpleAccent),
@@ -2112,7 +2111,7 @@ class _ChatPageState extends State<ChatPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
               decoration: const BoxDecoration(
-                color: Color(0xFF1F2937),
+                color: AppColors.surface,
                 border: Border(top: BorderSide(color: Colors.white10)),
               ),
               child: Row(
@@ -2623,7 +2622,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         icon: const Icon(Icons.mic_off, color: Colors.redAccent, size: 40),
         title: const Text(
           'No Microphone Detected',
@@ -2699,7 +2698,7 @@ class _ChatPageState extends State<ChatPage> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF1F2937),
+        color: AppColors.surface,
         border: Border(left: BorderSide(color: Colors.white10)),
       ),
       child: Column(
@@ -2860,7 +2859,7 @@ class _ChatPageState extends State<ChatPage> {
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70),
                 ),
-                color: const Color(0xFF1e293b),
+                color: AppColors.card,
                 elevation: 8,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white70,
@@ -3283,7 +3282,7 @@ class _ChatPageState extends State<ChatPage> {
     final chars = chatService.groupCharacters;
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF1F2937),
+        color: AppColors.surface,
         border: Border(left: BorderSide(color: Colors.white10)),
       ),
       child: Column(
@@ -3756,7 +3755,7 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surface,
           title: Text(
             'Voice for ${character.name}',
             style: const TextStyle(fontSize: 16),
@@ -3887,7 +3886,7 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: const BorderSide(color: Colors.purpleAccent, width: 0.5),
@@ -4106,7 +4105,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: Colors.purpleAccent, width: 0.5),
@@ -4979,7 +4978,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Delete Message'),
         content: const Text(
           'This can\'t be undone. Are you sure you want to delete this message?',
@@ -5010,7 +5009,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: Row(
           children: const [
             Icon(Icons.call_split, color: Colors.blueAccent, size: 22),
@@ -5081,7 +5080,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
         preferBelow: false,
         textStyle: const TextStyle(fontSize: 12, color: Colors.white),
         decoration: BoxDecoration(
-          color: const Color(0xFF1F2937),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: Colors.white12),
         ),
@@ -5203,7 +5202,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
           preferBelow: false,
           textStyle: const TextStyle(fontSize: 12, color: Colors.white),
           decoration: BoxDecoration(
-            color: const Color(0xFF1F2937),
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(color: Colors.white12),
           ),
@@ -5256,7 +5255,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
           preferBelow: false,
           textStyle: const TextStyle(fontSize: 12, color: Colors.white),
           decoration: BoxDecoration(
-            color: const Color(0xFF1F2937),
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(color: Colors.white12),
           ),
@@ -5307,7 +5306,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Edit Message'),
         content: SizedBox(
           width: 500,
@@ -5748,7 +5747,7 @@ class _ExternalImageWidgetState extends State<_ExternalImageWidget> {
         width: 300,
         height: 200,
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
+          color: AppColors.card,
           borderRadius: BorderRadius.circular(12),
         ),
         child: const Center(
@@ -7452,7 +7451,7 @@ class _MemorySectionState extends State<_MemorySection> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: Row(
           children: [
             const Icon(
@@ -7604,7 +7603,7 @@ class _MemorySectionState extends State<_MemorySection> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Reset Character Evolution?'),
         content: const Text(
           'This will reset the character\'s personality and scenario back to the original card values. '
@@ -7648,7 +7647,7 @@ class _RagSetupDialogState extends State<_RagSetupDialog> {
     final sidecar = Provider.of<EmbeddingSidecar>(context);
 
     return Dialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: AppColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 440),

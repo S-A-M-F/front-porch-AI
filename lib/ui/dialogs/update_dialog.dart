@@ -20,6 +20,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 
 /// Dialog shown when a new version is available.
@@ -57,7 +58,7 @@ class UpdateDialog extends StatelessWidget {
   /// Stage 1: "A new version is available, would you like to download?"
   Widget _buildPromptDialog(BuildContext context, UpdateService service) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: AppColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [
@@ -136,7 +137,7 @@ class UpdateDialog extends StatelessWidget {
   /// Stage 2: Download in progress
   Widget _buildDownloadingDialog(BuildContext context, UpdateService service) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: AppColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: const Text('Downloading Update...', style: TextStyle(color: Colors.white)),
       content: Column(
@@ -160,7 +161,7 @@ class UpdateDialog extends StatelessWidget {
   /// Stage 3: Download complete — "Ready to install now?"
   Widget _buildReadyToInstallDialog(BuildContext context, UpdateService service) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: AppColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [

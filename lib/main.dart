@@ -27,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
 import 'package:window_manager/window_manager.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/ui/layout/main_layout.dart'; // Keep original import for MainLayout
 import 'package:front_porch_ai/services/kobold_service.dart';
@@ -796,10 +797,10 @@ class _MyAppState extends State<MyApp> with WindowListener {
             brightness: appState.darkMode ? Brightness.dark : Brightness.light,
             primarySwatch: Colors.blue,
             scaffoldBackgroundColor: appState.darkMode
-                ? const Color(0xFF0F172A)
+                ? AppColors.background
                 : const Color(0xFFF3F4F6),
             cardColor: appState.darkMode
-                ? const Color(0xFF1E293B)
+                ? AppColors.card
                 : Colors.white,
             textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme)
                 .apply(
@@ -935,7 +936,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
   Widget _buildCorruptionOverlay() {
     return Positioned.fill(
       child: Material(
-        color: const Color(0xFF0F172A),
+        color: AppColors.background,
         child: Center(
           child: SizedBox(
             width: 460,
@@ -994,7 +995,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
                     constraints: const BoxConstraints(maxHeight: 220),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
+                      color: AppColors.card,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: Colors.white.withValues(alpha: 0.1),
@@ -1089,7 +1090,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
+                      color: AppColors.card,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: Colors.orange.withValues(alpha: 0.3),
@@ -1207,7 +1208,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
   Widget _buildMigrationOverlay() {
     return Positioned.fill(
       child: Material(
-        color: const Color(0xFF0F172A),
+        color: AppColors.background,
         child: Center(
           child: SizedBox(
             width: 420,
@@ -1492,7 +1493,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
   Widget _buildReunificationOverlay() {
     return Positioned.fill(
       child: Material(
-        color: const Color(0xFF0F172A),
+        color: AppColors.background,
         child: Center(
           child: SizedBox(
             width: 420,
@@ -1554,7 +1555,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
+                      color: AppColors.card,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: Colors.blueAccent.withValues(alpha: 0.3),
@@ -1776,7 +1777,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
             context: context,
             barrierDismissible: false,
             builder: (ctx) => AlertDialog(
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: AppColors.card,
               title: const Row(
                 children: [
                   Icon(
@@ -1863,7 +1864,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
             context: context,
             barrierDismissible: false,
             builder: (ctx) => AlertDialog(
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: AppColors.card,
               title: const Row(
                 children: [
                   Icon(

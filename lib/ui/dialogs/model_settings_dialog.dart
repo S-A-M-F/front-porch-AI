@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:path/path.dart' as pathLib;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
@@ -333,7 +334,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog>
                 : models.where((m) => m.id.toLowerCase().contains(searchQuery.toLowerCase())).toList();
 
             return AlertDialog(
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: AppColors.card,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,7 +436,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog>
     final backend = llmProvider.activeBackend;
 
     return Dialog(
-       backgroundColor: const Color(0xFF1F2937),
+       backgroundColor: AppColors.surface,
        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
        child: Container(
          width: 500,
