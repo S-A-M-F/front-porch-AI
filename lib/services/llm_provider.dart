@@ -77,12 +77,20 @@ class LLMProvider extends ChangeNotifier {
   ) {
     _syncFromStorage();
     _storageService.addListener(_syncFromStorage);
+    _koboldService.addListener(_onServiceChanged);
+    _pseudoRemoteService.addListener(_onServiceChanged);
   }
 
   @override
   void dispose() {
     _storageService.removeListener(_syncFromStorage);
+    _koboldService.removeListener(_onServiceChanged);
+    _pseudoRemoteService.removeListener(_onServiceChanged);
     super.dispose();
+  }
+
+  void _onServiceChanged() {
+    notifyListeners();
   }
 
   void _syncFromStorage() {
