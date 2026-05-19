@@ -85,8 +85,8 @@ class SetupService extends ChangeNotifier {
         }
       }
 
-      // 3. Autostart Backend only if local mode was last used
-      final isLocalBackend = _storageService.backendType != 'openRouter';
+      // 3. Autostart Backend only if local KoboldCPP mode was last used
+      final isLocalBackend = _storageService.backendType == 'kobold';
       if (isLocalBackend && _storageService.autostartBackend && _storageService.lastUsedModelPath != null) {
         _currentStep = SetupStep.startingBackend;
         notifyListeners();

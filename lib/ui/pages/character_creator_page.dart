@@ -766,8 +766,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   Future<void> _loadAvailableModels() async {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
 
-    // If using KoboldCpp backend, no remote model list — just use the local model
-    if (llmProvider.activeBackend == BackendType.kobold) {
+    // If using KoboldCpp or PseudoRemote backend, no remote model list
+    if (llmProvider.activeBackend == BackendType.kobold ||
+        llmProvider.activeBackend == BackendType.pseudoRemote) {
       if (mounted) {
         setState(() {
           _availableModels = [];
@@ -1075,6 +1076,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   Widget _buildSetupStep() {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
     final isKobold = llmProvider.activeBackend == BackendType.kobold;
+    final isPseudoRemote = llmProvider.activeBackend == BackendType.pseudoRemote;
 
     return Center(
       key: const ValueKey('setup'),
@@ -1104,7 +1106,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 children: [
                   Expanded(
                     child: _backendChip(
-                      label: 'KoboldCpp (Local)',
+                      label: 'KoboldCpp',
                       icon: Icons.computer,
                       isSelected: isKobold,
                       onTap: () async {
@@ -1119,11 +1121,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _backendChip(
-                      label: 'API (Remote)',
-                      icon: Icons.cloud,
-                      isSelected: !isKobold,
+                      label: 'Pseudo-Remote',
+                      icon: Icons.laptop,
+                      isSelected: isPseudoRemote,
                       onTap: () async {
-                        if (isKobold) {
+                        if (!isPseudoRemote) {
+                          await llmProvider.setActiveBackend(BackendType.pseudoRemote);
+                          setState(() {});
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _backendChip(
+                      label: 'Remote API',
+                      icon: Icons.cloud,
+                      isSelected: !isKobold && !isPseudoRemote,
+                      onTap: () async {
+                        if (isKobold || isPseudoRemote) {
                           await llmProvider.setActiveBackend(BackendType.openRouter);
                           _loadAvailableModels();
                           setState(() {});
@@ -2107,6 +2123,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         return;
       }
       llmService = kobold;
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final pseudo = llmProvider.pseudoRemoteService;
+      if (!pseudo.isReady) {
+        setState(() {
+          _generationStatus = 'Error: Pseudo-Remote is not running. Start it first.';
+          _isGenerating = false;
+        });
+        return;
+      }
+      llmService = pseudo;
     } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
       llmService = OpenRouterService(
         apiUrl: storage.remoteApiUrl,
@@ -2232,7 +2258,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     // Auto-start avatar generation (API backend only)
     final llmProvider2 = Provider.of<LLMProvider>(context, listen: false);
-    if (llmProvider2.activeBackend != BackendType.kobold) {
+    if (llmProvider2.activeBackend != BackendType.kobold &&
+        llmProvider2.activeBackend != BackendType.pseudoRemote) {
       _generateAvatar();
     }
   }
@@ -4720,7 +4747,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                     Text('Generating avatar...', style: TextStyle(color: Colors.white38, fontSize: 12)),
                                   ],
                                 )
-                              : Provider.of<LLMProvider>(context, listen: false).activeBackend == BackendType.kobold
+                              : Provider.of<LLMProvider>(context, listen: false).activeBackend == BackendType.kobold ||
+                                      Provider.of<LLMProvider>(context, listen: false).activeBackend == BackendType.pseudoRemote
                                   ? Padding(
                                       padding: const EdgeInsets.all(16),
                                       child: Column(
@@ -4728,7 +4756,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                         children: [
                                           const Icon(Icons.content_copy, size: 32, color: Colors.white24),
                                           const SizedBox(height: 8),
-                                          const Text('Avatar generation unavailable with KoboldCpp',
+                                          const Text('Avatar generation unavailable with managed backends',
                                             style: TextStyle(color: Colors.white38, fontSize: 12),
                                             textAlign: TextAlign.center),
                                           const SizedBox(height: 8),
@@ -5189,6 +5217,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         return;
       }
       llmService = kobold;
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final pseudo = llmProvider.pseudoRemoteService;
+      if (!pseudo.isReady) {
+        setState(() { _generationStatus = 'Error: Pseudo-Remote is not running. Start it first.'; _isGenerating = false; });
+        return;
+      }
+      llmService = pseudo;
     } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
       llmService = OpenRouterService(apiUrl: storage.remoteApiUrl, apiKey: storage.remoteApiKey, modelName: _selectedModelId);
     } else {
@@ -5197,6 +5232,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         setState(() { _generationStatus = 'Error: No LLM service available. Configure a model first.'; _isGenerating = false; });
         return;
       }
+      // Use the shared OpenRouterService so we get the streaming + TTS flow
       llmService = active;
     }
 
@@ -5350,7 +5386,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
       setState(() { _currentStep = 4; _isGenerating = false; _progress = 1.0; _activeGenService = null; }); // → Realism step
 
-      if (llmProvider.activeBackend != BackendType.kobold) {
+      if (llmProvider.activeBackend != BackendType.kobold &&
+          llmProvider.activeBackend != BackendType.pseudoRemote) {
         _generateAvatar();
       }
     } else {
@@ -5613,6 +5650,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     if (llmProvider.activeBackend == BackendType.kobold) {
       final kobold = llmProvider.koboldService;
       if (kobold.isReady) llmService = kobold;
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final pseudo = llmProvider.pseudoRemoteService;
+      if (pseudo.isReady) llmService = pseudo;
     } else {
       if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
         llmService = OpenRouterService(
@@ -5668,6 +5708,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         return;
       }
       llmService = kobold;
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final pseudo = llmProvider.pseudoRemoteService;
+      if (!pseudo.isReady) {
+        setState(() {
+          _generationStatus = 'Error: Pseudo-Remote is not running. Start it first.';
+          _isGenerating = false;
+        });
+        return;
+      }
+      llmService = pseudo;
     } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
       final tempService = OpenRouterService(
         apiUrl: storage.remoteApiUrl,
@@ -5687,7 +5737,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       llmService = active;
     }
 
-    debugPrint('CharacterGen: Using backend: ${llmService.runtimeType} (${llmProvider.activeBackend == BackendType.kobold ? "KoboldCpp" : _selectedModelId.isNotEmpty ? _selectedModelId : "default API model"})');
+    debugPrint('CharacterGen: Using backend: ${llmService.runtimeType} (${llmProvider.activeBackend == BackendType.kobold ? "KoboldCpp" : llmProvider.activeBackend == BackendType.pseudoRemote ? "PseudoRemote" : _selectedModelId.isNotEmpty ? _selectedModelId : "default API model"})');
 
     // Resolve selected persona context
     String userPersonaContext = '';
@@ -5847,8 +5897,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         _activeGenService = null;
       });
 
-      // Auto-start avatar generation (API backend only — KoboldCpp has no image API)
-      if (llmProvider.activeBackend != BackendType.kobold) {
+      // Auto-start avatar generation (API backend only — local backends have no image API)
+      if (llmProvider.activeBackend != BackendType.kobold &&
+          llmProvider.activeBackend != BackendType.pseudoRemote) {
         _generateAvatar();
       }
     } else {

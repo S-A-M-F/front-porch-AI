@@ -32,6 +32,7 @@ import 'package:front_porch_ai/services/hardware_service.dart';
 import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
 import 'package:front_porch_ai/ui/widgets/log_view.dart';
 import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
@@ -535,25 +536,42 @@ class _SettingsPageState extends State<SettingsPage> {
     _applyAutoConfiguration(silent: false);
   }
 
-  Future<void> _toggleKobold(BuildContext context) async {
-    final koboldService = Provider.of<KoboldService>(context, listen: false);
+  /// Returns the onPressed callback for the unified managed-backend Start/Stop button.
+  VoidCallback? _buildManagedStartStopOnPressed(BuildContext context) {
+    final llmProvider = Provider.of<LLMProvider>(context, listen: false);
     final backendManager = Provider.of<BackendManager>(context, listen: false);
 
-    if (koboldService.isRunning) {
-      await koboldService.stopKobold();
-    } else {
-      if (backendManager.backendPath == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Backend not found. Please download it first.'),
-          ),
-        );
-        return;
+    // Disable if no executable is available
+    if (backendManager.backendPath == null) return null;
+
+    // Disable pseudo-remote Start if no kcpps path selected
+    if (!llmProvider.hasAnyManagedProcessRunning &&
+        llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final storage = Provider.of<StorageService>(context, listen: false);
+      if (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty) {
+        return null;
       }
+    }
+
+    return () => _toggleManagedBackend(context);
+  }
+
+  Future<void> _toggleManagedBackend(BuildContext context) async {
+    final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+    final backendManager = Provider.of<BackendManager>(context, listen: false);
+
+    // ── Stop: if anything is running, stop both ──
+    if (llmProvider.hasAnyManagedProcessRunning) {
+      await llmProvider.stopAllManagedProcesses();
+      return;
+    }
+
+    // ── Start: nothing is running ──
+    if (llmProvider.activeBackend == BackendType.kobold) {
+      // Reuse existing kobold start logic
+      final koboldService = Provider.of<KoboldService>(context, listen: false);
       final storage = Provider.of<StorageService>(context, listen: false);
 
-      // Case A — preset has its own model: skip all model-path checks.
-      // Case B — preset has no model OR no preset: require a Flutter selection.
       final presetOwnsModel = storage.kcppsHasModel;
 
       if (!presetOwnsModel) {
@@ -574,7 +592,6 @@ class _SettingsPageState extends State<SettingsPage> {
       final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 0;
       final contextSize = int.tryParse(_contextSizeController.text) ?? 4096;
 
-      // Persist settings so autostart uses them on next launch
       storage.setGpuLayers(gpuLayers);
       storage.setContextSize(contextSize);
       storage.setUseCublas(_useCublas);
@@ -582,9 +599,6 @@ class _SettingsPageState extends State<SettingsPage> {
       storage.setUseMetal(_useMetal);
       storage.setUseRocm(_useRocm);
 
-      // When the preset owns the model, pass empty string — KoboldCPP reads
-      // it from the .kcpps config. When the user picked a model via the
-      // Flutter picker, pass it so KoboldCPP never opens its own file dialog.
       final effectiveModel = presetOwnsModel ? '' : _selectedModelPath!;
 
       koboldService.startKobold(
@@ -597,6 +611,21 @@ class _SettingsPageState extends State<SettingsPage> {
         useCublas: _useCublas,
         useMetal: _useMetal,
         useRocm: _useRocm,
+      );
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final storage = Provider.of<StorageService>(context, listen: false);
+      final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+
+      if (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a .kcpps preset first.')),
+        );
+        return;
+      }
+
+      await pseudoRemote.start(
+        executablePath: backendManager.backendPath!,
+        kcppsPath: storage.activeKcppsPath!,
       );
     }
   }
@@ -2257,6 +2286,42 @@ class _SettingsPageState extends State<SettingsPage> {
                         title: Row(
                           children: [
                             Icon(
+                              Icons.laptop,
+                              size: 18,
+                              color: theme.iconTheme.color,
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Pseudo-Remote',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ],
+                        ),
+                        value: BackendType.pseudoRemote,
+                        groupValue: llmProvider.activeBackend,
+                        onChanged: (val) async {
+                          if (val != null) {
+                            await llmProvider.setActiveBackend(val);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Switched to Pseudo-Remote backend.',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<BackendType>(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Row(
+                          children: [
+                            Icon(
                               Icons.cloud,
                               size: 18,
                               color: theme.iconTheme.color,
@@ -2272,15 +2337,12 @@ class _SettingsPageState extends State<SettingsPage> {
                         groupValue: llmProvider.activeBackend,
                         onChanged: (val) async {
                           if (val != null) {
-                            final stoppedKobold = await llmProvider
-                                .setActiveBackend(val);
+                            await llmProvider.setActiveBackend(val);
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
+                                const SnackBar(
                                   content: Text(
-                                    stoppedKobold
-                                        ? 'Shutting down KoboldCPP… Switched to Remote API.'
-                                        : 'Switched to Remote API backend.',
+                                    'Switched to Remote API backend.',
                                   ),
                                 ),
                               );
@@ -2291,9 +2353,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ],
                 ),
-                if (llmProvider.isLocal)
+                if (llmProvider.activeBackend == BackendType.kobold)
                   Text(
-                    'Use a local KoboldCPP instance to run models on your hardware.',
+                    'Use a local KoboldCPP instance with native API.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
+                  )
+                else if (llmProvider.activeBackend == BackendType.pseudoRemote)
+                  Text(
+                    'Runs KoboldCPP locally but communicates via OpenAI-compatible API.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.grey,
                     ),
@@ -2310,7 +2379,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
 
           // ── Remote API Configuration ──
-          if (!llmProvider.isLocal) ...[
+          if (llmProvider.activeBackend == BackendType.openRouter) ...[
             const SizedBox(height: 24),
             _buildSectionHeader('API Configuration', context),
             const SizedBox(height: 8),
@@ -2640,11 +2709,15 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
 
-          // ── Local KoboldCPP sections (only when local mode and not Intel Mac) ──
-          if (llmProvider.isLocal && !backendManager.isIntelMac) ...[
+          // ── Managed process sections (Local KoboldCPP / Pseudo-Remote) ──
+          if (llmProvider.hasManagedProcess && !backendManager.isIntelMac) ...[
             const SizedBox(height: 24),
-            _buildSectionHeader('Koboldcpp Backend', context),
-            // ... (Existing Backend Logic adapted) ...
+            _buildSectionHeader(
+              llmProvider.activeBackend == BackendType.pseudoRemote
+                  ? 'Pseudo-Remote Backend'
+                  : 'Koboldcpp Backend',
+              context,
+            ),
             const SizedBox(height: 16),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2713,131 +2786,137 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
 
-            const SizedBox(height: 16),
-            Container(
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SwitchListTile(
-                title: const Text(
-                  'Auto-start model on launch',
-                  style: TextStyle(fontSize: 14),
-                ),
-                subtitle: Text(
-                  'Automatically load the last used model when the app starts',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
-                    fontSize: 11,
-                  ),
-                ),
-                value: storageService.autostartBackend,
-                activeTrackColor: Colors.blueAccent,
-                onChanged: (val) {
-                  storageService.setAutostartBackend(val);
-                },
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            _buildSectionHeader('Model Selection', context),
-            const SizedBox(height: 16),
-            // When the active .kcpps preset specifies its own model path,
-            // KoboldCPP loads it automatically — grey out the picker so the
-            // user isn't confused about why their selection has no effect.
-            if (storageService.kcppsHasModel)
-              Tooltip(
-                message: 'Model is controlled by the active .kcpps preset',
-                child: Opacity(
-                  opacity: 0.45,
-                  child: IgnorePointer(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: theme.cardColor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.lock_outline, size: 16, color: Colors.white38),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Controlled by preset',
-                            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white38),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              )
-            else if (modelManager.models.isEmpty)
-              const Text(
-                'No models available. Go to "Manage Models" to download one.',
-                style: TextStyle(color: Colors.orange),
-              )
-            else
+            // Model selection — only for local KoboldCPP (pseudo-remote uses .kcpps only)
+            if (llmProvider.activeBackend == BackendType.kobold) ...[
+              const SizedBox(height: 16),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   color: theme.cardColor,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedModelPath,
-                    isExpanded: true,
-                    dropdownColor: theme.cardColor,
-                    style: theme.textTheme.bodyMedium,
-                    icon: Icon(
-                      Icons.arrow_drop_down,
-                      color: theme.iconTheme.color,
-                    ),
-                    items: modelManager.models.map((file) {
-                      return DropdownMenuItem(
-                        value: file.path,
-                        child: Text(
-                          file.path.split(Platform.pathSeparator).last,
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (val) async {
-                      final koboldService = Provider.of<KoboldService>(context, listen: false);
-                      if (koboldService.isRunning) {
-                        await koboldService.stopKobold();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Backend stopped to switch models.'),
-                          ),
-                        );
-                      }
-                      setState(() {
-                        _selectedModelPath = val;
-                      });
-                      final storage = Provider.of<StorageService>(context, listen: false);
-                      storage.setLastUsedModelPath(val);
-                      
-                      // Auto-load preset for this model if one exists
-                      if (val != null) {
-                        final savedPreset = storage.modelPresetMap[val];
-                        if (savedPreset != null && savedPreset.isNotEmpty && File(savedPreset).existsSync()) {
-                          storage.setActiveKcppsPath(savedPreset);
-                        } else {
-                          storage.setActiveKcppsPath(null);
-                        }
-                      }
-                      
-                      _applyAutoConfiguration(silent: true);
-                    },
+                child: SwitchListTile(
+                  title: const Text(
+                    'Auto-start model on launch',
+                    style: TextStyle(fontSize: 14),
                   ),
+                  subtitle: Text(
+                    'Automatically load the last used model when the app starts',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 11,
+                    ),
+                  ),
+                  value: storageService.autostartBackend,
+                  activeTrackColor: Colors.blueAccent,
+                  onChanged: (val) {
+                    storageService.setAutostartBackend(val);
+                  },
                 ),
               ),
 
+              const SizedBox(height: 24),
+              _buildSectionHeader('Model Selection', context),
+              const SizedBox(height: 16),
+              if (storageService.kcppsHasModel)
+                Tooltip(
+                  message: 'Model is controlled by the active .kcpps preset',
+                  child: Opacity(
+                    opacity: 0.45,
+                    child: IgnorePointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: theme.cardColor,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.lock_outline, size: 16, color: Colors.white38),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Controlled by preset',
+                              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white38),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else if (modelManager.models.isEmpty)
+                const Text(
+                  'No models available. Go to "Manage Models" to download one.',
+                  style: TextStyle(color: Colors.orange),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedModelPath,
+                      isExpanded: true,
+                      dropdownColor: theme.cardColor,
+                      style: theme.textTheme.bodyMedium,
+                      icon: Icon(
+                        Icons.arrow_drop_down,
+                        color: theme.iconTheme.color,
+                      ),
+                      items: modelManager.models.map((file) {
+                        return DropdownMenuItem(
+                          value: file.path,
+                          child: Text(
+                            file.path.split(Platform.pathSeparator).last,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) async {
+                        final koboldService = Provider.of<KoboldService>(context, listen: false);
+                        if (koboldService.isRunning) {
+                          await koboldService.stopKobold();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Backend stopped to switch models.'),
+                            ),
+                          );
+                        }
+                        setState(() { _selectedModelPath = val; });
+                        final storage = Provider.of<StorageService>(context, listen: false);
+                        storage.setLastUsedModelPath(val);
+                        if (val != null) {
+                          final savedPreset = storage.modelPresetMap[val];
+                          if (savedPreset != null && savedPreset.isNotEmpty && File(savedPreset).existsSync()) {
+                            storage.setActiveKcppsPath(savedPreset);
+                          } else {
+                            storage.setActiveKcppsPath(null);
+                          }
+                        }
+                        _applyAutoConfiguration(silent: true);
+                      },
+                    ),
+                  ),
+                ),
+            ],
+
+            // GPU / Advanced settings — only for local KoboldCPP
+            if (llmProvider.activeBackend == BackendType.kobold) ...[
+              const SizedBox(height: 24),
+              _buildSectionHeader('GPU & Advanced', context),
+              const SizedBox(height: 8),
+              ...() sync* {
+                yield const SizedBox.shrink();
+              }(),
+            ],
+
+            // kcpps preset — always shown for managed backends
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildSectionHeader('Configuration Preset', context),
+                _buildSectionHeader('Configuration Preset (.kcpps)', context),
                 TextButton.icon(
                   onPressed: _scanLocalPresets,
                   icon: const Icon(Icons.refresh, size: 14),
@@ -2867,7 +2946,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Preset overrides all other generation settings. Use .kcpps files placed in your bin directory.',
+                          llmProvider.activeBackend == BackendType.pseudoRemote
+                              ? 'A .kcpps preset is required to start the Pseudo-Remote backend.'
+                              : 'Preset overrides all other generation settings. Use .kcpps files placed in your bin directory.',
                           style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
                         ),
                       ),
@@ -2901,14 +2982,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             ],
                             onChanged: (val) {
                               storageService.setActiveKcppsPath(val);
-                              // Auto-associate with current model if one is selected
                               if (_selectedModelPath != null && val != null) {
                                 storageService.setModelPreset(_selectedModelPath!, val);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text('Preset saved for model: ${p.basename(_selectedModelPath!)}')),
                                 );
                               } else if (_selectedModelPath != null && val == null) {
-                                // Clear association if "None" is selected
                                 storageService.setModelPreset(_selectedModelPath!, '');
                               }
                             },
@@ -2928,7 +3007,6 @@ class _SettingsPageState extends State<SettingsPage> {
                             if (_selectedModelPath != null) {
                               storageService.setModelPreset(_selectedModelPath!, path);
                             }
-                            // Rescan to include the new file if it's not already there
                             _scanLocalPresets();
                           }
                         },
@@ -2944,21 +3022,24 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
 
+            // Unified Start/Stop button
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: backendManager.backendPath == null
-                    ? null
-                    : () => _toggleKobold(context),
+                onPressed: _buildManagedStartStopOnPressed(context),
                 icon: Icon(
-                  koboldService.isRunning ? Icons.stop : Icons.play_arrow,
+                  llmProvider.hasAnyManagedProcessRunning
+                      ? Icons.stop
+                      : Icons.play_arrow,
                 ),
                 label: Text(
-                  koboldService.isRunning ? 'Stop Backend' : 'Start Backend',
+                  llmProvider.hasAnyManagedProcessRunning
+                      ? 'Stop Backend'
+                      : 'Start Backend',
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: koboldService.isRunning
+                  backgroundColor: llmProvider.hasAnyManagedProcessRunning
                       ? Colors.red.withValues(alpha: 0.8)
                       : Colors.green.withValues(alpha: 0.8),
                   foregroundColor: Colors.white,
@@ -2969,8 +3050,10 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 24),
             _buildSectionHeader('Process Logs', context),
             const SizedBox(height: 8),
-            LogView(logs: koboldService.logs),
-          ], // end isLocal
+            LogView(logs: llmProvider.activeBackend == BackendType.pseudoRemote
+                ? llmProvider.pseudoRemoteService.logs
+                : koboldService.logs),
+          ], // end hasManagedProcess
         ],
       ),
     );

@@ -29,6 +29,7 @@ import 'package:front_porch_ai/services/hardware_service.dart';
 import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
 
 class ModelSettingsDialog extends StatefulWidget {
   const ModelSettingsDialog({super.key});
@@ -430,7 +431,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final llmProvider = Provider.of<LLMProvider>(context);
-    final isLocal = llmProvider.isLocal;
+    final backend = llmProvider.activeBackend;
 
     return Dialog(
        backgroundColor: const Color(0xFF1F2937),
@@ -464,15 +465,23 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                      child: _buildToggleButton(
                        label: 'Local',
                        icon: Icons.computer,
-                       isSelected: isLocal,
+                       isSelected: backend == BackendType.kobold,
                        onTap: () => llmProvider.setActiveBackend(BackendType.kobold),
+                     ),
+                   ),
+                   Expanded(
+                     child: _buildToggleButton(
+                       label: 'Pseudo',
+                       icon: Icons.laptop,
+                       isSelected: backend == BackendType.pseudoRemote,
+                       onTap: () => llmProvider.setActiveBackend(BackendType.pseudoRemote),
                      ),
                    ),
                    Expanded(
                      child: _buildToggleButton(
                        label: 'Remote API',
                        icon: Icons.cloud,
-                       isSelected: !isLocal,
+                       isSelected: backend == BackendType.openRouter,
                        onTap: () => llmProvider.setActiveBackend(BackendType.openRouter),
                      ),
                    ),
@@ -484,7 +493,11 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
              // Content area
              Flexible(
                child: SingleChildScrollView(
-                 child: isLocal ? _buildLocalSettings() : _buildRemoteSettings(),
+                 child: backend == BackendType.kobold
+                     ? _buildLocalSettings()
+                     : backend == BackendType.pseudoRemote
+                         ? _buildPseudoRemoteSettings()
+                         : _buildRemoteSettings(),
                ),
              ),
            ],
@@ -993,6 +1006,143 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildPseudoRemoteSettings() {
+    final pseudoRemote = Provider.of<PseudoRemoteService>(context);
+    final kobold = Provider.of<KoboldService>(context);
+    final llmProvider = Provider.of<LLMProvider>(context);
+    final anyRunning = llmProvider.hasAnyManagedProcessRunning;
+    final storage = Provider.of<StorageService>(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Configuration Preset (.kcpps)', style: TextStyle(fontSize: 13, color: Colors.white70)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF374151),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _localPresets.any((f) => f.path == storage.activeKcppsPath)
+                        ? storage.activeKcppsPath
+                        : null,
+                    isExpanded: true,
+                    hint: const Text('Required — select a .kcpps preset', style: TextStyle(fontSize: 13)),
+                    dropdownColor: const Color(0xFF374151),
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('None (select a preset)', style: TextStyle(fontSize: 13)),
+                      ),
+                      ..._localPresets.map((file) {
+                        return DropdownMenuItem<String>(
+                          value: file.path,
+                          child: Text(pathLib.basename(file.path), style: const TextStyle(fontSize: 13)),
+                        );
+                      }),
+                    ],
+                    onChanged: (val) {
+                      storage.setActiveKcppsPath(val);
+                    },
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: () async {
+                final result = await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['kcpps'],
+                );
+                if (result != null && result.files.single.path != null) {
+                  storage.setActiveKcppsPath(result.files.single.path!);
+                  _scanLocalPresets();
+                }
+              },
+              icon: const Icon(Icons.folder_open, size: 20),
+              tooltip: 'Browse',
+              style: IconButton.styleFrom(
+                backgroundColor: const Color(0xFF374151),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: anyRunning
+                ? () => _stopManagedBackend(context)
+                : (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty)
+                    ? null
+                    : () => _startPseudoRemote(context),
+            icon: Icon(anyRunning ? Icons.stop : Icons.play_arrow),
+            label: Text(anyRunning ? 'Stop Backend' : 'Start Pseudo-Remote'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: anyRunning ? Colors.redAccent : Colors.greenAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text('Process Logs', style: TextStyle(fontSize: 13, color: Colors.white70)),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          height: 200,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: ListView.builder(
+            itemCount: pseudoRemote.logs.length,
+            itemBuilder: (context, index) => Text(
+              pseudoRemote.logs[index],
+              style: const TextStyle(fontSize: 11, color: Colors.white60, fontFamily: 'monospace'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _stopManagedBackend(BuildContext context) {
+    Provider.of<LLMProvider>(context, listen: false).stopAllManagedProcesses();
+  }
+
+  Future<void> _startPseudoRemote(BuildContext context) async {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final backendManager = Provider.of<BackendManager>(context, listen: false);
+    final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+
+    if (backendManager.backendPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backend not found.')));
+      return;
+    }
+    if (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a .kcpps preset first.')));
+      return;
+    }
+
+    await pseudoRemote.start(
+      executablePath: backendManager.backendPath!,
+      kcppsPath: storage.activeKcppsPath!,
     );
   }
 

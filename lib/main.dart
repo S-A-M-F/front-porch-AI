@@ -31,6 +31,7 @@ import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/ui/layout/main_layout.dart'; // Keep original import for MainLayout
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/backend_manager.dart';
@@ -238,19 +239,28 @@ void main(List<String> args) async {
               previous ?? ModelManager(storage, downloadManager),
         ),
         ChangeNotifierProvider(create: (_) => OpenRouterService()),
-        ChangeNotifierProxyProvider3<
+        ChangeNotifierProxyProvider<StorageService, PseudoRemoteService>(
+          create: (context) => PseudoRemoteService(
+            Provider.of<StorageService>(context, listen: false),
+          ),
+          update: (context, storage, previous) =>
+              previous ?? PseudoRemoteService(storage),
+        ),
+        ChangeNotifierProxyProvider4<
           KoboldService,
           OpenRouterService,
+          PseudoRemoteService,
           StorageService,
           LLMProvider
         >(
           create: (context) => LLMProvider(
             Provider.of<KoboldService>(context, listen: false),
             Provider.of<OpenRouterService>(context, listen: false),
+            Provider.of<PseudoRemoteService>(context, listen: false),
             Provider.of<StorageService>(context, listen: false),
           ),
-          update: (context, kobold, openRouter, storage, previous) =>
-              previous ?? LLMProvider(kobold, openRouter, storage),
+          update: (context, kobold, openRouter, pseudoRemote, storage, previous) =>
+              previous ?? LLMProvider(kobold, openRouter, pseudoRemote, storage),
         ),
         ChangeNotifierProxyProvider4<
           KoboldService,
@@ -717,8 +727,8 @@ class _MyAppState extends State<MyApp> with WindowListener {
       debugPrint('Failed to save window state: $e');
     }
 
-    // Stop KoboldCPP backend BEFORE destroying the window.
-    // This prevents orphaned processes when the app closes.
+    // Stop managed backends (KoboldCPP + PseudoRemote) BEFORE destroying
+    // the window. This prevents orphaned processes when the app closes.
     try {
       final koboldService = Provider.of<KoboldService>(context, listen: false);
       if (koboldService.isRunning) {
@@ -726,6 +736,14 @@ class _MyAppState extends State<MyApp> with WindowListener {
       }
     } catch (e) {
       debugPrint('AG_DEBUG: Error stopping Kobold on window close: $e');
+    }
+    try {
+      final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+      if (pseudoRemote.isRunning) {
+        await pseudoRemote.stop();
+      }
+    } catch (e) {
+      debugPrint('AG_DEBUG: Error stopping PseudoRemote on window close: $e');
     }
 
     // Run pending installer if user deferred the update
@@ -840,6 +858,13 @@ class _MyAppState extends State<MyApp> with WindowListener {
                           listen: false,
                         );
                         if (kobold.isRunning) await kobold.stopKobold();
+                      } catch (_) {}
+                      try {
+                        final pseudo = Provider.of<PseudoRemoteService>(
+                          context,
+                          listen: false,
+                        );
+                        if (pseudo.isRunning) await pseudo.stop();
                       } catch (_) {}
                       try {
                         final webServer = Provider.of<WebServerService>(

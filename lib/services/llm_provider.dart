@@ -20,35 +20,61 @@ import 'package:flutter/foundation.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 
 /// The available backend types.
-enum BackendType { kobold, openRouter }
+enum BackendType { kobold, openRouter, pseudoRemote }
 
-/// Manages switching between LLM backends (local KoboldCPP vs remote APIs).
+/// Manages switching between LLM backends (local KoboldCPP, Pseudo-Remote, remote APIs).
 ///
 /// Sits between ChatService and the actual backend implementations.
 /// Listens to StorageService for config changes and hot-swaps the active service.
 class LLMProvider extends ChangeNotifier {
   final KoboldService _koboldService;
   final OpenRouterService _openRouterService;
+  final PseudoRemoteService _pseudoRemoteService;
   final StorageService _storageService;
 
   BackendType _activeBackend = BackendType.kobold;
 
   BackendType get activeBackend => _activeBackend;
-  LLMService get activeService =>
-      _activeBackend == BackendType.kobold ? _koboldService : _openRouterService;
+  LLMService get activeService {
+    switch (_activeBackend) {
+      case BackendType.kobold:
+        return _koboldService;
+      case BackendType.pseudoRemote:
+        return _pseudoRemoteService;
+      case BackendType.openRouter:
+        return _openRouterService;
+    }
+  }
 
-  /// Whether the currently active backend is the local KoboldCPP.
+  /// Whether the currently active backend is the local KoboldCPP native API.
+  /// Pseudo-remote returns false here — it uses the OpenAI protocol,
+  /// so eval logic (concurrent dispatch, remote-style params) matches remote.
   bool get isLocal => _activeBackend == BackendType.kobold;
+
+  /// Whether the active backend manages a local subprocess (kobold or pseudoRemote).
+  bool get hasManagedProcess =>
+      _activeBackend == BackendType.kobold ||
+      _activeBackend == BackendType.pseudoRemote;
+
+  /// True when any managed process (kobold or pseudoRemote) is currently running.
+  bool get hasAnyManagedProcessRunning =>
+      _koboldService.isRunning || _pseudoRemoteService.isRunning;
 
   /// Convenience getters for the underlying services (for UI that needs specifics).
   KoboldService get koboldService => _koboldService;
   OpenRouterService get openRouterService => _openRouterService;
+  PseudoRemoteService get pseudoRemoteService => _pseudoRemoteService;
 
-  LLMProvider(this._koboldService, this._openRouterService, this._storageService) {
-    // Sync from persisted settings
+  LLMProvider(
+    this._koboldService,
+    this._openRouterService,
+    this._pseudoRemoteService,
+    this._storageService,
+  ) {
     _syncFromStorage();
     _storageService.addListener(_syncFromStorage);
   }
@@ -61,9 +87,16 @@ class LLMProvider extends ChangeNotifier {
 
   void _syncFromStorage() {
     final typeStr = _storageService.backendType;
-    final newType = typeStr == 'openRouter' ? BackendType.openRouter : BackendType.kobold;
+    BackendType newType;
+    switch (typeStr) {
+      case 'pseudoRemote':
+        newType = BackendType.pseudoRemote;
+      case 'openRouter':
+        newType = BackendType.openRouter;
+      default:
+        newType = BackendType.kobold;
+    }
 
-    // Update OpenRouter config with persisted values
     _openRouterService.configure(
       apiUrl: _storageService.remoteApiUrl,
       apiKey: _storageService.remoteApiKey,
@@ -78,22 +111,54 @@ class LLMProvider extends ChangeNotifier {
   }
 
   /// Switch the active backend and persist the choice.
-  /// Returns `true` if KoboldCPP was running and got shut down.
-  Future<bool> setActiveBackend(BackendType type) async {
-    if (type == _activeBackend) return false;
-
-    bool stoppedKobold = false;
-
-    // Auto-shutdown KoboldCPP when switching away from local
-    if (type == BackendType.openRouter && _koboldService.isRunning) {
-      await _koboldService.stopKobold();
-      stoppedKobold = true;
-    }
+  /// Does NOT start or stop any processes — that is handled by the caller (UI).
+  Future<void> setActiveBackend(BackendType type) async {
+    if (type == _activeBackend) return;
 
     _activeBackend = type;
-    await _storageService.setBackendType(
-        type == BackendType.openRouter ? 'openRouter' : 'kobold');
+    String persistValue;
+    switch (type) {
+      case BackendType.pseudoRemote:
+        persistValue = 'pseudoRemote';
+      case BackendType.openRouter:
+        persistValue = 'openRouter';
+      case BackendType.kobold:
+        persistValue = 'kobold';
+    }
+    await _storageService.setBackendType(persistValue);
     notifyListeners();
-    return stoppedKobold;
+  }
+
+  /// Stop any running managed processes (kobold and/or pseudoRemote).
+  Future<void> stopAllManagedProcesses() async {
+    if (_koboldService.isRunning) {
+      await _koboldService.stopKobold();
+    }
+    if (_pseudoRemoteService.isRunning) {
+      await _pseudoRemoteService.stop();
+    }
+  }
+
+  /// Start the currently selected managed backend.
+  /// Throws if [BackendType.openRouter] is active (no process to start).
+  Future<void> startActiveManagedProcess({
+    required String executablePath,
+    required String kcppsPath,
+  }) async {
+    switch (_activeBackend) {
+      case BackendType.kobold:
+        // The caller should provide model path etc. via the existing flow.
+        // This method is used by the unified start button in settings.
+        throw UnimplementedError(
+          'Use koboldService.startKobold() directly for local backend.',
+        );
+      case BackendType.pseudoRemote:
+        await _pseudoRemoteService.start(
+          executablePath: executablePath,
+          kcppsPath: kcppsPath,
+        );
+      case BackendType.openRouter:
+        throw Exception('Cannot start a process for the OpenRouter backend.');
+    }
   }
 }
