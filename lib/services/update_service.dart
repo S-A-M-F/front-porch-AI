@@ -159,7 +159,9 @@ class UpdateService extends ChangeNotifier {
         final hasBetaString = tagLower.contains('beta') ||
             tagLower.contains('alpha') ||
             tagLower.contains('-rc') ||
-            tagLower.contains('-dev');
+            tagLower.contains('-dev') ||
+            tagLower.contains('-nightly') ||
+            tagLower.contains('-rawhide');
         
         final effectivelyBeta = isPrerelease || hasBetaString;
 

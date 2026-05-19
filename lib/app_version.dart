@@ -30,7 +30,9 @@ bool get isPreRelease {
   return lower.contains('-alpha') ||
       lower.contains('-beta') ||
       lower.contains('-rc') ||
-      lower.contains('-dev');
+      lower.contains('-dev') ||
+      lower.contains('-nightly') ||
+      lower.contains('-rawhide');
 }
 
 /// The stable version number without the pre-release suffix.
