@@ -1,0 +1,216 @@
+// Copyright (C) 2026 Front Porch AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/group_chat.dart';
+
+/// Manages turn order, forced speaker selection, Director Mode state,
+/// and related group chat orchestration.
+///
+/// Extracted from ChatService to reduce the ~40+ scattered
+/// `if (_activeGroup != null)` checks and to give the group chat
+/// subsystem a clear, testable home for future features
+/// (weighted turns, explicit queues, per-character initiative, etc.).
+class GroupTurnManager extends ChangeNotifier {
+  GroupChat? _group;
+  List<CharacterCard> _characters = [];
+  int _turnIndex = 0;
+  String? _forcedNextSpeakerId;
+  bool _observerMode = false;
+  bool _autoPlayActive = false;
+
+  // Director auto-play delay is kept here for now (UI frequently mutates it)
+  double directorDelaySec = 15.0;
+
+  // ── Public API ─────────────────────────────────────────────────────────
+
+  bool get isActive => _group != null;
+  GroupChat? get activeGroup => _group;
+  List<CharacterCard> get characters => List.unmodifiable(_characters);
+
+  /// Current membership IDs from the underlying GroupChat (for add/remove flows).
+  /// Callers should prefer going through the manager for membership changes.
+  List<String> get characterIds =>
+      _group != null ? List.unmodifiable(_group!.characterIds) : const <String>[];
+
+  bool get observerMode => _observerMode;
+  bool get autoPlayActive => _autoPlayActive;
+
+  /// The character that will speak on the next generation (respects forced override).
+  CharacterCard? get nextSpeaker {
+    if (!isActive || _characters.isEmpty) return null;
+
+    if (_forcedNextSpeakerId != null) {
+      return _characters.firstWhere(
+        (c) => _getId(c) == _forcedNextSpeakerId,
+        orElse: () => _characters.first,
+      );
+    }
+
+    if (_group!.turnOrder == TurnOrder.roundRobin) {
+      return _characters[_turnIndex % _characters.length];
+    }
+    return null; // random decided at pick time
+  }
+
+  /// Pick (and advance) the next speaker according to turn order.
+  /// Consumes any forced override if present.
+  CharacterCard pickNextSpeaker() {
+    if (!isActive || _characters.isEmpty) {
+      throw StateError('No active group');
+    }
+
+    // Forced override wins and is one-shot
+    if (_forcedNextSpeakerId != null) {
+      final forced = _characters.firstWhere(
+        (c) => _getId(c) == _forcedNextSpeakerId,
+        orElse: () => _characters.first,
+      );
+      _forcedNextSpeakerId = null;
+      notifyListeners();
+      return forced;
+    }
+
+    if (_group!.turnOrder == TurnOrder.random) {
+      return _characters[Random().nextInt(_characters.length)];
+    }
+
+    // Round robin
+    final char = _characters[_turnIndex % _characters.length];
+    _turnIndex = (_turnIndex + 1) % _characters.length;
+    notifyListeners();
+    return char;
+  }
+
+  /// Manually force a specific character to speak next.
+  /// Works for both random and round-robin, and in Director Mode.
+  void setNextSpeaker(CharacterCard character) {
+    if (!isActive) return;
+
+    final idx = _characters.indexWhere((c) => c.name == character.name);
+    if (idx >= 0) {
+      _turnIndex = idx;
+      _forcedNextSpeakerId = _getId(character);
+      notifyListeners();
+    }
+  }
+
+  /// Clear any pending forced speaker.
+  void clearForcedSpeaker() {
+    if (_forcedNextSpeakerId != null) {
+      _forcedNextSpeakerId = null;
+      notifyListeners();
+    }
+  }
+
+  /// Resets the round-robin pointer and any forced speaker.
+  /// Used when a new greeting is sent or the conversation is reset.
+  void resetTurnState() {
+    _turnIndex = 0;
+    _forcedNextSpeakerId = null;
+    notifyListeners();
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────
+
+  /// Enter group mode with the given definition and resolved characters.
+  void enterGroup(
+    GroupChat group,
+    List<CharacterCard> resolvedCharacters, {
+    bool startInDirectorMode = false,
+  }) {
+    _group = group;
+    _characters = List.of(resolvedCharacters);
+    _turnIndex = 0;
+    _forcedNextSpeakerId = null;
+    _observerMode = startInDirectorMode;
+    _autoPlayActive = false;
+    notifyListeners();
+  }
+
+  /// Leave group mode (returns to 1:1 or nothing).
+  void leaveGroup() {
+    _group = null;
+    _characters = [];
+    _turnIndex = 0;
+    _forcedNextSpeakerId = null;
+    _observerMode = false;
+    _autoPlayActive = false;
+    notifyListeners();
+  }
+
+  /// Re-resolve the character list after the character repository changes
+  /// (add/remove/rename). Clamps indices and drops a forced ID if its
+  /// character is no longer present.
+  void refreshCharacters(List<CharacterCard> newResolvedList) {
+    _characters = List.of(newResolvedList);
+
+    if (_characters.isNotEmpty) {
+      _turnIndex = _turnIndex % _characters.length;
+    } else {
+      _turnIndex = 0;
+    }
+
+    if (_forcedNextSpeakerId != null &&
+        !_characters.any((c) => _getId(c) == _forcedNextSpeakerId)) {
+      _forcedNextSpeakerId = null;
+    }
+
+    notifyListeners();
+  }
+
+  /// Adds a character ID (the stable key stored in GroupChat.characterIds)
+  /// to the active group's membership list. Returns true if newly added.
+  ///
+  /// Does not persist (caller must save via GroupChatRepository) and does not
+  /// refresh the resolved characters list — call refreshCharacters afterwards.
+  bool addCharacterId(String charId) {
+    if (_group == null) return false;
+    if (_group!.characterIds.contains(charId)) return false;
+    _group!.characterIds.add(charId);
+    return true;
+  }
+
+  /// Removes a character ID from the active group's membership list.
+  /// Returns true if the ID was present and removed.
+  ///
+  /// Does not persist; caller must save and then call refreshCharacters.
+  bool removeCharacterId(String charId) {
+    if (_group == null) return false;
+    return _group!.characterIds.remove(charId);
+  }
+
+  void setObserverMode(bool value) {
+    if (_observerMode == value) return;
+    _observerMode = value;
+    if (!value) {
+      _autoPlayActive = false;
+    }
+    notifyListeners();
+  }
+
+  void startAutoPlay() {
+    if (!isActive || !_observerMode) return;
+    _autoPlayActive = true;
+    notifyListeners();
+  }
+
+  void stopAutoPlay() {
+    if (_autoPlayActive) {
+      _autoPlayActive = false;
+      notifyListeners();
+    }
+  }
+
+  // ── Internal helpers ───────────────────────────────────────────────────
+
+  String _getId(CharacterCard card) {
+    if (card.imagePath != null) {
+      return card.imagePath!.split('/').last.split('\\').last.split('.').first;
+    }
+    return card.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
+  }
+}

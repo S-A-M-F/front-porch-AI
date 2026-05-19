@@ -969,6 +969,8 @@ class AppDatabase extends _$AppDatabase {
           );
         } catch (_) {}
       }
+      // Note: RAG settings for groups are now stored in the hidden __group_state__ checkpoint
+      // (no schema change on the groups table).
     },
   );
 

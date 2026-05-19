@@ -34,6 +34,7 @@ import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
+import 'package:front_porch_ai/services/group_turn_manager.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/cloud_sync_service.dart';
@@ -305,15 +306,63 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Group chat state ──
-  GroupChat? _activeGroup;
-  List<CharacterCard> _groupCharacters = [];
-  int _turnIndex = 0;
+  // ── Group chat state (owned by GroupTurnManager) ──
+  GroupTurnManager? _groupManager;
 
-  // ── Director Mode ──
-  bool _observerMode = false;
-  bool _autoPlayActive = false;
-  double directorDelaySec = 15.0; // seconds between auto-chat responses
+  // ── Clean delegation layer (GroupTurnManager is the real owner) ────────
+  // These keep the rest of the (very large) file readable while we finish
+  // the migration. All group state now lives in _groupManager.
+  GroupChat? get _activeGroup => _groupManager?.activeGroup;
+  List<CharacterCard> get _groupCharacters => _groupManager?.characters ?? const <CharacterCard>[];
+  bool get _observerMode => _groupManager?.observerMode ?? false;
+  set _observerMode(bool value) {
+    _groupManager?.setObserverMode(value);
+  }
+
+  bool get _autoPlayActive => _groupManager?.autoPlayActive ?? false;
+  set _autoPlayActive(bool value) {
+    if (value) {
+      _groupManager?.startAutoPlay();
+    } else {
+      _groupManager?.stopAutoPlay();
+    }
+  }
+
+  double get directorDelaySec => _groupManager?.directorDelaySec ?? 15.0;
+  set directorDelaySec(double value) {
+    if (_groupManager != null) {
+      _groupManager!.directorDelaySec = value;
+    }
+  }
+
+  /// Per-character realism / needs / state for group chats.
+  /// Keyed by stable charId. Populated from the hidden checkpoint.
+  Map<String, Map<String, dynamic>> _groupRealism = {};
+
+  /// Per-character Author's Notes for group chats (independent of group-level _authorNote).
+  /// Keyed by stable charId (from _getCharacterIdFromCard). Populated from the
+  /// hidden `__group_state__` checkpoint so they survive forks, sync, and restarts.
+  Map<String, String> _groupAuthorNotes = {};
+  Map<String, int> _groupAuthorNoteStrengths = {};
+
+  // RAG settings for the active group (stored in the hidden checkpoint, no DB schema change)
+  bool _groupRagEnabled = true;
+  int _groupRetrievalCount = 8;
+  double _groupMemoryBudgetPercent = 10.0;
+  Map<String, double> _groupCharacterRAGPriorities = {};
+
+  // ── Group realism checkpoint sentinel (DB-free per-char state) ──
+  // These messages are stored in the chat history for durability across
+  // forks, cloud sync, and restarts, but are *never* shown to the user or
+  // sent to the LLM / embedding service.
+  static const String kGroupStateSender = '__group_state__';
+  static const String kGroupStateCharId = '__meta__';
+
+  bool _isGroupStateMessage(ChatMessage m) =>
+      m.characterId == kGroupStateCharId || m.sender == kGroupStateSender;
+
+  // Director Mode state is now owned by _groupManager when active.
+  // The public getters below delegate to it.
   // ── Author's Note ──
   String _authorNote = '';
   int _authorNoteStrength = 4;
@@ -568,87 +617,87 @@ class ChatService extends ChangeNotifier {
   static const Map<String, List<String>> _needSteppedText = {
     'hunger': [
       // 0 — catastrophic
-      'A violent stomach cramp doubles her over — she is genuinely starving. Her vision swims, knees buckle, and she may faint or become too weak to stand without immediate help. The hunger has become a medical emergency.',
+      'A violent stomach cramp doubles her over. She is genuinely starving — vision swimming, knees weak, barely able to stay upright. The hunger has become a real physical crisis.',
       // 1 — desperate
-      'She is genuinely starving. Sharp cramps, light-headedness, hands trembling. She cannot focus on anything else and must eat something substantial right now or she will collapse.',
+      'Sharp, gnawing cramps twist through her. She feels light-headed and shaky, and her thoughts keep drifting uncontrollably to food. She is struggling to focus on anything else.',
       // 2 — urgent
-      'Her stomach is painfully empty and growling loudly. The hunger is a constant, distracting ache that makes her irritable and unable to think about anything else until she finds food.',
+      'Her stomach feels painfully hollow and tight. A constant, distracting ache that makes her restless and short-tempered. She keeps thinking about when she might be able to eat.',
       // 3 — noticeable
-      'She is getting properly hungry — stomach growling, thoughts drifting to food, a faint light-headed feeling starting to color everything.',
+      'A steady, empty feeling sits in her stomach. Her thoughts occasionally wander toward food and she feels a bit distracted or low-energy.',
       // 4 — mild
-      'A pleasant but persistent hunger is making her think about her next meal. It subtly colors her mood and energy.',
+      'A quiet, background emptiness in her stomach. It is not urgent, but she is aware of it and would welcome a chance to eat soon.',
     ],
     'bladder': [
-      // 0 — catastrophic (the classic Sims disaster)
-      'She couldn\'t hold it another second. A sudden, uncontrollable warm rush floods her — she is wetting herself right here, in front of {{user}} or whoever is present. The fabric darkens visibly, the smell appears, her face burns with utter humiliation. The accident has already happened.',
+      // 0 — catastrophic
+      'She loses control completely. A sudden, hot rush — she is wetting herself right now in the current scene. The humiliation is immediate and overwhelming.',
       // 1 — desperate
-      'She is absolutely desperate. Thighs locked together, small uncontrollable shifts of weight, breath shallow, voice strained. She is one wrong movement away from losing control completely and is begging for any chance to reach a restroom.',
+      'She is fighting with everything she has not to lose control. Thighs pressed tight, constantly shifting, voice tight with strain. She is very close to having an accident.',
       // 2 — urgent
-      'The pressure is constant, painful, and all-consuming. She crosses and uncrosses her legs, cannot stand still, and must find a bathroom in the next few minutes or there will be an accident.',
+      'A strong, insistent pressure has built up. She is visibly uncomfortable and keeps looking for a polite way to excuse herself soon.',
       // 3 — noticeable
-      'She needs to pee quite badly now. The urge is a steady, distracting pressure low in her belly. She shifts her stance frequently and is starting to look for an excuse to excuse herself.',
+      'A steady, distracting pressure low in her belly. She feels the need more and more and would like to find a bathroom before too long.',
       // 4 — mild
-      'A faint but growing need to use the restroom is at the back of her mind, making her slightly restless.',
+      'A faint but persistent urge to use the restroom sits at the back of her mind, making her slightly restless.',
     ],
     'energy': [
       // 0 — catastrophic
-      'Her body simply gives out. Mid-sentence her eyelids flutter and she slumps to the floor, onto the couch, or against {{user}}, completely unconscious from exhaustion. She is out cold and will not wake easily.',
+      'Her body gives out completely. Mid-sentence her eyes flutter and she collapses — slumping to the floor or into {{user}}\'s arms, fully unconscious from exhaustion.',
       // 1 — desperate
-      'She is fighting to stay awake with everything she has — head nodding, eyes unfocused, speech slurring. She may fall asleep standing up or while talking.',
+      'She is barely staying awake. Head nodding, speech slow and heavy, eyes unfocused. She may drift off at any moment.',
       // 2 — urgent
-      'Exhaustion is crushing her. Every movement feels heavy, her thoughts are slow and foggy, and she keeps yawning or rubbing her eyes. She needs rest desperately.',
+      'A heavy, crushing tiredness has settled over her. Every movement feels like effort and her thoughts are slow. She desperately wants to rest.',
       // 3 — noticeable
-      'A deep, bone-weary tiredness is settling over her. She is noticeably slower, less animated, and keeps thinking longingly of a bed or quiet place to rest.',
+      'A deep weariness is weighing on her. She moves a little slower and seems less animated than usual, clearly running low on energy.',
       // 4 — mild
-      'She is pleasantly tired — the kind of comfortable drowsiness that makes her want to curl up somewhere warm.',
+      'A comfortable, heavy tiredness sits behind her eyes. She would happily curl up and rest if the opportunity arose.',
     ],
     'social': [
       // 0
-      'The loneliness has become unbearable. She feels hollow, on the verge of tears or a breakdown if she cannot have real, meaningful connection with someone — anyone — right now.',
+      'The loneliness has become overwhelming. She feels hollow and raw, on the edge of breaking down if she cannot have real, meaningful connection with someone soon.',
       // 1
-      'She is starving for genuine human contact. The isolation is physically painful; she may become clingy, overly emotional, or quietly desperate for any scrap of real attention.',
+      'She feels painfully isolated. The lack of real connection is starting to hurt, and she may become unusually quiet, clingy, or emotionally fragile.',
       // 2
-      'The need for real connection is aching inside her. Small talk feels empty — she craves eye contact, touch, someone who actually sees her.',
+      'A deep ache for genuine connection sits in her chest. Casual interaction feels hollow and she keeps seeking more meaningful moments or closeness.',
       // 3
-      'She is feeling the lack of real companionship. Casual conversation isn\'t enough; she keeps looking for deeper moments or physical closeness.',
+      'She is feeling the absence of real companionship. She seems a little more eager for meaningful conversation or physical closeness than usual.',
       // 4
-      'A quiet craving for genuine connection colors her mood — she is more affectionate and attentive than usual.',
+      'A quiet, gentle craving for real connection makes her a bit more warm and attentive than normal.',
     ],
     'fun': [
       // 0
-      'The boredom has become a kind of psychological torture. She feels restless to the point of madness and may do something reckless, dangerous, or wildly inappropriate just to feel alive again.',
+      'The boredom has become torturous. She feels dangerously restless and may suddenly do something reckless or wildly inappropriate just to feel *something* again.',
       // 1
-      'She is so bored she is going out of her mind. Fidgeting constantly, unable to sit still, voice flat — she will suggest or do almost anything for stimulation or excitement.',
+      'She is deeply restless and bored out of her mind. She fidgets constantly and will suggest almost anything to break the monotony.',
       // 2
-      'Restlessness is eating at her. Everything feels dull and grey. She keeps proposing activities, games, or changes of scene because she cannot stand the monotony another minute.',
+      'A heavy restlessness has settled over her. Everything feels dull and she keeps looking for any excuse to do something more stimulating.',
       // 3
-      'She is growing bored and fidgety. The current situation feels stagnant and she is actively looking for something — anything — more interesting to do.',
+      'She is noticeably bored and fidgety. The current situation feels flat and she is actively hoping for a change of pace.',
       // 4
-      'A mild restlessness makes her want a change of pace or something fun to break the routine.',
+      'A mild restlessness makes her a little more eager for something fun or different to happen.',
     ],
     'hygiene': [
       // 0
-      'She feels disgusting. The grime, sweat, or smell is so overwhelming she is gagging or on the verge of a breakdown. She may refuse to be touched or seen until she can clean up.',
+      'She feels filthy and overwhelmed by it. The grime or smell is so strong it is making her physically uncomfortable and self-conscious to the point of distress.',
       // 1
-      'She is painfully aware of how dirty and unkempt she feels. Every glance in a mirror or from another person makes her cringe. She must wash or freshen up immediately.',
+      'She feels genuinely dirty and is very aware of it. She keeps wanting to cover herself or pull away from contact until she can clean up.',
       // 2
-      'The feeling of being grimy is constant and unpleasant. She keeps touching her hair or clothes, self-conscious and eager to find a sink or shower.',
+      'A persistent feeling of being grimy clings to her. She is self-conscious and keeps thinking about when she can wash or change.',
       // 3
-      'She is starting to feel noticeably unkempt and uncomfortable in her own skin. A quick wash or change would help a lot.',
+      'She is starting to feel noticeably unkempt. A quiet discomfort with her own state makes her want to freshen up soon.',
       // 4
-      'A faint sense of being a bit grubby makes her want to freshen up when convenient.',
+      'A faint, background sense of being a little grubby makes her mildly self-conscious.',
     ],
     'comfort': [
       // 0
-      'The physical discomfort has become intolerable. She cannot stay in this position, this room, these clothes one second longer — she will push past people, interrupt anything, or even strip if that is what it takes to get relief.',
+      'The physical discomfort has become unbearable. She cannot stay like this any longer and will do whatever it takes to find relief, even if it disrupts everything else happening.',
       // 1
-      'Every part of her body hurts or itches or feels wrong. She is shifting constantly, wincing, unable to focus on conversation because the physical misery is too great.',
+      'Her body is in real distress — too hot, too cold, cramped, or aching badly. She is constantly shifting and struggling to focus on anything else.',
       // 2
-      'She is physically uncomfortable to the point of distraction — too hot, too cold, cramped, or sore. She needs to move, change position, or adjust her environment soon.',
+      'A strong physical discomfort is wearing on her. She keeps adjusting her position or environment, clearly unable to settle.',
       // 3
-      'A growing physical discomfort (stiffness, temperature, pressure) is making it hard to relax. She keeps adjusting and looking for a better spot.',
+      'She is noticeably uncomfortable. A persistent physical irritation (temperature, pressure, stiffness) makes it hard for her to fully relax.',
       // 4
-      'She is mildly uncomfortable — a slight ache or awkward position that she would like to fix when it is easy.',
+      'A mild but persistent physical discomfort sits in the background, making her slightly restless.',
     ],
   };
 
@@ -827,7 +876,8 @@ class ChatService extends ChangeNotifier {
       '- Internal thoughts can be written in italics or described through narration.';
 
   CharacterCard? get activeCharacter => _activeCharacter;
-  List<ChatMessage> get messages => List.unmodifiable(_messages);
+  List<ChatMessage> get messages =>
+      List.unmodifiable(_messages.where((m) => !_isGroupStateMessage(m)));
   bool get isGenerating => _isGenerating;
   bool get isLoadingSession => _isLoadingSession;
   String? get currentSessionId => _currentSessionId;
@@ -847,20 +897,234 @@ class ChatService extends ChangeNotifier {
 
   /// Estimated prompt token count for the current generation (for progress display).
   int get prefillPromptTokens => _prefillPromptTokens;
-  bool get isGroupMode => _activeGroup != null;
-  GroupChat? get activeGroup => _activeGroup;
-  bool get observerMode => _observerMode;
-  bool get autoPlayActive => _autoPlayActive;
+  bool get isGroupMode => _groupManager?.isActive ?? false;
+  GroupChat? get activeGroup => _groupManager?.activeGroup;
+  bool get observerMode => _groupManager?.observerMode ?? false;
+  bool get autoPlayActive => _groupManager?.autoPlayActive ?? false;
   List<CharacterCard> get groupCharacters =>
-      List.unmodifiable(_groupCharacters);
+      _groupManager?.characters ?? const <CharacterCard>[];
 
   /// The character who will speak next in group mode.
-  CharacterCard? get nextCharacter {
-    if (_activeGroup == null || _groupCharacters.isEmpty) return null;
-    if (_activeGroup!.turnOrder == TurnOrder.roundRobin) {
-      return _groupCharacters[_turnIndex % _groupCharacters.length];
+  /// Fully delegated to GroupTurnManager (supports forced override + both turn orders + Director Mode).
+  CharacterCard? get nextCharacter => _groupManager?.nextSpeaker;
+
+  // ── Group RAG / Memory Settings (stored in checkpoint) ───────────────────
+  bool get groupRagEnabled => _groupRagEnabled;
+
+  int get groupRetrievalCount => _groupRetrievalCount;
+
+  double get groupMemoryBudgetPercent => _groupMemoryBudgetPercent;
+
+  double getCharacterRAGPriority(String charId) {
+    return _groupCharacterRAGPriorities[charId] ?? 1.0;
+  }
+
+  Map<String, double> get currentGroupRAGPriorities =>
+      Map.unmodifiable(_groupCharacterRAGPriorities);
+
+  void setGroupRAGEnabled(bool value) {
+    if (_activeGroup == null) return;
+    _groupRagEnabled = value;
+    _ensureGroupRealismCheckpoint();
+    notifyListeners();
+  }
+
+  void setGroupRetrievalCount(int value) {
+    if (_activeGroup == null) return;
+    _groupRetrievalCount = value;
+    _ensureGroupRealismCheckpoint();
+    notifyListeners();
+  }
+
+  void setGroupMemoryBudgetPercent(double value) {
+    if (_activeGroup == null) return;
+    _groupMemoryBudgetPercent = value;
+    _ensureGroupRealismCheckpoint();
+    notifyListeners();
+  }
+
+  void setCharacterRAGPriority(String charId, double priority) {
+    if (_activeGroup == null) return;
+    _groupCharacterRAGPriorities[charId] = priority;
+    _ensureGroupRealismCheckpoint();
+    notifyListeners();
+  }
+
+  void clearCharacterRAGPriority(String charId) {
+    _groupCharacterRAGPriorities.remove(charId);
+    _ensureGroupRealismCheckpoint();
+    notifyListeners();
+  }
+
+  /// True only for regular (non-Director) group chats where the Realism Engine
+  /// is enabled. Used by the group sidebar to decide whether to show per-character
+  /// emotion / needs indicators.
+  bool get isGroupRealismActive =>
+      _realismEnabled && isGroupMode && !observerMode;
+
+  /// Phase 3: Hard cap for inter-character relationship tracking.
+  /// Per the approved plan, full hidden inter-character dynamics (seeding,
+  /// decay, injection, and updates) are **only** performed when the group has
+  /// 4 or fewer members. This prevents combinatorial explosion and prompt bloat.
+  ///
+  /// When the group has 5+ members:
+  /// - Inter-character 'relationships' maps remain empty / are ignored.
+  /// - All characters still receive full per-speaker realism evaluations for
+  ///   their feelings **toward the user** (visible bars continue to work).
+  bool get _shouldTrackInterCharacterRelationships {
+    if (_activeGroup == null) return false;
+    return _groupCharacters.length <= 4;
+  }
+
+  /// Returns the current emotion label (e.g. "joy", "sadness", "affection") for
+  /// the given character when in a realism-enabled group chat. Returns null otherwise.
+  String? getEmotionForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return null;
+    final id = _getCharacterIdFromCard(character);
+    final raw = _groupRealism[id]?['emotion'] as String?;
+    return (raw != null && raw.isNotEmpty) ? raw : null;
+  }
+
+  /// Returns a snapshot of all realism data for a specific character in the
+  /// current group (when `isGroupRealismActive` is true). Includes keys like:
+  /// 'emotion', 'emotionIntensity', 'affection', 'trust', 'needs', 'fixation',
+  /// and (when group size ≤ 4) the hidden 'relationships' map toward other members.
+  /// This is primarily for debugging/advanced use; the UI never exposes inter-char data.
+  /// Returns null if not in an active realism group or no data for that char.
+  Map<String, dynamic>? getRealismStateForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return null;
+    final id = _getCharacterIdFromCard(character);
+    final data = _groupRealism[id];
+    return (data != null && data.isNotEmpty) ? Map.unmodifiable(data) : null;
+  }
+
+  // ── Convenient per-character realism accessors for the UI ───────────────
+
+  /// Returns the full needs vector for the given group character.
+  /// Empty map if not in group realism mode or no data.
+  Map<String, int> getNeedsForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return const {};
+    final id = _getCharacterIdFromCard(character);
+    final raw = _groupRealism[id]?['needs'];
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
     }
-    return null; // random is chosen at generation time
+    return const {};
+  }
+
+  int getAffectionForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return 0;
+    final id = _getCharacterIdFromCard(character);
+    return (_groupRealism[id]?['affection'] as num?)?.toInt() ?? 0;
+  }
+
+  int getTrustForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return 0;
+    final id = _getCharacterIdFromCard(character);
+    return (_groupRealism[id]?['trust'] as num?)?.toInt() ?? 0;
+  }
+
+  String? getFixationForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return null;
+    final id = _getCharacterIdFromCard(character);
+    final raw = _groupRealism[id]?['fixation'] as String?;
+    return (raw != null && raw.isNotEmpty) ? raw : null;
+  }
+
+  int getArousalForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return 0;
+    final id = _getCharacterIdFromCard(character);
+    return (_groupRealism[id]?['arousal'] as num?)?.toInt() ?? 0;
+  }
+
+  String? getEmotionIntensityForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return null;
+    final id = _getCharacterIdFromCard(character);
+    final raw = _groupRealism[id]?['emotionIntensity'] as String?;
+    return (raw != null && raw.isNotEmpty) ? raw : null;
+  }
+
+  /// Returns the remaining lifespan (in turns) for the current fixation of the
+  /// given group character, if any. Returns null if not in active group realism
+  /// or no fixation data.
+  int? getFixationLifespanForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return null;
+    final id = _getCharacterIdFromCard(character);
+    final raw = _groupRealism[id]?['fixationLifespan'] as num?;
+    return raw?.toInt();
+  }
+
+  /// Returns the top N most urgent needs (lowest value first) for the character,
+  /// as a list of (needName, value) pairs.
+  List<(String, int)> getTopUrgentNeedsForGroupCharacter(
+    CharacterCard character, {
+    int count = 2,
+  }) {
+    final needs = getNeedsForGroupCharacter(character);
+    if (needs.isEmpty) return const [];
+
+    final sorted = needs.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value)); // lowest = most urgent
+
+    return sorted
+        .take(count)
+        .map((e) => (e.key, e.value))
+        .toList();
+  }
+
+  // ── Hidden inter-character relationship helpers (Phase 0 foundation) ─────
+  // These track how group members feel about *each other* (invisible to UI).
+  // All visible bars/UI continue to reflect only feelings toward the user.
+  // Full inter-char tracking is hard-capped at groups of 4 or fewer (enforced at usage sites).
+
+  /// Returns the map of hidden inter-character relationship scores for the given
+  /// group character (otherCharId → score in -300..+300 range, same scale as bond).
+  /// Empty map if not in group realism mode or no data yet.
+  /// These values are strictly internal and are never exposed in any user-facing UI.
+  ///
+  /// Backward-compat: If an old checkpoint is missing the 'relationships' key for
+  /// a character, we naturally return empty (no migration needed).
+  Map<String, int> getInterCharacterRelationships(String charId) {
+    if (!isGroupRealismActive) return const {};
+    final raw = _groupRealism[charId]?['relationships'];
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    }
+    return const {};
+  }
+
+  /// Applies a delta to the hidden relationship from one group character toward another.
+  /// `fromCharId` is whose feelings are changing toward `toCharId`.
+  /// The value is clamped to [-300, 300]. Creates the map entry if needed.
+  /// No-op outside of an active group.
+  void updateInterCharacterRelationship(String fromCharId, String toCharId, int delta) {
+    if (_activeGroup == null) return;
+
+    final currentMap = Map<String, int>.from(getInterCharacterRelationships(fromCharId));
+    final currentValue = currentMap[toCharId] ?? 0;
+    final newValue = (currentValue + delta).clamp(-300, 300);
+
+    // Reuse the existing internal setter so the per-char map is created cleanly
+    _setGroupRealismValue(fromCharId, 'relationships', {
+      ...currentMap,
+      toCharId: newValue,
+    });
+  }
+
+  /// Clears the per-character realism state (emotion, bond/affection, trust,
+  /// arousal, fixation, needs vector, and any hidden inter-character relationships)
+  /// for the specified character in the current group chat session.
+  /// Persists the change via the hidden checkpoint.
+  /// Safe to call even if no prior state existed for the character.
+  void resetRealismForGroupCharacter(CharacterCard character) {
+    if (_activeGroup == null) return;
+    final id = _getCharacterIdFromCard(character);
+    if (_groupRealism.containsKey(id)) {
+      _groupRealism.remove(id); // also clears hidden 'relationships' toward other group members
+      _ensureGroupRealismCheckpoint();
+      debugPrint('[GroupRealism] Reset per-character state for $id');
+      notifyListeners();
+    }
   }
 
   double get tokensPerSecond {
@@ -898,6 +1162,55 @@ class ChatService extends ChangeNotifier {
 
   String get authorNote => _authorNote;
   int get authorNoteStrength => _authorNoteStrength;
+
+  /// Returns the Author's Note text (if any) stored specifically for this
+  /// character within the current *group* chat. Uses the stable char ID.
+  /// Returns '' if not in group mode or no per-character note has been set.
+  /// (The group's authorNoteStrength is used for formatting during injection.)
+  String getAuthorNoteForGroupCharacter(CharacterCard c) {
+    if (_activeGroup == null) return '';
+    final id = _getCharacterIdFromCard(c);
+    return _groupAuthorNotes[id] ?? '';
+  }
+
+  /// Returns the strength (1-10) for this character's Author's Note.
+  /// Falls back to the group's current authorNoteStrength if no per-character
+  /// strength has been explicitly set.
+  int getAuthorNoteStrengthForGroupCharacter(CharacterCard c) {
+    if (_activeGroup == null) return _authorNoteStrength;
+    final id = _getCharacterIdFromCard(c);
+    return _groupAuthorNoteStrengths[id] ?? _authorNoteStrength;
+  }
+
+  /// Sets or clears a per-character Author's Note for the given card while in
+  /// a group chat. The value is persisted via the hidden group state checkpoint.
+  /// [strength] is accepted for forward compatibility (per-note strength) but
+  /// currently all per-char notes use the group's authorNoteStrength for
+  /// prompt formatting. Pass empty [note] to clear.
+  void setAuthorNoteForGroupCharacter(
+    CharacterCard c,
+    String note, {
+    int? strength,
+  }) {
+    if (_activeGroup == null) return;
+    final id = _getCharacterIdFromCard(c);
+    final trimmed = note.trim();
+
+    if (trimmed.isEmpty) {
+      _groupAuthorNotes.remove(id);
+      _groupAuthorNoteStrengths.remove(id);
+    } else {
+      _groupAuthorNotes[id] = trimmed;
+      // Store per-character strength if provided, otherwise fall back to group default
+      final effectiveStrength = strength ?? _authorNoteStrength;
+      _groupAuthorNoteStrengths[id] = effectiveStrength;
+    }
+
+    _ensureGroupRealismCheckpoint();
+    _saveChat();
+    notifyListeners();
+  }
+
   Map<String, int> get lastPromptBudget => _lastPromptBudget;
   String get lastAssembledPrompt => _lastAssembledPrompt;
   int get contextSize =>
@@ -924,6 +1237,14 @@ class ChatService extends ChangeNotifier {
   int get longTermScore => _longTermScore;
   int get longTermTier => _longTermTier;
   bool get realismEnabled => _realismEnabled;
+
+  /// True when the Realism Engine (and Needs) should actually run for the
+  /// current chat mode. In group chats this is only true when *not* in
+  /// Director/observerMode (per design — Director is narrative control,
+  /// not simulation).
+  bool get _realismActiveThisMode =>
+      _realismEnabled && (_activeGroup == null || !_observerMode);
+
   bool get isEvaluatingRealism => _isEvaluatingRealism;
   bool get isCancellingRealismEval => _isCancellingRealismEval;
   bool get isProcessingGreeting => _isProcessingGreeting;
@@ -1759,17 +2080,20 @@ class ChatService extends ChangeNotifier {
 
   /// Wait for TTS to finish speaking, then apply the configured delay before auto-play.
   void _waitForTtsThenContinue() {
-    if (!_autoPlayActive || !_observerMode) return;
+    if (!(_groupManager?.autoPlayActive ?? false) ||
+        !(_groupManager?.observerMode ?? false)) return;
+
     Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (!_autoPlayActive || !_observerMode) {
+      if (!(_groupManager?.autoPlayActive ?? false) ||
+          !(_groupManager?.observerMode ?? false)) {
         timer.cancel();
         return;
       }
       if (_ttsService == null || !_ttsService!.isSpeaking) {
         timer.cancel();
-        final delayMs = (directorDelaySec * 1000).round();
+        final delayMs = ((_groupManager?.directorDelaySec ?? 15.0) * 1000).round();
         Future.delayed(Duration(milliseconds: delayMs), () {
-          if (_autoPlayActive && !_isGenerating) {
+          if ((_groupManager?.autoPlayActive ?? false) && !_isGenerating) {
             _autoPlayNext();
           }
         });
@@ -1796,9 +2120,15 @@ class ChatService extends ChangeNotifier {
     // Clear group mode when switching to 1:1 AND reset author note for new session context
     _authorNote = '';
     _authorNoteStrength = 4;
-    _activeGroup = null;
-    _groupCharacters = [];
-    _turnIndex = 0;
+    _groupManager?.leaveGroup();
+    _groupManager = null;
+    _groupRealism = {};
+    _groupAuthorNotes = {};
+    _groupAuthorNoteStrengths = {};
+    _groupRagEnabled = true;
+    _groupRetrievalCount = 8;
+    _groupMemoryBudgetPercent = 10.0;
+    _groupCharacterRAGPriorities = {};
 
     _activeCharacter = character;
 
@@ -1960,6 +2290,13 @@ class ChatService extends ChangeNotifier {
     _authorNoteStrength = 4;
     _summary = '';
     _summaryLastIndex = 0;
+    _groupRealism = {};
+    _groupAuthorNotes = {};
+    _groupAuthorNoteStrengths = {};
+    _groupRagEnabled = true;
+    _groupRetrievalCount = 8;
+    _groupMemoryBudgetPercent = 10.0;
+    _groupCharacterRAGPriorities = {};
 
     if (_characterRepository == null) return;
 
@@ -1972,13 +2309,10 @@ class ChatService extends ChangeNotifier {
     _messages.clear();
     _currentSessionId = null;
     _isLoadingSession = true;
-    _turnIndex = 0;
-    _activeGroup = group;
-    _observerMode = group.directorMode;
     notifyListeners();
 
-    // Resolve character IDs to cards
-    _groupCharacters = group.characterIds
+    // Resolve characters
+    final resolved = group.characterIds
         .map(
           (id) => _characterRepository!.characters
               .where((c) => _getCharacterIdFromCard(c) == id)
@@ -1986,6 +2320,10 @@ class ChatService extends ChangeNotifier {
         )
         .whereType<CharacterCard>()
         .toList();
+
+    // Hand off to the turn manager (single source of truth for group turn state)
+    _groupManager ??= GroupTurnManager();
+    _groupManager!.enterGroup(group, resolved, startInDirectorMode: group.directorMode);
 
     // Reset all lorebook triggers (skip constant entries — they're always active)
     for (final ch in _groupCharacters) {
@@ -2169,14 +2507,15 @@ class ChatService extends ChangeNotifier {
     if (_db == null) return false;
 
     final charId = _getCharacterIdFromCard(character);
-    if (_activeGroup!.characterIds.contains(charId))
-      return false; // already in group
+    if (!(_groupManager?.addCharacterId(charId) ?? false)) {
+      return false; // already in group (or no active group)
+    }
 
-    _activeGroup!.characterIds.add(charId);
     await groupRepo.save(_activeGroup!);
 
-    // Re-resolve character cards
-    _groupCharacters = _activeGroup!.characterIds
+    // Re-resolve and hand to the turn manager
+    final ids = _groupManager?.characterIds ?? const <String>[];
+    final resolved = ids
         .map(
           (id) => _characterRepository!.characters
               .where((c) => _getCharacterIdFromCard(c) == id)
@@ -2184,6 +2523,8 @@ class ChatService extends ChangeNotifier {
         )
         .whereType<CharacterCard>()
         .toList();
+
+    _groupManager?.refreshCharacters(resolved);
 
     // Load evolved fields for the new character from the current session's
     // group JSON map columns (if a session is active).
@@ -2217,14 +2558,24 @@ class ChatService extends ChangeNotifier {
   ) async {
     if (_activeGroup == null || _characterRepository == null) return false;
     if (_isGenerating) return false;
-    if (_activeGroup!.characterIds.length <= 2) return false; // enforce minimum
+    if ((_groupManager?.characterIds.length ?? 0) <= 2) return false; // enforce minimum
 
     final charId = _getCharacterIdFromCard(character);
-    _activeGroup!.characterIds.remove(charId);
+    _groupManager?.removeCharacterId(charId);
     await groupRepo.save(_activeGroup!);
 
-    // Re-resolve character cards
-    _groupCharacters = _activeGroup!.characterIds
+    // Drop any per-char state for the removed member (realism + author notes + rag priority)
+    _groupRealism.remove(charId);
+    _groupAuthorNotes.remove(charId);
+    _groupAuthorNoteStrengths.remove(charId);
+    _groupCharacterRAGPriorities.remove(charId);
+    if (_activeGroup != null) {
+      _ensureGroupRealismCheckpoint();
+    }
+
+    // Re-resolve and hand to the turn manager
+    final ids = _groupManager?.characterIds ?? const <String>[];
+    final resolved = ids
         .map(
           (id) => _characterRepository!.characters
               .where((c) => _getCharacterIdFromCard(c) == id)
@@ -2233,10 +2584,7 @@ class ChatService extends ChangeNotifier {
         .whereType<CharacterCard>()
         .toList();
 
-    // Clamp turn index to valid range
-    if (_groupCharacters.isNotEmpty) {
-      _turnIndex = _turnIndex % _groupCharacters.length;
-    }
+    _groupManager?.refreshCharacters(resolved);
 
     debugPrint(
       '[ChatService] \u{2796} Removed ${character.name} from group ${_activeGroup!.name}',
@@ -2295,6 +2643,13 @@ class ChatService extends ChangeNotifier {
         'session $_currentSessionId — skipping to protect existing data.',
       );
       return;
+    }
+
+    // For group chats, ensure the hidden `__group_state__` checkpoint (realism data
+    // + per-character Author's Notes) is present in the snapshot we are about to
+    // persist. This is the DB-free persistence mechanism for per-char group state.
+    if (_activeGroup != null) {
+      _ensureGroupRealismCheckpoint();
     }
 
     // Snapshot messages at the start so async gaps can't see a mutated list.
@@ -2687,6 +3042,11 @@ class ChatService extends ChangeNotifier {
           ),
         );
       }
+
+      // ── Hydrate hidden group state checkpoint (DB-free: realism + per-char notes) ──
+      // The sentinel is stored as the last message for durability but must be
+      // stripped from the in-memory list so the UI and prompt builders never see it.
+      _hydrateGroupRealismCheckpointIfPresent();
 
       _currentSessionId = sessionId;
       _authorNote = session.authorNote;
@@ -3146,7 +3506,7 @@ class ChatService extends ChangeNotifier {
         );
         _scanLorebook(_messages.last.text);
       }
-      _turnIndex = 0;
+      _groupManager?.resetTurnState();
     } else if (_activeCharacter != null) {
       // 1:1 mode
       if (_activeCharacter!.firstMessage.isNotEmpty) {
@@ -3337,7 +3697,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
 
 // Re-run baseline eval for the new greeting (skip pre-seeded V2.5 cards)
-if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExtensions == null) {
+if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
   _runPostGreetingEval();
 }
   }
@@ -3414,7 +3774,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     }
 
     // ── OOC Time-Skip Detection ───────────────────────────────────────────
-    if (_realismEnabled && _activeGroup == null) {
+    if (_realismActiveThisMode) {
       _detectOocTimeSkip(text);
     }
 
@@ -3441,7 +3801,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     await _maybeCheckTaskCompletionSync();
 
     // Evaluate realism systems before generating response
-    if (_realismEnabled && _activeGroup == null) {
+    if (_realismActiveThisMode) {
       // Capture pre-turn needs vector (before decay + fulfillment) so that
       // regenerateLastMessage() can use the same delta-revert mechanism the
       // classic realism fields (bond/trust/arousal) use.
@@ -3473,10 +3833,16 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         });
       }
 
-      // ── Trust repair intercept ───────────────────────────────────────
-      // Each severe drop arms exactly one repair shot. The window is
-      // consumed here and resets automatically for the next drop event.
-      if (_pendingTrustRepair) {
+      // Group chats use per-speaker realism evaluation inside _generateResponse
+      // (right after speaker selection via _pickNextGroupCharacter). This is the
+      // core of Phase 1: the character about to reply gets their own LLM eval.
+      final bool skipCentralizedEvalForGroup =
+          _activeGroup != null && isGroupRealismActive && !_observerMode;
+
+      if (skipCentralizedEvalForGroup) {
+        debugPrint(
+            '[Realism:Group] Skipping centralized LLM eval block — per-speaker evaluation will run inside _generateResponse for the upcoming speaker');
+      } else if (_pendingTrustRepair) {
         _pendingTrustRepair = false; // consume — resets for next drop
         await _evaluateTrustRepairCall(text, onChunk: handleChunk);
 
@@ -4238,24 +4604,267 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   }
 
   /// Manually select which character speaks next in group mode.
+  /// Delegated to GroupTurnManager.
   void setNextCharacter(CharacterCard character) {
-    if (_activeGroup == null) return;
-    final idx = _groupCharacters.indexWhere((c) => c.name == character.name);
-    if (idx >= 0) {
-      _turnIndex = idx;
-      notifyListeners();
-    }
+    _groupManager?.setNextSpeaker(character);
+    notifyListeners(); // ensure UI updates even if manager didn't notify
   }
 
   /// Pick which character speaks next based on turn order.
+  /// A _forcedNextSpeakerId (set by manual user choice) is consumed first
+  /// and works for both TurnOrder.random and roundRobin. After consumption
+  /// we resume normal cycling / random behavior.
   CharacterCard _pickNextGroupCharacter() {
-    if (_activeGroup!.turnOrder == TurnOrder.random) {
-      return _groupCharacters[Random().nextInt(_groupCharacters.length)];
+    if (_groupManager == null) {
+      throw StateError('No active group');
     }
-    // Round robin
-    final char = _groupCharacters[_turnIndex % _groupCharacters.length];
-    _turnIndex++;
-    return char;
+    return _groupManager!.pickNextSpeaker();
+  }
+
+  /// Looks for a hidden `__group_state__` / `__meta__` checkpoint message,
+  /// hydrates `_groupRealism` and `_groupAuthorNotes` from it (if present and
+  /// we are in a group), then removes the sentinel from the in-memory message
+  /// list so it is never rendered or sent to the LLM.
+  void _hydrateGroupRealismCheckpointIfPresent() {
+    if (_activeGroup == null || _messages.isEmpty) return;
+
+    final idx = _messages.lastIndexWhere(_isGroupStateMessage);
+    if (idx < 0) return;
+
+    try {
+      final raw = _messages[idx].text;
+      if (raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          final map = Map<String, dynamic>.from(decoded);
+
+          final perChar = map['perChar'];
+          if (perChar is Map) {
+            _groupRealism = perChar.map(
+              (k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)),
+            );
+          } else {
+            _groupRealism = {};
+          }
+
+          final notes = map['authorNotes'];
+          if (notes is Map) {
+            _groupAuthorNotes = notes.map(
+              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+            );
+          } else {
+            _groupAuthorNotes = {};
+          }
+
+          final strengths = map['authorNoteStrengths'];
+          if (strengths is Map) {
+            _groupAuthorNoteStrengths = strengths.map(
+              (k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? _authorNoteStrength),
+            );
+          } else {
+            _groupAuthorNoteStrengths = {};
+          }
+
+          // RAG settings
+          _groupRagEnabled = map['ragEnabled'] as bool? ?? true;
+          _groupRetrievalCount = (map['retrievalCount'] as num?)?.toInt() ?? 8;
+          _groupMemoryBudgetPercent = (map['memoryBudgetPercent'] as num?)?.toDouble() ?? 10.0;
+
+          final ragPrios = map['characterRAGPriorities'];
+          if (ragPrios is Map) {
+            _groupCharacterRAGPriorities = ragPrios.map(
+              (k, v) => MapEntry(k.toString(), (v as num).toDouble()),
+            );
+          } else {
+            _groupCharacterRAGPriorities = {};
+          }
+
+          debugPrint(
+            '[GroupState] Hydrated checkpoint for ${_groupRealism.length} realism + '
+            '${_groupAuthorNotes.length} author note(s) in group ${_activeGroup!.name}',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[GroupState] Failed to parse checkpoint: $e — starting fresh');
+      _groupRealism = {};
+      _groupAuthorNotes = {};
+    }
+
+    // Remove the sentinel so the rest of the app never sees it
+    _messages.removeAt(idx);
+  }
+
+  /// Returns the stable charId of the character whose realism state should be
+  /// read/written for the current turn. In group mode this is the speaker
+  /// we are about to generate for (or just generated for).
+  String _getCurrentSpeakerIdForRealism() {
+    if (_activeGroup == null || _groupCharacters.isEmpty) {
+      return _getCharacterId() ?? '';
+    }
+    final next = nextCharacter;
+    if (next != null) {
+      return _getCharacterIdFromCard(next);
+    }
+    return _getCharacterIdFromCard(_groupCharacters.first);
+  }
+
+  // ── Per-character realism state helpers (group mode) ────────────────────
+  int _getGroupAffection(String charId) =>
+      (_groupRealism[charId]?['affection'] as num?)?.toInt() ?? 0;
+
+  void _setGroupRealismValue(String charId, String key, dynamic value) {
+    if (_activeGroup == null) return;
+    _groupRealism.putIfAbsent(charId, () => <String, dynamic>{});
+    _groupRealism[charId]![key] = value;
+  }
+
+  int _getGroupInt(String charId, String key, {int defaultValue = 0}) =>
+      (_groupRealism[charId]?[key] as num?)?.toInt() ?? defaultValue;
+
+  String _getGroupString(String charId, String key, {String defaultValue = ''}) =>
+      (_groupRealism[charId]?[key] as String?) ?? defaultValue;
+
+  Map<String, int> _getGroupNeeds(String charId) {
+    final raw = _groupRealism[charId]?['needs'];
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    }
+    return {};
+  }
+
+  void _setGroupNeeds(String charId, Map<String, int> needs) {
+    _setGroupRealismValue(charId, 'needs', needs);
+  }
+
+  /// Ensures the hidden inter-character 'relationships' map for this speaker
+  /// contains a neutral (0) entry for every other current member of the group.
+  /// This is the core of the invisible tracking mechanic: characters have
+  /// private feelings about each other that are never shown in UI bars but
+  /// influence how they behave toward one another in prompts.
+  /// Safe to call repeatedly; only seeds missing entries.
+  void _ensureInterCharacterRelationshipsSeeded(String charId) {
+    if (!_shouldTrackInterCharacterRelationships) return;
+    if (_activeGroup == null || _observerMode) return;
+    if (_groupCharacters.length < 2) return;
+
+    final currentRels = Map<String, int>.from(getInterCharacterRelationships(charId));
+    bool changed = false;
+
+    // Prune relationships to characters who are no longer in the group (membership change handling)
+    final currentMemberIds = _groupCharacters.map(_getCharacterIdFromCard).toSet();
+    final stale = currentRels.keys.where((id) => !currentMemberIds.contains(id)).toList();
+    for (final staleId in stale) {
+      currentRels.remove(staleId);
+      changed = true;
+    }
+
+    // Seed neutral 0 for any current members we don't have an entry for yet
+    for (final other in _groupCharacters) {
+      final otherId = _getCharacterIdFromCard(other);
+      if (otherId == charId) continue;
+      if (!currentRels.containsKey(otherId)) {
+        currentRels[otherId] = 0;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      _setGroupRealismValue(charId, 'relationships', currentRels);
+      debugPrint('[Realism:Group] Updated inter-character relationships for $charId (seeded + pruned stale)');
+    }
+  }
+
+  /// Lightweight heuristic update for hidden inter-character feelings.
+  /// Scans the most recent user message + AI response for mentions of other
+  /// group members and applies small deltas. This gives the invisible tracking
+  /// real, interaction-driven movement without an extra LLM call.
+  /// Positive language toward another member slightly improves the speaker's
+  /// private opinion; negative language worsens it.
+  void _updateInterCharacterFeelingsFromRecentExchange(String speakerId) {
+    if (!_shouldTrackInterCharacterRelationships) return;
+    if (_activeGroup == null || _messages.length < 2) return;
+
+    final rels = Map<String, int>.from(getInterCharacterRelationships(speakerId));
+    if (rels.isEmpty) return;
+
+    // Look at the last two messages (user + speaker response)
+    final recent = _messages.reversed.take(2).map((m) => m.displayText.toLowerCase()).join(' ');
+
+    bool changed = false;
+
+    for (final other in _groupCharacters) {
+      final otherId = _getCharacterIdFromCard(other);
+      if (otherId == speakerId) continue;
+      if (!rels.containsKey(otherId)) continue;
+
+      final otherName = other.name.toLowerCase();
+      if (!recent.contains(otherName)) continue;
+
+      // Very simple sentiment heuristics
+      int delta = 0;
+      if (recent.contains('love') || recent.contains('adore') || recent.contains('wonderful') ||
+          recent.contains('great') || recent.contains('amazing') || recent.contains('friend')) {
+        delta = 4;
+      } else if (recent.contains('hate') || recent.contains('annoying') || recent.contains('stupid') ||
+                 recent.contains('awful') || recent.contains('dislike') || recent.contains('enemy')) {
+        delta = -4;
+      } else if (recent.contains('like') || recent.contains('nice') || recent.contains('good')) {
+        delta = 2;
+      } else if (recent.contains('bad') || recent.contains('rude') || recent.contains('problem')) {
+        delta = -2;
+      }
+
+      if (delta != 0) {
+        final newVal = (rels[otherId]! + delta).clamp(-300, 300);
+        rels[otherId] = newVal;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      _setGroupRealismValue(speakerId, 'relationships', rels);
+      debugPrint('[Realism:Group] Updated hidden inter-char feelings for $speakerId from recent exchange');
+    }
+  }
+
+  /// Ensures a fresh hidden group state checkpoint message exists as the
+  /// last item in `_messages`. Now used for both per-char realism (when enabled)
+  /// *and* per-character Author's Notes (always, for groups). The message is
+  /// filtered out everywhere that matters (prompts, RAG, UI, display).
+  /// This is the DB-free persistence mechanism for per-char group data.
+  void _ensureGroupRealismCheckpoint() {
+    if (_activeGroup == null) return;
+    // No longer gated on realism/needs: per-char Author's Notes must persist
+    // for all groups. Empty maps are harmless.
+
+    // Remove any previous checkpoint so we don't accumulate many
+    _messages.removeWhere(_isGroupStateMessage);
+
+    final checkpoint = <String, dynamic>{
+      'version': 1,
+      'perChar': _groupRealism,
+      'authorNotes': _groupAuthorNotes,
+      'authorNoteStrengths': _groupAuthorNoteStrengths,
+      // RAG settings (stored in checkpoint to avoid schema changes)
+      'ragEnabled': _groupRagEnabled,
+      'retrievalCount': _groupRetrievalCount,
+      'memoryBudgetPercent': _groupMemoryBudgetPercent,
+      'characterRAGPriorities': _groupCharacterRAGPriorities,
+      // Note: per-character maps inside 'perChar' may contain 'relationships'
+      // (hidden inter-char feelings). This key is additive and safe for old saves.
+      'savedAt': DateTime.now().toIso8601String(),
+    };
+
+    _messages.add(
+      ChatMessage(
+        text: jsonEncode(checkpoint),
+        sender: kGroupStateSender,
+        isUser: false,
+        characterId: kGroupStateCharId,
+        metadata: const {'type': 'group_realism_checkpoint_v1'},
+      ),
+    );
   }
 
   Future<void> _generateResponse(GenerationMode mode) async {
@@ -4294,6 +4903,12 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         speakingCharacter = _activeCharacter!;
       }
 
+      // Phase 1: Per-character realism evaluation for the upcoming speaker in groups.
+      // We evaluate the specific character who is about to reply, before building their prompt.
+      if (_activeGroup != null && isGroupRealismActive && !observerMode) {
+        await _evaluateRealismForUpcomingGroupSpeaker(speakingCharacter);
+      }
+
       // ── System prompt selection ──
       // Priority: group custom > group default > character > user global > backend default
       String systemPrompt;
@@ -4305,6 +4920,14 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
             : defaultGroupSystemPrompt;
+
+        // Value-add: append the *speaking* character's personal system prompt (if any)
+        // so each character can have their own flavor while the group rules stay first.
+        final charSpecific = speakingCharacter.systemPrompt.trim();
+        if (charSpecific.isNotEmpty) {
+          systemPrompt +=
+              '\n\n[Specific instructions for ${speakingCharacter.name}]\n$charSpecific';
+        }
       } else if (speakingCharacter.systemPrompt.isNotEmpty) {
         // Character has its own system prompt — use it
         systemPrompt = speakingCharacter.systemPrompt;
@@ -4439,6 +5062,29 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         authorNoteBlock = _buildAuthorNoteBlock();
       }
 
+      // Per-character Author's Note (group mode only): if the current speaker has
+      // a personal note, inject it using the same strength-modulated style.
+      // Falls back gracefully (no-op) if absent. Appended after any group-level note.
+      if (_activeGroup != null) {
+        final charNote = getAuthorNoteForGroupCharacter(speakingCharacter);
+        if (charNote.isNotEmpty) {
+          // Use per-character strength if set, otherwise fall back to group default
+          final s = getAuthorNoteStrengthForGroupCharacter(speakingCharacter);
+          final name = speakingCharacter.name;
+          String perCharBlock;
+          if (s <= 3) {
+            perCharBlock =
+                "[Author's Note (gentle suggestion for $name): $charNote]\n";
+          } else if (s <= 7) {
+            perCharBlock = "[Author's Note (for $name): $charNote]\n";
+          } else {
+            perCharBlock =
+                "[Author's Note (IMPORTANT for $name — apply immediately): $charNote]\n";
+          }
+          authorNoteBlock += perCharBlock;
+        }
+      }
+
       // Build summary block if available
       String summaryBlock = '';
       if (_summary.isNotEmpty) {
@@ -4472,7 +5118,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         // ── Context Shift: budget-aware history trimming ──
 
         // Realism injection blocks — compute early so they're in the token budget
-        if (_realismEnabled && _activeGroup == null) {
+        if (_realismActiveThisMode) {
           final relationship = _getRelationshipInjection();
           final emotion = _getEmotionInjection();
           final time = _getTimeInjection();
@@ -4480,8 +5126,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
           final cooldown = _getNsfwCooldownInjection();
           final behavioral = _getBehavioralMechanicsInjection();
           final needs = _getNeedsInjection();
+          final interCharFeelings = _getInterCharacterFeelingsInjection();
           realismBlock =
-              '$relationship$emotion$time$trustBehavior$cooldown$behavioral$needs';
+              '$relationship$emotion$time$trustBehavior$cooldown$behavioral$needs$interCharFeelings';
         }
 
         // Chance Time injection — independent of realism mode
@@ -4559,11 +5206,16 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       // When messages are dropped from context, search for relevant past memories
       // Skip retrieval for brand new chats to prevent old memories from interfering
       String memoriesBlock = '';
+
+      final effectiveRagEnabled = _activeGroup != null
+          ? groupRagEnabled
+          : _storageService.ragEnabled;
+
       if (_isNewChat) {
         debugPrint('[RAG:Chat] Skipping memory retrieval - new chat in progress');
       } else if (droppedMessages > 0 &&
           _memoryService != null &&
-          _storageService.ragEnabled) {
+          effectiveRagEnabled) {
         debugPrint(
           '[RAG:Chat] ── Prompt assembly: $droppedMessages messages dropped, triggering retrieval ──',
         );
@@ -4583,19 +5235,23 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
             currentSessionId: _currentSessionId ?? '',
             inContextStart:
                 droppedMessages, // only search messages that are out of context
-            limit: _storageService.ragRetrievalCount == 0
+            limit: groupRetrievalCount == 0
                 ? 9999
-                : _storageService.ragRetrievalCount,
+                : groupRetrievalCount,
+            characterPriorities: currentGroupRAGPriorities,
           );
 
           if (memories.isNotEmpty) {
-            // Cap memory injection to ~10% of the total context budget.
+            // Cap memory injection to the group's (or global) memory budget % of context.
             // The summary carries the weight of context compression; RAG only
             // supplements with specific details the summary missed. Too much
             // RAG (2500+ tokens) overwhelms the model and causes it to
             // reference stale events as if they're current ("going back in time").
             final contextSize = _storageService.contextSize;
-            final memoryBudget = (contextSize * 0.10).round();
+            final budgetFraction = _activeGroup != null
+                ? (groupMemoryBudgetPercent / 100.0)
+                : 0.10;
+            final memoryBudget = (contextSize * budgetFraction).round();
             final includedMemories = <String>[];
             int usedTokens = 0;
             for (final m in memories) {
@@ -5179,23 +5835,39 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         // Save session after AI message is complete
         await _saveChat();
 
+        // Phase 2: Update hidden inter-character feelings for the speaker who
+        // just responded, based on what was said in the recent exchange.
+        // This makes the invisible tracking react to actual dialogue.
+        if (_activeGroup != null && !_observerMode && finalResponse.isNotEmpty) {
+          final lastSpeaker = _messages.isNotEmpty ? _messages.last.sender : '';
+          final speakerCard = _groupCharacters.firstWhere(
+            (c) => c.name == lastSpeaker,
+            orElse: () => _groupCharacters.first,
+          );
+          final speakerId = _getCharacterIdFromCard(speakerCard);
+          if (speakerId.isNotEmpty) {
+            _updateInterCharacterFeelingsFromRecentExchange(speakerId);
+            _ensureGroupRealismCheckpoint(); // persist the hidden relationship changes
+          }
+        }
+
         // Post-generation climax check — runs against the AI's actual response
         // so the character can climax naturally before the refractory cooldown applies
         if (_realismEnabled &&
             _nsfwCooldownEnabled &&
             _cooldownTurnsRemaining <= 0 &&
-            _activeGroup == null) {
+            (_activeGroup == null || !_observerMode)) {
           _checkClimaxInResponse(finalResponse); // fire-and-forget
         }
 
         // Check for non-climax sexual/intimate activity (heavy petting, oral, fingering, etc.)
         // so sex still feels rewarding and triggers afterglow even without orgasm.
-        if (_needsSimEnabled && _realismEnabled && _activeGroup == null) {
+        if (_needsSimEnabled && _realismActiveThisMode) {
           _checkSexualActivityInResponse(finalResponse); // fire-and-forget
         }
 
         // Check for other daily activities that have cross-need effects (eating, sleeping, bathing)
-        if (_needsSimEnabled && _realismEnabled && _activeGroup == null) {
+        if (_needsSimEnabled && _realismActiveThisMode) {
           _checkDailyActivityEffects(finalResponse); // fire-and-forget
         }
 
@@ -5204,7 +5876,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         // Engine processing" phase is never slowed by the needs system (even
         // when the per-session flag is true due to old chat state or card
         // defaults). The restore simply takes effect for the next turn.
-        if (_needsSimEnabled && _realismEnabled && _activeGroup == null) {
+        if (_needsSimEnabled && _realismActiveThisMode) {
           _verifyNeedFulfillmentCall(); // fire-and-forget, no chunk streaming needed
         }
 
@@ -5514,7 +6186,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   }
 
   String _buildChatHistory() {
-    final lines = _messages.map((m) {
+    final lines = _messages
+        .where((m) => !_isGroupStateMessage(m))
+        .map((m) {
       // Director notes get bracketed so the AI treats them as instructions
       if (m.characterId == '__director__') {
         return '[Director: ${m.text}]';
@@ -5531,8 +6205,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   _buildChatHistoryWithBudget(int tokenBudget) async {
     if (_messages.isEmpty) return (history: '', droppedCount: 0, tokenCount: 0);
 
-    // Format all messages
-    final formatted = _messages.map((m) {
+    // Format all messages, skipping hidden group realism checkpoints
+    final formatted = _messages
+        .where((m) => !_isGroupStateMessage(m))
+        .map((m) {
       if (m.characterId == '__director__') {
         return '[Director: ${m.text}]';
       }
@@ -5638,11 +6314,22 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   void deleteMessage(int index) async {
     if (index >= 0 && index < _messages.length) {
       bool isLastNode = index == _messages.length - 1;
+      final deletedMsg = _messages[index];
       _messages.removeAt(index);
 
-      // If we deleted the most recent message, time-travel rollback to the new latest node
+      // Time-travel rollback for realism when deleting the last message
       if (isLastNode && _messages.isNotEmpty) {
         _restoreRealismStateFromMessage(_messages.last);
+      } else if (_activeGroup != null && _messages.isNotEmpty) {
+        // Group mode: If we deleted a message from a specific character,
+        // try to restore that character's realism state from the new last message
+        // if it has a snapshot (best-effort per-character time travel).
+        // This helps when users delete a specific character's recent message.
+        final deletedSender = deletedMsg.sender;
+        final newLast = _messages.last;
+        if (newLast.sender == deletedSender || newLast.activeMetadata?.containsKey('realism_state') == true) {
+          _restoreRealismStateFromMessage(newLast);
+        }
       }
 
       await _saveChat();
@@ -5731,8 +6418,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
     final characterId = _getCharacterId();
 
-    // Format messages for embedding
-    final formatted = _messages.map((m) {
+    // Format messages for embedding (skip hidden group state checkpoints)
+    final formatted = _messages
+        .where((m) => !_isGroupStateMessage(m))
+        .map((m) {
       if (m.characterId == '__director__') {
         return '[Director: ${m.text}]';
       }
@@ -6454,6 +7143,11 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     if (_llmProvider == null) return;
     if (_isExtractingFacts || _isEvolvingCharacter) return;
 
+    // Note: this path is *not* gated on !_observerMode.
+    // Character evolution is deliberately allowed in Director Mode (see
+    // _triggerCharacterEvolution for rationale). Realism/Needs simulation is
+    // the only system that pauses in Director Mode.
+
     _userMessagesSinceLastPeriodicEval++;
     if (_userMessagesSinceLastPeriodicEval <
         _storageService.autoPersonaInterval)
@@ -6973,6 +7667,15 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   /// Trigger character evolution directly (called from unified periodic eval).
   void _triggerCharacterEvolution() {
     if (_isEvolvingCharacter) return;
+
+    // Evolution intentionally runs for BOTH regular group chats AND Director Mode.
+    // In Director/observer sessions the "last non-user speaker" is still the character
+    // whose actions the director just steered, so their personality/scenario can still
+    // evolve from the events the user directed. This is a deliberate design choice.
+    //
+    // In regular (non-director) groups the same last-speaker heuristic applies.
+    // The per-character evolved state is stored in the existing
+    // groupEvolvedPersonalities / groupEvolvedScenarios JSON columns.
 
     // In group mode, evolve the character who just spoke
     CharacterCard? target;
@@ -7507,6 +8210,7 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       final historyLines = <String>[];
       for (final m in _messages) {
         if (m.characterId == '__director__') continue;
+        if (_isGroupStateMessage(m)) continue;
         // Strip thinking blocks from display text for summarization
         historyLines.add('${m.sender}: ${m.displayText}');
       }
@@ -7872,6 +8576,50 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
 
   String _getRelationshipInjection() {
     if (!_realismEnabled) return '';
+
+    // Group mode (non-director): use the current speaker's stored values
+    if (_activeGroup != null && !_observerMode) {
+      final id = _getCurrentSpeakerIdForRealism();
+      final name = _groupCharacters
+          .firstWhere((c) => _getCharacterIdFromCard(c) == id,
+              orElse: () => _groupCharacters.first)
+          .name;
+
+      final longTier = _getGroupInt(id, 'longTermTier');
+      final shortTier = _getGroupInt(id, 'relationshipTier');
+
+      String bondGuidance;
+      if (longTier >= 7) {
+        bondGuidance = 'Their Long-Term Commitment is unbreakable: $name fully trusts {{user}} and views them as a soulmate/life partner.';
+      } else if (longTier >= 4) {
+        bondGuidance = 'Their Long-Term Trust is strong: $name feels a deepening, stable connection and sees a real future with {{user}}.';
+      } else if (longTier <= -4) {
+        bondGuidance = 'Their Long-Term Trust is broken: $name holds deep-seated resentment and fundamentally distrusts {{user}}. Even if short-term mood improves, the underlying hostility remains.';
+      } else {
+        bondGuidance = 'Their Long-Term Bond is developing normally.';
+      }
+
+      String tensionGuidance;
+      switch (shortTier) {
+        case 10:
+          tensionGuidance = 'Short-Term Tension is Devoted: $name is completely open, vulnerable, and emotionally intertwined with {{user}}.';
+          break;
+        case 9:
+        case 8:
+          tensionGuidance = 'Short-Term Tension is Enamored/Devoted: $name is deeply attached and prioritizes {{user}} above their own needs.';
+          break;
+        case 7:
+          tensionGuidance = 'Short-Term Tension is Warm/Affectionate: $name feels genuinely fond and connected to {{user}}.';
+          break;
+        // ... (abbreviated for the other tiers — full scalar logic below for 1:1)
+        default:
+          tensionGuidance = 'Short-Term Tension is neutral to slightly distant.';
+      }
+
+      return '[Relationship Context for $name]\n$bondGuidance\n$tensionGuidance]\n';
+    }
+
+    // 1:1 / Director path (original scalar logic)
     final charName = _activeCharacter?.name ?? 'the character';
 
     String bondGuidance;
@@ -7980,8 +8728,90 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
          '$tensionGuidance\n]';
   }
 
+  /// Phase 2: Invisible inter-character relationship injection.
+  /// Returns private guidance for the *current speaker* describing how they
+  /// secretly feel about the other members of the group. This is NEVER shown
+  /// in the UI (the sidebar bars remain strictly user-focused). It exists only
+  /// to let the LLM make the speaker react realistically to their groupmates.
+  ///
+  /// Example output:
+  /// [Private feelings of Alice toward other group members]
+  /// - Bob: slightly wary of (-18)
+  /// - Charlie: fond of (+42)
+  String _getInterCharacterFeelingsInjection() {
+    if (!_realismEnabled) return '';
+    if (_activeGroup == null || _observerMode) return '';
+    if (!_shouldTrackInterCharacterRelationships) return '';
+    if (_groupCharacters.length < 2) return '';
+
+    final speakerId = _getCurrentSpeakerIdForRealism();
+    if (speakerId.isEmpty) return '';
+
+    final relationships = getInterCharacterRelationships(speakerId);
+    if (relationships.isEmpty) return '';
+
+    final speakerName = _groupCharacters
+        .firstWhere((c) => _getCharacterIdFromCard(c) == speakerId,
+            orElse: () => _groupCharacters.first)
+        .name;
+
+    final buffer = StringBuffer();
+    buffer.writeln('[Private feelings of $speakerName toward other group members (internal, not visible to {{user}})]');
+
+    for (final entry in relationships.entries) {
+      final otherId = entry.key;
+      final delta = entry.value;
+
+      final otherChar = _groupCharacters.firstWhere(
+        (c) => _getCharacterIdFromCard(c) == otherId,
+        orElse: () => _groupCharacters.first,
+      );
+      final otherName = otherChar.name;
+
+      String attitude;
+      if (delta >= 60) {
+        attitude = 'deeply fond of / protective toward';
+      } else if (delta >= 25) {
+        attitude = 'warm and friendly toward';
+      } else if (delta >= 5) {
+        attitude = 'mildly positive toward';
+      } else if (delta <= -60) {
+        attitude = 'strongly hostile toward / resents';
+      } else if (delta <= -25) {
+        attitude = 'wary and negative toward';
+      } else if (delta <= -5) {
+        attitude = 'cool or distrustful toward';
+      } else {
+        attitude = 'neutral toward';
+      }
+
+      buffer.writeln('- $otherName: $attitude ($delta)');
+    }
+    buffer.writeln();
+    return buffer.toString();
+  }
+
   String _getEmotionInjection() {
-    if (!_realismEnabled || _characterEmotion.isEmpty) return '';
+    if (!_realismEnabled) return '';
+
+    // In group mode (non-director), use the per-char state for the current speaker
+    if (_activeGroup != null && !_observerMode) {
+      final speakerId = _getCurrentSpeakerIdForRealism();
+      final state = _groupRealism[speakerId];
+      final emo = (state?['emotion'] as String?) ?? '';
+      if (emo.isEmpty) return '';
+      final intensity = (state?['emotionIntensity'] as String?) ?? 'mild';
+      final cap = emo.substring(0, 1).toUpperCase() + emo.substring(1);
+      final name = _groupCharacters
+          .firstWhere((c) => _getCharacterIdFromCard(c) == speakerId,
+              orElse: () => _groupCharacters.first)
+          .name;
+      return '[$name\'s Current Emotional State: $cap ($intensity)\n'
+          ' This should subtly influence $name\'s tone, body language, and word choice.]\n';
+    }
+
+    // 1:1 path (or director groups)
+    if (_characterEmotion.isEmpty) return '';
     final charName = _activeCharacter?.name ?? 'the character';
     final cap =
         _characterEmotion.substring(0, 1).toUpperCase() +
@@ -8223,7 +9053,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   Future<void> _evaluateRelationshipCall({
     void Function(String)? onChunk,
   }) async {
-    if (!_realismEnabled || _activeCharacter == null) return;
+    if (!_realismEnabled) return;
+    if (_activeCharacter == null && _activeGroup == null) return;
+    if (_activeGroup != null && _observerMode) return; // Director excluded
 
     final recentCount = _messages.length < 3 ? _messages.length : 3;
     final recent = _messages.reversed
@@ -8233,6 +9065,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         .map((m) => '${m.sender}: ${m.displayText}')
         .join('\n');
 
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
     final userName = _userPersonaService.persona.name;
 
@@ -8362,7 +9198,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   Future<void> _evaluateEmotionalStateCall({
     void Function(String)? onChunk,
   }) async {
-    if (!_realismEnabled || _activeCharacter == null) return;
+    if (!_realismEnabled) return;
+    if (_activeCharacter == null && _activeGroup == null) return;
+    if (_activeGroup != null && _observerMode) return;
     final recentCount = _messages.length < 4 ? _messages.length : 4;
     final recent = _messages.reversed
         .take(recentCount)
@@ -8370,6 +9208,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         .reversed
         .map((m) => '${m.sender}: ${m.displayText}')
         .join('\n');
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
 
     // ── Personality injection (same as relationship eval) ──
@@ -8472,7 +9314,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   Future<void> _evaluatePhysicalStateCall({
     void Function(String)? onChunk,
   }) async {
-    if (!_realismEnabled || _activeCharacter == null) return;
+    if (!_realismEnabled) return;
+    if (_activeCharacter == null && _activeGroup == null) return;
+    if (_activeGroup != null && _observerMode) return;
 
     final recentCount = _messages.length < 6 ? _messages.length : 6;
     final recent = _messages.reversed
@@ -8481,6 +9325,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         .reversed
         .map((m) => '${m.sender}: ${m.displayText}')
         .join('\n');
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
 
     // ── Time-based evaluation (only if passage of time is enabled) ───────────
@@ -8676,7 +9524,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   }
 
   Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) async {
-    if (!_realismEnabled || _activeCharacter == null) return;
+    if (!_realismEnabled) return;
+    if (_activeCharacter == null && _activeGroup == null) return;
+    if (_activeGroup != null && _observerMode) return;
     final recentCount = _messages.length < 4 ? _messages.length : 4;
     final recent = _messages.reversed
         .take(recentCount)
@@ -8684,6 +9534,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         .reversed
         .map((m) => '${m.sender}: ${m.displayText}')
         .join('\n');
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
     final oPrompt = primaryObjective != null
         ? '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Must be a significant personal, social, or narrative goal triggered by a STRONG, specific event THIS turn. NOT a trivial step, and NOT a restatement of the primary quest.\n'
@@ -8767,7 +9621,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   /// Enable via Settings → Realism → "One-Shot Eval (Experimental)".
   /// Not default because some models struggle with the combined prompt length.
   Future<void> _evaluateOneShotCall({void Function(String)? onChunk}) async {
-    if (!_realismEnabled || _activeCharacter == null) return;
+    if (!_realismEnabled) return;
+    if (_activeCharacter == null && _activeGroup == null) return;
+    if (_activeGroup != null && _observerMode) return;
 
     // Keep the eval prompt lean for local models — use fewer messages and a
     // shorter personality snippet to reduce prefill time on large models.
@@ -8779,6 +9635,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         .map((m) => '${m.sender}: ${m.displayText}')
         .join('\n');
 
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
     final userName = _userPersonaService.persona.name;
 
@@ -9051,6 +9911,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   }) async {
     if (!_realismEnabled || _activeCharacter == null) return;
 
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
     final persona = _activeCharacter!.personality;
     final recentCount = _messages.length < 10 ? _messages.length : 10;
@@ -9173,11 +10037,223 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     return state;
   }
 
+  // ── Phase 1: Per-character realism evaluation for the upcoming speaker ────
+  /// Runs targeted realism evaluation for the specific character who is about
+  /// to speak next in a group chat. This is the core of making realism work
+  /// on a per-character, turn-timed basis.
+  ///
+  /// Uses temporary impersonation of _activeCharacter so that all existing
+  /// realism eval methods (_evaluateOneShotCall, _evaluateRelationshipCall, etc.)
+  /// and their parsing/inertia logic are reused without duplication.
+  Future<void> _evaluateRealismForUpcomingGroupSpeaker(CharacterCard speaker) async {
+    if (!isGroupRealismActive || observerMode) return;
+
+    final charId = _getCharacterIdFromCard(speaker);
+    if (charId.isEmpty) return;
+
+    debugPrint('[Realism:Group] Running pre-turn eval for upcoming speaker: ${speaker.name} ($charId)');
+
+    // Save previous 1:1 context (normally null in pure group sessions)
+    final previousActiveCharacter = _activeCharacter;
+
+    // Impersonate this speaker for the duration of the eval so all existing
+    // LLM eval methods, guards, name/personality reads, and delta application
+    // logic work exactly as they do for 1:1 chats.
+    _activeCharacter = speaker;
+
+    // Load this speaker's persisted group realism state into the scalar fields
+    // that the eval methods will read and mutate.
+    _loadGroupRealismIntoScalars(charId);
+
+    // Phase 2: Ensure hidden inter-character relationship tracking is seeded
+    // for all other group members (neutral 0). This happens on the speaker's
+    // first turn with realism so the invisible feelings map is always present.
+    _ensureInterCharacterRelationshipsSeeded(charId);
+
+    _isEvaluatingRealism = true;
+    _realismEvalStreamText = '';
+    notifyListeners();
+
+    void handleChunk(String chunk) {
+      _realismEvalStreamText += chunk;
+      _evalChunkTimer?.cancel();
+      _evalChunkTimer = Timer(const Duration(milliseconds: 150), () {
+        try {
+          notifyListeners();
+        } catch (_) {}
+      });
+    }
+
+    try {
+      // Respect early cancellation
+      if (_realismEvalCancelled) {
+        debugPrint('[Realism:Group] Evaluation cancelled before LLM calls for ${speaker.name}');
+        _realismEvalCancelled = false;
+        return;
+      }
+
+      final isLocalKobold = _llmProvider == null || _llmProvider!.isLocal;
+
+      if (isLocalKobold) {
+        if (_storageService.realismOneShotEval) {
+          await _evaluateOneShotCall(onChunk: handleChunk);
+        } else {
+          await _evaluateRelationshipCall(onChunk: handleChunk);
+          if (!_realismEvalCancelled) {
+            await _evaluateEmotionalStateCall(onChunk: handleChunk);
+          }
+          if (!_realismEvalCancelled) {
+            await _evaluatePhysicalStateCall(onChunk: handleChunk);
+          }
+          if (!_realismEvalCancelled) {
+            await _evaluateNarrativeCall(onChunk: handleChunk);
+          }
+        }
+      } else {
+        if (_storageService.realismOneShotEval) {
+          await _evaluateOneShotCall(onChunk: handleChunk);
+        } else {
+          await Future.wait([
+            _evaluateRelationshipCall(onChunk: handleChunk),
+            _evaluateEmotionalStateCall(onChunk: handleChunk),
+            _evaluatePhysicalStateCall(onChunk: handleChunk),
+            _evaluateNarrativeCall(onChunk: handleChunk),
+          ]);
+        }
+      }
+
+      // Handle cancellation after the eval calls
+      if (_realismEvalCancelled) {
+        debugPrint('[Realism:Group] Evaluation cancelled during/after LLM calls for ${speaker.name}');
+        _realismEvalCancelled = false;
+        return;
+      }
+
+      // Harvest the now-updated scalar fields back into this speaker's
+      // _groupRealism entry so prompt injection and UI see fresh values.
+      _saveScalarsIntoGroupRealism(charId);
+
+      // Synthesize metadata for timeline / chips (best-effort, same as 1:1 path)
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
+      _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+
+      if (_needsSimEnabled) {
+        final needsDeltas = _computeNeedsDeltasWithReasons();
+        if (needsDeltas.isNotEmpty) {
+          _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
+        }
+      }
+
+      _saveChat();
+    } finally {
+      // Always restore previous context and clear busy state
+      _activeCharacter = previousActiveCharacter;
+      _evalChunkTimer?.cancel();
+      _evalChunkTimer = null;
+      _isEvaluatingRealism = false;
+      notifyListeners();
+    }
+  }
+
+  /// Loads the given group character's realism values from _groupRealism into
+  /// the single-character scalar fields so the existing eval methods can
+  /// operate on them during impersonation.
+  void _loadGroupRealismIntoScalars(String charId) {
+    _affectionScore = _getGroupInt(charId, 'affection');
+    _longTermScore = _getGroupInt(charId, 'longTermScore', defaultValue: _affectionScore);
+    _trustLevel = _getGroupInt(charId, 'trust');
+    _arousalLevel = _getGroupInt(charId, 'arousal');
+
+    _characterEmotion = _getGroupString(charId, 'emotion');
+    _emotionIntensity = _getGroupString(charId, 'emotionIntensity', defaultValue: 'moderate');
+
+    _activeFixation = _getGroupString(charId, 'fixation');
+    _fixationLifespan = _getGroupInt(charId, 'fixationLifespan', defaultValue: 0);
+
+    // Tier fields (some injection and UI paths read these)
+    _relationshipTier = _getGroupInt(charId, 'relationshipTier', defaultValue: _calculateTier(_affectionScore));
+    _longTermTier = _getGroupInt(charId, 'longTermTier', defaultValue: _calculateTier(_longTermScore));
+
+    // Needs vector (if any persisted for this char)
+    final needs = _getGroupNeeds(charId);
+    if (needs.isNotEmpty) {
+      _needsVector.clear();
+      _needsVector.addAll(needs);
+    } else if (_needsSimEnabled) {
+      // Sensible fresh start for a speaker who has never had needs ticked yet
+      _needsVector.clear();
+      for (final k in _needKeys) {
+        _needsVector[k] = 80;
+      }
+    }
+  }
+
+  /// Writes the current scalar realism fields back into the target group
+  /// character's _groupRealism entry after an impersonated eval round.
+  void _saveScalarsIntoGroupRealism(String charId) {
+    _setGroupRealismValue(charId, 'affection', _affectionScore);
+    _setGroupRealismValue(charId, 'longTermScore', _longTermScore);
+    _setGroupRealismValue(charId, 'trust', _trustLevel);
+    _setGroupRealismValue(charId, 'arousal', _arousalLevel);
+
+    if (_characterEmotion.isNotEmpty) {
+      _setGroupRealismValue(charId, 'emotion', _characterEmotion);
+    }
+    if (_emotionIntensity.isNotEmpty) {
+      _setGroupRealismValue(charId, 'emotionIntensity', _emotionIntensity);
+    }
+
+    if (_activeFixation.isNotEmpty && _fixationLifespan > 0) {
+      _setGroupRealismValue(charId, 'fixation', _activeFixation);
+      _setGroupRealismValue(charId, 'fixationLifespan', _fixationLifespan);
+    }
+
+    // Persist tier values for injection consistency
+    _setGroupRealismValue(charId, 'relationshipTier', _relationshipTier);
+    _setGroupRealismValue(charId, 'longTermTier', _longTermTier);
+
+    // Persist current needs vector for this speaker
+    if (_needsVector.isNotEmpty) {
+      _setGroupNeeds(charId, Map<String, int>.from(_needsVector));
+    }
+  }
+
   // ── Sims/Needs Simulation Core Logic (ported cleanly) ─────────────────────
 
   void _tickNeedsDecay() {
     if (!_needsSimEnabled || !_realismEnabled) return;
 
+    // Group mode (non-director): decay the current speaker's needs vector
+    if (_activeGroup != null && !_observerMode) {
+      final id = _getCurrentSpeakerIdForRealism();
+      var needs = _getGroupNeeds(id);
+      if (needs.isEmpty) {
+        needs = Map.fromEntries(_needKeys.map((k) => MapEntry(k, 80))); // sensible start
+      }
+
+      final isNight = _timeOfDay == 'night';
+      final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
+
+      for (final key in _needKeys) {
+        final current = needs[key] ?? 80;
+        int decay = _needDecay[key] ?? 0;
+
+        if (isMorning && _needDecayMorning.containsKey(key)) decay = _needDecayMorning[key] ?? decay;
+        else if (isNight && _needDecayNight.containsKey(key)) decay = _needDecayNight[key] ?? decay;
+
+        if (_needsAfterglowTurnsRemaining > 0 && (key == 'hunger' || key == 'energy' || key == 'social')) {
+          decay = (decay * 0.45).round();
+        }
+
+        final next = (current - decay).clamp(0, 100);
+        needs[key] = next;
+      }
+      _setGroupNeeds(id, needs);
+      return; // group path done
+    }
+
+    // 1:1 scalar path
     final isNight = _timeOfDay == 'night';
     final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
 
@@ -9446,6 +10522,32 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   String _getNeedsInjection() {
     if (!_needsSimEnabled || !_realismEnabled) return '';
 
+    // Group mode (non-director) — per-character needs
+    if (_activeGroup != null && !_observerMode) {
+      final id = _getCurrentSpeakerIdForRealism();
+      final needs = _getGroupNeeds(id);
+      if (needs.isEmpty) return '';
+
+      final name = _groupCharacters
+          .firstWhere((c) => _getCharacterIdFromCard(c) == id,
+              orElse: () => _groupCharacters.first)
+          .name;
+
+      final sorted = needs.entries.toList()
+        ..sort((a, b) => a.value.compareTo(b.value));
+      final top = sorted.first;
+      final step = _getNeedStep(top.key, top.value);
+
+      // Only inject when the need is noticeable or worse (step 3 or lower).
+      // This prevents mild needs (e.g. 62% hunger) from constantly interrupting roleplay.
+      if (step >= 4) return '';
+
+      final label = _needSteppedText[top.key]?[step] ?? top.key;
+
+      return '[Background State for $name: $label (level ${top.value}) — this is a subtle physical or emotional condition that may gently influence her mood, thoughts, small behaviors, and focus this turn. Do not force her to directly comment on it unless it naturally fits the scene.]\n';
+    }
+
+    // 1:1 path
     final charName = _activeCharacter?.name ?? 'the character';
 
     final sorted = _needsVector.entries.toList()
@@ -9461,8 +10563,9 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
       effectiveStep = (5 - step).clamp(0, 5);
     }
 
-    // Step 5 = comfortable → no injection at all (old behavior for high values)
-    if (step >= 5) return '';
+    // Only inject when the need is noticeable or worse.
+    // Mild needs (step 4) no longer force injection — reduces wack-a-mole behavior.
+    if (step >= 4) return '';
 
     // Catastrophe (step 0) is never suppressed — the disaster must be narrated.
     final bool suppressionActive =
@@ -9497,13 +10600,13 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     final texts = _needSteppedText[top.key] ?? const <String>[];
     final baseText = effectiveStep < texts.length ? texts[effectiveStep] : texts.last;
 
-    // Build a strong urgency prefix that escalates with the (possibly suppressed) step
+    // Build a more immersive prefix that escalates with severity
     final urgencyPrefix = switch (effectiveStep) {
-      0 => 'CATASTROPHIC — this has already happened and must be narrated now.',
-      1 => 'CRITICAL NEED — she cannot ignore this and is in real distress.',
-      2 => 'URGENT — the pressure is intense and she must act soon.',
-      3 => 'Noticeable need — it is distracting her and coloring her behavior.',
-      _ => 'Mild background need — it subtly affects her mood and focus.',
+      0 => 'CATASTROPHIC — this has already happened and must be roleplayed immediately.',
+      1 => 'CRITICAL — she is in real, urgent distress from this need.',
+      2 => 'Strong need — this is heavily weighing on her and affecting her focus.',
+      3 => 'Noticeable need — this is a clear background pressure on her mood and attention.',
+      _ => 'Mild background sensation — this is subtly coloring her state.',
     };
 
     // Secondary low need note (only for effective steps 1-3 to avoid noise at catastrophe)
@@ -9545,6 +10648,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
         .map((m) => '${m.sender}: ${m.displayText}')
         .join('\n');
 
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
     final needListStr = pendingNeeds.join(', ');
 
@@ -9660,6 +10767,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
   Future<void> _checkClimaxInResponse(String responseText) async {
     if (responseText.trim().isEmpty) return;
     if (_activeCharacter == null) return;
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
 
     String personalityInjection = '';
@@ -9774,6 +10885,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     // Avoid double-applying right after a climax (climax already handled full effects)
     if (_cooldownTurnsRemaining > 0) return;
 
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
 
     final prompt =
@@ -9822,6 +10937,10 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
     if (responseText.trim().isEmpty) return;
     if (_activeCharacter == null) return;
 
+    if (_activeCharacter == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
     final charName = _activeCharacter!.name;
 
     final prompt =
@@ -9945,20 +11064,54 @@ if (_realismEnabled && _activeGroup == null && _activeCharacter!.frontPorchExten
    /// Apply short-term relationship decay (2 points per 10 turns toward 0)
    /// This prevents relationships from being permanently stuck at extremes.
    void _applyMoodDecay() {
-     // Decay mechanism: every 10 turns, move score toward 0 by 2 points
+     // Decay mechanism: every 10 turns, move score toward 0 by 1 point (per speaker in groups)
      _turnsSinceDecayCheck++;
      if (_turnsSinceDecayCheck >= 10) {
-       if (_affectionScore > 0) {
-         _affectionScore = (_affectionScore - 1).clamp(-300, 300);
-       } else if (_affectionScore < 0) {
-         _affectionScore = (_affectionScore + 1).clamp(-300, 300);
+       if (_activeGroup != null && !_observerMode) {
+         final id = _getCurrentSpeakerIdForRealism();
+         final current = _getGroupInt(id, 'affection', defaultValue: _affectionScore);
+         final next = current > 0
+             ? (current - 1).clamp(-300, 300)
+             : current < 0
+                 ? (current + 1).clamp(-300, 300)
+                 : current;
+         _setGroupRealismValue(id, 'affection', next);
+         if (next != 0) {
+           debugPrint('[Realism] Group short-term decay for $id: $next');
+         }
+
+         // Phase 2/3: Decay hidden inter-character relationships (only when under the 4-char cap)
+         if (_shouldTrackInterCharacterRelationships) {
+           final rels = Map<String, int>.from(getInterCharacterRelationships(id));
+           if (rels.isNotEmpty) {
+             bool relChanged = false;
+             rels.forEach((otherId, value) {
+               if (value > 0) {
+                 rels[otherId] = (value - 1).clamp(-300, 300);
+                 relChanged = true;
+               } else if (value < 0) {
+                 rels[otherId] = (value + 1).clamp(-300, 300);
+                 relChanged = true;
+               }
+             });
+             if (relChanged) {
+               _setGroupRealismValue(id, 'relationships', rels);
+               debugPrint('[Realism:Group] Decayed inter-character relationships for $id');
+             }
+           }
+         }
+       } else {
+         // 1:1 scalar path
+         if (_affectionScore > 0) {
+           _affectionScore = (_affectionScore - 1).clamp(-300, 300);
+         } else if (_affectionScore < 0) {
+           _affectionScore = (_affectionScore + 1).clamp(-300, 300);
+         }
+         if (_affectionScore != 0) {
+           debugPrint('[Realism] Short-term decay applied: $_affectionScore');
+         }
        }
        _turnsSinceDecayCheck = 0;
-       if (_affectionScore != 0) {
-         debugPrint(
-           '[Realism] Short-term decay applied: $_affectionScore',
-         );
-       }
      }
    }
 

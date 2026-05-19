@@ -28,6 +28,7 @@ import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
@@ -501,6 +502,19 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         widget.character,
         worldRepo: Provider.of<WorldRepository>(context, listen: false),
       );
+
+      // Refresh the "Enjoys low hygiene" flag in any active chat so that
+      // toggling it on the character immediately affects existing sessions
+      // (without requiring a database change).
+      if (mounted) {
+        try {
+          final chatService = Provider.of<ChatService>(context, listen: false);
+          chatService.refreshEnjoysLowHygieneFromActiveCharacter();
+        } catch (_) {
+          // ChatService not available in this context — that's fine.
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

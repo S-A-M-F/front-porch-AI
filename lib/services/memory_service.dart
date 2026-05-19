@@ -204,6 +204,7 @@ class MemoryService extends ChangeNotifier {
     int inContextStart = 0,
     int limit = 5,
     double minScore = 0.3,
+    Map<String, double>? characterPriorities,
   }) async {
     // Lazy availability check — run once on first use
     if (!_availabilityChecked) {
@@ -275,7 +276,9 @@ class MemoryService extends ChangeNotifier {
         if (storedVector == null) continue;
 
         // Calculate similarity
-        final score = cosineSimilarity(queryVector, storedVector);
+        final rawScore = cosineSimilarity(queryVector, storedVector);
+        final priority = characterPriorities?[candidate.characterId] ?? 1.0;
+        final score = rawScore * priority;
 
         if (score >= minScore) {
           scored.add(RetrievedMemory(
@@ -296,7 +299,9 @@ class MemoryService extends ChangeNotifier {
         final storedVector = _bytesToVector(entry.embedding!, entry.dimensions);
         if (storedVector == null) continue;
 
-        final score = cosineSimilarity(queryVector, storedVector);
+        final rawScore = cosineSimilarity(queryVector, storedVector);
+        final priority = characterPriorities?[entry.characterId] ?? 1.0;
+        final score = rawScore * priority;
 
         if (score >= minScore) {
           scored.add(RetrievedMemory(

@@ -1,0 +1,12 @@
+# This file configures build_runner / drift_dev.
+# We restrict drift_dev to only look at the database folder so it doesn't
+# try to analyze generated protobuf/gRPC files (which causes
+# "Could not resolve annotation" errors during `dart run build_runner build`).
+
+targets:
+  $default:
+    builders:
+      drift_dev:
+        generate_for:
+          include:
+            - "lib/database/**.dart"

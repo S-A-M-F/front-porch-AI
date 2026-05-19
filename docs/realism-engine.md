@@ -401,6 +401,21 @@ The engine has gone through several schema versions (REv2, REv3). The code conta
 
 ---
 
+### Group Chats (Regular Mode)
+
+As of the 2026 group-chat overhaul, the full Realism Engine + Needs Simulation now works in **regular (participatory) group chats** — each character maintains independent emotion, bond/trust, fixation, arousal, needs vector, etc.
+
+- **Director / Observer / Auto-play Mode is deliberately excluded.** When Director Mode is on, all realism and needs mutation + injection is paused for that session (the per-character state is preserved and resumes when you toggle Director off). This matches the conceptual difference: Director is narrative control / storyboarding; regular group mode is lived-in simulation.
+- Enable the master Realism toggle + the Needs Simulation sub-toggle on any group chat exactly like you would a 1:1 chat. The per-character state travels with the session via an invisible checkpoint message (no database schema changes).
+- The current speaker's state is what appears in the prompt and what the post-turn evals update. This keeps token and compute cost linear with group size.
+- Character evolution (personality/scenario growth) continues to work in *both* regular group chats and Director Mode (the last character who spoke is the one that gets the evolution check).
+
+**Known limitations (current cut)**
+- No cross-character relationship modeling yet (Alice's trust in Bob is not tracked).
+- When you add or remove a character from a realism-enabled group, the new character starts with a fresh baseline.
+
+---
+
 **The Realism Engine is what makes Front Porch AI special.** It turns "talking to an AI" into "living with a character who has a real relationship with you that grows, breaks, heals, and changes over time." Take the time to leave it on for a few long sessions — the difference is night and day.
 
 ---

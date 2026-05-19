@@ -51,6 +51,7 @@ import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
+import 'package:front_porch_ai/ui/dialogs/group_settings_dialog.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
@@ -951,6 +952,400 @@ class _ChatPageState extends State<ChatPage> {
       Color(0xFFF97316), // Orange
     ];
     return colors[index % colors.length];
+  }
+
+  /// Simple emotion → accent color for the realism ring around avatars.
+  Color _emotionColor(String? emotion) {
+    if (emotion == null) return Colors.grey;
+    switch (emotion.toLowerCase()) {
+      case 'joy':
+      case 'amusement':
+      case 'excitement':
+        return Colors.amber;
+      case 'sadness':
+      case 'grief':
+      case 'disappointment':
+        return Colors.blueGrey;
+      case 'anger':
+      case 'annoyance':
+        return Colors.redAccent;
+      case 'fear':
+      case 'nervousness':
+        return Colors.deepPurpleAccent;
+      case 'love':
+      case 'affection':
+      case 'caring':
+        return Colors.pinkAccent;
+      case 'surprise':
+      case 'curiosity':
+        return Colors.cyanAccent;
+      default:
+        return Colors.tealAccent;
+    }
+  }
+
+  // ── Helpers for full per-character realism UI in group sidebar (reusing 1:1 visual style) ──
+
+  int _calculateGroupTier(int score) {
+    final abs = score.abs();
+    if (abs < 5) return 0;
+    if (abs < 15) return score > 0 ? 1 : -1;
+    if (abs < 30) return score > 0 ? 2 : -2;
+    if (abs < 50) return score > 0 ? 3 : -3;
+    if (abs < 75) return score > 0 ? 4 : -4;
+    if (abs < 110) return score > 0 ? 5 : -5;
+    if (abs < 150) return score > 0 ? 6 : -6;
+    if (abs < 200) return score > 0 ? 7 : -7;
+    if (abs < 250) return score > 0 ? 8 : -8;
+    if (abs < 300) return score > 0 ? 9 : -9;
+    return score > 0 ? 10 : -10;
+  }
+
+  String _getGroupBondTierName(int tier) {
+    switch (tier) {
+      case 10: return 'Devoted';
+      case 9: return 'Enamored';
+      case 8: return 'Smitten';
+      case 7: return 'Affectionate';
+      case 6: return 'Fond';
+      case 5: return 'Warm';
+      case 4: return 'Friendly';
+      case 3: return 'Neutral+';
+      case 2: return 'Neutral';
+      case 1: return 'Cool';
+      case 0: return 'Indifferent';
+      case -1: return 'Distant';
+      case -2: return 'Cold';
+      case -3: return 'Hostile';
+      case -4: return 'Resentful';
+      case -5: return 'Bitter';
+      case -6: return 'Hateful';
+      case -7: return 'Despising';
+      case -8: return 'Loathing';
+      case -9: return 'Reviling';
+      case -10: return 'Abhorrent';
+      default: return 'Unknown';
+    }
+  }
+
+  Color _getGroupTierColor(int tier) {
+    if (tier >= 10) return Colors.deepPurpleAccent;
+    if (tier >= 9) return Colors.purpleAccent;
+    if (tier >= 8) return Colors.pinkAccent;
+    if (tier >= 7) return Colors.pink;
+    if (tier >= 6) return Colors.pink.shade200;
+    if (tier >= 5) return Colors.orangeAccent;
+    if (tier >= 4) return Colors.greenAccent;
+    if (tier >= 3) return Colors.lightBlue;
+    if (tier >= 2) return Colors.blueGrey;
+    if (tier >= 1) return Colors.grey.shade400;
+    if (tier == 0) return Colors.white54;
+    if (tier >= -1) return Colors.orangeAccent.shade100;
+    if (tier >= -2) return Colors.redAccent.shade100;
+    if (tier >= -3) return Colors.redAccent;
+    if (tier >= -4) return Colors.red;
+    if (tier >= -5) return Colors.red.shade900;
+    if (tier >= -6) return Colors.brown.shade900;
+    if (tier >= -7) return Colors.deepOrange.shade900;
+    if (tier >= -8) return Colors.amber.shade900;
+    if (tier >= -9) return Colors.orange.shade900;
+    return Colors.black87;
+  }
+
+  Widget _buildGroupRealismRichRow({
+    required String label,
+    required int value,
+    required int tier,
+    required String tierName,
+    required Color color,
+    required IconData icon,
+    int maxValue = 300,
+  }) {
+    final isNegative = value < 0;
+    final displayColor = isNegative ? Colors.redAccent : color;
+    final absVal = value.abs();
+    final target = maxValue;
+    final norm = ((value + maxValue) / (maxValue * 2.0)).clamp(0.0, 1.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Tooltip(
+          message: label == 'Bond'
+              ? 'Bond: Current relationship strength with this character in the group.'
+              : (label.contains('Trust')
+                  ? 'Trust: How much the character believes and relies on you.'
+                  : 'Arousal: Physical/sexual tension level.'),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 13,
+                color: displayColor,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  '$label: $tierName',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: displayColor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$absVal/$target',
+                style: const TextStyle(fontSize: 10, color: Colors.white38),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: norm,
+            minHeight: 5,
+            backgroundColor: Colors.white10,
+            valueColor: AlwaysStoppedAnimation<Color>(displayColor),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGroupCharacterFullRealismUI(ChatService chatService, CharacterCard character) {
+    if (!chatService.isGroupRealismActive) return const SizedBox.shrink();
+
+    final affection = chatService.getAffectionForGroupCharacter(character);
+    final trust = chatService.getTrustForGroupCharacter(character);
+    final arousal = chatService.getArousalForGroupCharacter(character);
+    final emotion = chatService.getEmotionForGroupCharacter(character) ?? 'neutral';
+    final intensity = chatService.getEmotionIntensityForGroupCharacter(character) ?? '';
+    final isDirector = chatService.observerMode;
+    final opacity = isDirector ? 0.35 : 1.0;
+
+    final bondTier = _calculateGroupTier(affection);
+    final bondName = _getGroupBondTierName(bondTier);
+    final bondColor = _getGroupTierColor(bondTier);
+
+    final trustTier = _calculateGroupTier(trust);
+    final trustName = _getGroupBondTierName(trustTier); // reuse similar naming for simplicity
+    final trustColor = _getGroupTierColor(trustTier);
+
+    final arousalTier = _calculateGroupTier(arousal);
+    final arousalName = _getGroupBondTierName(arousalTier);
+    final arousalColor = _getGroupTierColor(arousalTier);
+
+    final needs = chatService.getTopUrgentNeedsForGroupCharacter(character, count: 2);
+    final fixation = chatService.getFixationForGroupCharacter(character);
+
+    return Opacity(
+      opacity: opacity,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Emotion
+            Row(
+              children: [
+                Text(
+                  EmotionLabels.emoji[emotion] ?? '🎭',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${emotion[0].toUpperCase()}${emotion.substring(1)}${intensity.isNotEmpty ? ' ($intensity)' : ''}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _emotionColor(emotion),
+                  ),
+                ),
+                if (isDirector)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6),
+                    child: Icon(Icons.pause_circle_outline, size: 11, color: Colors.amberAccent),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Short-Term Bond (full 1:1 visual treatment using group affection)
+            _buildGroupRealismRichRow(
+              label: 'Short-Term Bond',
+              value: affection,
+              tier: bondTier,
+              tierName: bondName,
+              color: bondColor,
+              icon: affection < 0 ? Icons.heart_broken : Icons.favorite,
+            ),
+            const SizedBox(height: 10),
+
+            // Long-Term Bond (same data for groups, full visual so it looks complete)
+            _buildGroupRealismRichRow(
+              label: 'Long-Term Bond',
+              value: affection,
+              tier: bondTier,
+              tierName: bondName,
+              color: bondColor,
+              icon: affection < 0 ? Icons.heart_broken_sharp : Icons.monitor_heart,
+            ),
+            const SizedBox(height: 10),
+
+            // Trust (full style)
+            _buildGroupRealismRichRow(
+              label: 'Trust',
+              value: trust,
+              tier: trustTier,
+              tierName: trustName,
+              color: trustColor,
+              icon: trust < 0 ? Icons.vpn_key_off : Icons.vpn_key,
+              maxValue: 100,
+            ),
+            const SizedBox(height: 10),
+
+            // Arousal (full style)
+            _buildGroupRealismRichRow(
+              label: 'Arousal',
+              value: arousal,
+              tier: arousalTier,
+              tierName: arousalName,
+              color: arousalColor,
+              icon: Icons.local_fire_department,
+              maxValue: 100,
+            ),
+            const SizedBox(height: 8),
+
+            // Needs info button (only shown when Needs Simulation has actually run for this character)
+            if (needs.isNotEmpty)
+              Row(
+                children: [
+                  const Text('Needs', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () => _showGroupCharacterNeedsPopup(chatService, character),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Tooltip(
+                      message: 'View full needs details for ${character.name}',
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(Icons.info_outline, size: 14, color: Colors.white54),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    needs.map((n) => '${n.$1} ${n.$2.toStringAsFixed(0)}%').join(' · '),
+                    style: const TextStyle(fontSize: 9, color: Colors.orangeAccent),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showGroupCharacterNeedsPopup(ChatService chatService, CharacterCard character) {
+    final needs = chatService.getNeedsForGroupCharacter(character);
+    if (needs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active needs data for this character.')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        title: Text('Needs — ${character.name}', style: const TextStyle(fontSize: 16)),
+        content: SizedBox(
+          width: 320,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: needs.entries.map((e) {
+                final pct = (e.value as num).toDouble().clamp(0.0, 100.0);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 100,
+                        child: Text(e.key, style: const TextStyle(fontSize: 12)),
+                      ),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: LinearProgressIndicator(
+                            value: pct / 100.0,
+                            minHeight: 5,
+                            backgroundColor: Colors.white12,
+                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('${pct.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupFixationSmall(String fixation) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.psychology, size: 12, color: Colors.deepPurpleAccent),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              'Fixated on: $fixation',
+              style: const TextStyle(
+                fontSize: 10, // slightly smaller than typical 1:1 fixation text
+                color: Colors.deepPurpleAccent,
+                fontStyle: FontStyle.italic,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showGroupSettingsDialog(ChatService chatService) {
+    final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+    showDialog(
+      context: context,
+      builder: (dialogContext) => GroupSettingsDialog(
+        chatService: chatService,
+        groupRepo: groupRepo,
+      ),
+    );
   }
 
   Future<void> _importChat() async {
@@ -3366,9 +3761,9 @@ class _ChatPageState extends State<ChatPage> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: () => _showClearChatConfirmation(context),
-                    icon: const Icon(Icons.add_comment, size: 16),
-                    label: const Text('New Chat'),
+                    onPressed: () => _showGroupSettingsDialog(chatService),
+                    icon: const Icon(Icons.settings, size: 16),
+                    label: const Text('Group Settings'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white70,
                       side: const BorderSide(color: Colors.white24),
@@ -3475,11 +3870,16 @@ class _ChatPageState extends State<ChatPage> {
             child: _SummarySection(chatService: chatService),
           ),
 
-          const Padding(
-            padding: EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: Text(
-              'Characters',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: Row(
+              children: [
+                const Text(
+                  'Characters',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const Spacer(),
+              ],
             ),
           ),
           Padding(
@@ -3521,21 +3921,46 @@ class _ChatPageState extends State<ChatPage> {
                           : null,
                     ),
                     child: ListTile(
-                      leading: CircleAvatar(
-                        radius: 20,
-                        backgroundColor: color,
-                        backgroundImage: ch.imagePath != null
-                            ? FileImage(_resolveCharImage(ch.imagePath!))
-                            : null,
-                        child: ch.imagePath == null
-                            ? Text(
-                                ch.name[0],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                      leading: chatService.isGroupRealismActive
+                          ? Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: _emotionColor(chatService.getEmotionForGroupCharacter(ch)),
+                                  width: 2.5,
                                 ),
-                              )
-                            : null,
-                      ),
+                              ),
+                              child: CircleAvatar(
+                                radius: 20,
+                                backgroundColor: color,
+                                backgroundImage: ch.imagePath != null
+                                    ? FileImage(_resolveCharImage(ch.imagePath!))
+                                    : null,
+                                child: ch.imagePath == null
+                                    ? Text(
+                                        ch.name[0],
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                            )
+                          : CircleAvatar(
+                              radius: 20,
+                              backgroundColor: color,
+                              backgroundImage: ch.imagePath != null
+                                  ? FileImage(_resolveCharImage(ch.imagePath!))
+                                  : null,
+                              child: ch.imagePath == null
+                                  ? Text(
+                                      ch.name[0],
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    )
+                                  : null,
+                            ),
                       title: Row(
                         children: [
                           Expanded(
@@ -3582,6 +4007,17 @@ class _ChatPageState extends State<ChatPage> {
                               color: Colors.white38,
                             ),
                           ),
+                          // Fixation under character summary (smaller text, per user request)
+                          if (chatService.isGroupRealismActive)
+                            () {
+                              final fix = chatService.getFixationForGroupCharacter(ch);
+                              return (fix != null && fix.isNotEmpty)
+                                  ? _buildGroupFixationSmall(fix)
+                                  : const SizedBox.shrink();
+                            }(),
+                          // Full realism UI per character (rich 1:1 style bars + needs info button)
+                          if (chatService.isGroupRealismActive)
+                            _buildGroupCharacterFullRealismUI(chatService, ch),
                           Wrap(
                             spacing: 4,
                             runSpacing: 0,
@@ -6212,6 +6648,8 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
 
   @override
   Widget build(BuildContext context) {
+    final isGroup = widget.chatService.activeGroup != null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6223,12 +6661,18 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
               color: Colors.amber,
             ),
             const SizedBox(width: 6),
-            const Text(
-              "Author's Note",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white70,
-                fontSize: 13,
+            Tooltip(
+              message: isGroup
+                  ? 'Group Author\'s Note — injected for every character in the group.\n'
+                    'For per-character author\'s notes, go to Group Settings → Prompt Engineering.'
+                  : 'Author\'s Note — injected into the character\'s context.',
+              child: Text(
+                isGroup ? "Group Author's Note" : "Author's Note",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white70,
+                  fontSize: 13,
+                ),
               ),
             ),
           ],
