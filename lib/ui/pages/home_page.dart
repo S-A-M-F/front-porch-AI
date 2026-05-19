@@ -2400,9 +2400,7 @@ class _HomePageState extends State<HomePage> {
     final nameController = TextEditingController();
     final firstMessageController = TextEditingController();
     final scenarioController = TextEditingController();
-    final systemPromptController = TextEditingController(
-      text: ChatService.defaultGroupSystemPrompt,
-    );
+    final systemPromptController = TextEditingController(); // Defaults to empty - uses built-in group rules unless overridden
     TurnOrder selectedTurnOrder = TurnOrder.roundRobin;
     bool autoAdvance = false;
     bool isGeneratingFirstMessage = false;
@@ -2559,10 +2557,8 @@ class _HomePageState extends State<HomePage> {
                         directorMode = val;
                         if (val) autoAdvance = true;
                       });
-                      // Auto-generate scenario, first message, and set director prompt
+                      // Auto-generate scenario, first message when entering Director Mode
                       if (val) {
-                        systemPromptController.text =
-                            ChatService.observerModeSystemPrompt;
                         // Auto-generate scenario
                         final llmProvider = Provider.of<LLMProvider>(
                           context,
@@ -2732,10 +2728,6 @@ class _HomePageState extends State<HomePage> {
                             );
                           }
                         }
-                      } else {
-                        // Revert to default group prompt
-                        systemPromptController.text =
-                            ChatService.defaultGroupSystemPrompt;
                       }
                     },
                     title: Row(

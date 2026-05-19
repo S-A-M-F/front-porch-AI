@@ -345,6 +345,13 @@ class ChatService extends ChangeNotifier {
   Map<String, String> _groupAuthorNotes = {};
   Map<String, int> _groupAuthorNoteStrengths = {};
 
+  /// Per-character system prompts scoped to the *current group only*.
+  /// These are completely independent of each character's normal `systemPrompt`
+  /// (the one used in 1:1 chats). When present and non-empty for the speaking
+  /// character, they take full precedence over the character's card-level prompt
+  /// inside this group. Stored in the hidden `__group_state__` checkpoint.
+  Map<String, String> _groupCharacterSystemPrompts = {};
+
   // RAG settings for the active group (stored in the hidden checkpoint, no DB schema change)
   bool _groupRagEnabled = true;
   int _groupRetrievalCount = 8;
@@ -1204,6 +1211,40 @@ class ChatService extends ChangeNotifier {
       // Store per-character strength if provided, otherwise fall back to group default
       final effectiveStrength = strength ?? _authorNoteStrength;
       _groupAuthorNoteStrengths[id] = effectiveStrength;
+    }
+
+    _ensureGroupRealismCheckpoint();
+    _saveChat();
+    notifyListeners();
+  }
+
+  /// Returns the system prompt (if any) stored specifically for this character
+  /// *within the current group chat*. This is completely separate from the
+  /// character's normal `systemPrompt` on their card (used in 1:1 chats).
+  /// Returns '' if not in a group or no per-character group prompt has been set.
+  /// When non-empty, this value wins over the character's normal systemPrompt
+  /// for prompt construction inside this group.
+  String getSystemPromptForGroupCharacter(CharacterCard c) {
+    if (_activeGroup == null) return '';
+    final id = _getCharacterIdFromCard(c);
+    return _groupCharacterSystemPrompts[id] ?? '';
+  }
+
+  /// Sets or clears a per-character system prompt override for the given
+  /// character while inside a group chat. The value is persisted via the
+  /// hidden group state checkpoint (no DB schema change).
+  /// This affects only the current group. Pass empty [prompt] to clear.
+  /// The provided prompt takes precedence over the character's normal
+  /// `systemPrompt` when this character speaks in the group.
+  void setSystemPromptForGroupCharacter(CharacterCard c, String prompt) {
+    if (_activeGroup == null) return;
+    final id = _getCharacterIdFromCard(c);
+    final trimmed = prompt.trim();
+
+    if (trimmed.isEmpty) {
+      _groupCharacterSystemPrompts.remove(id);
+    } else {
+      _groupCharacterSystemPrompts[id] = trimmed;
     }
 
     _ensureGroupRealismCheckpoint();
@@ -2125,6 +2166,7 @@ class ChatService extends ChangeNotifier {
     _groupRealism = {};
     _groupAuthorNotes = {};
     _groupAuthorNoteStrengths = {};
+    _groupCharacterSystemPrompts = {};
     _groupRagEnabled = true;
     _groupRetrievalCount = 8;
     _groupMemoryBudgetPercent = 10.0;
@@ -2293,6 +2335,7 @@ class ChatService extends ChangeNotifier {
     _groupRealism = {};
     _groupAuthorNotes = {};
     _groupAuthorNoteStrengths = {};
+    _groupCharacterSystemPrompts = {};
     _groupRagEnabled = true;
     _groupRetrievalCount = 8;
     _groupMemoryBudgetPercent = 10.0;
@@ -2564,10 +2607,11 @@ class ChatService extends ChangeNotifier {
     _groupManager?.removeCharacterId(charId);
     await groupRepo.save(_activeGroup!);
 
-    // Drop any per-char state for the removed member (realism + author notes + rag priority)
+    // Drop any per-char state for the removed member (realism + author notes + per-char system prompts + rag priority)
     _groupRealism.remove(charId);
     _groupAuthorNotes.remove(charId);
     _groupAuthorNoteStrengths.remove(charId);
+    _groupCharacterSystemPrompts.remove(charId);
     _groupCharacterRAGPriorities.remove(charId);
     if (_activeGroup != null) {
       _ensureGroupRealismCheckpoint();
@@ -4665,6 +4709,15 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
             _groupAuthorNoteStrengths = {};
           }
 
+          final sysPrompts = map['characterSystemPrompts'];
+          if (sysPrompts is Map) {
+            _groupCharacterSystemPrompts = sysPrompts.map(
+              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+            );
+          } else {
+            _groupCharacterSystemPrompts = {};
+          }
+
           // RAG settings
           _groupRagEnabled = map['ragEnabled'] as bool? ?? true;
           _groupRetrievalCount = (map['retrievalCount'] as num?)?.toInt() ?? 8;
@@ -4681,7 +4734,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
           debugPrint(
             '[GroupState] Hydrated checkpoint for ${_groupRealism.length} realism + '
-            '${_groupAuthorNotes.length} author note(s) in group ${_activeGroup!.name}',
+            '${_groupAuthorNotes.length} author note(s) + '
+            '${_groupCharacterSystemPrompts.length} per-char system prompt(s) '
+            'in group ${_activeGroup!.name}',
           );
         }
       }
@@ -4689,6 +4744,7 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       debugPrint('[GroupState] Failed to parse checkpoint: $e — starting fresh');
       _groupRealism = {};
       _groupAuthorNotes = {};
+      _groupCharacterSystemPrompts = {};
     }
 
     // Remove the sentinel so the rest of the app never sees it
@@ -4846,6 +4902,7 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       'perChar': _groupRealism,
       'authorNotes': _groupAuthorNotes,
       'authorNoteStrengths': _groupAuthorNoteStrengths,
+      'characterSystemPrompts': _groupCharacterSystemPrompts,
       // RAG settings (stored in checkpoint to avoid schema changes)
       'ragEnabled': _groupRagEnabled,
       'retrievalCount': _groupRetrievalCount,
@@ -4921,12 +4978,20 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
             ? observerModeSystemPrompt
             : defaultGroupSystemPrompt;
 
-        // Value-add: append the *speaking* character's personal system prompt (if any)
-        // so each character can have their own flavor while the group rules stay first.
-        final charSpecific = speakingCharacter.systemPrompt.trim();
-        if (charSpecific.isNotEmpty) {
+        // Per-character system prompt for this group (takes precedence over the
+        // character's normal card-level systemPrompt when inside this group).
+        final groupCharPrompt =
+            getSystemPromptForGroupCharacter(speakingCharacter).trim();
+        if (groupCharPrompt.isNotEmpty) {
           systemPrompt +=
-              '\n\n[Specific instructions for ${speakingCharacter.name}]\n$charSpecific';
+              '\n\n[Group-specific instructions for ${speakingCharacter.name}]\n$groupCharPrompt';
+        } else {
+          // Fall back to the character's normal (1:1) system prompt, if any.
+          final charSpecific = speakingCharacter.systemPrompt.trim();
+          if (charSpecific.isNotEmpty) {
+            systemPrompt +=
+                '\n\n[Specific instructions for ${speakingCharacter.name}]\n$charSpecific';
+          }
         }
       } else if (speakingCharacter.systemPrompt.isNotEmpty) {
         // Character has its own system prompt — use it

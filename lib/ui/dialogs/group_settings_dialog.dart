@@ -171,6 +171,10 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
   final Map<CharacterCard, TextEditingController> _perCharNoteControllers = {};
   final Map<CharacterCard, int> _perCharStrengths = {};
 
+  // Per-character group-scoped system prompts (completely separate from each
+  // character's normal card-level systemPrompt).
+  final Map<CharacterCard, TextEditingController> _perCharSystemPromptControllers = {};
+
   bool _changesSaved = false;
 
   // Per-character accent colors (matches chat sidebar palette)
@@ -215,6 +219,7 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     for (final c in cs.groupCharacters) {
       _getOrCreateNoteController(c); // creates + populates from service
       _perCharStrengths[c] ??= cs.getAuthorNoteStrengthForGroupCharacter(c);
+      _getOrCreateSystemPromptController(c); // per-char group system prompts
     }
 
     _changesSaved = false;
@@ -223,6 +228,13 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
   TextEditingController _getOrCreateNoteController(CharacterCard c) {
     return _perCharNoteControllers.putIfAbsent(c, () {
       final initial = widget.chatService.getAuthorNoteForGroupCharacter(c);
+      return TextEditingController(text: initial);
+    });
+  }
+
+  TextEditingController _getOrCreateSystemPromptController(CharacterCard c) {
+    return _perCharSystemPromptControllers.putIfAbsent(c, () {
+      final initial = widget.chatService.getSystemPromptForGroupCharacter(c);
       return TextEditingController(text: initial);
     });
   }
@@ -239,6 +251,11 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     }
     _perCharNoteControllers.clear();
     _perCharStrengths.clear();
+
+    for (final ctrl in _perCharSystemPromptControllers.values) {
+      ctrl.dispose();
+    }
+    _perCharSystemPromptControllers.clear();
 
     super.dispose();
   }
@@ -269,7 +286,14 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
       cs.setAuthorNoteForGroupCharacter(c, note, strength: strength);
     }
 
-    // 4. Persist the GroupChat model (name, scenario, systemPrompt, directorMode, etc.)
+    // 4. Per-character group-scoped system prompts (persist via public API)
+    for (final c in cs.groupCharacters) {
+      final promptCtrl = _perCharSystemPromptControllers[c];
+      final prompt = promptCtrl?.text.trim() ?? '';
+      cs.setSystemPromptForGroupCharacter(c, prompt);
+    }
+
+    // 5. Persist the GroupChat model (name, scenario, systemPrompt, directorMode, etc.)
     if (widget.groupRepo != null && group != null) {
       widget.groupRepo!.save(group); // fire-and-forget is acceptable here
     }
@@ -340,9 +364,18 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  'Overrides the default group system prompt when non-empty.',
-                  style: TextStyle(color: Colors.white24, fontSize: 11),
+                Tooltip(
+                  message:
+                      'Use this for group-wide instructions about how the AI should behave '
+                      '(e.g. response style, turn rules, formatting, or custom meta-instructions).\n\n'
+                      'This affects the entire group. For character-specific instructions, '
+                      'use the Per-Character System Prompts below instead.\n\n'
+                      'Leave empty to use the built-in group behavior rules.',
+                  child: const Text(
+                    'Overrides the built-in group behavior rules when filled. '
+                    'Use for global style, formatting, or AI behavior changes.',
+                    style: TextStyle(color: Colors.white24, fontSize: 11),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 AppTextField(
@@ -373,6 +406,34 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                     if (_changesSaved) setState(() => _changesSaved = false);
                   },
                 ),
+
+                const SizedBox(height: 20),
+
+                // ── Per-Character System Prompts (group-scoped) ─────────────
+                const Row(
+                  children: [
+                    Icon(Icons.code, size: 16, color: Colors.cyanAccent),
+                    SizedBox(width: 6),
+                    Text(
+                      'Per-Character System Prompts',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.cyanAccent,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'These apply only inside this group chat. They completely override each character\'s normal system prompt when they speak here. Leave empty to use the character\'s regular prompt.',
+                  style: TextStyle(color: Colors.white24, fontSize: 11),
+                ),
+                const SizedBox(height: 12),
+
+                // Character editors for per-char group system prompts
+                for (int i = 0; i < chars.length; i++)
+                  _buildCharacterSystemPromptEditor(chars[i], i),
 
                 const SizedBox(height: 20),
 
@@ -583,6 +644,90 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCharacterSystemPromptEditor(CharacterCard c, int index) {
+    final promptCtrl = _getOrCreateSystemPromptController(c);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: avatar + name
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: _charColor(index),
+                backgroundImage: c.imagePath != null
+                    ? FileImage(File(c.imagePath!))
+                    : null,
+                child: c.imagePath == null
+                    ? Text(
+                        c.name.isNotEmpty ? c.name[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  c.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Prompt field (no strength — pure override)
+          AppTextField(
+            controller: promptCtrl,
+            maxLines: 4,
+            minLines: 2,
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+            decoration: InputDecoration(
+              hintText: 'System prompt override for ${c.name} in this group only...',
+              hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
+              filled: true,
+              fillColor: const Color(0xFF1F2937),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: Colors.white10),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: Colors.white10),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: Colors.cyanAccent),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
+            onChanged: (_) {
+              if (_changesSaved) setState(() => _changesSaved = false);
+            },
           ),
         ],
       ),
