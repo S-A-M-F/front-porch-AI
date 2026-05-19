@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/app_version.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import '../models/character_card.dart';
 
 class StorageService extends ChangeNotifier {
@@ -86,12 +87,12 @@ class StorageService extends ChangeNotifier {
   double _bubbleOpacity = 1.0;
 
   // Global chat color defaults
-  Color _globalUserBubbleColor = const Color(0xFF3B82F6);
-  Color _globalUserTextColor = Colors.white;
-  Color _globalAiBubbleColor = const Color(0xFF374151);
-  Color _globalAiTextColor = Colors.white;
-  Color _globalDialogueColor = Colors.amberAccent;
-  Color _globalActionColor = const Color(0xFF90CAF9);
+  Color _globalUserBubbleColor = AppColors.userBubble;
+  Color _globalUserTextColor = AppColors.userText;
+  Color _globalAiBubbleColor = AppColors.aiBubble;
+  Color _globalAiTextColor = AppColors.aiText;
+  Color _globalDialogueColor = AppColors.dialogue;
+  Color _globalActionColor = AppColors.action;
 
   // Global chat font family
   String _globalChatFontFamily = '';

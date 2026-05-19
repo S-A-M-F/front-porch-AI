@@ -112,6 +112,21 @@ TextStyle _applyGoogleFont(String? fontFamily, TextStyle baseStyle) {
 class _StyledTextController extends TextEditingController {
   static final _pattern = RegExp(r'("[^"]*")|(\*[^*]*\*)');
 
+  _StyledTextController({
+    Color dialogueColor = AppColors.dialogue,
+    Color actionColor = AppColors.action,
+  })  : _dialogueColor = dialogueColor,
+        _actionColor = actionColor;
+
+  Color _dialogueColor;
+  Color _actionColor;
+
+  /// Update the colors used for dialogue and action text styling.
+  void updateColors({Color? dialogue, Color? action}) {
+    if (dialogue != null) _dialogueColor = dialogue;
+    if (action != null) _actionColor = action;
+  }
+
   @override
   TextSpan buildTextSpan({
     required BuildContext context,
@@ -140,7 +155,7 @@ class _StyledTextController extends TextEditingController {
           TextSpan(
             text: matchText,
             style: style?.copyWith(
-              color: Colors.amberAccent,
+              color: _dialogueColor,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -149,7 +164,7 @@ class _StyledTextController extends TextEditingController {
         spans.add(
           TextSpan(
             text: matchText,
-            style: style?.copyWith(color: const Color(0xFF90CAF9)),
+            style: style?.copyWith(color: _actionColor),
           ),
         );
       }
@@ -342,6 +357,13 @@ class _ChatPageState extends State<ChatPage> {
         final character = chatService.activeCharacter;
         final messages = chatService.messages;
         final isGroup = chatService.isGroupMode;
+
+        // Keep input-field colors in sync with the current character's settings
+        final storage = Provider.of<StorageService>(context, listen: false);
+        _controller.updateColors(
+          dialogue: storage.getDialogueColor(character),
+          action: storage.getActionColor(character),
+        );
 
         if (character == null && !isGroup) {
           return const Center(child: Text('No character selected.'));
