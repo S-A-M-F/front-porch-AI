@@ -33,6 +33,7 @@ import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/services/pseudo_remote_service.dart';
+import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
 import 'package:front_porch_ai/ui/widgets/log_view.dart';
 import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
@@ -148,27 +149,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _scanLocalPresets() {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final binDir = storage.binDir;
-    if (!binDir.existsSync()) {
-      if (mounted) setState(() => _localPresets = []);
-      return;
-    }
-    try {
-      final files = binDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
-          .toList()
-        ..sort((a, b) => p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()));
-      if (mounted) {
-        setState(() {
-          _localPresets = files;
-        });
-      }
-    } catch (e) {
-      debugPrint('SettingsPage: Failed to scan presets: $e');
-      if (mounted) setState(() => _localPresets = []);
-    }
+    setState(() {
+      _localPresets = scanKcppsPresets(storage.binDir);
+    });
   }
 
   /// Fetch available models from the configured API on startup.
@@ -2955,68 +2938,34 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _localPresets.any((f) => f.path == storageService.activeKcppsPath)
-                                ? storageService.activeKcppsPath
-                                : null,
-                            isExpanded: true,
-                            hint: const Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
-                            dropdownColor: theme.cardColor,
-                            style: theme.textTheme.bodyMedium,
-                            icon: Icon(Icons.arrow_drop_down, color: theme.iconTheme.color),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: null,
-                                child: Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
-                              ),
-                              ..._localPresets.map((file) {
-                                return DropdownMenuItem<String>(
-                                  value: file.path,
-                                  child: Text(p.basename(file.path), style: const TextStyle(fontSize: 13)),
-                                );
-                              }),
-                            ],
-                            onChanged: (val) {
-                              storageService.setActiveKcppsPath(val);
-                              if (_selectedModelPath != null && val != null) {
-                                storageService.setModelPreset(_selectedModelPath!, val);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Preset saved for model: ${p.basename(_selectedModelPath!)}')),
-                                );
-                              } else if (_selectedModelPath != null && val == null) {
-                                storageService.setModelPreset(_selectedModelPath!, '');
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          final result = await FilePicker.platform.pickFiles(
-                            type: FileType.custom,
-                            allowedExtensions: ['kcpps'],
-                          );
-                          if (result != null && result.files.single.path != null) {
-                            final path = result.files.single.path!;
-                            storageService.setActiveKcppsPath(path);
-                            if (_selectedModelPath != null) {
-                              storageService.setModelPreset(_selectedModelPath!, path);
-                            }
-                            _scanLocalPresets();
-                          }
-                        },
-                        icon: const Icon(Icons.folder_open, size: 16),
-                        label: const Text('Browse'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                        ),
-                      ),
-                    ],
+                  KcppsSelector(
+                    storage: storageService,
+                    localPresets: _localPresets,
+                    hint: 'None (Use App Settings)',
+                    onChanged: (val) {
+                      storageService.setActiveKcppsPath(val);
+                      if (_selectedModelPath != null && val != null) {
+                        storageService.setModelPreset(_selectedModelPath!, val);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Preset saved for model: ${p.basename(_selectedModelPath!)}')),
+                        );
+                      } else if (_selectedModelPath != null && val == null) {
+                        storageService.setModelPreset(_selectedModelPath!, '');
+                      }
+                    },
+                    onExternalClear: () {
+                      storageService.setActiveKcppsPath(null);
+                      if (_selectedModelPath != null) {
+                        storageService.setModelPreset(_selectedModelPath!, '');
+                      }
+                    },
+                    onBrowsePicked: (path) {
+                      if (_selectedModelPath != null) {
+                        storageService.setModelPreset(_selectedModelPath!, path);
+                      }
+                    },
+                    browseLabel: 'Browse',
+                    backgroundColor: theme.cardColor,
                   ),
                 ],
               ),

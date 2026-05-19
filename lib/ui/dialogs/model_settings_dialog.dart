@@ -18,7 +18,6 @@
 
 import 'dart:io';
 import 'package:path/path.dart' as pathLib;
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
@@ -30,6 +29,7 @@ import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/services/pseudo_remote_service.dart';
+import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
 
 class ModelSettingsDialog extends StatefulWidget {
   const ModelSettingsDialog({super.key});
@@ -96,26 +96,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog>
 
   void _scanLocalPresets() {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final binDir = storage.binDir;
-    if (!binDir.existsSync()) {
-      if (mounted) setState(() => _localPresets = []);
-      return;
-    }
-    try {
-      final files = binDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
-          .toList()
-        ..sort((a, b) => pathLib.basename(a.path).toLowerCase().compareTo(pathLib.basename(b.path).toLowerCase()));
-      if (mounted) {
-        setState(() {
-          _localPresets = files;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _localPresets = []);
-    }
+    setState(() {
+      _localPresets = scanKcppsPresets(storage.binDir);
+    });
   }
 
   /// Check whether a .kcpps preset is currently active.
@@ -682,73 +665,29 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog>
               children: [
                 const Text('Configuration Preset', style: TextStyle(fontSize: 13, color: Colors.white70)),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF374151),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _localPresets.any((f) => f.path == storage.activeKcppsPath)
-                                ? storage.activeKcppsPath
-                                : null,
-                            isExpanded: true,
-                            hint: const Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
-                            dropdownColor: const Color(0xFF374151),
-                            style: const TextStyle(color: Colors.white, fontSize: 13),
-                            icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: null,
-                                child: Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
-                              ),
-                              ..._localPresets.map((file) {
-                                return DropdownMenuItem<String>(
-                                  value: file.path,
-                                  child: Text(pathLib.basename(file.path), style: const TextStyle(fontSize: 13)),
-                                );
-                              }),
-                            ],
-                            onChanged: (val) {
-                              storage.setActiveKcppsPath(val);
-                              if (_selectedModelPath != null && val != null) {
-                                storage.setModelPreset(_selectedModelPath!, val);
-                              } else if (_selectedModelPath != null && val == null) {
-                                storage.setModelPreset(_selectedModelPath!, '');
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: () async {
-                        final result = await FilePicker.platform.pickFiles(
-                          type: FileType.custom,
-                          allowedExtensions: ['kcpps'],
-                        );
-                        if (result != null && result.files.single.path != null) {
-                          final path = result.files.single.path!;
-                          storage.setActiveKcppsPath(path);
-                          if (_selectedModelPath != null) {
-                            storage.setModelPreset(_selectedModelPath!, path);
-                          }
-                          _scanLocalPresets();
-                        }
-                      },
-                      icon: const Icon(Icons.folder_open, size: 20),
-                      tooltip: 'Browse',
-                      style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFF374151),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ],
+                KcppsSelector(
+                  storage: storage,
+                  localPresets: _localPresets,
+                  hint: 'None (Use App Settings)',
+                  onChanged: (val) {
+                    storage.setActiveKcppsPath(val);
+                    if (_selectedModelPath != null && val != null) {
+                      storage.setModelPreset(_selectedModelPath!, val);
+                    } else if (_selectedModelPath != null && val == null) {
+                      storage.setModelPreset(_selectedModelPath!, '');
+                    }
+                  },
+                  onExternalClear: () {
+                    storage.setActiveKcppsPath(null);
+                    if (_selectedModelPath != null) {
+                      storage.setModelPreset(_selectedModelPath!, '');
+                    }
+                  },
+                  onBrowsePicked: (path) {
+                    if (_selectedModelPath != null) {
+                      storage.setModelPreset(_selectedModelPath!, path);
+                    }
+                  },
                 ),
                 const SizedBox(height: 16),
                 
@@ -1145,64 +1084,17 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog>
       children: [
         const Text('Configuration Preset (.kcpps)', style: TextStyle(fontSize: 13, color: Colors.white70)),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF374151),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _localPresets.any((f) => f.path == storage.activeKcppsPath)
-                        ? storage.activeKcppsPath
-                        : null,
-                    isExpanded: true,
-                    hint: const Text('Required — select a .kcpps preset', style: TextStyle(fontSize: 13)),
-                    dropdownColor: const Color(0xFF374151),
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
-                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-                    items: [
-                      const DropdownMenuItem<String>(
-                        value: null,
-                        child: Text('None (select a preset)', style: TextStyle(fontSize: 13)),
-                      ),
-                      ..._localPresets.map((file) {
-                        return DropdownMenuItem<String>(
-                          value: file.path,
-                          child: Text(pathLib.basename(file.path), style: const TextStyle(fontSize: 13)),
-                        );
-                      }),
-                    ],
-                    onChanged: (val) {
-                      storage.setActiveKcppsPath(val);
-                    },
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: () async {
-                final result = await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['kcpps'],
-                );
-                if (result != null && result.files.single.path != null) {
-                  storage.setActiveKcppsPath(result.files.single.path!);
-                  _scanLocalPresets();
-                }
-              },
-              icon: const Icon(Icons.folder_open, size: 20),
-              tooltip: 'Browse',
-              style: IconButton.styleFrom(
-                backgroundColor: const Color(0xFF374151),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ],
+        KcppsSelector(
+          storage: storage,
+          localPresets: _localPresets,
+          hint: 'Required — select a .kcpps preset',
+          onChanged: (val) {
+            storage.setActiveKcppsPath(val);
+          },
+          onExternalClear: () {
+            storage.setActiveKcppsPath(null);
+          },
+          onBrowsePicked: (_) {},
         ),
         const SizedBox(height: 24),
         SizedBox(
