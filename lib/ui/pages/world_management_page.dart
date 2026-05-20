@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/models/world.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
@@ -60,7 +61,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
     return Consumer<WorldRepository>(
       builder: (context, repo, child) {
         return Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: AppColors.backgroundOf(context),
           body: CustomScrollView(
             slivers: [
               // Hero header
@@ -143,8 +144,8 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                 accentColor.withValues(
                   alpha: 0.08 + _headerGlowAnimation.value * 0.06,
                 ),
-                const Color(0xFF1E293B).withValues(alpha: 0.9),
-                const Color(0xFF0F172A).withValues(alpha: 0.95),
+                AppColors.card.withValues(alpha: 0.9),
+                AppColors.background.withValues(alpha: 0.95),
               ],
             ),
             border: Border.all(
@@ -284,7 +285,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+          color: AppColors.card.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.12)),
         ),
@@ -440,7 +441,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                     size: 18,
                     color: Colors.white.withValues(alpha: 0.4),
                   ),
-                  color: const Color(0xFF1E293B),
+                  color: AppColors.card,
                   onSelected: (action) {
                     switch (action) {
                       case 'edit':
@@ -634,7 +635,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (ctx, setDialogState) => Dialog(
-          backgroundColor: const Color(0xFF1E293B),
+          backgroundColor: AppColors.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),

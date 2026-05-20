@@ -18,6 +18,7 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/byaf_service.dart';
 
 /// Result from the BYAF import dialog.
@@ -45,7 +46,7 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
     final preview = widget.preview;
 
     return Dialog(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 500,

@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
 import 'package:front_porch_ai/services/audiobook_generator_service.dart';
 import 'package:front_porch_ai/services/epub_generator_service.dart';
@@ -223,7 +224,7 @@ class _StoryHomeViewState extends State<StoryHomeView> {
     }
 
     return Card(
-      color: const Color(0xFF1E293B),
+      color: AppColors.card,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -311,7 +312,7 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                 PopupMenuButton<String>(
                   icon: Icon(Icons.download, color: Colors.white.withValues(alpha: 0.6), size: 20),
                   tooltip: 'Export',
-                  color: const Color(0xFF1E293B),
+                  color: AppColors.card,
                   onSelected: (value) {
                     if (value == 'audiobook') _startAudiobookExport(project);
                     if (value == 'epub') _startEpubExport(project);
@@ -425,7 +426,7 @@ class _StoryHomeViewState extends State<StoryHomeView> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         title: const Text('Delete Story?', style: TextStyle(color: Colors.white)),
         content: Text(
           'Delete "${project.title}" and all its content? This cannot be undone.',

@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
@@ -411,7 +412,7 @@ class _HomePageState extends State<HomePage> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1E293B),
+                              color: AppColors.card,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: Colors.white12),
                             ),
@@ -423,7 +424,7 @@ class _HomePageState extends State<HomePage> {
                                   size: 18,
                                   color: Colors.white54,
                                 ),
-                                dropdownColor: const Color(0xFF1E293B),
+                                dropdownColor: AppColors.card,
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 13,
@@ -613,12 +614,12 @@ class _HomePageState extends State<HomePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: TextField(
                       controller: _searchController,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: AppColors.textPrimary(context)),
                       decoration: InputDecoration(
                         hintText: _activeFolderId != null && _searchScope != SearchScope.allCharacters
                             ? 'Search this folder...'
                             : 'Search by name or tag...',
-                        hintStyle: const TextStyle(color: Colors.white38),
+                        hintStyle: TextStyle(color: AppColors.textTertiary(context)),
                         prefixIcon: _activeFolderId != null
                             ? PopupMenuButton<SearchScope>(
                                 icon: Icon(
@@ -629,7 +630,7 @@ class _HomePageState extends State<HomePage> {
                                   size: 20,
                                 ),
                                 tooltip: 'Search scope',
-                                color: const Color(0xFF1E293B),
+                                color: AppColors.card,
                                 onSelected: (val) =>
                                     setState(() => _searchScope = val),
                                 itemBuilder: (_) => [
@@ -721,7 +722,7 @@ class _HomePageState extends State<HomePage> {
                               )
                             : null,
                         filled: true,
-                        fillColor: const Color(0xFF1E293B),
+                        fillColor: AppColors.card,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -760,7 +761,7 @@ class _HomePageState extends State<HomePage> {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1F2937),
+                      color: AppColors.surface,
                       border: const Border(
                         top: BorderSide(color: Colors.white10),
                       ),
@@ -823,7 +824,7 @@ class _HomePageState extends State<HomePage> {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1F2937),
+                      color: AppColors.surface,
                       border: const Border(
                         top: BorderSide(color: Colors.white10),
                       ),
@@ -1086,7 +1087,7 @@ class _HomePageState extends State<HomePage> {
         return Card(
           color: isHovering
               ? Colors.amber.shade900.withValues(alpha: 0.4)
-              : const Color(0xFF1E293B),
+              : AppColors.card,
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -1187,7 +1188,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildModeToggle() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.white10),
       ),
@@ -1237,13 +1238,13 @@ class _HomePageState extends State<HomePage> {
             Icon(
               icon,
               size: 18,
-              color: isActive ? Colors.amber.shade400 : Colors.white38,
+              color: isActive ? Colors.amber.shade400 : AppColors.textTertiary(context),
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? Colors.white : Colors.white54,
+                color: isActive ? AppColors.textPrimary(context) : AppColors.textTertiary(context),
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                 fontSize: 14,
               ),
@@ -1310,7 +1311,7 @@ class _HomePageState extends State<HomePage> {
           width: 150,
           height: 200,
           child: Card(
-            color: const Color(0xFF1E293B),
+            color: AppColors.card,
             clipBehavior: Clip.antiAlias,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -1503,13 +1504,13 @@ class _HomePageState extends State<HomePage> {
                                       Icon(
                                         Icons.chat_bubble_outline,
                                         size: 11,
-                                        color: Colors.white38,
+                                        color: AppColors.textTertiary(context),
                                       ),
                                       const SizedBox(width: 3),
                                       Text(
                                         '$msgCount',
                                         style: TextStyle(
-                                          color: Colors.white38,
+                                          color: AppColors.textTertiary(context),
                                           fontSize: isCompact ? 10 : 11,
                                         ),
                                       ),
@@ -1753,7 +1754,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     return Card(
-      color: const Color(0xFF1E293B),
+      color: AppColors.card,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -1964,7 +1965,7 @@ class _HomePageState extends State<HomePage> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: Colors.blueAccent, width: 0.5),
@@ -2147,11 +2148,11 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white54),
+                        TextButton(
+                          onPressed: _cancelSelection,
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(color: AppColors.textTertiary(context)),
             ),
           ),
         ],
@@ -2225,7 +2226,7 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: Colors.blueAccent, width: 0.5),
@@ -2335,7 +2336,7 @@ class _HomePageState extends State<HomePage> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('New Folder'),
         content: TextField(
@@ -2424,15 +2425,15 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: const Row(
+          title: Row(
             children: [
               Icon(Icons.group_add, color: Colors.purpleAccent),
-              SizedBox(width: 8),
-              Text('Create Group Chat', style: TextStyle(color: Colors.white)),
+              const SizedBox(width: 8),
+              Text('Create Group Chat', style: TextStyle(color: AppColors.textPrimary(context))),
             ],
           ),
           content: SizedBox(
@@ -3327,7 +3328,7 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: Text(
           parentId != null ? 'New Subfolder' : 'New Folder',
           style: const TextStyle(color: Colors.white),
@@ -3384,7 +3385,7 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text(
           'Rename Folder',
           style: TextStyle(color: Colors.white),
@@ -3843,7 +3844,7 @@ class _HomePageState extends State<HomePage> {
             final progress = totalCount > 0 ? currentCount / totalCount : 0.0;
 
             return AlertDialog(
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: AppColors.card,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
@@ -4079,7 +4080,7 @@ class _HomePageState extends State<HomePage> {
         settings: InAppBrowserClassSettings(
           browserSettings: InAppBrowserSettings(
             hideUrlBar: false,
-            toolbarTopBackgroundColor: const Color(0xFF1F2937),
+            toolbarTopBackgroundColor: AppColors.surface,
           ),
         ),
       );
@@ -4180,7 +4181,7 @@ class _HomePageState extends State<HomePage> {
         settings: InAppBrowserClassSettings(
           browserSettings: InAppBrowserSettings(
             hideUrlBar: false,
-            toolbarTopBackgroundColor: const Color(0xFF1F2937),
+            toolbarTopBackgroundColor: AppColors.surface,
           ),
         ),
       );
@@ -4200,7 +4201,7 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.orange),

@@ -21,6 +21,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/dialogs/character_avatars_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
@@ -37,9 +38,6 @@ import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 //  DESIGN TOKENS — Slate / Indigo dark theme
 // ═══════════════════════════════════════════════════════════════
 
-const _bgDeep = Color(0xFF0F172A);
-const _bgSurface = Color(0xFF1E293B);
-const _bgInput = Color(0xFF0F172A);
 const _borderSubtle = Color(0x14FFFFFF); // white 8%
 const _borderFocus = Colors.blueAccent;
 
@@ -275,7 +273,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       barrierDismissible: false,
       builder: (context) => Dialog(
         insetPadding: const EdgeInsets.all(16),
-        backgroundColor: _bgDeep,
+        backgroundColor: AppColors.background,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: SizedBox(
           width: double.infinity,
@@ -286,7 +284,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: const BoxDecoration(
-                  color: _bgSurface,
+                  color: AppColors.card,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: Row(
@@ -355,7 +353,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                       hintText: 'Enter $title...',
                       hintStyle: const TextStyle(color: Colors.white24),
                       filled: true,
-                      fillColor: _bgSurface,
+                      fillColor: AppColors.card,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: _borderSubtle),
@@ -505,7 +503,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                 const Text('Character updated successfully!'),
               ],
             ),
-            backgroundColor: const Color(0xFF1E293B),
+            backgroundColor: AppColors.card,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
@@ -555,7 +553,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
           return AlertDialog(
-            backgroundColor: _bgDeep,
+            backgroundColor: AppColors.background,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -577,7 +575,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: _bgSurface,
+                      color: AppColors.card,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isConstant
@@ -764,9 +762,9 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bgDeep,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: _bgSurface,
+        backgroundColor: AppColors.card,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white70),
@@ -853,7 +851,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: _bgSurface,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.4)),
         boxShadow: [
@@ -908,7 +906,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                           height: 160,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(20),
-                            color: _bgSurface,
+                            color: AppColors.card,
                             border: Border.all(color: _borderSubtle),
                             image:
                                 _avatarFile != null && _avatarFile!.existsSync()
@@ -951,7 +949,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                             decoration: BoxDecoration(
                               color: Colors.blueAccent,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: _bgDeep, width: 2),
+                              border: Border.all(color: AppColors.background, width: 2),
                             ),
                             child: const Icon(
                               Icons.camera_alt,
@@ -1063,7 +1061,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                             color: Colors.white,
                             fontSize: 14,
                           ),
-                          decoration: _inputDecoration('Add a tag...'),
+                          decoration: _inputDecoration('Add a tag...', context),
                           onSubmitted: (value) {
                             final trimmed = value.trim().toLowerCase();
                             if (trimmed.isNotEmpty &&
@@ -1377,7 +1375,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                 Container(
                   padding: const EdgeInsets.all(40),
                   decoration: BoxDecoration(
-                    color: _bgSurface,
+                    color: AppColors.card,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: _borderSubtle),
                   ),
@@ -1423,7 +1421,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _bgSurface,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: entry.constant
@@ -1592,7 +1590,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                     Container(
                       padding: const EdgeInsets.all(40),
                       decoration: BoxDecoration(
-                        color: _bgSurface,
+                        color: AppColors.card,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: _borderSubtle),
                       ),
@@ -1630,7 +1628,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
-                          color: _bgSurface,
+                          color: AppColors.card,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isLinked
@@ -1845,7 +1843,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     if (collapsed) {
       return Container(
         decoration: BoxDecoration(
-          color: _bgSurface,
+          color: AppColors.card,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _borderSubtle),
         ),
@@ -1885,7 +1883,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _bgSurface,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: _borderSubtle),
       ),
@@ -1940,7 +1938,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             color: enabled ? Colors.white : Colors.white38,
             fontSize: 14,
           ),
-          decoration: _inputDecoration(hint ?? 'Enter $label...'),
+          decoration: _inputDecoration(hint ?? 'Enter $label...', context),
         ),
       ],
     );
@@ -1958,12 +1956,12 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     );
   }
 
-  InputDecoration _inputDecoration(String hint) {
+  InputDecoration _inputDecoration(String hint, BuildContext context) {
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
       filled: true,
-      fillColor: _bgInput,
+      fillColor: AppColors.backgroundOf(context),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: _borderSubtle),

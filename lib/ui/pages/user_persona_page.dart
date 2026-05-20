@@ -21,6 +21,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/utils/persona_colors.dart';
@@ -385,8 +386,8 @@ class _UserPersonaPageState extends State<UserPersonaPage>
               end: Alignment.bottomRight,
               colors: [
                 accentColor.withValues(alpha: 0.08 + _headerGlowAnimation.value * 0.06),
-                const Color(0xFF1E293B).withValues(alpha: 0.9),
-                const Color(0xFF0F172A).withValues(alpha: 0.95),
+                AppColors.card.withValues(alpha: 0.9),
+                AppColors.backgroundOf(context).withValues(alpha: 0.95),
               ],
             ),
             border: Border.all(
@@ -556,7 +557,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           filter: ImageFilter.blur(sigmaX: 0, sigmaY: 0),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+              color: AppColors.card.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.12)),
             ),
@@ -672,7 +673,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 // Actions
                 PopupMenuButton<String>(
                   icon: Icon(Icons.more_vert, size: 18, color: Colors.white.withValues(alpha: 0.4)),
-                  color: const Color(0xFF1E293B),
+                  color: AppColors.card,
                   onSelected: (action) {
                     switch (action) {
                       case 'edit':
@@ -845,7 +846,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.85),
+            color: AppColors.card.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
             boxShadow: [
@@ -1067,7 +1068,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         child: Container(
           constraints: const BoxConstraints(maxWidth: 700, maxHeight: 600),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: AppColors.card,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
@@ -1158,7 +1159,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Delete Persona', style: TextStyle(fontWeight: FontWeight.bold)),
         content: RichText(
@@ -1199,7 +1200,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Clear All Facts', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Text(
@@ -1306,8 +1307,8 @@ class _HoverScaleCardState extends State<_HoverScaleCard>
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: _isHovered
-                      ? const Color(0xFF1E293B)
-                      : const Color(0xFF1E293B).withValues(alpha: 0.7),
+                      ? AppColors.card
+                      : AppColors.card.withValues(alpha: 0.7),
                   border: Border.all(
                     color: widget.isActive
                         ? widget.accentColor.withValues(alpha: 0.35 + _borderAnimation.value * 0.15)

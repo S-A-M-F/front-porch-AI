@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
 import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/models/story_project.dart';
@@ -73,7 +74,7 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
         final beats = project.beats[_sId] ?? [];
 
         return Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: AppColors.backgroundOf(context),
           appBar: AppBar(
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,7 +86,7 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
                 ),
               ],
             ),
-            backgroundColor: const Color(0xFF1E293B),
+            backgroundColor: AppColors.card,
             foregroundColor: Colors.white,
             elevation: 0,
             actions: [
@@ -103,7 +104,7 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
                 ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: Colors.white54),
-                color: const Color(0xFF1E293B),
+                color: AppColors.card,
                 onSelected: (v) => _handleMenuAction(v, project, pipeline),
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy, size: 18), title: Text('Copy Scene Text', style: TextStyle(fontSize: 13)), dense: true)),
@@ -165,7 +166,7 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
     final hasProse = prose?.final_ != null;
 
     return Card(
-      color: const Color(0xFF1E293B),
+      color: AppColors.card,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -234,7 +235,7 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
+                  color: AppColors.background,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: SelectableText(

@@ -21,6 +21,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/stt_service.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
@@ -340,7 +341,7 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
               ),
               child: CircleAvatar(
                 radius: 76,
-                backgroundColor: const Color(0xFF1F2937),
+                backgroundColor: AppColors.surface,
                 backgroundImage: widget.character.imagePath != null
                     ? FileImage(File(widget.character.imagePath!))
                     : null,

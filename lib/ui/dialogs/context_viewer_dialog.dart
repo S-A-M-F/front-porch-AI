@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 
 /// Dialog showing token budget breakdown of the last assembled prompt.
@@ -52,7 +53,7 @@ class ContextViewerDialog extends StatelessWidget {
     }
 
     return Dialog(
-      backgroundColor: const Color(0xFF0f172a),
+      backgroundColor: AppColors.backgroundOf(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
@@ -274,7 +275,7 @@ class _SectionRowState extends State<_SectionRow> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF1e293b),
+              color: AppColors.card,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: widget.color.withValues(alpha: 0.3)),
             ),

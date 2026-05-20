@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:io';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/app_version.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -213,7 +214,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                         final confirmed = await showDialog<bool>(
                           context: context,
                           builder: (ctx) => AlertDialog(
-                            backgroundColor: const Color(0xFF1E293B),
+                            backgroundColor: AppColors.card,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             title: Row(
                               children: [
@@ -554,7 +555,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                               final confirmed = await showDialog<bool>(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
-                                  backgroundColor: const Color(0xFF1E293B),
+                                  backgroundColor: AppColors.card,
                                   title: const Row(
                                     children: [
                                       Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 28),
@@ -623,7 +624,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                               final confirmed = await showDialog<bool>(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
-                                  backgroundColor: const Color(0xFF1E293B),
+                                  backgroundColor: AppColors.card,
                                   title: const Row(
                                     children: [
                                       Icon(Icons.delete_forever, color: Colors.redAccent, size: 28),
@@ -838,7 +839,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                 final confirmed = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
-                                    backgroundColor: const Color(0xFF1E293B),
+                                    backgroundColor: AppColors.card,
                                     title: const Text('Delete Backup?', style: TextStyle(color: Colors.white)),
                                     content: Text(
                                       'Delete backup from $timeStr ($sizeMb MB)?\n\nThis cannot be undone.',
@@ -897,7 +898,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 28),
@@ -1012,7 +1013,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
             child: Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
+                color: AppColors.card,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -1069,7 +1070,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
           builder: (ctx, setDialogState) {
             final hasDownloadable = needDownload.isNotEmpty;
             return AlertDialog(
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: AppColors.card,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Row(
                 children: [

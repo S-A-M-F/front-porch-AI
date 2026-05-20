@@ -92,8 +92,8 @@ class _HoverableCardState extends State<_HoverableCard>
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: _isHovered
-                      ? const Color(0xFF1E293B)
-                      : const Color(0xFF1E293B).withValues(alpha: 0.7),
+                      ? AppColors.card
+                      : AppColors.card.withValues(alpha: 0.7),
                   border: Border.all(
                     color: widget.isActive
                         ? widget.accentColor.withValues(
