@@ -47,7 +47,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev libwebkit2gtk-4.1-dev libwpewebkit-1.0-dev wpewebkit-1.0 libwpe-1.0-dev wpebackend-fdo-1.0 ninja-build pkg-config cmake libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libsecret-1-dev libwebkit2gtk-4.1-dev ninja-build pkg-config cmake libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 
       - name: Compute Rawhide Nightly Version
         id: version
