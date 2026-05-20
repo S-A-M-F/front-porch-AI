@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
@@ -34,7 +35,7 @@ class Sidebar extends StatelessWidget {
 
     return Container(
       width: 250,
-      color: const Color(0xFF0F172A), // Dark slate
+      color: AppColors.backgroundOf(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
