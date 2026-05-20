@@ -386,6 +386,40 @@ jobs:
             Front_Porch_AI-Linux.AppImage
           if-no-files-found: ignore
 
+      - name: Prepare Friendly Release Notes
+        id: release_notes
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+
+          # Try to find a matching per-branch notes file
+          if [[ "$TAG" == *"Beta"* ]] || [[ "$TAG" == *"beta"* ]]; then
+            NOTES_FILE="docs/0.9.8-Beta.md"
+          elif [[ "$TAG" == *"Rawhide"* ]] || [[ "$TAG" == *"nightly"* ]]; then
+            NOTES_FILE="docs/Rawhide.md"
+          else
+            NOTES_FILE="docs/main.md"
+          fi
+
+          if [ -f "$NOTES_FILE" ]; then
+            BODY=$(awk '
+              /^## / { if (in_content) { exit }; in_content=1; next }
+              in_content { print }
+            ' "$NOTES_FILE" || true)
+
+            if [ -n "$BODY" ]; then
+              echo "body<<EOF" >> $GITHUB_OUTPUT
+              echo "$BODY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              echo "Using notes from $NOTES_FILE for tag $TAG"
+            else
+              echo "body=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No notes file found at $NOTES_FILE — release body will be empty"
+            echo "body=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create or Update Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -396,6 +430,7 @@ jobs:
             Front_Porch_AI-Linux.AppImage
           prerelease: true
           name: "${{ github.ref_name }} (Pre-Release)"
+          body: ${{ steps.release_notes.outputs.body }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
