@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
@@ -34,7 +35,7 @@ class Sidebar extends StatelessWidget {
 
     return Container(
       width: 250,
-      color: const Color(0xFF0F172A), // Dark slate
+      color: AppColors.backgroundOf(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -137,18 +138,18 @@ class Sidebar extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.coffee_outlined,
                       color: Color(0xFFFF5E5B), // Ko-fi brand coral
                       size: 22,
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Flexible(
                       child: Text(
                         'Buy Me a Coffee ☕',
-                        style: TextStyle(color: Colors.white70),
+                        style: TextStyle(color: AppColors.textSecondary(context)),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -167,9 +168,9 @@ class Sidebar extends StatelessWidget {
                   message: 'Join our Discord Server',
                   child: GestureDetector(
                     onTap: () => launchUrl(Uri.parse('https://discord.gg/e4tET6rpdv')),
-                    child: const MouseRegion(
+                      child: MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Icon(Icons.discord, size: 20, color: Colors.white54),
+                      child: Icon(Icons.discord, size: 20, color: AppColors.textTertiary(context)),
                     ),
                   ),
                 ),
@@ -177,9 +178,9 @@ class Sidebar extends StatelessWidget {
                   message: 'Join our Matrix Server',
                   child: GestureDetector(
                     onTap: () => launchUrl(Uri.parse('https://matrix.dreamersai.art')),
-                    child: const MouseRegion(
+                      child: MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Icon(Icons.grid_view_rounded, size: 20, color: Colors.white54),
+                      child: Icon(Icons.grid_view_rounded, size: 20, color: AppColors.textTertiary(context)),
                     ),
                   ),
                 ),
@@ -197,7 +198,7 @@ class Sidebar extends StatelessWidget {
                   children: [
                     Text(
                       version,
-                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textTertiary(context)),
                     ),
                     if (updateService.updateAvailable) ...[
                       const SizedBox(width: 8),
@@ -242,7 +243,7 @@ class _SidebarItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Container(
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+            color: isSelected ? AppColors.textPrimary(context).withValues(alpha: 0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
@@ -250,7 +251,7 @@ class _SidebarItem extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: isSelected ? Colors.white : Colors.white70,
+                color: isSelected ? AppColors.textPrimary(context) : AppColors.textSecondary(context),
                 size: 22,
               ),
               const SizedBox(width: 12),
@@ -258,7 +259,7 @@ class _SidebarItem extends StatelessWidget {
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white70,
+                    color: isSelected ? AppColors.textPrimary(context) : AppColors.textSecondary(context),
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                   ),
                   overflow: TextOverflow.ellipsis,

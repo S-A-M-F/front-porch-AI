@@ -25,6 +25,7 @@ import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/lore_extraction_service.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
@@ -152,7 +153,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
@@ -766,8 +767,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   Future<void> _loadAvailableModels() async {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
 
-    // If using KoboldCpp backend, no remote model list — just use the local model
-    if (llmProvider.activeBackend == BackendType.kobold) {
+    // If using KoboldCpp or PseudoRemote backend, no remote model list
+    if (llmProvider.activeBackend == BackendType.kobold ||
+        llmProvider.activeBackend == BackendType.pseudoRemote) {
       if (mounted) {
         setState(() {
           _availableModels = [];
@@ -964,9 +966,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: _isGenerating ? null : () => Navigator.of(context).pop(),
@@ -1075,6 +1077,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   Widget _buildSetupStep() {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
     final isKobold = llmProvider.activeBackend == BackendType.kobold;
+    final isPseudoRemote = llmProvider.activeBackend == BackendType.pseudoRemote;
 
     return Center(
       key: const ValueKey('setup'),
@@ -1104,7 +1107,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 children: [
                   Expanded(
                     child: _backendChip(
-                      label: 'KoboldCpp (Local)',
+                      label: 'KoboldCpp',
                       icon: Icons.computer,
                       isSelected: isKobold,
                       onTap: () async {
@@ -1119,11 +1122,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _backendChip(
-                      label: 'API (Remote)',
-                      icon: Icons.cloud,
-                      isSelected: !isKobold,
+                      label: 'Pseudo-Remote',
+                      icon: Icons.laptop,
+                      isSelected: isPseudoRemote,
                       onTap: () async {
-                        if (isKobold) {
+                        if (!isPseudoRemote) {
+                          await llmProvider.setActiveBackend(BackendType.pseudoRemote);
+                          setState(() {});
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _backendChip(
+                      label: 'Remote API',
+                      icon: Icons.cloud,
+                      isSelected: !isKobold && !isPseudoRemote,
+                      onTap: () async {
+                        if (isKobold || isPseudoRemote) {
                           await llmProvider.setActiveBackend(BackendType.openRouter);
                           _loadAvailableModels();
                           setState(() {});
@@ -1166,7 +1183,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 Container(
                   constraints: const BoxConstraints(maxHeight: 250),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
+                    color: AppColors.card,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.white12),
                   ),
@@ -1360,7 +1377,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
+                    color: AppColors.card,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.white12),
                   ),
@@ -1452,7 +1469,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blueAccent.withValues(alpha: 0.15) : const Color(0xFF1E293B),
+          color: isSelected ? Colors.blueAccent.withValues(alpha: 0.15) : AppColors.card,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: isSelected ? Colors.blueAccent : Colors.white12, width: isSelected ? 2 : 1),
         ),
@@ -1627,7 +1644,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   : mode == CreatorMode.quick
                       ? Colors.greenAccent.withValues(alpha: 0.06)
                       : Colors.amberAccent.withValues(alpha: 0.06))
-              : const Color(0xFF1E293B),
+              : AppColors.card,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
         ),
@@ -1749,7 +1766,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   hintText: 'Morgana, Kaito, Vex...',
                   hintStyle: const TextStyle(color: Colors.white12, fontSize: 14),
                   filled: true,
-                  fillColor: const Color(0xFF1E293B),
+                  fillColor: AppColors.card,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.greenAccent, width: 2)),
@@ -1779,7 +1796,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   hintText: 'A gruff dwarven blacksmith who secretly writes poetry...',
                   hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
                   filled: true,
-                  fillColor: const Color(0xFF1E293B),
+                  fillColor: AppColors.card,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.greenAccent, width: 2)),
@@ -1809,7 +1826,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   hintText: 'A modern coffee shop where they work as a barista, a fantasy guild hall, a space station...',
                   hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
                   filled: true,
-                  fillColor: const Color(0xFF1E293B),
+                  fillColor: AppColors.card,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.greenAccent, width: 2)),
@@ -1830,7 +1847,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     selected: isSelected,
                     onSelected: (_) { setState(() => _artStyle = style); _saveState(); },
                     selectedColor: Colors.greenAccent.shade700,
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: AppColors.card,
                     labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
                     side: BorderSide(color: isSelected ? Colors.greenAccent.shade700 : Colors.white12),
                   );
@@ -1870,7 +1887,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       _saveState();
                     },
                     selectedColor: Colors.greenAccent.shade700,
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: AppColors.card,
                     checkmarkColor: Colors.white,
                     labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
                     side: BorderSide(color: isSelected ? Colors.greenAccent.shade700 : Colors.white12),
@@ -1933,7 +1950,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   decoration: BoxDecoration(
                     color: _quickNsfwEnabled
                         ? Colors.pinkAccent.withValues(alpha: 0.08)
-                        : const Color(0xFF1E293B),
+                        : AppColors.card,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _quickNsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.5) : Colors.white12,
@@ -2107,6 +2124,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         return;
       }
       llmService = kobold;
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final pseudo = llmProvider.pseudoRemoteService;
+      if (!pseudo.isReady) {
+        setState(() {
+          _generationStatus = 'Error: Pseudo-Remote is not running. Start it first.';
+          _isGenerating = false;
+        });
+        return;
+      }
+      llmService = pseudo;
     } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
       llmService = OpenRouterService(
         apiUrl: storage.remoteApiUrl,
@@ -2232,7 +2259,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     // Auto-start avatar generation (API backend only)
     final llmProvider2 = Provider.of<LLMProvider>(context, listen: false);
-    if (llmProvider2.activeBackend != BackendType.kobold) {
+    if (llmProvider2.activeBackend != BackendType.kobold &&
+        llmProvider2.activeBackend != BackendType.pseudoRemote) {
       _generateAvatar();
     }
   }
@@ -2301,7 +2329,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               hintText: hint,
               hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
               filled: true,
-              fillColor: const Color(0xFF1E293B),
+              fillColor: AppColors.card,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white12)),
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white12)),
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: accentColor)),
@@ -2329,7 +2357,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isInField ? accentColor.withValues(alpha: 0.2) : const Color(0xFF1E293B),
+                      color: isInField ? accentColor.withValues(alpha: 0.2) : AppColors.card,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: isInField ? accentColor.withValues(alpha: 0.5) : Colors.white10),
                     ),
@@ -2388,7 +2416,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         decoration: BoxDecoration(
           color: _reasoningEnabled
               ? accentColor.withValues(alpha: 0.08)
-              : const Color(0xFF1E293B),
+              : AppColors.card,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: _reasoningEnabled ? accentColor.withValues(alpha: 0.5) : Colors.white12,
@@ -2458,7 +2486,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             hintText: 'https://wowpedia.fandom.com/wiki/Demon_hunter, https://wowpedia.fandom.com/wiki/Illidan_Stormrage',
             hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
             filled: true,
-            fillColor: const Color(0xFF1E293B),
+            fillColor: AppColors.card,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: accentColor, width: 2)),
@@ -2748,7 +2776,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.08) : const Color(0xFF1E293B),
+                  color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.08) : AppColors.card,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.4) : Colors.white12),
                 ),
@@ -2874,7 +2902,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         hintStyle: const TextStyle(color: Colors.white12, fontSize: 13),
                         hintMaxLines: 3,
                         filled: true,
-                        fillColor: const Color(0xFF1E293B),
+                        fillColor: AppColors.card,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white12)),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white12)),
                         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.tealAccent)),
@@ -2900,7 +2928,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1E293B),
+                              color: AppColors.card,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: Colors.white10),
                             ),
@@ -2968,7 +2996,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
+                        color: AppColors.card,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Colors.white12),
                       ),
@@ -2976,7 +3004,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         child: DropdownButton<String>(
                           value: _selectedPersonaId,
                           isExpanded: true,
-                          dropdownColor: const Color(0xFF1E293B),
+                          dropdownColor: AppColors.card,
                           style: const TextStyle(color: Colors.white, fontSize: 13),
                           items: [
                             const DropdownMenuItem(value: '', child: Row(children: [
@@ -3031,7 +3059,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           _saveState();
                         },
                         selectedColor: Colors.blueAccent,
-                        backgroundColor: const Color(0xFF1E293B),
+                        backgroundColor: AppColors.card,
                         checkmarkColor: Colors.white,
                         labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
                         side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
@@ -3053,7 +3081,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1E293B),
+                                color: AppColors.card,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: Colors.white12),
                               ),
@@ -3061,7 +3089,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                 child: DropdownButton<String>(
                                   value: _greetingLength,
                                   isExpanded: true,
-                                  dropdownColor: const Color(0xFF1E293B),
+                                  dropdownColor: AppColors.card,
                                   style: const TextStyle(color: Colors.white, fontSize: 13),
                                   items: _greetingLengths.map((len) => DropdownMenuItem(value: len, child: Text(len))).toList(),
                                   onChanged: (value) { if (value != null) { setState(() => _greetingLength = value); _saveState(); } },
@@ -3117,7 +3145,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         selected: isSelected,
                         onSelected: (_) => setState(() => _artStyle = style),
                         selectedColor: Colors.blueAccent,
-                        backgroundColor: const Color(0xFF1E293B),
+                        backgroundColor: AppColors.card,
                         labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
                         side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
                       );
@@ -3137,7 +3165,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         selected: isSelected,
                         onSelected: (_) { setState(() => _generationDetail = label); _saveState(); },
                         selectedColor: Colors.blueAccent,
-                        backgroundColor: const Color(0xFF1E293B),
+                        backgroundColor: AppColors.card,
                         labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
                         side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
                       );
@@ -3177,7 +3205,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               selected: isSelected,
                               onSelected: (_) { setState(() => _loreDepth = depth); _saveState(); },
                               selectedColor: Colors.blueAccent,
-                              backgroundColor: const Color(0xFF1E293B),
+                              backgroundColor: AppColors.card,
                               labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white54),
                               side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
                               visualDensity: VisualDensity.compact,
@@ -3297,7 +3325,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   _saveState();
                 },
                 selectedColor: accentColor.withValues(alpha: 0.3),
-                backgroundColor: const Color(0xFF1E293B),
+                backgroundColor: AppColors.card,
                 labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white54),
                 side: BorderSide(color: isSelected ? accentColor : Colors.white10),
                 visualDensity: VisualDensity.compact,
@@ -3342,7 +3370,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   _saveState();
                 },
                 selectedColor: accentColor.withValues(alpha: 0.3),
-                backgroundColor: const Color(0xFF1E293B),
+                backgroundColor: AppColors.card,
                 checkmarkColor: accentColor,
                 labelStyle: TextStyle(color: isSelected ? accentColor : Colors.white38),
                 side: BorderSide(color: isSelected ? accentColor : Colors.white10),
@@ -3382,7 +3410,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.08) : const Color(0xFF1E293B),
+                  color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.08) : AppColors.card,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.4) : Colors.white12),
                 ),
@@ -3443,7 +3471,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           avatar: Icon(isSelected ? Icons.check : Icons.auto_awesome, size: 14, color: isSelected ? Colors.white : Colors.amberAccent),
                           selected: isSelected,
                           selectedColor: Colors.amberAccent.withValues(alpha: 0.3),
-                          backgroundColor: const Color(0xFF1E293B),
+                          backgroundColor: AppColors.card,
                           side: BorderSide(color: isSelected ? Colors.amberAccent : Colors.white12),
                           checkmarkColor: Colors.amberAccent,
                           showCheckmark: false,
@@ -3568,7 +3596,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                 isDense: true,
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                 filled: true,
-                                fillColor: const Color(0xFF1E293B),
+                                fillColor: AppColors.card,
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.white12)),
                                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.white12)),
                                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.blueAccent)),
@@ -3645,7 +3673,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       _saveState();
                     },
                     selectedColor: isNsfw ? Colors.pinkAccent.withValues(alpha: 0.3) : Colors.blueAccent,
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: AppColors.card,
                     checkmarkColor: Colors.white,
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.white : Colors.white70,
@@ -3794,7 +3822,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       _saveState();
                     },
                     selectedColor: Colors.blueAccent,
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: AppColors.card,
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.white : Colors.white70,
                       fontSize: 13,
@@ -3939,7 +3967,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                   _saveState();
                                 },
                                 selectedColor: Colors.blueAccent,
-                                backgroundColor: const Color(0xFF1E293B),
+                                backgroundColor: AppColors.card,
                                 labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white54),
                                 side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
                                 visualDensity: VisualDensity.compact,
@@ -3970,7 +3998,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               _saveState();
                             },
                             selectedColor: Colors.blueAccent.withValues(alpha: 0.3),
-                            backgroundColor: const Color(0xFF1E293B),
+                            backgroundColor: AppColors.card,
                             checkmarkColor: Colors.blueAccent,
                             labelStyle: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white38),
                             side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
@@ -3999,7 +4027,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
+                    color: AppColors.card,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.white12),
                   ),
@@ -4007,7 +4035,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     child: DropdownButton<String>(
                       value: _selectedPersonaId,
                       isExpanded: true,
-                      dropdownColor: const Color(0xFF1E293B),
+                      dropdownColor: AppColors.card,
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                       items: [
                         const DropdownMenuItem(
@@ -4076,7 +4104,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       _saveState();
                     },
                     selectedColor: Colors.blueAccent,
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: AppColors.card,
                     checkmarkColor: Colors.white,
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.white : Colors.white70,
@@ -4104,7 +4132,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1E293B),
+                            color: AppColors.card,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: Colors.white12),
                           ),
@@ -4112,7 +4140,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             child: DropdownButton<String>(
                               value: _greetingLength,
                               isExpanded: true,
-                              dropdownColor: const Color(0xFF1E293B),
+                              dropdownColor: AppColors.card,
                               style: const TextStyle(color: Colors.white, fontSize: 13),
                               items: _greetingLengths.map((len) => DropdownMenuItem(
                                 value: len,
@@ -4188,7 +4216,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     selected: isSelected,
                     onSelected: (_) => setState(() => _artStyle = style),
                     selectedColor: Colors.blueAccent,
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: AppColors.card,
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.white : Colors.white70,
                       fontSize: 13,
@@ -4283,7 +4311,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             }).toList();
 
             return Dialog(
-              backgroundColor: const Color(0xFF0F172A),
+              backgroundColor: AppColors.background,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 500, maxHeight: 500),
@@ -4314,7 +4342,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
                           prefixIcon: const Icon(Icons.search, color: Colors.white24, size: 20),
                           filled: true,
-                          fillColor: const Color(0xFF1E293B),
+                          fillColor: AppColors.card,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: BorderSide.none,
@@ -4418,7 +4446,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         hintText: hint,
         hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
         filled: true,
-        fillColor: const Color(0xFF1E293B),
+        fillColor: AppColors.card,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: Colors.white12),
@@ -4502,7 +4530,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   constraints: const BoxConstraints(maxHeight: 400),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
+                    color: AppColors.card,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.white10),
                   ),
@@ -4700,7 +4728,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   height: 260,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    color: const Color(0xFF1E293B),
+                    color: AppColors.card,
                     border: Border.all(color: Colors.white12),
                     image: _generatedAvatar != null
                         ? DecorationImage(
@@ -4720,7 +4748,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                     Text('Generating avatar...', style: TextStyle(color: Colors.white38, fontSize: 12)),
                                   ],
                                 )
-                              : Provider.of<LLMProvider>(context, listen: false).activeBackend == BackendType.kobold
+                              : Provider.of<LLMProvider>(context, listen: false).activeBackend == BackendType.kobold ||
+                                      Provider.of<LLMProvider>(context, listen: false).activeBackend == BackendType.pseudoRemote
                                   ? Padding(
                                       padding: const EdgeInsets.all(16),
                                       child: Column(
@@ -4728,7 +4757,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                         children: [
                                           const Icon(Icons.content_copy, size: 32, color: Colors.white24),
                                           const SizedBox(height: 8),
-                                          const Text('Avatar generation unavailable with KoboldCpp',
+                                          const Text('Avatar generation unavailable with managed backends',
                                             style: TextStyle(color: Colors.white38, fontSize: 12),
                                             textAlign: TextAlign.center),
                                           const SizedBox(height: 8),
@@ -4825,7 +4854,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     hintText: 'Describe the character portrait...',
                     hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
                     filled: true,
-                    fillColor: const Color(0xFF1E293B),
+                    fillColor: AppColors.card,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide(color: Colors.white12),
@@ -4939,7 +4968,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: enabled ? const Color(0xFF1E293B) : const Color(0xFF111827),
+                        color: enabled ? AppColors.card : const Color(0xFF111827),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: enabled ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.white10),
                       ),
@@ -4995,7 +5024,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5),
             decoration: InputDecoration(
               filled: true,
-              fillColor: const Color(0xFF1E293B),
+              fillColor: AppColors.card,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(color: Colors.white12),
@@ -5098,7 +5127,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         final accepted = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1E293B),
+            backgroundColor: AppColors.card,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(
               children: [
@@ -5119,7 +5148,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0F172A),
+                        color: AppColors.background,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.3)),
                       ),
@@ -5189,6 +5218,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         return;
       }
       llmService = kobold;
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final pseudo = llmProvider.pseudoRemoteService;
+      if (!pseudo.isReady) {
+        setState(() { _generationStatus = 'Error: Pseudo-Remote is not running. Start it first.'; _isGenerating = false; });
+        return;
+      }
+      llmService = pseudo;
     } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
       llmService = OpenRouterService(apiUrl: storage.remoteApiUrl, apiKey: storage.remoteApiKey, modelName: _selectedModelId);
     } else {
@@ -5197,6 +5233,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         setState(() { _generationStatus = 'Error: No LLM service available. Configure a model first.'; _isGenerating = false; });
         return;
       }
+      // Use the shared OpenRouterService so we get the streaming + TTS flow
       llmService = active;
     }
 
@@ -5350,7 +5387,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
       setState(() { _currentStep = 4; _isGenerating = false; _progress = 1.0; _activeGenService = null; }); // → Realism step
 
-      if (llmProvider.activeBackend != BackendType.kobold) {
+      if (llmProvider.activeBackend != BackendType.kobold &&
+          llmProvider.activeBackend != BackendType.pseudoRemote) {
         _generateAvatar();
       }
     } else {
@@ -5613,6 +5651,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     if (llmProvider.activeBackend == BackendType.kobold) {
       final kobold = llmProvider.koboldService;
       if (kobold.isReady) llmService = kobold;
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final pseudo = llmProvider.pseudoRemoteService;
+      if (pseudo.isReady) llmService = pseudo;
     } else {
       if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
         llmService = OpenRouterService(
@@ -5668,6 +5709,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         return;
       }
       llmService = kobold;
+    } else if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      final pseudo = llmProvider.pseudoRemoteService;
+      if (!pseudo.isReady) {
+        setState(() {
+          _generationStatus = 'Error: Pseudo-Remote is not running. Start it first.';
+          _isGenerating = false;
+        });
+        return;
+      }
+      llmService = pseudo;
     } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
       final tempService = OpenRouterService(
         apiUrl: storage.remoteApiUrl,
@@ -5687,7 +5738,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       llmService = active;
     }
 
-    debugPrint('CharacterGen: Using backend: ${llmService.runtimeType} (${llmProvider.activeBackend == BackendType.kobold ? "KoboldCpp" : _selectedModelId.isNotEmpty ? _selectedModelId : "default API model"})');
+    debugPrint('CharacterGen: Using backend: ${llmService.runtimeType} (${llmProvider.activeBackend == BackendType.kobold ? "KoboldCpp" : llmProvider.activeBackend == BackendType.pseudoRemote ? "PseudoRemote" : _selectedModelId.isNotEmpty ? _selectedModelId : "default API model"})');
 
     // Resolve selected persona context
     String userPersonaContext = '';
@@ -5847,8 +5898,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         _activeGenService = null;
       });
 
-      // Auto-start avatar generation (API backend only — KoboldCpp has no image API)
-      if (llmProvider.activeBackend != BackendType.kobold) {
+      // Auto-start avatar generation (API backend only — local backends have no image API)
+      if (llmProvider.activeBackend != BackendType.kobold &&
+          llmProvider.activeBackend != BackendType.pseudoRemote) {
         _generateAvatar();
       }
     } else {

@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Shared Realism Engine configuration form.
 ///
@@ -150,7 +151,7 @@ class RealismFormSection extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: AppColors.card,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: enabled ? Colors.blueAccent.withValues(alpha: 0.4) : Colors.white12,
@@ -232,14 +233,14 @@ class RealismFormSection extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: AppColors.background,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.white12),
                         ),
                         child: DropdownButton<String>(
                           value: timeOfDay,
                           isExpanded: true,
-                          dropdownColor: const Color(0xFF1E293B),
+                          dropdownColor: AppColors.card,
                           underline: const SizedBox(),
                           style: const TextStyle(color: Colors.white, fontSize: 14),
                           items: _timeOptions.map((t) => DropdownMenuItem(
@@ -262,7 +263,7 @@ class RealismFormSection extends StatelessWidget {
                       const SizedBox(height: 8),
                       Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: AppColors.background,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.white12),
                         ),
@@ -355,7 +356,7 @@ class RealismFormSection extends StatelessWidget {
                       const SizedBox(height: 8),
                       Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: AppColors.background,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.white12),
                         ),
@@ -388,14 +389,14 @@ class RealismFormSection extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: AppColors.background,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.white12),
                         ),
                         child: DropdownButton<String>(
                           value: emotionIntensity,
                           isExpanded: true,
-                          dropdownColor: const Color(0xFF1E293B),
+                          dropdownColor: AppColors.card,
                           underline: const SizedBox(),
                           style: const TextStyle(color: Colors.white, fontSize: 14),
                           items: _intensityOptions.map((i) => DropdownMenuItem(
@@ -454,7 +455,7 @@ class RealismFormSection extends StatelessWidget {
                 const SizedBox(height: 8),
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
+                    color: AppColors.background,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.white12),
                   ),
@@ -507,7 +508,7 @@ class RealismFormSection extends StatelessWidget {
 
   static BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: const Color(0xFF1E293B),
+      color: AppColors.card,
       borderRadius: BorderRadius.circular(14),
       border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
     );

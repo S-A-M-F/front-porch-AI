@@ -18,9 +18,9 @@
 
 import 'dart:io';
 import 'package:path/path.dart' as pathLib;
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
@@ -29,6 +29,8 @@ import 'package:front_porch_ai/services/hardware_service.dart';
 import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
+import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
 
 class ModelSettingsDialog extends StatefulWidget {
   const ModelSettingsDialog({super.key});
@@ -37,7 +39,8 @@ class ModelSettingsDialog extends StatefulWidget {
   State<ModelSettingsDialog> createState() => _ModelSettingsDialogState();
 }
 
-class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
+class _ModelSettingsDialogState extends State<ModelSettingsDialog>
+    with SingleTickerProviderStateMixin {
   // Local backend fields
   final _gpuLayersController = TextEditingController(text: '0');
   final _contextSizeController = TextEditingController(text: '');
@@ -57,9 +60,24 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   // Preset fields
   List<File> _localPresets = [];
 
+  // Blinking animation for process logs
+  late final AnimationController _blinkController;
+  late final Animation<double> _blinkAnimation;
+
+  // Scroll controller for the pseudo-remote process log
+  final ScrollController _pseudoLogScrollController = ScrollController();
+  int _lastPseudoLogCount = 0;
+
   @override
   void initState() {
     super.initState();
+    _blinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _blinkAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
+    );
     final storage = Provider.of<StorageService>(context, listen: false);
     // Local settings
     _useCublas = storage.useCublas == true;
@@ -79,26 +97,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
 
   void _scanLocalPresets() {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final binDir = storage.binDir;
-    if (!binDir.existsSync()) {
-      if (mounted) setState(() => _localPresets = []);
-      return;
-    }
-    try {
-      final files = binDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
-          .toList()
-        ..sort((a, b) => pathLib.basename(a.path).toLowerCase().compareTo(pathLib.basename(b.path).toLowerCase()));
-      if (mounted) {
-        setState(() {
-          _localPresets = files;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _localPresets = []);
-    }
+    setState(() {
+      _localPresets = scanKcppsPresets(storage.binDir);
+    });
   }
 
   /// Check whether a .kcpps preset is currently active.
@@ -114,6 +115,8 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     _apiUrlController.dispose();
     _apiKeyController.dispose();
     _modelNameController.dispose();
+    _blinkController.dispose();
+    _pseudoLogScrollController.dispose();
     super.dispose();
   }
 
@@ -331,7 +334,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                 : models.where((m) => m.id.toLowerCase().contains(searchQuery.toLowerCase())).toList();
 
             return AlertDialog(
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: AppColors.card,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,10 +433,10 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final llmProvider = Provider.of<LLMProvider>(context);
-    final isLocal = llmProvider.isLocal;
+    final backend = llmProvider.activeBackend;
 
     return Dialog(
-       backgroundColor: const Color(0xFF1F2937),
+       backgroundColor: AppColors.surface,
        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
        child: Container(
          width: 500,
@@ -464,15 +467,23 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                      child: _buildToggleButton(
                        label: 'Local',
                        icon: Icons.computer,
-                       isSelected: isLocal,
+                       isSelected: backend == BackendType.kobold,
                        onTap: () => llmProvider.setActiveBackend(BackendType.kobold),
+                     ),
+                   ),
+                   Expanded(
+                     child: _buildToggleButton(
+                        label: 'Pseudo-Remote',
+                       icon: Icons.laptop,
+                       isSelected: backend == BackendType.pseudoRemote,
+                       onTap: () => llmProvider.setActiveBackend(BackendType.pseudoRemote),
                      ),
                    ),
                    Expanded(
                      child: _buildToggleButton(
                        label: 'Remote API',
                        icon: Icons.cloud,
-                       isSelected: !isLocal,
+                       isSelected: backend == BackendType.openRouter,
                        onTap: () => llmProvider.setActiveBackend(BackendType.openRouter),
                      ),
                    ),
@@ -484,7 +495,11 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
              // Content area
              Flexible(
                child: SingleChildScrollView(
-                 child: isLocal ? _buildLocalSettings() : _buildRemoteSettings(),
+                 child: backend == BackendType.kobold
+                     ? _buildLocalSettings()
+                     : backend == BackendType.pseudoRemote
+                         ? _buildPseudoRemoteSettings()
+                         : _buildRemoteSettings(),
                ),
              ),
            ],
@@ -651,73 +666,29 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               children: [
                 const Text('Configuration Preset', style: TextStyle(fontSize: 13, color: Colors.white70)),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF374151),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _localPresets.any((f) => f.path == storage.activeKcppsPath)
-                                ? storage.activeKcppsPath
-                                : null,
-                            isExpanded: true,
-                            hint: const Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
-                            dropdownColor: const Color(0xFF374151),
-                            style: const TextStyle(color: Colors.white, fontSize: 13),
-                            icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: null,
-                                child: Text('None (Use App Settings)', style: TextStyle(fontSize: 13)),
-                              ),
-                              ..._localPresets.map((file) {
-                                return DropdownMenuItem<String>(
-                                  value: file.path,
-                                  child: Text(pathLib.basename(file.path), style: const TextStyle(fontSize: 13)),
-                                );
-                              }),
-                            ],
-                            onChanged: (val) {
-                              storage.setActiveKcppsPath(val);
-                              if (_selectedModelPath != null && val != null) {
-                                storage.setModelPreset(_selectedModelPath!, val);
-                              } else if (_selectedModelPath != null && val == null) {
-                                storage.setModelPreset(_selectedModelPath!, '');
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: () async {
-                        final result = await FilePicker.platform.pickFiles(
-                          type: FileType.custom,
-                          allowedExtensions: ['kcpps'],
-                        );
-                        if (result != null && result.files.single.path != null) {
-                          final path = result.files.single.path!;
-                          storage.setActiveKcppsPath(path);
-                          if (_selectedModelPath != null) {
-                            storage.setModelPreset(_selectedModelPath!, path);
-                          }
-                          _scanLocalPresets();
-                        }
-                      },
-                      icon: const Icon(Icons.folder_open, size: 20),
-                      tooltip: 'Browse',
-                      style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFF374151),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ],
+                KcppsSelector(
+                  storage: storage,
+                  localPresets: _localPresets,
+                  hint: 'None (Use App Settings)',
+                  onChanged: (val) {
+                    storage.setActiveKcppsPath(val);
+                    if (_selectedModelPath != null && val != null) {
+                      storage.setModelPreset(_selectedModelPath!, val);
+                    } else if (_selectedModelPath != null && val == null) {
+                      storage.setModelPreset(_selectedModelPath!, '');
+                    }
+                  },
+                  onExternalClear: () {
+                    storage.setActiveKcppsPath(null);
+                    if (_selectedModelPath != null) {
+                      storage.setModelPreset(_selectedModelPath!, '');
+                    }
+                  },
+                  onBrowsePicked: (path) {
+                    if (_selectedModelPath != null) {
+                      storage.setModelPreset(_selectedModelPath!, path);
+                    }
+                  },
                 ),
                 const SizedBox(height: 16),
                 
@@ -993,6 +964,203 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           ),
         ),
       ],
+    );
+  }
+
+  bool _isProgressLine(String line) =>
+      line.startsWith('Generating (') ||
+      RegExp(r'^Processing Prompt', caseSensitive: false).hasMatch(line);
+
+  Color _lineColor(String line) {
+    if (line.toLowerCase().contains('error') ||
+        line.toLowerCase().contains('fail') ||
+        line.toLowerCase().contains('fatal')) {
+      return const Color(0xFFFF6B6B);
+    } else if (line.toLowerCase().contains('warn')) {
+      return const Color(0xFFFFD93D);
+    } else if (line.toLowerCase().contains('ready') ||
+        line.toLowerCase().contains('server listen') ||
+        line.toLowerCase().contains('please connect')) {
+      return Colors.greenAccent;
+    } else if (line.toLowerCase().contains('loading') ||
+        line.toLowerCase().contains('starting')) {
+      return const Color(0xFF93C5FD);
+    }
+    return const Color(0xFF86EFAC);
+  }
+
+  void _updateBlinking(List<String> logs) {
+    if (logs.isNotEmpty && _isProgressLine(logs.last)) {
+      if (!_blinkController.isAnimating) {
+        _blinkController.repeat(reverse: true);
+      }
+    } else {
+      _blinkController.stop();
+      _blinkController.value = 1.0;
+    }
+  }
+
+  Widget _buildLogContent(List<String> logs) {
+    final isBlinking = _blinkController.isAnimating;
+
+    if (isBlinking && logs.length > 1) {
+      final mainSpans = <TextSpan>[];
+      for (int i = 0; i < logs.length - 1; i++) {
+        final line = logs[i];
+        mainSpans.add(TextSpan(
+          text: i < logs.length - 2 ? '$line\n' : line,
+          style: TextStyle(color: _lineColor(line), height: 1.45),
+        ));
+      }
+
+      final lastLine = logs.last;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText.rich(
+            TextSpan(children: mainSpans),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+          AnimatedBuilder(
+            animation: _blinkAnimation,
+            builder: (context, _) {
+              return SelectableText(
+                lastLine,
+                style: TextStyle(
+                  color: _lineColor(lastLine).withValues(alpha: _blinkAnimation.value),
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    }
+
+    final allSpans = <TextSpan>[];
+    for (int i = 0; i < logs.length; i++) {
+      final line = logs[i];
+      Color color = _lineColor(line);
+      final isProgress = i == logs.length - 1 && _isProgressLine(line);
+      if (isProgress) {
+        color = color.withValues(alpha: 0.45);
+      }
+      allSpans.add(TextSpan(
+        text: i < logs.length - 1 ? '$line\n' : line,
+        style: TextStyle(color: color, height: 1.45),
+      ));
+    }
+    return SelectableText.rich(
+      TextSpan(children: allSpans),
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+    );
+  }
+
+  Widget _buildPseudoRemoteSettings() {
+    final pseudoRemote = Provider.of<PseudoRemoteService>(context);
+    final kobold = Provider.of<KoboldService>(context);
+    final llmProvider = Provider.of<LLMProvider>(context);
+    final anyRunning = llmProvider.hasAnyManagedProcessRunning;
+    final storage = Provider.of<StorageService>(context);
+
+    _updateBlinking(pseudoRemote.logs);
+
+    // Auto-scroll when new log lines arrive
+    if (pseudoRemote.logs.length != _lastPseudoLogCount) {
+      _lastPseudoLogCount = pseudoRemote.logs.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pseudoLogScrollController.hasClients) {
+          _pseudoLogScrollController.jumpTo(
+            _pseudoLogScrollController.position.maxScrollExtent,
+          );
+        }
+      });
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Configuration Preset (.kcpps)', style: TextStyle(fontSize: 13, color: Colors.white70)),
+        const SizedBox(height: 8),
+        KcppsSelector(
+          storage: storage,
+          localPresets: _localPresets,
+          hint: 'Required — select a .kcpps preset',
+          onChanged: (val) {
+            storage.setActiveKcppsPath(val);
+          },
+          onExternalClear: () {
+            storage.setActiveKcppsPath(null);
+          },
+          onBrowsePicked: (_) {},
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: anyRunning
+                ? () => _stopManagedBackend(context)
+                : (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty)
+                    ? null
+                    : () => _startPseudoRemote(context),
+            icon: Icon(anyRunning ? Icons.stop : Icons.play_arrow),
+            label: Text(anyRunning ? 'Stop Backend' : 'Start Pseudo-Remote'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: anyRunning ? Colors.redAccent : Colors.greenAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text('Process Logs', style: TextStyle(fontSize: 13, color: Colors.white70)),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          height: 200,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Scrollbar(
+            controller: _pseudoLogScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _pseudoLogScrollController,
+              child: _buildLogContent(pseudoRemote.logs),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _stopManagedBackend(BuildContext context) {
+    Provider.of<LLMProvider>(context, listen: false).stopAllManagedProcesses();
+  }
+
+  Future<void> _startPseudoRemote(BuildContext context) async {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final backendManager = Provider.of<BackendManager>(context, listen: false);
+    final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+
+    if (backendManager.backendPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backend not found.')));
+      return;
+    }
+    if (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a .kcpps preset first.')));
+      return;
+    }
+
+    await pseudoRemote.start(
+      executablePath: backendManager.backendPath!,
+      kcppsPath: storage.activeKcppsPath!,
     );
   }
 

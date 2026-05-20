@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 
 class BackgroundSettingsDialog extends StatelessWidget {
@@ -43,7 +44,7 @@ class BackgroundSettingsDialog extends StatelessWidget {
     final allBackgrounds = [...builtInBackgrounds, ...customBackgrounds];
 
     return Dialog(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 500,
@@ -208,7 +209,7 @@ class BackgroundSettingsDialog extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Delete Background', style: TextStyle(color: Colors.white)),
         content: Text(
           'Are you sure you want to delete "$name"? This action cannot be undone.',
@@ -248,7 +249,7 @@ class BackgroundSettingsDialog extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surface,
           title: const Text('Add Custom Background', style: TextStyle(color: Colors.white)),
           content: SizedBox(
             width: 350,

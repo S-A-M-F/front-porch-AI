@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
 import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/models/story_project.dart';
@@ -49,10 +50,10 @@ class _StoryStructurePageState extends State<StoryStructurePage> {
         }
 
         return Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: AppColors.backgroundOf(context),
           appBar: AppBar(
             title: Text('Structure — ${project.title}'),
-            backgroundColor: const Color(0xFF1E293B),
+            backgroundColor: AppColors.card,
             foregroundColor: Colors.white,
             elevation: 0,
             actions: [
@@ -131,7 +132,7 @@ class _StoryStructurePageState extends State<StoryStructurePage> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
+                  color: AppColors.card,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isExpanded ? Colors.indigo.shade400 : Colors.white10,
@@ -338,7 +339,7 @@ class _StoryStructurePageState extends State<StoryStructurePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.card,
         title: const Text('Rewrite Scene?', style: TextStyle(color: Colors.white)),
         content: Text(
           'This will regenerate all prose for "${scene.title}" using the new per-beat system. The old text will be replaced.',

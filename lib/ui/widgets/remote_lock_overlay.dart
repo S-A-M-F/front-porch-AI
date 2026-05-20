@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/web_server_service.dart';
 
 /// Full-screen overlay that blocks the Flutter desktop UI when a remote
@@ -38,7 +39,7 @@ class RemoteLockOverlay extends StatelessWidget {
 
         return Positioned.fill(
           child: Material(
-            color: const Color(0xFF0F172A),
+            color: AppColors.background,
             child: Center(
               child: SizedBox(
                 width: 480,

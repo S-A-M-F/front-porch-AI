@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/app_version.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import '../models/character_card.dart';
 
 class StorageService extends ChangeNotifier {
@@ -85,13 +86,30 @@ class StorageService extends ChangeNotifier {
   double _temperature = 0.7;
   double _bubbleOpacity = 1.0;
 
-  // Global chat color defaults
-  Color _globalUserBubbleColor = const Color(0xFF3B82F6);
-  Color _globalUserTextColor = Colors.white;
-  Color _globalAiBubbleColor = const Color(0xFF374151);
-  Color _globalAiTextColor = Colors.white;
-  Color _globalDialogueColor = Colors.amberAccent;
-  Color _globalActionColor = const Color(0xFF90CAF9);
+  /// Whether the app is currently in dark mode (tracks which global set to use).
+  bool _isDark = true;
+  bool get isDark => _isDark;
+  set isDark(bool value) {
+    if (_isDark != value) {
+      _isDark = value;
+    }
+  }
+
+  // Global chat color defaults — dark mode
+  Color _globalDarkUserBubbleColor = AppColors.userBubble;
+  Color _globalDarkUserTextColor = AppColors.userText;
+  Color _globalDarkAiBubbleColor = AppColors.aiBubble;
+  Color _globalDarkAiTextColor = AppColors.aiText;
+  Color _globalDarkDialogueColor = AppColors.dialogue;
+  Color _globalDarkActionColor = AppColors.action;
+
+  // Global chat color defaults — light mode
+  Color _globalLightUserBubbleColor = AppColors.userBubbleLight;
+  Color _globalLightUserTextColor = AppColors.userTextLight;
+  Color _globalLightAiBubbleColor = AppColors.aiBubbleLight;
+  Color _globalLightAiTextColor = AppColors.aiTextLight;
+  Color _globalLightDialogueColor = AppColors.dialogueLight;
+  Color _globalLightActionColor = AppColors.actionLight;
 
   // Global chat font family
   String _globalChatFontFamily = '';
@@ -280,12 +298,12 @@ class StorageService extends ChangeNotifier {
   double get minP => _minP;
   double get temperature => _temperature;
   double get bubbleOpacity => _bubbleOpacity;
-  Color get globalUserBubbleColor => _globalUserBubbleColor;
-  Color get globalUserTextColor => _globalUserTextColor;
-  Color get globalAiBubbleColor => _globalAiBubbleColor;
-  Color get globalAiTextColor => _globalAiTextColor;
-  Color get globalDialogueColor => _globalDialogueColor;
-  Color get globalActionColor => _globalActionColor;
+  Color get globalUserBubbleColor => _isDark ? _globalDarkUserBubbleColor : _globalLightUserBubbleColor;
+  Color get globalUserTextColor => _isDark ? _globalDarkUserTextColor : _globalLightUserTextColor;
+  Color get globalAiBubbleColor => _isDark ? _globalDarkAiBubbleColor : _globalLightAiBubbleColor;
+  Color get globalAiTextColor => _isDark ? _globalDarkAiTextColor : _globalLightAiTextColor;
+  Color get globalDialogueColor => _isDark ? _globalDarkDialogueColor : _globalLightDialogueColor;
+  Color get globalActionColor => _isDark ? _globalDarkActionColor : _globalLightActionColor;
   String get globalChatFontFamily => _globalChatFontFamily;
   double get repeatPenalty => _repeatPenalty;
   int get repeatPenaltyTokens => _repeatPenaltyTokens;
@@ -446,12 +464,18 @@ class StorageService extends ChangeNotifier {
     _minP = _prefs?.getDouble(_k('min_p')) ?? _minP;
     _temperature = _prefs?.getDouble(_k('temperature')) ?? _temperature;
     _bubbleOpacity = _prefs?.getDouble(_k('bubble_opacity')) ?? _bubbleOpacity;
-    _globalUserBubbleColor = Color(_prefs?.getInt(_k('global_user_bubble_color')) ?? _globalUserBubbleColor.value);
-    _globalUserTextColor = Color(_prefs?.getInt(_k('global_user_text_color')) ?? _globalUserTextColor.value);
-    _globalAiBubbleColor = Color(_prefs?.getInt(_k('global_ai_bubble_color')) ?? _globalAiBubbleColor.value);
-    _globalAiTextColor = Color(_prefs?.getInt(_k('global_ai_text_color')) ?? _globalAiTextColor.value);
-    _globalDialogueColor = Color(_prefs?.getInt(_k('global_dialogue_color')) ?? _globalDialogueColor.value);
-    _globalActionColor = Color(_prefs?.getInt(_k('global_action_color')) ?? _globalActionColor.value);
+    _globalDarkUserBubbleColor = Color(_prefs?.getInt(_k('global_user_bubble_color')) ?? AppColors.userBubble.value);
+    _globalDarkUserTextColor = Color(_prefs?.getInt(_k('global_user_text_color')) ?? AppColors.userText.value);
+    _globalDarkAiBubbleColor = Color(_prefs?.getInt(_k('global_ai_bubble_color')) ?? AppColors.aiBubble.value);
+    _globalDarkAiTextColor = Color(_prefs?.getInt(_k('global_ai_text_color')) ?? AppColors.aiText.value);
+    _globalDarkDialogueColor = Color(_prefs?.getInt(_k('global_dialogue_color')) ?? AppColors.dialogue.value);
+    _globalDarkActionColor = Color(_prefs?.getInt(_k('global_action_color')) ?? AppColors.action.value);
+    _globalLightUserBubbleColor = Color(_prefs?.getInt(_k('light_user_bubble_color')) ?? AppColors.userBubbleLight.value);
+    _globalLightUserTextColor = Color(_prefs?.getInt(_k('light_user_text_color')) ?? AppColors.userTextLight.value);
+    _globalLightAiBubbleColor = Color(_prefs?.getInt(_k('light_ai_bubble_color')) ?? AppColors.aiBubbleLight.value);
+    _globalLightAiTextColor = Color(_prefs?.getInt(_k('light_ai_text_color')) ?? AppColors.aiTextLight.value);
+    _globalLightDialogueColor = Color(_prefs?.getInt(_k('light_dialogue_color')) ?? AppColors.dialogueLight.value);
+    _globalLightActionColor = Color(_prefs?.getInt(_k('light_action_color')) ?? AppColors.actionLight.value);
     _globalChatFontFamily = _prefs?.getString(_k('global_chat_font_family')) ?? _globalChatFontFamily;
     _repeatPenalty = _prefs?.getDouble(_k('repeat_penalty')) ?? _repeatPenalty;
     _repeatPenaltyTokens =
@@ -1520,38 +1544,68 @@ class StorageService extends ChangeNotifier {
 
   // Global chat color and font setters
   Future<void> setGlobalUserBubbleColor(Color value) async {
-    _globalUserBubbleColor = value;
-    await _prefs?.setInt(_k('global_user_bubble_color'), value.value);
+    if (_isDark) {
+      _globalDarkUserBubbleColor = value;
+      await _prefs?.setInt(_k('global_user_bubble_color'), value.value);
+    } else {
+      _globalLightUserBubbleColor = value;
+      await _prefs?.setInt(_k('light_user_bubble_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalUserTextColor(Color value) async {
-    _globalUserTextColor = value;
-    await _prefs?.setInt(_k('global_user_text_color'), value.value);
+    if (_isDark) {
+      _globalDarkUserTextColor = value;
+      await _prefs?.setInt(_k('global_user_text_color'), value.value);
+    } else {
+      _globalLightUserTextColor = value;
+      await _prefs?.setInt(_k('light_user_text_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalAiBubbleColor(Color value) async {
-    _globalAiBubbleColor = value;
-    await _prefs?.setInt(_k('global_ai_bubble_color'), value.value);
+    if (_isDark) {
+      _globalDarkAiBubbleColor = value;
+      await _prefs?.setInt(_k('global_ai_bubble_color'), value.value);
+    } else {
+      _globalLightAiBubbleColor = value;
+      await _prefs?.setInt(_k('light_ai_bubble_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalAiTextColor(Color value) async {
-    _globalAiTextColor = value;
-    await _prefs?.setInt(_k('global_ai_text_color'), value.value);
+    if (_isDark) {
+      _globalDarkAiTextColor = value;
+      await _prefs?.setInt(_k('global_ai_text_color'), value.value);
+    } else {
+      _globalLightAiTextColor = value;
+      await _prefs?.setInt(_k('light_ai_text_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalDialogueColor(Color value) async {
-    _globalDialogueColor = value;
-    await _prefs?.setInt(_k('global_dialogue_color'), value.value);
+    if (_isDark) {
+      _globalDarkDialogueColor = value;
+      await _prefs?.setInt(_k('global_dialogue_color'), value.value);
+    } else {
+      _globalLightDialogueColor = value;
+      await _prefs?.setInt(_k('light_dialogue_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalActionColor(Color value) async {
-    _globalActionColor = value;
-    await _prefs?.setInt(_k('global_action_color'), value.value);
+    if (_isDark) {
+      _globalDarkActionColor = value;
+      await _prefs?.setInt(_k('global_action_color'), value.value);
+    } else {
+      _globalLightActionColor = value;
+      await _prefs?.setInt(_k('light_action_color'), value.value);
+    }
     notifyListeners();
   }
 
@@ -1563,32 +1617,38 @@ class StorageService extends ChangeNotifier {
 
   /// Get effective user bubble color (per-character overrides global)
   Color getUserBubbleColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.userBubbleColor ?? _globalUserBubbleColor;
+    return character?.frontPorchExtensions?.userBubbleColor
+        ?? (_isDark ? _globalDarkUserBubbleColor : _globalLightUserBubbleColor);
   }
 
   /// Get effective user text color (per-character overrides global)
   Color getUserTextColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.userTextColor ?? _globalUserTextColor;
+    return character?.frontPorchExtensions?.userTextColor
+        ?? (_isDark ? _globalDarkUserTextColor : _globalLightUserTextColor);
   }
 
   /// Get effective AI bubble color (per-character overrides global)
   Color getAiBubbleColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.aiBubbleColor ?? _globalAiBubbleColor;
+    return character?.frontPorchExtensions?.aiBubbleColor
+        ?? (_isDark ? _globalDarkAiBubbleColor : _globalLightAiBubbleColor);
   }
 
   /// Get effective AI text color (per-character overrides global)
   Color getAiTextColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.aiTextColor ?? _globalAiTextColor;
+    return character?.frontPorchExtensions?.aiTextColor
+        ?? (_isDark ? _globalDarkAiTextColor : _globalLightAiTextColor);
   }
 
   /// Get effective dialogue color (per-character overrides global)
   Color getDialogueColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.dialogueColor ?? _globalDialogueColor;
+    return character?.frontPorchExtensions?.dialogueColor
+        ?? (_isDark ? _globalDarkDialogueColor : _globalLightDialogueColor);
   }
 
   /// Get effective action color (per-character overrides global)
   Color getActionColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.actionColor ?? _globalActionColor;
+    return character?.frontPorchExtensions?.actionColor
+        ?? (_isDark ? _globalDarkActionColor : _globalLightActionColor);
   }
 
   /// Get effective chat font family (per-character overrides global)

@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
 import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
@@ -121,8 +122,6 @@ class _StorySetupPageState extends State<StorySetupPage> {
   };
 
   // ── Color palette ──
-  static const _bgDark = Color(0xFF0F172A);
-  static const _bgCard = Color(0xFF1E293B);
   static const _accentAmber = Colors.amber;
 
   @override
@@ -178,7 +177,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bgDark,
+      backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
         title: const Row(
           children: [
@@ -187,7 +186,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
             Text('New Porch Story'),
           ],
         ),
-        backgroundColor: _bgCard,
+        backgroundColor: AppColors.card,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -486,7 +485,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
         hintText: hint,
         hintStyle: const TextStyle(color: Colors.white24),
         filled: true,
-        fillColor: _bgCard,
+        fillColor: AppColors.card,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -504,7 +503,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? color.shade800.withValues(alpha: 0.3) : _bgCard,
+          color: isSelected ? color.shade800.withValues(alpha: 0.3) : AppColors.card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? color.shade400 : Colors.white12,
@@ -537,7 +536,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? chipColor.withValues(alpha: 0.15) : _bgCard,
+          color: isSelected ? chipColor.withValues(alpha: 0.15) : AppColors.card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? chipColor : Colors.white12,
@@ -594,7 +593,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isSelected ? tileColor.withValues(alpha: 0.12) : _bgCard,
+            color: isSelected ? tileColor.withValues(alpha: 0.12) : AppColors.card,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected ? tileColor : Colors.white10,
@@ -638,7 +637,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
       ),
@@ -715,7 +714,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? Colors.amber.shade800.withValues(alpha: 0.15)
-                    : _bgCard,
+                    : AppColors.card,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isSelected ? Colors.amber.shade700 : Colors.white10,
@@ -793,7 +792,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: value ? color.withValues(alpha: 0.5) : Colors.white10),
       ),
@@ -825,7 +824,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
       ),
@@ -849,7 +848,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 selectedColor: Colors.blueAccent.withValues(alpha: 0.3),
                 checkmarkColor: Colors.blueAccent,
                 labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontSize: 12),
-                backgroundColor: _bgDark,
+                backgroundColor: AppColors.background,
                 side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
                 onSelected: (selected) {
                   setState(() {
@@ -880,7 +879,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.purple.withValues(alpha: 0.3)),
       ),
@@ -913,7 +912,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
                   ),
                   DropdownButton<String>(
                     value: currentRole,
-                    dropdownColor: const Color(0xFF1E293B),
+                    dropdownColor: AppColors.card,
                     underline: Container(height: 1, color: Colors.white12),
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                     items: _roleOptions.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12)))).toList(),
@@ -934,7 +933,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _includeUserPersona ? Colors.amber.withValues(alpha: 0.4) : Colors.white12),
       ),
@@ -980,7 +979,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 ),
                 DropdownButton<String>(
                   value: _userPersonaRole,
-                  dropdownColor: const Color(0xFF1E293B),
+                  dropdownColor: AppColors.card,
                   underline: Container(height: 1, color: Colors.white12),
                   style: const TextStyle(color: Colors.amber, fontSize: 12),
                   items: _roleOptions.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12)))).toList(),

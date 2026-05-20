@@ -16,9 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class _HoverableCard extends StatefulWidget {
   final bool isActive;
@@ -92,8 +91,8 @@ class _HoverableCardState extends State<_HoverableCard>
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: _isHovered
-                      ? const Color(0xFF1E293B)
-                      : const Color(0xFF1E293B).withValues(alpha: 0.7),
+                      ? AppColors.card
+                      : AppColors.card.withValues(alpha: 0.7),
                   border: Border.all(
                     color: widget.isActive
                         ? widget.accentColor.withValues(

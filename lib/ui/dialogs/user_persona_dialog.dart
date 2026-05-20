@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/utils/persona_colors.dart';
 
@@ -121,7 +122,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 600,
@@ -431,7 +432,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
     showDialog(
       context: context,
       builder: (dialogContext) => Dialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 600, maxHeight: 500),
@@ -498,7 +499,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Delete Persona'),
         content: Text('Are you sure you want to delete "${persona.name}"?'),
         actions: [
@@ -523,7 +524,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surface,
         title: const Text('Clear All Facts'),
         content: Text('Remove all ${service.persona.learnedFacts.length} learned facts? This cannot be undone.'),
         actions: [

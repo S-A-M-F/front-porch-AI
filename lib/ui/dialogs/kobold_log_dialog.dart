@@ -19,7 +19,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
+import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
 
 /// Dialog that displays live KoboldCPP process logs in real-time.
 /// Matches the visual style of [ContextViewerDialog].
@@ -30,13 +33,29 @@ class KoboldLogDialog extends StatefulWidget {
   State<KoboldLogDialog> createState() => _KoboldLogDialogState();
 }
 
-class _KoboldLogDialogState extends State<KoboldLogDialog> {
+class _KoboldLogDialogState extends State<KoboldLogDialog>
+    with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
+  late final AnimationController _blinkController;
+  late final Animation<double> _blinkAnimation;
   bool _autoScroll = true;
   int _lastLogCount = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _blinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _blinkAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
   void dispose() {
+    _blinkController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -48,11 +67,109 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
     }
   }
 
+  bool _isProgressLine(String line) =>
+      line.startsWith('Generating (') ||
+      RegExp(r'^Processing Prompt', caseSensitive: false).hasMatch(line);
+
+  Color _lineColor(String line) {
+    if (line.toLowerCase().contains('error') ||
+        line.toLowerCase().contains('fail') ||
+        line.toLowerCase().contains('fatal')) {
+      return const Color(0xFFFF6B6B);
+    } else if (line.toLowerCase().contains('warn')) {
+      return const Color(0xFFFFD93D);
+    } else if (line.toLowerCase().contains('ready') ||
+        line.toLowerCase().contains('server listen') ||
+        line.toLowerCase().contains('please connect')) {
+      return Colors.greenAccent;
+    } else if (line.toLowerCase().contains('loading') ||
+        line.toLowerCase().contains('starting')) {
+      return const Color(0xFF93C5FD);
+    }
+    return const Color(0xFF86EFAC);
+  }
+
+  void _updateBlinking(List<String> logs) {
+    if (logs.isNotEmpty && _isProgressLine(logs.last)) {
+      if (!_blinkController.isAnimating) {
+        _blinkController.repeat(reverse: true);
+      }
+    } else {
+      _blinkController.stop();
+      _blinkController.value = 1.0;
+    }
+  }
+
+  Widget _buildLogBody(List<String> logs) {
+    final isBlinking = _blinkController.isAnimating;
+
+    if (isBlinking && logs.length > 1) {
+      final mainSpans = <TextSpan>[];
+      for (int i = 0; i < logs.length - 1; i++) {
+        final line = logs[i];
+        mainSpans.add(TextSpan(
+          text: i < logs.length - 2 ? '$line\n' : line,
+          style: TextStyle(color: _lineColor(line), height: 1.45),
+        ));
+      }
+
+      final lastLine = logs.last;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText.rich(
+            TextSpan(children: mainSpans),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+          AnimatedBuilder(
+            animation: _blinkAnimation,
+            builder: (context, _) {
+              return SelectableText(
+                lastLine,
+                style: TextStyle(
+                  color: _lineColor(lastLine).withValues(alpha: _blinkAnimation.value),
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    }
+
+    final allSpans = <TextSpan>[];
+    for (int i = 0; i < logs.length; i++) {
+      final line = logs[i];
+      Color color = _lineColor(line);
+      final isProgress = i == logs.length - 1 && _isProgressLine(line);
+      if (isProgress) {
+        color = color.withValues(alpha: 0.45);
+      }
+      allSpans.add(TextSpan(
+        text: i < logs.length - 1 ? '$line\n' : line,
+        style: TextStyle(color: color, height: 1.45),
+      ));
+    }
+    return SelectableText.rich(
+      TextSpan(children: allSpans),
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Consumer<KoboldService>(
-      builder: (context, kobold, _) {
-        final logs = kobold.logs;
+    return Consumer2<LLMProvider, KoboldService>(
+      builder: (context, llmProvider, kobold, _) {
+        final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+        final isPseudo = llmProvider.activeBackend == BackendType.pseudoRemote;
+        final logs = isPseudo ? pseudoRemote.logs : kobold.logs;
+        final isRunning = isPseudo ? pseudoRemote.isRunning : kobold.isRunning;
+        final isReady = isPseudo ? pseudoRemote.isReady : kobold.isReady;
+
+        // Update blinking animation based on current log content
+        _updateBlinking(logs);
 
         // Auto-scroll whenever new lines arrive, but only if the user hasn't
         // manually scrolled up.
@@ -61,14 +178,13 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
         }
 
-        final isRunning = kobold.isRunning;
         final statusColor = isRunning ? Colors.greenAccent : Colors.white38;
         final statusLabel = isRunning
-            ? (kobold.modelReady ? 'Ready' : 'Starting…')
+            ? (isReady ? 'Ready' : 'Starting…')
             : 'Stopped';
 
         return Dialog(
-          backgroundColor: const Color(0xFF0f172a),
+          backgroundColor: AppColors.backgroundOf(context),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(
@@ -93,9 +209,9 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
                         size: 22,
                       ),
                       const SizedBox(width: 10),
-                      const Text(
-                        'KoboldCpp Log',
-                        style: TextStyle(
+                      Text(
+                        isPseudo ? 'Pseudo-Remote Log' : 'KoboldCpp Log',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -227,29 +343,31 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
                 // ── Log body ──────────────────────────────────────────────
                 Flexible(
                   child: logs.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.all(32),
+                      ? Padding(
+                          padding: const EdgeInsets.all(32),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
+                              const Icon(
                                 Icons.terminal,
                                 color: Colors.white12,
                                 size: 36,
                               ),
-                              SizedBox(height: 12),
-                              Text(
+                              const SizedBox(height: 12),
+                              const Text(
                                 'No log output yet.',
                                 style: TextStyle(
                                   color: Colors.white38,
                                   fontSize: 14,
                                 ),
                               ),
-                              SizedBox(height: 4),
+                              const SizedBox(height: 4),
                               Text(
-                                'Start the backend from Settings → Backend, or from the Model Settings dialog.',
+                                isPseudo
+                                    ? 'Start the Pseudo-Remote backend from Settings → Backend.'
+                                    : 'Start the backend from Settings → Backend, or from the Model Settings dialog.',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: Colors.white24,
                                   fontSize: 12,
                                 ),
@@ -258,7 +376,6 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
                           ),
                         )
                       : NotificationListener<ScrollNotification>(
-                          // If the user scrolls up manually, disable auto-scroll.
                           onNotification: (notification) {
                             if (notification is UserScrollNotification) {
                               final atBottom =
@@ -281,88 +398,11 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
                             child: Scrollbar(
                               controller: _scrollController,
                               thumbVisibility: true,
-                              child: ListView.builder(
+                              child: SingleChildScrollView(
                                 controller: _scrollController,
                                 padding: const EdgeInsets.all(12),
-                                itemCount: logs.length,
-                                itemBuilder: (context, index) {
-                                  final line = logs[index];
-
-                                  // Detect live-updating progress lines that
-                                  // overwrite themselves in the backend list.
-                                  final isLiveProgress = index == logs.length - 1 &&
-                                      (line.startsWith('Generating (') ||
-                                          RegExp(r'^Processing Prompt', caseSensitive: false).hasMatch(line));
-
-                                  // Colour-code common patterns for readability
-                                  Color lineColor;
-                                  if (line.toLowerCase().contains('error') ||
-                                      line.toLowerCase().contains('fail') ||
-                                      line.toLowerCase().contains('fatal')) {
-                                    lineColor = const Color(0xFFFF6B6B);
-                                  } else if (line.toLowerCase().contains('warn')) {
-                                    lineColor = const Color(0xFFFFD93D);
-                                  } else if (line.toLowerCase().contains('ready') ||
-                                      line.toLowerCase().contains('server listen') ||
-                                      line.toLowerCase().contains('please connect')) {
-                                    lineColor = Colors.greenAccent;
-                                  } else if (line.toLowerCase().contains('loading') ||
-                                      line.toLowerCase().contains('starting')) {
-                                    lineColor = const Color(0xFF93C5FD);
-                                  } else {
-                                    lineColor = const Color(0xFF86EFAC);
-                                  }
-
-                                  // Progress lines are shown dimmed to signal
-                                  // they are live counters, not static entries.
-                                  if (isLiveProgress) {
-                                    lineColor = lineColor.withValues(alpha: 0.45);
-                                  }
-
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 1.5,
-                                    ),
-                                    child: isLiveProgress
-                                        ? Row(
-                                            crossAxisAlignment: CrossAxisAlignment.center,
-                                            children: [
-                                              const SizedBox(
-                                                width: 14,
-                                                height: 14,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 1.5,
-                                                  color: Color(0xFF86EFAC),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Expanded(
-                                                child: SelectableText(
-                                                  line,
-                                                  style: TextStyle(
-                                                    color: lineColor,
-                                                    fontFamily: 'monospace',
-                                                    fontSize: 12,
-                                                    height: 1.45,
-                                                    fontStyle: FontStyle.italic,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        : SelectableText(
-                                            line,
-                                            style: TextStyle(
-                                              color: lineColor,
-                                              fontFamily: 'monospace',
-                                              fontSize: 12,
-                                              height: 1.45,
-                                            ),
-                                          ),
-                                  );
-                                },
+                                child: _buildLogBody(logs),
                               ),
-
                             ),
                           ),
                         ),

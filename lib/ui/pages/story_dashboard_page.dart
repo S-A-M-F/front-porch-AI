@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/story_repository.dart';
 import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/models/story_project.dart';
@@ -54,9 +55,6 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
   // Editable act controllers
   final Map<int, TextEditingController> _actTitleControllers = {};
   final Map<int, TextEditingController> _actDescControllers = {};
-
-  static const _bgDark = Color(0xFF0F172A);
-  static const _bgCard = Color(0xFF1E293B);
 
   @override
   void didChangeDependencies() {
@@ -280,10 +278,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
         }
 
         return Scaffold(
-          backgroundColor: _bgDark,
+          backgroundColor: AppColors.backgroundOf(context),
           appBar: AppBar(
             title: Text(project.title),
-            backgroundColor: _bgCard,
+            backgroundColor: AppColors.card,
             foregroundColor: Colors.white,
             elevation: 0,
             actions: [
@@ -552,7 +550,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.blue.shade800.withValues(alpha: 0.4)),
       ),
@@ -765,7 +763,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     final sceneCount = project.scenes[act.number - 1]?.length ?? 0;
 
     return Card(
-      color: _bgCard,
+      color: AppColors.card,
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
@@ -808,7 +806,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: _bgDark,
+                    fillColor: AppColors.background,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                     contentPadding: const EdgeInsets.all(12),
                   ),
@@ -822,7 +820,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                   maxLines: 8,
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: _bgDark,
+                    fillColor: AppColors.background,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                     contentPadding: const EdgeInsets.all(12),
                   ),
@@ -873,7 +871,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
@@ -896,7 +894,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
   Widget _castCard(StoryCastMember c) {
     return Card(
-      color: _bgCard,
+      color: AppColors.card,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ExpansionTile(
@@ -935,7 +933,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                           child: DropdownButton<String>(
                             value: c.voiceModel,
                             hint: Text('Default narrator', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12)),
-                            dropdownColor: const Color(0xFF1E293B),
+                            dropdownColor: AppColors.card,
                             isExpanded: true,
                             underline: Container(height: 1, color: Colors.white12),
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -976,7 +974,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
   Widget _threadCard(StoryThread t) {
     return Card(
-      color: _bgCard,
+      color: AppColors.card,
       margin: const EdgeInsets.only(bottom: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
@@ -993,7 +991,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       message: l.detail,
       child: Chip(
         label: Text(l.topic, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-        backgroundColor: _bgCard,
+        backgroundColor: AppColors.card,
         side: BorderSide(color: Colors.green.shade800.withValues(alpha: 0.3)),
       ),
     );

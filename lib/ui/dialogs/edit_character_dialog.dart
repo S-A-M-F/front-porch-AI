@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:path/path.dart' as p;
@@ -387,7 +388,7 @@ void _editLoreEntry(int index) {
     builder: (context) => StatefulBuilder(
       builder: (context, setStateDialog) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
+          backgroundColor: AppColors.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -408,7 +409,7 @@ void _editLoreEntry(int index) {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
+                    color: AppColors.background,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isConstant
@@ -487,7 +488,7 @@ void _editLoreEntry(int index) {
                   decoration: InputDecoration(
                     labelText: 'Name (optional)',
                     filled: true,
-                    fillColor: const Color(0xFF0F172A),
+                    fillColor: AppColors.background,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -505,8 +506,8 @@ void _editLoreEntry(int index) {
                         : 'Keywords (comma separated)',
                     filled: true,
                     fillColor: isConstant
-                        ? const Color(0xFF0F172A).withValues(alpha: 0.5)
-                        : const Color(0xFF0F172A),
+                        ? AppColors.background.withValues(alpha: 0.5)
+                        : AppColors.background,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -521,7 +522,7 @@ void _editLoreEntry(int index) {
                   decoration: InputDecoration(
                     labelText: 'Content',
                     filled: true,
-                    fillColor: const Color(0xFF0F172A),
+                    fillColor: AppColors.background,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -576,7 +577,7 @@ void _editLoreEntry(int index) {
   Widget build(BuildContext context) {
 
     return Dialog(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 800,
@@ -688,7 +689,7 @@ void _editLoreEntry(int index) {
                       decoration: BoxDecoration(
                         color: Colors.blueAccent,
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF1F2937), width: 2),
+                        border: Border.all(color: AppColors.surface, width: 2),
                       ),
                       child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
                     ),
@@ -976,7 +977,7 @@ void _editLoreEntry(int index) {
             Container(
               padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
+                color: AppColors.card,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
               ),
@@ -1020,7 +1021,7 @@ void _editLoreEntry(int index) {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: entry.constant
