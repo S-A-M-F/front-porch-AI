@@ -55,6 +55,13 @@ class UpdateService extends ChangeNotifier {
   String get currentVersion => _currentVersion;
   String get latestVersion => _latestVersion;
   String get releaseNotes => _releaseNotes;
+
+  /// URL to the GitHub release page for the latest version found by checkForUpdate().
+  /// Used by the update dialog for the "View on GitHub" fallback and for links inside
+  /// rendered release notes.
+  String get releaseUrl => _latestVersion.isNotEmpty
+      ? 'https://github.com/$_repoOwner/$_repoName/releases/tag/v$_latestVersion'
+      : 'https://github.com/$_repoOwner/$_repoName/releases';
   bool get updateAvailable => _updateAvailable;
   bool get checking => _checking;
   bool get downloading => _downloading;
@@ -136,7 +143,9 @@ class UpdateService extends ChangeNotifier {
       // Use the general /releases endpoint to find both stable and pre-releases.
       // GitHub's /releases/latest endpoint ignores everything marked as pre-release.
       final response = await http.get(
-        Uri.parse('https://api.github.com/repos/$_repoOwner/$_repoName/releases'),
+        Uri.parse(
+          'https://api.github.com/repos/$_repoOwner/$_repoName/releases',
+        ),
         headers: {'Accept': 'application/vnd.github.v3+json'},
       );
 
@@ -151,26 +160,30 @@ class UpdateService extends ChangeNotifier {
       Map<String, dynamic>? targetRelease;
 
       for (final release in allReleases) {
-        final tagName = (release['tag_name'] as String? ?? '').replaceFirst(RegExp(r'^[vV]'), '');
+        final tagName = (release['tag_name'] as String? ?? '').replaceFirst(
+          RegExp(r'^[vV]'),
+          '',
+        );
         final isPrerelease = release['prerelease'] as bool? ?? false;
         final tagLower = tagName.toLowerCase();
-        
+
         // Manual check for beta strings if the flag isn't set
-        final hasBetaString = tagLower.contains('beta') ||
+        final hasBetaString =
+            tagLower.contains('beta') ||
             tagLower.contains('alpha') ||
             tagLower.contains('-rc') ||
             tagLower.contains('-dev') ||
             tagLower.contains('-nightly') ||
             tagLower.contains('-rawhide');
-        
+
         final effectivelyBeta = isPrerelease || hasBetaString;
 
         // Channel matching logic:
         // We enforce strict isolation because Stable and Beta use different
-        // installation paths and database folders. Cross-updating would 
+        // installation paths and database folders. Cross-updating would
         // lead to data loss or duplicate "ghost" installations.
         if (isPreRelease != effectivelyBeta) {
-          continue; 
+          continue;
         }
 
         // We found our candidate (the list is sorted by date by default)
@@ -180,7 +193,10 @@ class UpdateService extends ChangeNotifier {
 
       if (targetRelease == null) return false;
 
-      final tagName = (targetRelease['tag_name'] as String? ?? '').replaceFirst(RegExp(r'^[vV]'), '');
+      final tagName = (targetRelease['tag_name'] as String? ?? '').replaceFirst(
+        RegExp(r'^[vV]'),
+        '',
+      );
       final assets = targetRelease['assets'] as List<dynamic>? ?? [];
 
       // Find the platform-specific update asset
@@ -232,7 +248,7 @@ class UpdateService extends ChangeNotifier {
 
       final request = http.Request('GET', Uri.parse(_downloadUrl));
       final response = await http.Client().send(request);
-      
+
       final totalBytes = response.contentLength ?? 0;
       int receivedBytes = 0;
       final sink = file.openWrite();
@@ -353,10 +369,7 @@ class UpdateService extends ChangeNotifier {
     final currentAppImage = Platform.environment['APPIMAGE'];
     if (currentAppImage == null || currentAppImage.isEmpty) return;
     debugPrint('Relaunching AppImage: $currentAppImage');
-    await Process.start(
-      currentAppImage, [],
-      mode: ProcessStartMode.detached,
-    );
+    await Process.start(currentAppImage, [], mode: ProcessStartMode.detached);
   }
 
   /// Get the current .app bundle path from the resolved executable.
@@ -383,11 +396,15 @@ class UpdateService extends ChangeNotifier {
     final destPath = '$appParent/$appName';
     final currentPid = pid; // Current process PID (dart:io top-level getter)
 
-    debugPrint('macOS update: will replace $currentApp from $dmgPath after PID $currentPid exits');
+    debugPrint(
+      'macOS update: will replace $currentApp from $dmgPath after PID $currentPid exits',
+    );
 
     // Write a shell script that performs the replacement after we exit
-    final scriptPath = '${Directory.systemTemp.path}/fp_update_${DateTime.now().millisecondsSinceEpoch}.sh';
-    final script = '''#!/bin/bash
+    final scriptPath =
+        '${Directory.systemTemp.path}/fp_update_${DateTime.now().millisecondsSinceEpoch}.sh';
+    final script =
+        '''#!/bin/bash
 # Wait for the current app process to exit (max 30s)
 for i in {1..60}; do
   if ! kill -0 $currentPid 2>/dev/null; then
@@ -436,10 +453,9 @@ open -n "$destPath"
     await Process.run('chmod', ['+x', scriptPath]);
 
     // Launch the script detached — it will outlive this process
-    await Process.start(
-      '/bin/bash', [scriptPath],
-      mode: ProcessStartMode.detached,
-    );
+    await Process.start('/bin/bash', [
+      scriptPath,
+    ], mode: ProcessStartMode.detached);
     debugPrint('macOS update script launched: $scriptPath');
   }
 
@@ -453,7 +469,8 @@ open -n "$destPath"
   /// Returns true if remote is newer than local.
   bool _isNewerVersion(String remote, String local) {
     // Standardize: remove 'v' prefix and split into numeric vs suffix parts
-    String clean(String v) => v.toLowerCase().replaceFirst(RegExp(r'^[vV]'), '');
+    String clean(String v) =>
+        v.toLowerCase().replaceFirst(RegExp(r'^[vV]'), '');
     final rClean = clean(remote);
     final lClean = clean(local);
 
@@ -463,8 +480,14 @@ open -n "$destPath"
     final rSplit = rClean.split('-');
     final lSplit = lClean.split('-');
 
-    final rBase = rSplit[0].split('.').map((e) => int.tryParse(e) ?? 0).toList();
-    final lBase = lSplit[0].split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final rBase = rSplit[0]
+        .split('.')
+        .map((e) => int.tryParse(e) ?? 0)
+        .toList();
+    final lBase = lSplit[0]
+        .split('.')
+        .map((e) => int.tryParse(e) ?? 0)
+        .toList();
 
     // Normalize lengths for the numeric base
     while (rBase.length < lBase.length) rBase.add(0);
@@ -480,8 +503,10 @@ open -n "$destPath"
     final rSuffix = rSplit.length > 1 ? rSplit[1] : '';
     final lSuffix = lSplit.length > 1 ? lSplit[1] : '';
 
-    if (rSuffix.isEmpty && lSuffix.isNotEmpty) return true; // Stable is newer than beta
-    if (rSuffix.isNotEmpty && lSuffix.isEmpty) return false; // Beta is older than stable
+    if (rSuffix.isEmpty && lSuffix.isNotEmpty)
+      return true; // Stable is newer than beta
+    if (rSuffix.isNotEmpty && lSuffix.isEmpty)
+      return false; // Beta is older than stable
 
     // Both have suffixes, do a natural comparison
     return _compareAlphanumeric(rSuffix, lSuffix) > 0;

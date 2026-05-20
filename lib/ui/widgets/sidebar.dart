@@ -59,19 +59,23 @@ class Sidebar extends StatelessWidget {
             onTap: () => appState.setIndex(0),
           ),
           InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => CharacterCreatorPage(),
-              ),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => CharacterCreatorPage())),
             borderRadius: BorderRadius.circular(8),
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.amber.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
               ),
-              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
-              margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+              padding: const EdgeInsets.symmetric(
+                vertical: 12.0,
+                horizontal: 12.0,
+              ),
+              margin: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 4.0,
+              ),
               child: Row(
                 children: [
                   const Icon(
@@ -106,7 +110,7 @@ class Sidebar extends StatelessWidget {
             isSelected: appState.selectedIndex == 2,
             onTap: () => appState.setIndex(2),
           ),
-           _SidebarItem(
+          _SidebarItem(
             icon: Icons.settings_outlined,
             label: 'Settings',
             isSelected: appState.selectedIndex == 3,
@@ -131,12 +135,19 @@ class Sidebar extends StatelessWidget {
             onTap: () => appState.setIndex(6),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 4.0,
+            ),
             child: InkWell(
-              onTap: () => launchUrl(Uri.parse('https://ko-fi.com/sosukeaizen37411')),
+              onTap: () =>
+                  launchUrl(Uri.parse('https://ko-fi.com/sosukeaizen37411')),
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12.0,
+                  horizontal: 12.0,
+                ),
                 child: const Row(
                   children: [
                     Icon(
@@ -166,20 +177,30 @@ class Sidebar extends StatelessWidget {
                 Tooltip(
                   message: 'Join our Discord Server',
                   child: GestureDetector(
-                    onTap: () => launchUrl(Uri.parse('https://discord.gg/e4tET6rpdv')),
+                    onTap: () =>
+                        launchUrl(Uri.parse('https://discord.gg/e4tET6rpdv')),
                     child: const MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Icon(Icons.discord, size: 20, color: Colors.white54),
+                      child: Icon(
+                        Icons.discord,
+                        size: 20,
+                        color: Colors.white54,
+                      ),
                     ),
                   ),
                 ),
                 Tooltip(
                   message: 'Join our Matrix Server',
                   child: GestureDetector(
-                    onTap: () => launchUrl(Uri.parse('https://matrix.dreamersai.art')),
+                    onTap: () =>
+                        launchUrl(Uri.parse('https://matrix.dreamersai.art')),
                     child: const MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Icon(Icons.grid_view_rounded, size: 20, color: Colors.white54),
+                      child: Icon(
+                        Icons.grid_view_rounded,
+                        size: 20,
+                        color: Colors.white54,
+                      ),
                     ),
                   ),
                 ),
@@ -187,7 +208,10 @@ class Sidebar extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
             child: Consumer<UpdateService>(
               builder: (context, updateService, _) {
                 final version = updateService.currentVersion.isNotEmpty
@@ -197,7 +221,9 @@ class Sidebar extends StatelessWidget {
                   children: [
                     Text(
                       version,
-                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white38,
+                      ),
                     ),
                     if (updateService.updateAvailable) ...[
                       const SizedBox(width: 8),
@@ -205,7 +231,11 @@ class Sidebar extends StatelessWidget {
                         onTap: () => UpdateDialog.show(context),
                         child: const Tooltip(
                           message: 'Update available!',
-                          child: Icon(Icons.arrow_circle_up, size: 18, color: Colors.greenAccent),
+                          child: Icon(
+                            Icons.arrow_circle_up,
+                            size: 18,
+                            color: Colors.greenAccent,
+                          ),
                         ),
                       ),
                     ],
@@ -242,7 +272,9 @@ class _SidebarItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Container(
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+            color: isSelected
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
@@ -259,7 +291,9 @@ class _SidebarItem extends StatelessWidget {
                   label,
                   style: TextStyle(
                     color: isSelected ? Colors.white : Colors.white70,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),

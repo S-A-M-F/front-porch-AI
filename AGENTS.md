@@ -224,6 +224,22 @@ import '../services/chat_service.dart';
 import 'message_bubble.dart';
 ```
 
+### User-Facing Changelogs for the Update Dialog
+
+The Update Available dialog shows a friendly, non-technical "What's New" section pulled from the GitHub release body. Users who do not read GitHub or Discord depend on this text.
+
+**AI Agent Rule (strict):**
+- Maintain the changelog in a file named **exactly** after the current git branch (case-sensitive): `docs/<BranchName>.md`
+  - On branch `Rawhide` → edit `docs/Rawhide.md`
+  - On branch `0.9.8-Beta` → edit `docs/0.9.8-Beta.md`
+  - On branch `main` → edit `docs/main.md`
+- This prevents AI hallucination of filenames.
+- Write in approachable, benefit-oriented language with emojis (same tone as the top of `docs/release-notes.md` but shorter and dialog-optimized).
+- Update this file as part of completing any user-visible work, just like appending to internal changelogs.
+- These files (one per active branch) are the source that feeds the release body for each channel.
+
+Never mix notes across branches in a single file.
+
 ## Files/Areas Requiring Discussion
 
 ### Never Touch Without Discussion

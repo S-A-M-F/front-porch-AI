@@ -30,13 +30,24 @@
 
 ## 🌙 What's New on Rawhide (Nightly)
 
-This branch contains the latest in-progress work. Current major development:
+This is the bleeding-edge development branch. All active development happens here first. Nightly builds are generated automatically every night from this branch.
 
-- **Sims-Style Needs Simulation Engine** — Deep character needs, emotional simulation, and autonomous behavior (the main focus of this branch)
-- Ongoing Realism Engine improvements
-- New features and fixes before they land in stable
+Current major work centers on the **Sims-Style Needs Simulation Engine** and the continued maturation of the **Realism Engine**, with a very strong emphasis on making group chats feel as deep and consistent as 1:1 conversations:
 
-Nightly builds include everything from this branch.
+- **Deep Needs Simulation** — Per-character needs (hunger, energy, social, comfort, etc.) with autonomous behavior, realistic decay, fulfillment logic, and catastrophe events. Needs now influence dialogue and internal state in a much more subtle, atmospheric way rather than feeling mechanical.
+
+- **Realism Engine + Group Chat Parity** — Heavy ongoing investment in making the full Realism + Needs experience feel cohesive in groups. Recent focus areas include:
+  - Per-character group-scoped system prompts (new)
+  - Private inter-character relationship tracking with safety limits
+  - Improved needs and realism injection tone/quality in group contexts
+  - Better per-character realism state handling (including on message deletion)
+  - UI/UX refinements in Group Settings and the group chat sidebar
+
+- **In-App Update Experience** — Friendly, non-technical “What’s New” changelogs now appear directly inside the update dialog. Rawhide maintains its own curated notes in `docs/Rawhide.md`.
+
+Nightly builds contain everything currently cooking on this branch.
+
+> **Note for contributors & AI agents**: When landing user-visible changes on Rawhide, also update `docs/Rawhide.md` with a short, friendly, non-technical summary. This text powers the in-app update dialog for people on nightly builds.
 
 ---
 
