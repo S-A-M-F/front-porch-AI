@@ -92,7 +92,6 @@ class StorageService extends ChangeNotifier {
   set isDark(bool value) {
     if (_isDark != value) {
       _isDark = value;
-      notifyListeners();
     }
   }
 
