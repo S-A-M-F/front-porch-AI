@@ -240,13 +240,7 @@ void main(List<String> args) async {
               previous ?? ModelManager(storage, downloadManager),
         ),
         ChangeNotifierProvider(create: (_) => OpenRouterService()),
-        ChangeNotifierProxyProvider<StorageService, PseudoRemoteService>(
-          create: (context) => PseudoRemoteService(
-            Provider.of<StorageService>(context, listen: false),
-          ),
-          update: (context, storage, previous) =>
-              previous ?? PseudoRemoteService(storage),
-        ),
+        ChangeNotifierProvider(create: (_) => PseudoRemoteService()),
         ChangeNotifierProxyProvider4<
           KoboldService,
           OpenRouterService,

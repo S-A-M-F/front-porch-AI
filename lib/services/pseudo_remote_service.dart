@@ -4,23 +4,18 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:front_porch_ai/services/llm_service.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:path/path.dart' as path;
 
 class PseudoRemoteService extends LLMService {
-  final StorageService _storageService;
   Process? _process;
   bool _isRunning = false;
   bool _isStarting = false;
   String _baseUrl = 'http://127.0.0.1:5001';
   Timer? _readinessProbe;
   bool _modelReady = false;
-  String _modelLoadingStatus = '';
-  bool _modelJustLoaded = false;
   final List<String> _logs = [];
   String? _executablePath;
   http.Client? _activeClient;
-  Future<void>? _pendingRequest;
 
   // LLMService interface
   @override
@@ -33,7 +28,7 @@ class PseudoRemoteService extends LLMService {
   List<String> get logs => List.unmodifiable(_logs);
   String get modelName => 'PseudoRemote (KoboldCPP)';
 
-  PseudoRemoteService(this._storageService);
+  PseudoRemoteService();
 
   /// Probe the KoboldCPP server — same as KoboldService.reconnectIfAlive().
   Future<void> reconnectIfAlive() async {
@@ -49,7 +44,6 @@ class PseudoRemoteService extends LLMService {
         debugPrint('[PseudoRemote] Reconnected to existing KoboldCPP instance.');
         _isRunning = true;
         _modelReady = true;
-        _modelJustLoaded = true;
         notifyListeners();
       }
     } catch (_) {
@@ -86,7 +80,6 @@ class PseudoRemoteService extends LLMService {
         workingDirectory: path.dirname(executablePath),
       );
       _isRunning = true;
-      _modelLoadingStatus = 'Initializing model...';
       _modelReady = false;
       _addLog('Starting Koboldcpp (PseudoRemote)...');
       _addLog('Command: $executablePath ${args.join(' ')}');
@@ -122,7 +115,7 @@ class PseudoRemoteService extends LLMService {
         _addLog('Process exited with code $code');
         notifyListeners();
       });
-    } catch (e, stack) {
+    } catch (e) {
       _addLog('Failed to start process: $e');
       _isRunning = false;
       notifyListeners();
@@ -176,7 +169,6 @@ class PseudoRemoteService extends LLMService {
     _activeClient = client;
 
     final completer = Completer<void>();
-    _pendingRequest = completer.future;
 
     try {
       final response = await client.send(request).timeout(const Duration(seconds: 120));
@@ -218,7 +210,6 @@ class PseudoRemoteService extends LLMService {
       _activeClient = null;
       client.close();
       if (!completer.isCompleted) completer.complete();
-      _pendingRequest = null;
     }
   }
 
@@ -280,9 +271,7 @@ class PseudoRemoteService extends LLMService {
           .get(uri)
           .timeout(const Duration(seconds: 3));
       if (response.statusCode == 200) {
-        _modelLoadingStatus = '';
         _modelReady = true;
-        _modelJustLoaded = true;
         _stopReadinessProbe();
         notifyListeners();
       }
@@ -294,25 +283,19 @@ class PseudoRemoteService extends LLMService {
 
   void _parseLoadingStatus(String data) {
     if (_readyPattern.hasMatch(data)) {
-      _modelLoadingStatus = '';
       _modelReady = true;
-      _modelJustLoaded = true;
       _stopReadinessProbe();
       notifyListeners();
       return;
     }
     if (!_modelReady) {
       if (_loadModelPattern.hasMatch(data)) {
-        _modelLoadingStatus = 'Loading model into device memory...';
         notifyListeners();
       } else if (_loadFilePattern.hasMatch(data)) {
-        _modelLoadingStatus = 'Loading model file...';
         notifyListeners();
       } else if (_mappingPattern.hasMatch(data)) {
-        _modelLoadingStatus = 'Mapping model to memory...';
         notifyListeners();
       } else if (_warmupPattern.hasMatch(data)) {
-        _modelLoadingStatus = 'Warming up model...';
         notifyListeners();
       }
     }
@@ -446,7 +429,6 @@ class PseudoRemoteService extends LLMService {
 
       _process = null;
       _isRunning = false;
-      _modelLoadingStatus = '';
       _modelReady = false;
       _stopReadinessProbe();
       notifyListeners();

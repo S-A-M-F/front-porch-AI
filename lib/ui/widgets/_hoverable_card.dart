@@ -16,9 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class _HoverableCard extends StatefulWidget {
   final bool isActive;
