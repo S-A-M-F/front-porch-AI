@@ -32,7 +32,14 @@ bool get isPreRelease {
       lower.contains('-rc') ||
       lower.contains('-dev') ||
       lower.contains('-nightly') ||
-      lower.contains('-rawhide');
+      lower.contains('rawhide');
+}
+
+/// True for Rawhide / nightly bleeding-edge builds (distinct channel from beta).
+/// Used by the auto-updater to select the correct download asset (Nightly vs Beta).
+bool get isNightlyBuild {
+  final lower = appVersion.toLowerCase();
+  return lower.contains('rawhide') || lower.contains('nightly');
 }
 
 /// The stable version number without the pre-release suffix.

@@ -216,7 +216,7 @@ class Sidebar extends StatelessWidget {
             child: Consumer<UpdateService>(
               builder: (context, updateService, _) {
                 final version = updateService.currentVersion.isNotEmpty
-                    ? 'v${updateService.currentVersion}'
+                    ? updateService.displayCurrentVersion
                     : 'v0.0.0';
                 return Row(
                   children: [

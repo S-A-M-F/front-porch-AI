@@ -36,12 +36,17 @@ class UpdateService extends ChangeNotifier {
   static const String _repoName = 'front-porch-AI';
   static const String _windowsAssetStable = 'Front_Porch_AI_Setup.exe';
   static const String _windowsAssetBeta = 'Front_Porch_AI_Beta_Setup.exe';
+  static const String _windowsAssetNightly = 'Front_Porch_AI_Nightly_Setup.exe';
   static const String _linuxAsset = 'Front_Porch_AI-Linux.AppImage';
+  static const String _linuxAssetNightly = 'Front_Porch_AI_Nightly-Linux.AppImage';
   static const String _macosAsset = 'Front_Porch_AI.dmg';
+  static const String _macosAssetBeta = 'Front_Porch_AI_MacOS.dmg';
+  static const String _macosAssetNightly = 'Front_Porch_AI_Nightly.dmg';
   static const String _prefsKeyAutoCheck = 'update_auto_check';
 
   String _currentVersion = '';
   String _latestVersion = '';
+  String _latestReleaseTag = '';
   String _downloadUrl = '';
   String _releaseNotes = '';
   bool _updateAvailable = false;
@@ -59,8 +64,10 @@ class UpdateService extends ChangeNotifier {
   /// URL to the GitHub release page for the latest version found by checkForUpdate().
   /// Used by the update dialog for the "View on GitHub" fallback and for links inside
   /// rendered release notes.
-  String get releaseUrl => _latestVersion.isNotEmpty
-      ? 'https://github.com/$_repoOwner/$_repoName/releases/tag/v$_latestVersion'
+  /// Uses the actual tag (e.g. "nightly-rawhide.20250519.xxx" or "v0.9.8") so links
+  /// are always correct for nightly, beta, and stable channels.
+  String get releaseUrl => _latestReleaseTag.isNotEmpty
+      ? 'https://github.com/$_repoOwner/$_repoName/releases/tag/$_latestReleaseTag'
       : 'https://github.com/$_repoOwner/$_repoName/releases';
   bool get updateAvailable => _updateAvailable;
   bool get checking => _checking;
@@ -69,6 +76,19 @@ class UpdateService extends ChangeNotifier {
   double get downloadProgress => _downloadProgress;
   bool get autoCheckEnabled => _autoCheckEnabled;
   bool get hasPendingInstaller => _pendingInstallerPath != null;
+
+  /// User-friendly version for UI display (avoids "vrawhide.2025..." for nightlies).
+  String get displayCurrentVersion => _formatVersionForDisplay(_currentVersion);
+  String get displayLatestVersion => _formatVersionForDisplay(_latestVersion);
+
+  String _formatVersionForDisplay(String v) {
+    if (v.isEmpty) return v;
+    final lower = v.toLowerCase();
+    if (lower.startsWith('rawhide') || lower.startsWith('nightly')) {
+      return v;
+    }
+    return 'v$v';
+  }
 
   /// Callback invoked before the update installer runs.
   /// Gives the host app a chance to stop child processes (e.g. KoboldCPP)
@@ -99,14 +119,22 @@ class UpdateService extends ChangeNotifier {
   }
 
   /// The correct asset name for this platform's update package.
-  /// Beta builds use a different asset filename so the stable and beta
-  /// update streams are completely independent.
+  /// Nightly (Rawhide), Beta, and Stable each use distinct filenames so the
+  /// three update channels never cross-pollinate (prevents data dir disasters).
   static String get _platformAsset {
     if (Platform.isWindows) {
+      if (isNightlyBuild) return _windowsAssetNightly;
       return isPreRelease ? _windowsAssetBeta : _windowsAssetStable;
     }
-    if (Platform.isLinux) return _linuxAsset;
-    if (Platform.isMacOS) return _macosAsset;
+    if (Platform.isLinux) {
+      if (isNightlyBuild) return _linuxAssetNightly;
+      return _linuxAsset;
+    }
+    if (Platform.isMacOS) {
+      if (isNightlyBuild) return _macosAssetNightly;
+      if (isPreRelease) return _macosAssetBeta;
+      return _macosAsset;
+    }
     return '';
   }
 
@@ -167,14 +195,16 @@ class UpdateService extends ChangeNotifier {
         final isPrerelease = release['prerelease'] as bool? ?? false;
         final tagLower = tagName.toLowerCase();
 
-        // Manual check for beta strings if the flag isn't set
+        // Manual check for beta strings if the flag isn't set.
+        // Use contains('rawhide') (no leading -) so it catches both "nightly-rawhide..."
+        // tags and raw "rawhide.YYYY..." versions.
         final hasBetaString =
             tagLower.contains('beta') ||
             tagLower.contains('alpha') ||
             tagLower.contains('-rc') ||
             tagLower.contains('-dev') ||
-            tagLower.contains('-nightly') ||
-            tagLower.contains('-rawhide');
+            tagLower.contains('nightly') ||
+            tagLower.contains('rawhide');
 
         final effectivelyBeta = isPrerelease || hasBetaString;
 
@@ -193,13 +223,12 @@ class UpdateService extends ChangeNotifier {
 
       if (targetRelease == null) return false;
 
-      final tagName = (targetRelease['tag_name'] as String? ?? '').replaceFirst(
-        RegExp(r'^[vV]'),
-        '',
-      );
+      final originalTag = (targetRelease['tag_name'] as String? ?? '');
+      final tagNameStripped = originalTag.replaceFirst(RegExp(r'^[vV]'), '');
+      final normalizedVersion = _normalizeForCompare(tagNameStripped);
       final assets = targetRelease['assets'] as List<dynamic>? ?? [];
 
-      // Find the platform-specific update asset
+      // Find the platform-specific update asset (now correctly picks Nightly/Beta/Stable)
       final targetAsset = _platformAsset;
       String? installerUrl;
       for (final asset in assets) {
@@ -210,14 +239,15 @@ class UpdateService extends ChangeNotifier {
       }
 
       if (installerUrl == null) {
-        debugPrint('No update asset ($targetAsset) found in release $tagName');
+        debugPrint('No update asset ($targetAsset) found in release $originalTag');
         return false;
       }
 
-      _latestVersion = tagName;
+      _latestReleaseTag = originalTag;
+      _latestVersion = normalizedVersion;
       _downloadUrl = installerUrl;
       _releaseNotes = targetRelease['body'] as String? ?? '';
-      _updateAvailable = _isNewerVersion(tagName, _currentVersion);
+      _updateAvailable = _isNewerVersion(normalizedVersion, _currentVersion);
 
       return _updateAvailable;
     } catch (e) {
@@ -465,17 +495,44 @@ open -n "$destPath"
     // Relaunch is handled by the update shell script
   }
 
-  /// Compare version strings (e.g. "0.9.8-Beta6" vs "0.9.8-Beta5")
+  /// Normalizes a version/tag string for comparison and display:
+  /// strips leading v/V, and the "nightly-" wrapper used on GitHub tags for Rawhide
+  /// so that "nightly-rawhide.20250519.abc" becomes "rawhide.20250519.abc" (matching
+  /// the appVersion string baked into the binary by the nightly CI).
+  String _normalizeForCompare(String v) {
+    v = v.toLowerCase().replaceFirst(RegExp(r'^[vV]'), '');
+    if (v.startsWith('nightly-')) {
+      v = v.substring(8);
+    }
+    return v;
+  }
+
+  /// Compare version strings (e.g. "0.9.8-Beta6" vs "0.9.8-Beta5", or rawhide dates).
   /// Returns true if remote is newer than local.
   bool _isNewerVersion(String remote, String local) {
-    // Standardize: remove 'v' prefix and split into numeric vs suffix parts
-    String clean(String v) =>
-        v.toLowerCase().replaceFirst(RegExp(r'^[vV]'), '');
-    final rClean = clean(remote);
-    final lClean = clean(local);
+    final rClean = _normalizeForCompare(remote);
+    final lClean = _normalizeForCompare(local);
 
     if (rClean == lClean) return false;
 
+    // Special handling for Rawhide nightlies: the version format is
+    // "rawhide.YYYYMMDD.SHA". We compare the date numeric first (correctly
+    // orders 20250519 > 20250517), then fall back for same-day builds.
+    if (rClean.startsWith('rawhide.') && lClean.startsWith('rawhide.')) {
+      final rParts = rClean.split('.');
+      final lParts = lClean.split('.');
+      if (rParts.length >= 2 && lParts.length >= 2) {
+        final rDate = int.tryParse(rParts[1]) ?? 0;
+        final lDate = int.tryParse(lParts[1]) ?? 0;
+        if (rDate > lDate) return true;
+        if (rDate < lDate) return false;
+        // Same calendar day: any distinct build from the latest published
+        // release should be offered (the GH list order is authoritative).
+        return true;
+      }
+    }
+
+    // Standard semver path for stable / beta / etc.
     // Split at the first hyphen (e.g. "0.9.8-beta6" -> ["0.9.8", "beta6"])
     final rSplit = rClean.split('-');
     final lSplit = lClean.split('-');

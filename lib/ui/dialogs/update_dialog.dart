@@ -85,7 +85,7 @@ class UpdateDialog extends StatelessWidget {
                     color: Colors.white54,
                   ),
                 ),
-                TextSpan(text: 'v${service.currentVersion}\n'),
+                TextSpan(text: '${service.displayCurrentVersion}\n'),
                 const TextSpan(
                   text: 'Latest: ',
                   style: TextStyle(
@@ -93,7 +93,7 @@ class UpdateDialog extends StatelessWidget {
                     color: Colors.greenAccent,
                   ),
                 ),
-                TextSpan(text: 'v${service.latestVersion}\n'),
+                TextSpan(text: '${service.displayLatestVersion}\n'),
               ],
             ),
           ),
@@ -195,7 +195,7 @@ class UpdateDialog extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "What's New in v${service.latestVersion}",
+          "What's New in ${service.displayLatestVersion}",
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w600,

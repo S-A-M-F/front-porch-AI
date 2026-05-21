@@ -90,6 +90,11 @@ jobs:
               f.write(\"      lower.contains('-rc') ||\n\")
               f.write(\"      lower.contains('-dev');\n\")
               f.write(\"}\n\n\")
+              f.write(\"/// True for Rawhide/nightly builds (selects correct Nightly asset in updater).\n\")
+              f.write(\"bool get isNightlyBuild {\n\")
+              f.write(\"  final lower = appVersion.toLowerCase();\n\")
+              f.write(\"  return lower.contains('rawhide') || lower.contains('nightly');\n\")
+              f.write(\"}\n\n\")
               f.write(\"/// The stable version number without the pre-release suffix.\n\")
               f.write(\"String get stableVersionBase => appVersion.split('-').first;\n\")
           "
