@@ -606,7 +606,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     // Scan local GGUF models for KoboldCpp
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final llmProvider = Provider.of<LLMProvider>(context, listen: false);
-      if (llmProvider.activeBackend == BackendType.kobold) {
+      if (llmProvider.hasManagedProcess) {
         _scanLocalModels();
       }
     });
@@ -769,7 +769,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
 
     // If using KoboldCpp backend, no remote model list — just use the local model
-    if (llmProvider.activeBackend == BackendType.kobold) {
+    if (llmProvider.hasManagedProcess) {
       if (mounted) {
         setState(() {
           _availableModels = [];
@@ -2048,7 +2048,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       final estimatedTokens = worldLore.length ~/ 4;
       
       int freeContextLimit = 30000;
-      if (provider.activeBackend == BackendType.kobold && provider.koboldService.isReady) {
+      if ((provider.activeBackend == BackendType.kobold && provider.koboldService.isReady) ||
+          (provider.activeBackend == BackendType.pseudoRemote && provider.pseudoRemoteService.isReady)) {
          final storage = Provider.of<StorageService>(context, listen: false);
          final koboldContext = storage.contextSize;
          freeContextLimit = koboldContext - 3000; // Leave 3K for generation
@@ -2099,7 +2100,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     final storage = Provider.of<StorageService>(context, listen: false);
 
     LLMService llmService;
-    if (llmProvider.activeBackend == BackendType.kobold) {
+    if (llmProvider.hasManagedProcess) {
       final kobold = llmProvider.koboldService;
       if (!kobold.isReady) {
         setState(() {
@@ -5188,7 +5189,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     // Resolve LLM service — same logic as automated mode
     LLMService llmService;
-    if (llmProvider.activeBackend == BackendType.kobold) {
+    if (llmProvider.hasManagedProcess) {
       final kobold = llmProvider.koboldService;
       if (!kobold.isReady) {
         setState(() { _generationStatus = 'Error: KoboldCpp is not running. Start it first.'; _isGenerating = false; });
@@ -5616,7 +5617,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     final storage = Provider.of<StorageService>(context, listen: false);
 
     LLMService? llmService;
-    if (llmProvider.activeBackend == BackendType.kobold) {
+    if (llmProvider.hasManagedProcess) {
       final kobold = llmProvider.koboldService;
       if (kobold.isReady) llmService = kobold;
     } else {
@@ -5663,7 +5664,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     // Create LLM service based on active backend
     LLMService llmService;
-    if (llmProvider.activeBackend == BackendType.kobold) {
+    if (llmProvider.hasManagedProcess) {
       // KoboldCpp — use local backend directly
       final kobold = llmProvider.koboldService;
       if (!kobold.isReady) {
@@ -5693,7 +5694,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       llmService = active;
     }
 
-    debugPrint('CharacterGen: Using backend: ${llmService.runtimeType} (${llmProvider.activeBackend == BackendType.kobold ? "KoboldCpp" : _selectedModelId.isNotEmpty ? _selectedModelId : "default API model"})');
+    final backendLabel = llmProvider.activeBackend == BackendType.kobold
+        ? "KoboldCpp"
+        : llmProvider.activeBackend == BackendType.pseudoRemote
+            ? "PseudoRemote"
+            : _selectedModelId.isNotEmpty
+                ? _selectedModelId
+                : "default API model";
+    debugPrint('CharacterGen: Using backend: ${llmService.runtimeType} ($backendLabel)');
 
     // Resolve selected persona context
     String userPersonaContext = '';

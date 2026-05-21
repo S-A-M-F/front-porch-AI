@@ -2321,6 +2321,42 @@ class _SettingsPageState extends State<SettingsPage> {
                         title: Row(
                           children: [
                             Icon(
+                              Icons.laptop,
+                              size: 18,
+                              color: theme.iconTheme.color,
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Pseudo-Remote',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ],
+                        ),
+                        value: BackendType.pseudoRemote,
+                        groupValue: llmProvider.activeBackend,
+                        onChanged: (val) async {
+                          if (val != null) {
+                            await llmProvider.setActiveBackend(val);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Switched to Pseudo-Remote backend.',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<BackendType>(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Row(
+                          children: [
+                            Icon(
                               Icons.cloud,
                               size: 18,
                               color: theme.iconTheme.color,
@@ -2336,15 +2372,12 @@ class _SettingsPageState extends State<SettingsPage> {
                         groupValue: llmProvider.activeBackend,
                         onChanged: (val) async {
                           if (val != null) {
-                            final stoppedKobold = await llmProvider
-                                .setActiveBackend(val);
+                            await llmProvider.setActiveBackend(val);
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
+                                const SnackBar(
                                   content: Text(
-                                    stoppedKobold
-                                        ? 'Shutting down KoboldCPP… Switched to Remote API.'
-                                        : 'Switched to Remote API backend.',
+                                    'Switched to Remote API backend.',
                                   ),
                                 ),
                               );
@@ -2355,9 +2388,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ],
                 ),
-                if (llmProvider.isLocal)
+                if (llmProvider.activeBackend == BackendType.kobold)
                   Text(
-                    'Use a local KoboldCPP instance to run models on your hardware.',
+                    'Use a local KoboldCPP instance with native API.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
+                  )
+                else if (llmProvider.activeBackend == BackendType.pseudoRemote)
+                  Text(
+                    'Runs KoboldCPP locally but communicates via OpenAI-compatible API.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.grey,
                     ),
