@@ -96,7 +96,7 @@ front_porch_ai.png
 .sandbox-*/
 .opencode/
 .sisyphus/
-CLAUDE.md
+
 aur/src/
 aur/pkg/
 aur/*.pkg.tar*
