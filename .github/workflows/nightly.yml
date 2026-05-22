@@ -1,5 +1,17 @@
 name: Nightly Build (Rawhide)
 
+# IMPORTANT: GitHub ONLY evaluates `schedule:` (cron) triggers from workflow files
+# that exist on the repository's DEFAULT branch (main). The schedule here will NOT
+# fire from changes made only on Rawhide.
+#
+# When editing this file (especially the "Compute Rawhide Nightly Version" step that
+# patches lib/app_version.dart), you MUST also ensure an up-to-date copy lands on
+# `main`. Otherwise the 07:00 UTC Rawhide builds will use a stale writer and fail
+# with "Undefined name" compile errors for any new getters/symbols (e.g. isNightlyBuild).
+#
+# The job itself checks out `ref: Rawhide` for the actual source, but the workflow
+# definition (including the sed/python patch logic) always comes from main's copy.
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -59,26 +71,16 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Setting nightly version to: $VERSION"
 
-          # Write version file
-          echo '/// Single source of truth for the app version.' > lib/app_version.dart
-          echo "const String appVersion = '$VERSION';" >> lib/app_version.dart
-          echo '' >> lib/app_version.dart
-          echo '/// Whether the current build is a pre-release.' >> lib/app_version.dart
-          echo 'bool get isPreRelease {' >> lib/app_version.dart
-          echo "  final lower = appVersion.toLowerCase();" >> lib/app_version.dart
-          echo "  return lower.contains('rawhide') || lower.contains('-nightly');" >> lib/app_version.dart
-          echo '}' >> lib/app_version.dart
-          echo '' >> lib/app_version.dart
-          echo '/// True for Rawhide/nightly builds (selects correct Nightly asset in updater).' >> lib/app_version.dart
-          echo 'bool get isNightlyBuild {' >> lib/app_version.dart
-          echo "  final lower = appVersion.toLowerCase();" >> lib/app_version.dart
-          echo "  return lower.contains('rawhide') || lower.contains('nightly');" >> lib/app_version.dart
-          echo '}' >> lib/app_version.dart
-          echo '' >> lib/app_version.dart
-          echo '/// The stable version base (used by Cloud Sync messaging).' >> lib/app_version.dart
-          echo "String get stableVersionBase => appVersion.split('-').first;" >> lib/app_version.dart
+          # Patch only the version string in the existing app_version.dart.
+          # This leaves isPreRelease, isNightlyBuild, stableVersionBase, and all comments
+          # exactly as they are committed on the Rawhide branch — no duplication.
+          # Prevents "undefined name" compile failures when new getters are added.
+          sed -i.bak "s/^const String appVersion = '.*';$/const String appVersion = '$VERSION';/" lib/app_version.dart
+          rm -f lib/app_version.dart.bak
 
           echo "Version written: $VERSION"
+          echo "Current lib/app_version.dart (after patch):"
+          cat lib/app_version.dart
 
       - name: Prepare Friendly Release Notes (for in-app update dialog)
         id: release_notes
