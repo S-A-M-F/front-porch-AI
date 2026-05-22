@@ -74,6 +74,37 @@ jobs:
 
           echo "Version written: $VERSION"
 
+      - name: Prepare Friendly Release Notes (for in-app update dialog)
+        id: release_notes
+        shell: bash
+        run: |
+          NOTES_FILE="docs/Rawhide.md"
+
+          if [ -f "$NOTES_FILE" ]; then
+            # Extract the main content after the title and first intro section.
+            # This keeps the notes friendly and focused for the update dialog.
+            BODY=$(awk '
+              /^## / { 
+                if (in_content) { exit } 
+                in_content=1; 
+                next 
+              }
+              in_content { print }
+            ' "$NOTES_FILE")
+
+            if [ -n "$BODY" ]; then
+              echo "body<<EOF" >> $GITHUB_OUTPUT
+              echo "$BODY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              echo "Using notes from $NOTES_FILE"
+            else
+              echo 'body=**Rawhide Nightly** — Latest development from the Rawhide branch.' >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No $NOTES_FILE found — using fallback notes"
+            echo 'body=**Rawhide Nightly** — Bleeding-edge development. See the README for current focus areas.' >> $GITHUB_OUTPUT
+          fi
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -364,6 +395,9 @@ jobs:
             ${{ matrix.platform == 'linux' && 'Front_Porch_AI_Nightly-Linux.AppImage' || '' }}
             ${{ matrix.platform == 'linux' && 'Front_Porch_AI_Nightly-Linux.tar.gz' || '' }}
           body: |
+            ${{ steps.release_notes.outputs.body }}
+
+            ---
             **Rawhide Nightly Build** — `${{ steps.version.outputs.VERSION }}`
 
             Built from the `Rawhide` branch.
