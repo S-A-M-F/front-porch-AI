@@ -6379,6 +6379,7 @@ class _SidebarSection extends StatefulWidget {
   const _SidebarSection({
     required this.title,
     required this.content,
+    this.initiallyExpanded = false,
   });
 
   @override

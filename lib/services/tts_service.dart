@@ -650,8 +650,8 @@ class TtsService extends ChangeNotifier {
           final file = completedFiles[nextToQueue]!;
           audioQueue.add(file);
           nextToQueue++;
-          if (!audioAvailable.isCompleted) {
-            audioAvailable.complete();
+          if (audioAvailable != null && !audioAvailable!.isCompleted) {
+            audioAvailable!.complete();
           }
         }
       }

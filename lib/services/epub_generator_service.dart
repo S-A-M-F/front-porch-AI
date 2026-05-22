@@ -104,6 +104,7 @@ class EpubGeneratorService {
         }
       }
 
+      final chapterFilename = 'act_\${actIdx + 1}.html';
       chapterHtmlFiles[chapterFilename] = _buildHtmlWrap('Act \${act.number}', buffer.toString());
 
       navPoints.add('''
