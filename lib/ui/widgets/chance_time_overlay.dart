@@ -392,7 +392,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         // ── Category banner ─────────────────────────────────────────────
         AnimatedBuilder(
           animation: _revealAnimation,
-          builder: (_, __) {
+          builder: (_, _) {
             final t = _revealAnimation.value;
             return Opacity(
               opacity: t.clamp(0.0, 1.0),
@@ -424,7 +424,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         // ── Event text card ─────────────────────────────────────────────
         AnimatedBuilder(
           animation: _revealAnimation,
-          builder: (_, __) {
+          builder: (_, _) {
             final t = (_revealAnimation.value - 0.3).clamp(0.0, 1.0) / 0.7;
             return Opacity(
               opacity: t,
@@ -575,7 +575,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
 
   Widget _buildPressureRow() {
     return Consumer<ChatService>(
-      builder: (_, svc, __) {
+      builder: (_, svc, _) {
         final pressure = svc.chaosPressure;
         final color = Color.lerp(
           const Color(0xFF2EC4B6),
@@ -606,7 +606,6 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
 
 class _ConfettiPainter extends CustomPainter {
   final double progress; // 0→1
-  static final _rng = Random(42);
 
   _ConfettiPainter({required this.progress});
 

@@ -2545,7 +2545,7 @@ class _HomePageState extends State<HomePage> {
                       'Characters respond automatically one after another',
                       style: TextStyle(color: Colors.white38, fontSize: 12),
                     ),
-                    activeColor: Colors.purpleAccent,
+                    activeThumbColor: Colors.purpleAccent,
                     contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 8),
@@ -2748,7 +2748,7 @@ class _HomePageState extends State<HomePage> {
                       'Characters chat autonomously — you direct the scene',
                       style: TextStyle(color: Colors.amberAccent, fontSize: 11),
                     ),
-                    activeColor: Colors.amberAccent,
+                    activeThumbColor: Colors.amberAccent,
                     contentPadding: EdgeInsets.zero,
                   ),
                   // ── Per-character voice selection ──

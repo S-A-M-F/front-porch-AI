@@ -11,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
-import 'package:front_porch_ai/utils/emotion_labels.dart';
 
 /// Mock the path_provider plugin so StorageService._init() can resolve
 /// getApplicationDocumentsDirectory() without a real platform channel.
@@ -232,11 +231,10 @@ void main() {
 
     test('onProgress callback is captured when provided', () async {
       final storage = await createStorageService();
-      var progressEmitted = false;
       final classifier = ONNXExpressionClassifier(
         storage: storage,
         onProgress: (progress) {
-          progressEmitted = true;
+          // callback wired (test only verifies construction, not firing in this env)
         },
       );
       // Script may exist but Python deps missing — classify() returns neutral.

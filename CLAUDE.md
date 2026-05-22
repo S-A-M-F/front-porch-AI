@@ -18,7 +18,7 @@ flutter pub get
 
 # Development
 flutter run                          # Debug run
-flutter analyze                      # Lint (CI uses --no-fatal-warnings --no-fatal-infos)
+flutter analyze                      # Lint (now at 0 warnings on active rules; CI runs on changed .dart files only for PRs + full scheduled job)
 flutter format --set-exit-if-changed .  # Format check
 
 # Tests
@@ -161,7 +161,7 @@ A multi-component system spanning chat_service.dart and the LLM provider:
 - **Leverage shared state** (e.g., `StorageService`) as the single source of truth
 
 ### Verification
-- **ALWAYS run `flutter analyze` after making code changes** — never claim changes are "verified" without actually compiling. Variables declared inside `try` blocks are not accessible outside — declare them before the `try` with default values instead.
+- **ALWAYS run `flutter analyze` after making code changes** — the project is now at literal 0 warnings on the active rule set. New code must not introduce any warnings (CI will catch them on changed files in PRs). Never claim changes are "verified" without running it. Variables declared inside `try` blocks are not accessible outside — declare them before the `try` with default values instead.
 - **Cross-platform verification is mandatory**. Front Porch AI is a Windows + macOS + Linux desktop app. Every non-trivial change must be checked (or have an explicit plan) to ensure it does not regress on any of the three platforms. This is especially true for file paths, process spawning, Python sidecars, and anything touching `dart:io` or native binaries.
 - **Realism & Needs parity is mandatory** (see the dedicated section below). Any change to the Realism Engine or Needs simulation must keep 1:1 and group chat behavior consistent unless explicitly approved otherwise.
 

@@ -45,9 +45,6 @@ class StoryWriterPage extends StatefulWidget {
 class _StoryWriterPageState extends State<StoryWriterPage> {
   final ScrollController _scrollController = ScrollController();
 
-  StoryProject? get _project =>
-      Provider.of<StoryRepository>(context, listen: false).getById(widget.projectId);
-
   String get _sId => '${widget.actIndex}-${widget.sceneIndex}';
 
   @override

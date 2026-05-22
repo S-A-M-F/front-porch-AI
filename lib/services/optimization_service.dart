@@ -83,18 +83,18 @@ class OptimizationService {
 
       if (availableForLayers > modelSizeMb + 500) {
         gpuLayers = 99; // Enough VRAM for all layers + requested context
-        reasoning = 'Full GPU offload with ${requestedContextSize} context.$backendNote$sharedNote';
+        reasoning = 'Full GPU offload with $requestedContextSize context.$backendNote$sharedNote';
       } else if (availableForLayers > modelSizeMb * 0.5) {
         // Can offload a good portion
         final ratio = availableForLayers / (modelSizeMb > 0 ? modelSizeMb : 5000);
         gpuLayers = (ratio * 40).round().clamp(1, 99); // rough layer estimate
-        reasoning = 'Partial GPU offload ($gpuLayers layers) to fit ${requestedContextSize} context.$backendNote$sharedNote';
+        reasoning = 'Partial GPU offload ($gpuLayers layers) to fit $requestedContextSize context.$backendNote$sharedNote';
       } else if (availableForLayers > 1000) {
         gpuLayers = (availableForLayers / 200).round().clamp(1, 20);
         reasoning = 'Limited GPU offload ($gpuLayers layers) — large context uses most VRAM.$backendNote$sharedNote';
       } else {
         gpuLayers = 0;
-        reasoning = 'CPU-only mode — ${requestedContextSize} context requires too much VRAM for GPU layers.$sharedNote';
+        reasoning = 'CPU-only mode — $requestedContextSize context requires too much VRAM for GPU layers.$sharedNote';
       }
 
       return OptimizationResult(

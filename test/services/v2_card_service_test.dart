@@ -135,7 +135,7 @@ void main() {
       final loaded = await service.readCard(outputPath);
       expect(loaded, isNotNull);
       expect(loaded!.tags, ['fantasy', 'magic', 'dragon']);
-      expect(loaded!.worldNames, ['Fantasy Realm', 'Dragon Keep']);
+      expect(loaded.worldNames, ['Fantasy Realm', 'Dragon Keep']);
     });
 
     test('round-trip preserves system prompt and post history', () async {
@@ -151,7 +151,7 @@ void main() {
       final loaded = await service.readCard(outputPath);
       expect(loaded, isNotNull);
       expect(loaded!.systemPrompt, 'You are a helpful assistant.');
-      expect(loaded!.postHistoryInstructions, 'Maintain character voice.');
+      expect(loaded.postHistoryInstructions, 'Maintain character voice.');
     });
 
     test('round-trip preserves mesExample', () async {
@@ -189,7 +189,7 @@ void main() {
       img.fill(sourceImg, color: img.ColorRgb8(255, 0, 0));
       final sourcePath = '$tempDir/source.png';
       final sourceFile = File(sourcePath);
-      await sourceFile.writeAsBytes(img.encodePng(sourceImg)!);
+      await sourceFile.writeAsBytes(img.encodePng(sourceImg));
 
       final card = CharacterCard(name: 'With Image Character');
       final outputPath = '$tempDir/with_source.png';
@@ -214,7 +214,7 @@ void main() {
       final plainImg = img.Image(width: 50, height: 50);
       img.fill(plainImg, color: img.ColorRgb8(0, 0, 255));
       final noCharaPath = '$tempDir/no_chara.png';
-      await File(noCharaPath).writeAsBytes(img.encodePng(plainImg)!);
+      await File(noCharaPath).writeAsBytes(img.encodePng(plainImg));
 
       final loaded = await service.readCard(noCharaPath);
       expect(loaded, isNull);

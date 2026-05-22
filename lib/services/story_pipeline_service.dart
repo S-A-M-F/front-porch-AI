@@ -32,7 +32,8 @@ import 'package:front_porch_ai/database/database.dart' hide StoryProject;
 class StoryPipelineService extends ChangeNotifier {
   final StoryRepository _repository;
   final LLMService _llmService;
-  final MemoryService _memoryService;
+  // ignore: unused_field
+  final MemoryService _memoryService; // Reserved for future story RAG / memory injection
   final AppDatabase _db;
 
   bool _isRunning = false;
@@ -1420,10 +1421,6 @@ Next Beat Plan: ${nextBeat.description}''';
 
     final act = project.acts[actIndex];
     final tier = project.promptTier;
-
-    final beatDescriptions = beats.asMap().entries
-        .map((e) => '  ${e.key + 1}. [${e.value.type}] ${e.value.description} (valence: ${e.value.valence})')
-        .join('\n');
 
     final castInfo = scene.castNames.isNotEmpty
         ? 'Characters present: ${scene.castNames.join(", ")}'

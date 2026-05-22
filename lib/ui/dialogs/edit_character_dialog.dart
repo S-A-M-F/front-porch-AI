@@ -31,7 +31,6 @@ import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 
 class EditCharacterDialog extends StatefulWidget {
@@ -330,7 +329,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
         throw FormatException('Invalid JSON format: expected a JSON object');
       }
       
-      final Map<String, dynamic> json = jsonData as Map<String, dynamic>;
+      final Map<String, dynamic> json = jsonData;
 
       if (json['entries'] == null && json['lorebook'] == null) {
         throw FormatException(
@@ -365,7 +364,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
           SnackBar(content: Text('Invalid file format: ${e.message}')),
         );
       }
-    } on Exception catch (e) {
+    } on Exception {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Import failed: An unexpected error occurred')),

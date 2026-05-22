@@ -29,7 +29,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
-import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/models/character_card.dart';
@@ -505,7 +504,7 @@ class _ChatPageState extends State<ChatPage> {
                                              image: DecorationImage(
                                                image: FileImage(
                                                  File(
-                                                   customEntry!['filePath']!,
+                                                   customEntry['filePath']!,
                                                  ),
                                                ),
                                                fit: BoxFit.cover,
@@ -1141,7 +1140,6 @@ class _ChatPageState extends State<ChatPage> {
     final arousalColor = _getGroupTierColor(arousalTier);
 
     final needs = chatService.getTopUrgentNeedsForGroupCharacter(character, count: 2);
-    final fixation = chatService.getFixationForGroupCharacter(character);
 
     return Opacity(
       opacity: opacity,
@@ -3249,11 +3247,6 @@ class _ChatPageState extends State<ChatPage> {
             child: SizedBox(
               width: double.infinity,
               child: PopupMenuButton<String>(
-                child: const Text(
-                  'Settings',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70),
-                ),
                 color: const Color(0xFF1e293b),
                 elevation: 8,
                 style: OutlinedButton.styleFrom(
@@ -3344,7 +3337,7 @@ class _ChatPageState extends State<ChatPage> {
                     label: 'UI Settings',
                   ),
                 ),
-                const PopupMenuDivider(height: 1),
+                PopupMenuDivider(height: 1),
                 PopupMenuItem(
                   value: 'chat',
                   child: _SettingsMenuItem(
@@ -3367,6 +3360,11 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ),
               ],
+                child: const Text(
+                  'Settings',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70),
+                ),
             ),
               ),
             ),
@@ -4730,8 +4728,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
               backgroundImage: characterImage != null
                   ? FileImage(characterImage!)
                   : null,
-              child: characterImage == null ? const Icon(Icons.person) : null,
               radius: 16,
+              child: characterImage == null ? const Icon(Icons.person) : null,
             ),
           if (!message.isUser && !isDirectorNote) const SizedBox(width: 12),
 
@@ -5399,8 +5397,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 }
                 return const CircleAvatar(
                   backgroundColor: Colors.purple,
-                  child: Icon(Icons.person, color: Colors.white),
                   radius: 16,
+                  child: Icon(Icons.person, color: Colors.white),
                 );
               },
             ),
@@ -5494,8 +5492,6 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final trustDelta = metadata['trust_delta'] as int? ?? 0;
     final bondReason = metadata['bond_reason'] as String? ?? '';
     final trustReason = metadata['trust_reason'] as String? ?? '';
-    final timeSkipPeriods = metadata['time_skip_periods'] as int? ?? 0;
-    final timeSkipNextDay = metadata['time_skip_next_day'] as bool? ?? false;
     final timeSkipTo = metadata['time_skip_to'] as String? ?? '';
     final chanceTimeEvent = metadata['chance_time_event'] as String? ?? '';
     final timeReversal = metadata['time_reversal'] as bool? ?? false;
@@ -6114,7 +6110,8 @@ class _ExternalImageWidget extends StatefulWidget {
 }
 
 class _ExternalImageWidgetState extends State<_ExternalImageWidget> {
-  bool _loading = false;
+  // ignore: unused_field
+  bool _loading = false; // Kept for potential future loading UI in external image widget
   File? _cachedFile;
   String? _error;
 
@@ -6368,7 +6365,6 @@ class _SidebarSection extends StatefulWidget {
   const _SidebarSection({
     required this.title,
     required this.content,
-    this.initiallyExpanded = false,
   });
 
   @override
@@ -7942,7 +7938,7 @@ class _MemorySectionState extends State<_MemorySection> {
                       height: 20,
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,
-                      errorBuilder: (_, __, ___) => const Icon(
+                      errorBuilder: (_, _, _) => const Icon(
                         Icons.person,
                         size: 16,
                         color: Colors.white30,
@@ -7973,9 +7969,6 @@ class _MemorySectionState extends State<_MemorySection> {
     final character = chat.activeCharacter;
     if (character == null) return;
     final charName = character.name;
-    final charId = character.imagePath != null
-        ? character.imagePath!.split('/').last.replaceAll('.png', '')
-        : character.name;
 
     // Get evolved versions from chat service cache
     final evolvedPersonality = chat.getEffectivePersonality ?? '';
@@ -8731,7 +8724,7 @@ class _RealismSectionState extends State<_RealismSection> {
                         height: 24,
                         child: Switch(
                           value: enabled,
-                          activeColor: Colors.tealAccent,
+                          activeThumbColor: Colors.tealAccent,
                           onChanged: chat.isGenerating
                               ? null
                               : (val) {
@@ -9055,7 +9048,7 @@ class _RealismSectionState extends State<_RealismSection> {
                             height: 24,
                             child: Switch(
                               value: chat.passageOfTimeEnabled,
-                              activeColor: Colors.blueAccent,
+                              activeThumbColor: Colors.blueAccent,
                               onChanged: chat.isGenerating
                                   ? null
                                   : (val) => chat.setPassageOfTimeEnabled(val),
@@ -9093,7 +9086,7 @@ class _RealismSectionState extends State<_RealismSection> {
                             height: 24,
                             child: Switch(
                               value: chat.needsSimEnabled,
-                              activeColor: Colors.tealAccent,
+                              activeThumbColor: Colors.tealAccent,
                               onChanged: chat.isGenerating
                                   ? null
                                   : (val) => chat.setNeedsSimEnabled(val),
@@ -9187,7 +9180,7 @@ class _RealismSectionState extends State<_RealismSection> {
                             height: 20,
                             child: Switch(
                               value: storageService.realismOneShotEval,
-                              activeColor: Colors.tealAccent,
+                              activeThumbColor: Colors.tealAccent,
                               onChanged: chat.isGenerating
                                   ? null
                                   : (val) {
@@ -9394,7 +9387,7 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                   height: 20,
                   child: Switch(
                     value: widget.chat.nsfwCooldownEnabled,
-                    activeColor: Colors.deepOrangeAccent,
+                    activeThumbColor: Colors.deepOrangeAccent,
                     onChanged: widget.chat.isGenerating
                         ? null
                         : (val) {
@@ -9568,7 +9561,7 @@ class _ChaosModeSection extends StatelessWidget {
               Switch(
                 value: chat.chaosModeEnabled,
                 onChanged: (v) => chat.setChaosModeEnabled(v),
-                activeColor: const Color(0xFFFFD166),
+                activeThumbColor: const Color(0xFFFFD166),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ],
@@ -9629,7 +9622,7 @@ class _ChaosModeSection extends StatelessWidget {
                         child: Switch(
                           value: chat.chaosNsfwEnabled,
                           onChanged: (v) => chat.setChaosNsfwEnabled(v),
-                          activeColor: const Color(0xFFFF6B9D),
+                          activeThumbColor: const Color(0xFFFF6B9D),
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
                         ),
@@ -9892,7 +9885,7 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                         height: 24,
                         child: Switch(
                           value: _nsfw,
-                          activeColor: Colors.redAccent,
+                          activeThumbColor: Colors.redAccent,
                           onChanged: (v) => setState(() => _nsfw = v),
                         ),
                       ),
@@ -10628,7 +10621,7 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
                               // Animated orb with spinning ring
                               AnimatedBuilder(
                                 animation: _pulse,
-                                builder: (_, __) => Container(
+                                builder: (_, _) => Container(
                                   width: 50,
                                   height: 50,
                                   decoration: BoxDecoration(
@@ -10773,7 +10766,7 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
                                       children: [
                                         AnimatedBuilder(
                                           animation: _pulse,
-                                          builder: (_, __) => Container(
+                                          builder: (_, _) => Container(
                                             width: 6,
                                             height: 6,
                                             decoration: BoxDecoration(
@@ -10842,7 +10835,7 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
                             padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
                             child: AnimatedBuilder(
                               animation: _pulse,
-                              builder: (_, __) => Text(
+                              builder: (_, _) => Text(
                                 isGreeting
                                     ? 'Analyzing opening message to calibrate\nthe character\'s emotional state & relationships...'
                                     : 'Initializing evaluator...',
@@ -11015,7 +11008,7 @@ class _ObjectiveCheckOverlayState extends State<_ObjectiveCheckOverlay>
                               // Animated orb with spinning ring
                               AnimatedBuilder(
                                 animation: _pulse,
-                                builder: (_, __) => Container(
+                                builder: (_, _) => Container(
                                   width: 50,
                                   height: 50,
                                   decoration: BoxDecoration(
@@ -11126,7 +11119,7 @@ class _ObjectiveCheckOverlayState extends State<_ObjectiveCheckOverlay>
                           padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
                           child: AnimatedBuilder(
                             animation: _pulse,
-                            builder: (_, __) => Text(
+                            builder: (_, _) => Text(
                               'Reviewing recent conversation to determine\nif objectives or tasks have been fulfilled...',
                               textAlign: TextAlign.center,
                               style: TextStyle(
@@ -11162,7 +11155,7 @@ class _AnimatedEvalPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: pulseAnimation,
-      builder: (_, __) => Container(
+      builder: (_, _) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: pill.color.withOpacity(0.07 + 0.04 * pulseAnimation.value),

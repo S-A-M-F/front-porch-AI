@@ -481,12 +481,12 @@ Respond with ONLY the JSON:''';
   }) async {
     final transcript = StringBuffer();
     // Seed the LLM with who this character is so the first answer is grounded
-    final seed = 'You are ${name}.\n'
+    final seed = 'You are $name.\n'
         'Your personality: ${card.personality.length > 400 ? card.personality.substring(0, 400) : card.personality}\n'
         'Your scenario: ${card.scenario.length > 200 ? card.scenario.substring(0, 200) : card.scenario}\n\n'
         '${worldLore != null && worldLore.trim().isNotEmpty ? "You exist in the following established world. Use its terminology, locations, and facts:\n$worldLore\n\n" : ""}'
         'Answer each question in first person, fully in-character. '
-        'Be specific, vivid, and emotionally honest. Respond as ${name} would speak — '
+        'Be specific, vivid, and emotionally honest. Respond as $name would speak — '
         'use their vocabulary, cadence, and emotional register.';
 
     final questions = [
@@ -502,7 +502,7 @@ Respond with ONLY the JSON:''';
       final prompt = '$seed\n\n'
           '${transcript.isNotEmpty ? 'Previous answers:\n$transcript\n\n' : ''}'
           'Question: $q\n\n'
-          '${name}: ';
+          '$name: ';
 
       final answer = await _callLLM(prompt, maxLen: 1200, minLen: 80, onProgress: onProgress);
       if (answer == null || answer.trim().isEmpty) {
@@ -1100,7 +1100,7 @@ Character name: $name
 Concept: $concept
 $ageLine$sexLine$relationshipLine$backstoryLine$scenarioLine$keywordsLine$loreLine
 Required JSON keys (generate them IN THIS ORDER):
-${descriptionSpec}- "personality": (string) 2-3 paragraphs, third person. Go beyond surface-level traits — write a personality that makes this character feel REAL and fun to roleplay with. Cover ALL of these dimensions:
+$descriptionSpec- "personality": (string) 2-3 paragraphs, third person. Go beyond surface-level traits — write a personality that makes this character feel REAL and fun to roleplay with. Cover ALL of these dimensions:
   * Core traits AND their contradictions (e.g. "fiercely protective but terrified of emotional vulnerability")
   * Speech patterns — do they ramble, speak tersely, use slang, swear, use formal language, have verbal tics or catchphrases?
   * Emotional triggers — what makes them angry, what softens them, what shuts them down, what makes them laugh?

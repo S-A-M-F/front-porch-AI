@@ -198,7 +198,7 @@ class TTSEngine {
 ## Code Style & Naming
 
 ### Dart Conventions
-- Follow `flutter_lints` rules (see `analysis_options.yaml`)
+- Follow `flutter_lints` rules (see `analysis_options.yaml`). The project has been cleaned to literal 0 warnings on the active rule set. New contributions must not introduce any new warnings (CI now analyzes only changed Dart files on PRs).
 - Use camelCase for variables/methods, PascalCase for classes
 - Prefix private members with `_`
 - Use meaningful, descriptive names

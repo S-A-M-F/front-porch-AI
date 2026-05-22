@@ -18,7 +18,6 @@
 
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -1976,7 +1975,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       Switch(
                         value: _quickNsfwEnabled,
                         onChanged: (v) => setState(() => _quickNsfwEnabled = v),
-                        activeColor: Colors.pinkAccent,
+                        activeThumbColor: Colors.pinkAccent,
                       ),
                     ],
                   ),
@@ -2118,7 +2117,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       );
     } else {
       final active = llmProvider.activeService;
-      if (active == null || !active.isReady) {
+      if (!active.isReady) {
         setState(() {
           _generationStatus = 'Error: No LLM service available. Configure a model first.';
           _isGenerating = false;
@@ -2287,7 +2286,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   fontSize: 12, fontWeight: FontWeight.w500,
                 )),
               ),
-              if (trailing != null) trailing,
+              ?trailing,
             ],
           ),
           const SizedBox(height: 6),
@@ -2432,7 +2431,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             Switch(
               value: _reasoningEnabled,
               onChanged: (v) => setState(() => _reasoningEnabled = v),
-              activeColor: accentColor,
+              activeThumbColor: accentColor,
             ),
           ],
         ),
@@ -5200,7 +5199,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       llmService = OpenRouterService(apiUrl: storage.remoteApiUrl, apiKey: storage.remoteApiKey, modelName: _selectedModelId);
     } else {
       final active = llmProvider.activeService;
-      if (active == null || !active.isReady) {
+      if (!active.isReady) {
         setState(() { _generationStatus = 'Error: No LLM service available. Configure a model first.'; _isGenerating = false; });
         return;
       }
@@ -5684,7 +5683,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       llmService = tempService;
     } else {
       final active = llmProvider.activeService;
-      if (active == null || !active.isReady) {
+      if (!active.isReady) {
         setState(() {
           _generationStatus = 'Error: No LLM service available. Configure a model first.';
           _isGenerating = false;
@@ -5782,8 +5781,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       ].join(', '),
       backstory: [
         if (_backstoryOrigin.isNotEmpty) _backstoryOrigin,
-        if (_backstoryTone.isNotEmpty) '${_backstoryTone} tone',
-        if (_backstoryEra.isNotEmpty) '${_backstoryEra} era',
+        if (_backstoryTone.isNotEmpty) '$_backstoryTone tone',
+        if (_backstoryEra.isNotEmpty) '$_backstoryEra era',
         if (_backstoryNotesController.text.trim().isNotEmpty) _backstoryNotesController.text.trim(),
       ].join(', '),
       characterContext: [
@@ -5914,7 +5913,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         // If no guided fields, extract a brief snippet from description (first 150 chars max)
         if (tags.length <= 4 && _descController.text.trim().isNotEmpty) {
           final descSnippet = _descController.text.trim();
-          tags.add(descSnippet.length > 150 ? '${descSnippet.substring(0, 150)}' : descSnippet);
+          tags.add(descSnippet.length > 150 ? descSnippet.substring(0, 150) : descSnippet);
         }
         prompt = tags.join(', ');
       }

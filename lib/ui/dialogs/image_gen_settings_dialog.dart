@@ -795,7 +795,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             )
           else
             DropdownButtonFormField<String>(
-              value: _localLoras.contains(storage.imageGenLora)
+              initialValue: _localLoras.contains(storage.imageGenLora)
                   ? storage.imageGenLora
                   : (storage.imageGenLora.isEmpty ? '' : null),
               dropdownColor: const Color(0xFF374151),
@@ -1226,7 +1226,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           Expanded(
             flex: 3,
             child: DropdownButtonFormField<String>(
-              value: _localSamplers.contains(storage.imageGenSampler)
+              initialValue: _localSamplers.contains(storage.imageGenSampler)
                   ? storage.imageGenSampler
                   : (storage.imageGenSampler.isNotEmpty ? null : 'Euler a'),
               dropdownColor: const Color(0xFF374151),

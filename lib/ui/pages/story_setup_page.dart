@@ -812,7 +812,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
           ),
           Switch(
             value: value,
-            activeColor: color,
+            activeThumbColor: color,
             onChanged: onChanged,
           ),
         ],
@@ -953,7 +953,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
               ),
               Switch(
                 value: _includeUserPersona,
-                activeColor: Colors.amber,
+                activeThumbColor: Colors.amber,
                 onChanged: (v) => setState(() => _includeUserPersona = v),
               ),
             ],
@@ -995,6 +995,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
   }
 
   /// Match the same character ID format used by ChatService for RAG embeddings.
+  // ignore: unused_element
   String _getCharacterEmbedId(CharacterCard card) {
     if (card.imagePath != null) {
       return p.basenameWithoutExtension(card.imagePath!);

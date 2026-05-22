@@ -734,99 +734,6 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     );
   }
 
-  /// Builds the group-level strength control with tier labels (matches sidebar styling).
-  Widget _buildStrengthSlider({
-    required int strength,
-    required ValueChanged<int> onChanged,
-  }) {
-    Color sliderColor;
-    String tierLabel;
-    if (strength <= 3) {
-      sliderColor = Colors.blueAccent;
-      tierLabel = 'Subtle';
-    } else if (strength <= 7) {
-      sliderColor = Colors.amberAccent;
-      tierLabel = 'Moderate';
-    } else {
-      sliderColor = Colors.redAccent;
-      tierLabel = 'Strong';
-    }
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            const Tooltip(
-              message:
-                  'Controls how forcefully the author\'s note is applied.\n'
-                  'Subtle: a gentle suggestion the AI may follow.\n'
-                  'Moderate: standard injection into context.\n'
-                  'Strong: an urgent directive the AI should apply immediately.',
-              child: Text(
-                'Strength: ',
-                style: TextStyle(color: Colors.white54, fontSize: 11),
-              ),
-            ),
-            Expanded(
-              child: SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: 3,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 12,
-                  ),
-                  activeTrackColor: sliderColor,
-                  inactiveTrackColor: Colors.white12,
-                  thumbColor: sliderColor,
-                ),
-                child: Slider(
-                  value: strength.toDouble(),
-                  min: 1,
-                  max: 10,
-                  divisions: 9,
-                  label: '$strength — $tierLabel',
-                  onChanged: (val) => onChanged(val.round()),
-                ),
-              ),
-            ),
-            Text(
-              '$strength',
-              style: TextStyle(
-                color: sliderColor,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 2),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: sliderColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: sliderColor.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  tierLabel,
-                  style: TextStyle(
-                    color: sliderColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class _MemoryRAGTab extends StatefulWidget {
@@ -1512,7 +1419,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       ),
                       Switch(
                         value: _realismEnabled,
-                        activeColor: Colors.tealAccent,
+                        activeThumbColor: Colors.tealAccent,
                         onChanged: _updateRealism,
                       ),
                     ],
@@ -1559,7 +1466,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       ),
                       Switch(
                         value: _needsSimEnabled,
-                        activeColor: Colors.tealAccent,
+                        activeThumbColor: Colors.tealAccent,
                         onChanged: _updateNeedsSim,
                       ),
                     ],
@@ -1599,7 +1506,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       ),
                       Switch(
                         value: _passageOfTimeEnabled,
-                        activeColor: Colors.tealAccent,
+                        activeThumbColor: Colors.tealAccent,
                         onChanged: _updatePassageOfTime,
                       ),
                     ],
@@ -1627,7 +1534,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       ),
                       Switch(
                         value: _chaosModeEnabled,
-                        activeColor: const Color(0xFFFFD166),
+                        activeThumbColor: const Color(0xFFFFD166),
                         onChanged: _updateChaosMode,
                       ),
                     ],
@@ -1677,7 +1584,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                           height: 24,
                           child: Switch(
                             value: _chaosNsfwEnabled,
-                            activeColor: const Color(0xFFFF6B9D),
+                            activeThumbColor: const Color(0xFFFF6B9D),
                             onChanged: _updateChaosNsfw,
                           ),
                         ),

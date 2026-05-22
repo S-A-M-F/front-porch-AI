@@ -4,6 +4,7 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🧹 **Major codebase hygiene pass** — Eliminated 150+ style, import, null-assertion, and generated-code lint warnings (from 206 down to ~50 remaining). Added proper `analyzer: exclude` rules for gRPC/FlatBuffer generated files and removed an invalid linter suppression. Bulk mechanical fixes via `dart fix` (braces, non-null asserts, Flutter deprecation migrations, etc.) plus removal of a few truly dead constants/methods. `flutter analyze` and IDEs are now far quieter; this is the first step of a phased plan to make the linter strict again without blocking development.
 - 🖥️ **Pseudo-Remote backend** — A new backend option that runs KoboldCPP locally on your machine while exposing it through an OpenAI-compatible API. This gives you the strengths of local models (no API costs, full control) combined with the flexibility of remote-style prompting and generation. The integration is now complete and stable after the initial build issues.
 - 🔄 **Auto-updater for Rawhide** — Nightly builds now correctly detect newer Rawhide releases and offer in-app updates on all platforms. The asset lookup, version comparison (date-based for `rawhide.YYYYMMDD.SHA`), and display strings were fixed so older nightlies will see and install newer ones.
 

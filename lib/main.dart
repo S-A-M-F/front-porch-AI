@@ -1011,7 +1011,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
                           child: ListView.separated(
                             shrinkWrap: true,
                             itemCount: _availableBackups.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (_, _) =>
                                 const SizedBox(height: 4),
                             itemBuilder: (context, index) {
                               final backup = _availableBackups[index];

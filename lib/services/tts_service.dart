@@ -650,8 +650,8 @@ class TtsService extends ChangeNotifier {
           final file = completedFiles[nextToQueue]!;
           audioQueue.add(file);
           nextToQueue++;
-          if (audioAvailable != null && !audioAvailable!.isCompleted) {
-            audioAvailable!.complete();
+          if (!audioAvailable.isCompleted) {
+            audioAvailable.complete();
           }
         }
       }
@@ -659,7 +659,7 @@ class TtsService extends ChangeNotifier {
       // Wait for initial buffer to fill
       while (!producerDone && audioQueue.length < bufferTarget && _isSpeaking) {
         futureReady = Completer<void>();
-        await futureReady!.future;
+        await futureReady.future;
         collectReady();
       }
 
@@ -677,7 +677,7 @@ class TtsService extends ChangeNotifier {
         } else {
           // Wait for more audio from producer
           futureReady = Completer<void>();
-          await futureReady!.future;
+          await futureReady.future;
           collectReady();
         }
       }

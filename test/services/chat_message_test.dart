@@ -396,7 +396,7 @@ void main() {
       final json = original.toJson();
       final restored = ChatMessage.fromJson(json);
 
-      expect(restored.swipeMetadata![1], {'swipeKey': 'swipeValue'});
+      expect(restored.swipeMetadata[1], {'swipeKey': 'swipeValue'});
     });
 
     test('round-trip with characterId', () {

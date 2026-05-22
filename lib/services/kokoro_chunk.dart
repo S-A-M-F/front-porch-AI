@@ -216,7 +216,7 @@ class KokoroChunker {
     int index = 0;
     int start = 0;
 
-    kDebugPrint('[KokoroChunker] Using smart fixed-character chunking (target ${chunkSize} chars) for verbatim mode');
+    kDebugPrint('[KokoroChunker] Using smart fixed-character chunking (target $chunkSize chars) for verbatim mode');
 
     while (start < text.length) {
       if (start >= text.length) break;

@@ -73,21 +73,6 @@ class _RealismEngineStub {
     return score > 0 ? 10 : -10;
   }
 
-  /// Migration: scale old scores (±150) to new range (±300)
-  int _migrateShortTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
-
-  int _migrateLongTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
-
   // ── startNewChat realism reset (mirrors ChatService lines 2142-2186) ─
   void startNewChatSession({
     required FrontPorchExtensions? characterExtensions,
@@ -685,7 +670,6 @@ void main() {
 
       // Simulate: message 2 generated with more state
       stub.applyRealismMetadata(bondDelta: 3, emotionLabel: 'friendly');
-      final baseline2 = stub.captureRealismState();
 
       // Simulate: message 3 generated (current)
       stub.applyRealismMetadata(bondDelta: -2, emotionLabel: 'annoyed');

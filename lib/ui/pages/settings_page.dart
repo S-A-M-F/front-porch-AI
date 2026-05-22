@@ -4632,7 +4632,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               Switch(
                 value: storageService.realismDefault,
-                activeColor: Colors.tealAccent,
+                activeThumbColor: Colors.tealAccent,
                 onChanged: (val) {
                   storageService.setRealismDefault(val);
                   chatService.setRealismEnabled(val);
@@ -4670,7 +4670,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 Switch(
                   value: storageService.nsfwCooldownDefault,
-                  activeColor: Colors.deepOrangeAccent,
+                  activeThumbColor: Colors.deepOrangeAccent,
                   onChanged: (val) {
                     storageService.setNsfwCooldownDefault(val);
                     chatService.setNsfwCooldownEnabled(val);
@@ -4707,7 +4707,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 Switch(
                   value: storageService.passageOfTimeDefault,
-                  activeColor: Colors.blueAccent,
+                  activeThumbColor: Colors.blueAccent,
                   onChanged: (val) {
                     storageService.setPassageOfTimeDefault(val);
                     chatService.setPassageOfTimeEnabled(val);
@@ -4840,6 +4840,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildModeChip({
     required String label,
     required String subtitle,
@@ -4886,6 +4887,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildInfoRow(String label, String value, BuildContext context) {
     final theme = Theme.of(context);
     return Padding(

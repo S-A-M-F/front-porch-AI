@@ -17,7 +17,6 @@ class _CharacterLifecycleSimulator {
   CharacterCard? _currentCharacter;
   String? _currentSessionId;
   final List<String> _messageHistory = [];
-  final Map<String, dynamic> _sessionState = {};
   int _affectionScore = 0;
   int _trustLevel = 0;
   String _characterEmotion = '';

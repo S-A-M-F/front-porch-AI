@@ -170,21 +170,6 @@ class _RealismStateStub {
     return score > 0 ? 10 : -10;
   }
 
-  /// Migration: scale old scores (±150) to new range (±300)
-  int _migrateShortTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
-
-  int _migrateLongTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
-
   /// Simulates startNewChat seeding for 1:1 mode (lines 2144-2186).
   void seedForNewChat(CharacterCard character) {
     final extSeed = character.frontPorchExtensions ?? FrontPorchExtensions();

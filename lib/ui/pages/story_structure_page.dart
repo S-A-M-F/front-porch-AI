@@ -36,9 +36,6 @@ class StoryStructurePage extends StatefulWidget {
 class _StoryStructurePageState extends State<StoryStructurePage> {
   int _expandedActIndex = -1;
 
-  StoryProject? get _project =>
-      Provider.of<StoryRepository>(context, listen: false).getById(widget.projectId);
-
   @override
   Widget build(BuildContext context) {
     return Consumer2<StoryRepository, StoryPipelineService>(

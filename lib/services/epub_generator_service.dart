@@ -73,17 +73,16 @@ class EpubGeneratorService {
 
     // Add Acts / Chapters
     for (int actIdx = 0; actIdx < project.acts.length; actIdx++) {
+      // ignore: unused_local_variable
       final act = project.acts[actIdx];
       final scenes = project.scenes[actIdx] ?? [];
-      
-      final chapterId = 'act_\${actIdx + 1}';
-      final chapterFilename = '\$chapterId.html';
 
       final buffer = StringBuffer();
       buffer.writeln('<h2>Act \${act.number}: \${_escapeXml(act.title)}</h2>');
       buffer.writeln('<p><i>\${_escapeXml(act.description)}</i></p><hr/>');
 
       for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
+        // ignore: unused_local_variable
         final scene = scenes[sceneIdx];
         final sId = '\$actIdx-\$sceneIdx';
         final beats = project.beats[sId] ?? [];
@@ -124,7 +123,6 @@ class EpubGeneratorService {
     }
 
     // 4. Create content.opf
-    final uuid = (project.dbId ?? 'generic-book-id').replaceAll('-', '');
     final manifestItems = StringBuffer();
     final spineItems = StringBuffer();
 
@@ -175,7 +173,6 @@ class EpubGeneratorService {
 
     // 6. Zip encode the final byte stream
     final encodedZip = ZipEncoder().encode(archive);
-    if (encodedZip == null) return null;
 
     return FormattedEbook(project: project, bytes: encodedZip);
   }
@@ -198,6 +195,7 @@ class EpubGeneratorService {
 </html>''';
   }
 
+  // ignore: unused_element
   static String _escapeXml(String text) {
     return text.replaceAll('&', '&amp;')
                .replaceAll('<', '&lt;')

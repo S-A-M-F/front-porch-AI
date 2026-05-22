@@ -9,11 +9,23 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # Exclude generated code from lint analysis. These files are produced by
+  # protobuf / FlatBuffers / gRPC tooling (draw_things.fbs, image_service.proto, etc.)
+  # and frequently trigger spurious warnings (e.g. override_on_non_overriding_member)
+  # that cannot be fixed without regenerating or hand-editing the outputs.
+  exclude:
+    - "**/*.g.dart"
+    - "**/*_generated.dart"
+    - "lib/services/grpc/**.pb*.dart"
+    - "lib/services/grpc/draw_things_generated.dart"
+
 linter:
   rules:
-    # Suppress noisy info-level lints that don't add value for this codebase
+    # Suppress noisy info-level lints that don't add value for this codebase.
+    # These are intentionally disabled; re-enabling any of them requires a
+    # dedicated cleanup pass and team discussion (see Phase 4 of the lint debt plan).
     avoid_print: false
-    deprecated_member_use: false
     curly_braces_in_flow_control_structures: false
     use_build_context_synchronously: false
     prefer_interpolation_to_compose_strings: false

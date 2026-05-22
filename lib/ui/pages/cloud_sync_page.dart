@@ -18,7 +18,6 @@
 
 import 'dart:io';
 import 'package:front_porch_ai/app_version.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
@@ -1174,7 +1173,7 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                         File(imgPath),
                                         fit: BoxFit.cover,
                                         alignment: Alignment.topCenter,
-                                        errorBuilder: (_, __, ___) => Container(
+                                        errorBuilder: (_, _, _) => Container(
                                           color: Colors.black26,
                                           child: const Icon(Icons.person, color: Colors.white24, size: 48),
                                         ),

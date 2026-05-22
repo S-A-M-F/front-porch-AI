@@ -311,7 +311,7 @@ Pull requests are welcome! If you're a dev reading this far down, here's what yo
 - **Rawhide nightlies & schedule triggers:** The automatic 07:00 UTC Rawhide builds are powered by `.github/workflows/nightly.yml`. GitHub **only** reads `on: schedule:` from the default branch (`main`). A current copy of the workflow (especially the version-patching step) must live on `main`, otherwise nightly compiles will fail with "Undefined name" errors for any new symbols added to `app_version.dart` or the updater. The job checks out `Rawhide` for source, but the workflow definition itself always comes from `main`.
 - **Commit conventions:** Follow the guidelines in [AGENTS.md](AGENTS.md) for commit message format, code style, and naming conventions.
 - **Full guide:** See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, testing requirements, and the PR template.
-- **Before you PR:** Run `flutter analyze` and `flutter test` locally. CI will check these too, but saving a round-trip is nicer for everyone.
+- **Before you PR:** Run `flutter analyze` and `flutter test` locally. The project is now at 0 warnings on the active rules. CI analyzes only changed `.dart` files on PRs (plus a full scheduled lint job). Introducing new warnings will fail CI.
 
 ---
 

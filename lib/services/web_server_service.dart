@@ -572,11 +572,13 @@ class WebServerService extends ChangeNotifier {
 
       final result = characters.map((c) => {
         'id': c.id,
-        'charId': c.imagePath != null ? p.basenameWithoutExtension(c.imagePath!) : c.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_'),
+        'charId': (c.imagePath != null && c.imagePath!.isNotEmpty)
+            ? p.basenameWithoutExtension(c.imagePath!)
+            : c.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_'),
         'name': c.name,
-        'description': c.description ?? '',
-        'scenario': c.scenario ?? '',
-        'personality': c.personality ?? '',
+        'description': c.description,
+        'scenario': c.scenario,
+        'personality': c.personality,
         'tags': _tryParseJsonList(c.tags),
         'hasAvatar': c.imagePath != null && c.imagePath!.isNotEmpty,
         'folderId': c.folderId ?? '',

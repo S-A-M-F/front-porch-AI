@@ -6,7 +6,6 @@
 // restoration across session boundaries.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 
 // ── Stub: Minimal session management tracker ────────────────────────
@@ -81,11 +80,9 @@ class _SessionStub {
             metadata: m.metadata != null
                 ? Map<String, dynamic>.from(m.metadata!)
                 : null,
-            swipeMetadata: m.swipeMetadata != null
-                ? m.swipeMetadata!.map(
+            swipeMetadata: m.swipeMetadata.map(
                     (e) => e != null ? Map<String, dynamic>.from(e) : null,
-                  ).toList()
-                : null,
+                  ).toList(),
           ),
         )
         .toList();
@@ -497,7 +494,6 @@ void main() {
 
       // Second fork (from fork 1)
       stub.forkFromMessage(3);
-      final fork2Id = stub.currentSessionId;
       expect(stub.parentSessionId, fork1Id);
       expect(stub.parentSessionId, isNot(equals(rootId)),
           reason: 'fork 2 parent should be fork 1, not the root');
@@ -506,14 +502,11 @@ void main() {
     test('original session is untouched by forking', () {
       final stub = _SessionStub();
       stub.startNewChat();
-      final originalId = stub.currentSessionId;
 
       stub.addUserMessage('Hello');
       stub.addCharacterMessage('Hi!');
       stub.addUserMessage('How are you?');
       stub.addCharacterMessage('Good!');
-
-      final originalLength = stub.messages.length;
 
       stub.forkFromMessage(1);
 

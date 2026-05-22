@@ -306,7 +306,7 @@ class CharacterCard {
       'character_book': lorebook?.toJson(),
       'world_names': worldNames,
       if (ttsVoice != null) 'tts_voice': ttsVoice,
-      if (extensions != null) 'extensions': extensions,
+      'extensions': ?extensions,
     };
   }
 

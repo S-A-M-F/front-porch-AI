@@ -139,7 +139,7 @@ class DatabaseMergeService {
           // Remote is newer → UPDATE local
           await _updateRow(localDb, tableName, idColumn, remoteId, remoteRow);
           changed = true;
-          debugPrint('[Merge] UPDATE $tableName $remoteId (remote ${remoteUpdatedAt} > local ${localUpdatedAt})');
+          debugPrint('[Merge] UPDATE $tableName $remoteId (remote $remoteUpdatedAt > local $localUpdatedAt)');
         } else if (remoteDeletedAt != null && localDeletedAt == null && remoteUpdatedAt >= localUpdatedAt) {
           // Remote was deleted, local wasn't, and remote is at least as new → soft delete local
           await localDb.customUpdate(
