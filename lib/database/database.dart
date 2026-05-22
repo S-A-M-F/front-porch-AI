@@ -291,6 +291,15 @@ class MessageEmbeddings extends Table {
   IntColumn get dimensions => integer()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
+  /// 'message' for normal RAG windows (default), 'needs_event' for long-term
+  /// salient Needs simulation events (high-magnitude pleasure/embarrassment etc.).
+  TextColumn get memoryType =>
+      text().withDefault(const Constant('message'))();
+
+  /// Optional JSON blob for event details (e.g. {"category":"pleasure","magnitude":8,"..."}).
+  /// Null for ordinary message embeddings.
+  TextColumn get metadata => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -524,7 +533,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 29;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -968,6 +977,25 @@ class AppDatabase extends _$AppDatabase {
             'ALTER TABLE sessions ADD COLUMN start_day_of_week INTEGER NOT NULL DEFAULT 0',
           );
         } catch (_) {}
+      }
+      if (from < 29) {
+        // v28->v29: extend message_embeddings with memory_type + metadata for long-term
+        // salient Needs events (RAG-stored high-impact pleasure/embarrassment etc.).
+        // Existing rows default to 'message'; new needs_event rows set explicit type + JSON details.
+        try {
+          await customStatement(
+            "ALTER TABLE message_embeddings ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'message'",
+          );
+        } catch (_) {
+          // Column may already exist (e.g. dev reinstalls)
+        }
+        try {
+          await customStatement(
+            'ALTER TABLE message_embeddings ADD COLUMN metadata TEXT',
+          );
+        } catch (_) {
+          // Column may already exist
+        }
       }
       // Note: RAG settings for groups are now stored in the hidden __group_state__ checkpoint
       // (no schema change on the groups table).

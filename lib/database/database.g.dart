@@ -6879,6 +6879,29 @@ class $MessageEmbeddingsTable extends MessageEmbeddings
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _memoryTypeMeta = const VerificationMeta(
+    'memoryType',
+  );
+  @override
+  late final GeneratedColumn<String> memoryType = GeneratedColumn<String>(
+    'memory_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('message'),
+  );
+  static const VerificationMeta _metadataMeta = const VerificationMeta(
+    'metadata',
+  );
+  @override
+  late final GeneratedColumn<String> metadata = GeneratedColumn<String>(
+    'metadata',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6890,6 +6913,8 @@ class $MessageEmbeddingsTable extends MessageEmbeddings
     embedding,
     dimensions,
     createdAt,
+    memoryType,
+    metadata,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6977,6 +7002,18 @@ class $MessageEmbeddingsTable extends MessageEmbeddings
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('memory_type')) {
+      context.handle(
+        _memoryTypeMeta,
+        memoryType.isAcceptableOrUnknown(data['memory_type']!, _memoryTypeMeta),
+      );
+    }
+    if (data.containsKey('metadata')) {
+      context.handle(
+        _metadataMeta,
+        metadata.isAcceptableOrUnknown(data['metadata']!, _metadataMeta),
+      );
+    }
     return context;
   }
 
@@ -7022,6 +7059,14 @@ class $MessageEmbeddingsTable extends MessageEmbeddings
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      memoryType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}memory_type'],
+      )!,
+      metadata: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}metadata'],
+      ),
     );
   }
 
@@ -7042,6 +7087,14 @@ class MessageEmbedding extends DataClass
   final Uint8List embedding;
   final int dimensions;
   final DateTime createdAt;
+
+  /// 'message' for normal RAG windows (default), 'needs_event' for long-term
+  /// salient Needs simulation events (high-magnitude pleasure/embarrassment etc.).
+  final String memoryType;
+
+  /// Optional JSON blob for event details (e.g. {"category":"pleasure","magnitude":8,"..."}).
+  /// Null for ordinary message embeddings.
+  final String? metadata;
   const MessageEmbedding({
     required this.id,
     required this.sessionId,
@@ -7052,6 +7105,8 @@ class MessageEmbedding extends DataClass
     required this.embedding,
     required this.dimensions,
     required this.createdAt,
+    required this.memoryType,
+    this.metadata,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7067,6 +7122,10 @@ class MessageEmbedding extends DataClass
     map['embedding'] = Variable<Uint8List>(embedding);
     map['dimensions'] = Variable<int>(dimensions);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['memory_type'] = Variable<String>(memoryType);
+    if (!nullToAbsent || metadata != null) {
+      map['metadata'] = Variable<String>(metadata);
+    }
     return map;
   }
 
@@ -7083,6 +7142,10 @@ class MessageEmbedding extends DataClass
       embedding: Value(embedding),
       dimensions: Value(dimensions),
       createdAt: Value(createdAt),
+      memoryType: Value(memoryType),
+      metadata: metadata == null && nullToAbsent
+          ? const Value.absent()
+          : Value(metadata),
     );
   }
 
@@ -7101,6 +7164,8 @@ class MessageEmbedding extends DataClass
       embedding: serializer.fromJson<Uint8List>(json['embedding']),
       dimensions: serializer.fromJson<int>(json['dimensions']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      memoryType: serializer.fromJson<String>(json['memoryType']),
+      metadata: serializer.fromJson<String?>(json['metadata']),
     );
   }
   @override
@@ -7116,6 +7181,8 @@ class MessageEmbedding extends DataClass
       'embedding': serializer.toJson<Uint8List>(embedding),
       'dimensions': serializer.toJson<int>(dimensions),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'memoryType': serializer.toJson<String>(memoryType),
+      'metadata': serializer.toJson<String?>(metadata),
     };
   }
 
@@ -7129,6 +7196,8 @@ class MessageEmbedding extends DataClass
     Uint8List? embedding,
     int? dimensions,
     DateTime? createdAt,
+    String? memoryType,
+    Value<String?> metadata = const Value.absent(),
   }) => MessageEmbedding(
     id: id ?? this.id,
     sessionId: sessionId ?? this.sessionId,
@@ -7139,6 +7208,8 @@ class MessageEmbedding extends DataClass
     embedding: embedding ?? this.embedding,
     dimensions: dimensions ?? this.dimensions,
     createdAt: createdAt ?? this.createdAt,
+    memoryType: memoryType ?? this.memoryType,
+    metadata: metadata.present ? metadata.value : this.metadata,
   );
   MessageEmbedding copyWithCompanion(MessageEmbeddingsCompanion data) {
     return MessageEmbedding(
@@ -7159,6 +7230,10 @@ class MessageEmbedding extends DataClass
           ? data.dimensions.value
           : this.dimensions,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      memoryType: data.memoryType.present
+          ? data.memoryType.value
+          : this.memoryType,
+      metadata: data.metadata.present ? data.metadata.value : this.metadata,
     );
   }
 
@@ -7173,7 +7248,9 @@ class MessageEmbedding extends DataClass
           ..write('content: $content, ')
           ..write('embedding: $embedding, ')
           ..write('dimensions: $dimensions, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('memoryType: $memoryType, ')
+          ..write('metadata: $metadata')
           ..write(')'))
         .toString();
   }
@@ -7189,6 +7266,8 @@ class MessageEmbedding extends DataClass
     $driftBlobEquality.hash(embedding),
     dimensions,
     createdAt,
+    memoryType,
+    metadata,
   );
   @override
   bool operator ==(Object other) =>
@@ -7202,7 +7281,9 @@ class MessageEmbedding extends DataClass
           other.content == this.content &&
           $driftBlobEquality.equals(other.embedding, this.embedding) &&
           other.dimensions == this.dimensions &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.memoryType == this.memoryType &&
+          other.metadata == this.metadata);
 }
 
 class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
@@ -7215,6 +7296,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
   final Value<Uint8List> embedding;
   final Value<int> dimensions;
   final Value<DateTime> createdAt;
+  final Value<String> memoryType;
+  final Value<String?> metadata;
   final Value<int> rowid;
   const MessageEmbeddingsCompanion({
     this.id = const Value.absent(),
@@ -7226,6 +7309,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     this.embedding = const Value.absent(),
     this.dimensions = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.memoryType = const Value.absent(),
+    this.metadata = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessageEmbeddingsCompanion.insert({
@@ -7238,6 +7323,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     required Uint8List embedding,
     required int dimensions,
     this.createdAt = const Value.absent(),
+    this.memoryType = const Value.absent(),
+    this.metadata = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        sessionId = Value(sessionId),
@@ -7256,6 +7343,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     Expression<Uint8List>? embedding,
     Expression<int>? dimensions,
     Expression<DateTime>? createdAt,
+    Expression<String>? memoryType,
+    Expression<String>? metadata,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -7268,6 +7357,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
       if (embedding != null) 'embedding': embedding,
       if (dimensions != null) 'dimensions': dimensions,
       if (createdAt != null) 'created_at': createdAt,
+      if (memoryType != null) 'memory_type': memoryType,
+      if (metadata != null) 'metadata': metadata,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -7282,6 +7373,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     Value<Uint8List>? embedding,
     Value<int>? dimensions,
     Value<DateTime>? createdAt,
+    Value<String>? memoryType,
+    Value<String?>? metadata,
     Value<int>? rowid,
   }) {
     return MessageEmbeddingsCompanion(
@@ -7294,6 +7387,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
       embedding: embedding ?? this.embedding,
       dimensions: dimensions ?? this.dimensions,
       createdAt: createdAt ?? this.createdAt,
+      memoryType: memoryType ?? this.memoryType,
+      metadata: metadata ?? this.metadata,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -7328,6 +7423,12 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (memoryType.present) {
+      map['memory_type'] = Variable<String>(memoryType.value);
+    }
+    if (metadata.present) {
+      map['metadata'] = Variable<String>(metadata.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -7346,6 +7447,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
           ..write('embedding: $embedding, ')
           ..write('dimensions: $dimensions, ')
           ..write('createdAt: $createdAt, ')
+          ..write('memoryType: $memoryType, ')
+          ..write('metadata: $metadata, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -12548,6 +12651,8 @@ typedef $$MessageEmbeddingsTableCreateCompanionBuilder =
       required Uint8List embedding,
       required int dimensions,
       Value<DateTime> createdAt,
+      Value<String> memoryType,
+      Value<String?> metadata,
       Value<int> rowid,
     });
 typedef $$MessageEmbeddingsTableUpdateCompanionBuilder =
@@ -12561,6 +12666,8 @@ typedef $$MessageEmbeddingsTableUpdateCompanionBuilder =
       Value<Uint8List> embedding,
       Value<int> dimensions,
       Value<DateTime> createdAt,
+      Value<String> memoryType,
+      Value<String?> metadata,
       Value<int> rowid,
     });
 
@@ -12615,6 +12722,16 @@ class $$MessageEmbeddingsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memoryType => $composableBuilder(
+    column: $table.memoryType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get metadata => $composableBuilder(
+    column: $table.metadata,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -12672,6 +12789,16 @@ class $$MessageEmbeddingsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get memoryType => $composableBuilder(
+    column: $table.memoryType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get metadata => $composableBuilder(
+    column: $table.metadata,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MessageEmbeddingsTableAnnotationComposer
@@ -12717,6 +12844,14 @@ class $$MessageEmbeddingsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get memoryType => $composableBuilder(
+    column: $table.memoryType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get metadata =>
+      $composableBuilder(column: $table.metadata, builder: (column) => column);
 }
 
 class $$MessageEmbeddingsTableTableManager
@@ -12768,6 +12903,8 @@ class $$MessageEmbeddingsTableTableManager
                 Value<Uint8List> embedding = const Value.absent(),
                 Value<int> dimensions = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String> memoryType = const Value.absent(),
+                Value<String?> metadata = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessageEmbeddingsCompanion(
                 id: id,
@@ -12779,6 +12916,8 @@ class $$MessageEmbeddingsTableTableManager
                 embedding: embedding,
                 dimensions: dimensions,
                 createdAt: createdAt,
+                memoryType: memoryType,
+                metadata: metadata,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -12792,6 +12931,8 @@ class $$MessageEmbeddingsTableTableManager
                 required Uint8List embedding,
                 required int dimensions,
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String> memoryType = const Value.absent(),
+                Value<String?> metadata = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessageEmbeddingsCompanion.insert(
                 id: id,
@@ -12803,6 +12944,8 @@ class $$MessageEmbeddingsTableTableManager
                 embedding: embedding,
                 dimensions: dimensions,
                 createdAt: createdAt,
+                memoryType: memoryType,
+                metadata: metadata,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

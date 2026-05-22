@@ -218,6 +218,39 @@ class ChatMessage {
   }
 }
 
+/// Short-term narrative memory entry for high-impact Needs deltas (internal-thought style).
+/// These provide sticky first-person "lingering thoughts" that color the next few turns
+/// of roleplay without leaking numbers or meta state. Gated entirely by needsSimEnabled.
+class NeedsNarrativeMemory {
+  final String narrative; // e.g. "God, that felt so intense… I’m still a little floaty from riding him."
+  final int turnsRemaining; // decremented each turn in _tickNeedsDecay; pruned at <= 0
+  final String category; // the need key, e.g. 'fun', 'bladder', 'comfort'
+  final int magnitude; // absolute |delta| that created this (for debug + lifespan calc)
+
+  NeedsNarrativeMemory({
+    required this.narrative,
+    required this.turnsRemaining,
+    required this.category,
+    required this.magnitude,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'narrative': narrative,
+        'turnsRemaining': turnsRemaining,
+        'category': category,
+        'magnitude': magnitude,
+      };
+
+  factory NeedsNarrativeMemory.fromMap(Map<String, dynamic> map) {
+    return NeedsNarrativeMemory(
+      narrative: (map['narrative'] as String?)?.trim() ?? '',
+      turnsRemaining: (map['turnsRemaining'] as num?)?.toInt() ?? 0,
+      category: (map['category'] as String?) ?? 'unknown',
+      magnitude: (map['magnitude'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class ChatService extends ChangeNotifier {
   final KoboldService _koboldService;
   final UserPersonaService _userPersonaService;
@@ -526,6 +559,12 @@ class ChatService extends ChangeNotifier {
   bool _enjoysLowHygiene = false; // inversion for hygiene (enjoys being dirty/sweaty/musky)
   Map<String, int> _needsVector = {};
 
+  // Short-term narrative Needs memory (internal-thoughts from high-impact deltas/catastrophes).
+  // 1:1 chats: lives here as List. Group chats: equivalent lists are stored inside each
+  // speaker's entry in _groupRealism under the 'needs_narratives' key (List of maps for persistence).
+  // Everything is strictly gated by _needsSimEnabled; never touches Realism when disabled.
+  List<NeedsNarrativeMemory> _recentNeedsNarratives = [];
+
   // Canonical constants for the Sims/Needs simulation. Single source of truth
   // to eliminate all magic numbers and duplicated key lists / maps / thresholds.
   static const List<String> _needKeys = [
@@ -571,22 +610,9 @@ class ChatService extends ChangeNotifier {
     'energy': 6,
   };
 
-  static const Map<String, int> _needRestore = {
-    'hunger': 50,
-    'bladder': 70,
-    'energy': 40,
-    'social': 45,
-    'fun': 40,
-    'hygiene': 35,
-    'comfort': 35,
-  };
-
-  static const int _needRestoreDefault = 30;
-
-  /// Thresholds for urgency, criticality, and LLM fulfillment scanning.
+  /// Thresholds for urgency and criticality (used by stepping injection and UI).
   static const int _needUrgentThreshold = 35;
   static const int _needCriticalThreshold = 20;
-  static const int _needFulfillmentScanThreshold = 40;
 
   // Arousal suppression tuning (used by the "high arousal makes other needs
   // feel distant" erotic realism feature).
@@ -603,7 +629,6 @@ class ChatService extends ChangeNotifier {
   // private _ definitions below.
   static const int needUrgentThreshold = _needUrgentThreshold;
   static const int needCriticalThreshold = _needCriticalThreshold;
-  static const int needFulfillmentScanThreshold = _needFulfillmentScanThreshold;
   static const List<String> needKeys = _needKeys;
 
   // ── Graduated Stepping Model (Phase 2 — "number two" per user request) ───────
@@ -2248,6 +2273,7 @@ class ChatService extends ChangeNotifier {
        _needsAfterglowTurnsRemaining = 0;
        _arousalSuppressionTurnsRemaining = 0;
        _postClimaxCrashTurnsRemaining = 0;
+       _recentNeedsNarratives.clear();
        debugPrint(
          '[ChatService] setActiveCharacter: Reset realism state (was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
        );
@@ -2280,6 +2306,7 @@ class ChatService extends ChangeNotifier {
             _initializeNeedsVectorIfNeeded();
           } else {
             _needsVector.clear();
+            _recentNeedsNarratives.clear();
           }
           // Recalculate tiers from seeded scores
           _relationshipTier = _calculateTier(_affectionScore);
@@ -2856,6 +2883,7 @@ class ChatService extends ChangeNotifier {
        _restoreNeedsFromJson(lastSession.needsVector);
      } else {
        _needsVector.clear();
+       _recentNeedsNarratives.clear();
      }
 
      // Re-sync from the character's current setting so that toggling
@@ -3140,6 +3168,7 @@ class ChatService extends ChangeNotifier {
         _restoreNeedsFromJson(session.needsVector);
       } else {
         _needsVector.clear();
+        _recentNeedsNarratives.clear();
       }
 
       // Re-sync from the character's current setting so toggling
@@ -3472,6 +3501,7 @@ class ChatService extends ChangeNotifier {
         _initializeNeedsVectorIfNeeded();
       } else {
         _needsVector.clear();
+        _recentNeedsNarratives.clear();
       }
       _needsAfterglowTurnsRemaining = 0;
       _arousalSuppressionTurnsRemaining = 0;
@@ -3611,6 +3641,10 @@ class ChatService extends ChangeNotifier {
       
       await _evaluateRelationshipCall();
       
+      if (!_realismEvalCancelled && _needsSimEnabled) {
+        await _evaluateNeedsDeltasCall();
+      }
+
       // Check for cancellation after each eval
       if (_realismEvalCancelled) {
         debugPrint('[Realism] Post-greeting eval cancelled');
@@ -3916,6 +3950,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         if (isLocalKobold) {
           if (_storageService.realismOneShotEval) {
             await _evaluateOneShotCall(onChunk: handleChunk);
+            if (_needsSimEnabled && !_realismEvalCancelled) {
+              await _evaluateNeedsDeltasCall(onChunk: handleChunk);
+            }
           } else {
             // KoboldCPP is single-threaded — run sequentially
             await _evaluateRelationshipCall(onChunk: handleChunk);
@@ -3928,11 +3965,18 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
             if (!_realismEvalCancelled) {
               await _evaluateNarrativeCall(onChunk: handleChunk);
             }
+            // First-class Needs delta evaluation — now a proper peer of the rest of the Realism Engine
+            if (!_realismEvalCancelled && _needsSimEnabled) {
+              await _evaluateNeedsDeltasCall(onChunk: handleChunk);
+            }
           }
         } else {
           // API (Remote Backends)
           if (_storageService.realismOneShotEval) {
             await _evaluateOneShotCall(onChunk: handleChunk);
+            if (_needsSimEnabled && !_realismEvalCancelled) {
+              await _evaluateNeedsDeltasCall(onChunk: handleChunk);
+            }
           } else {
             // API backends handle concurrent requests fine
             await Future.wait([
@@ -3940,6 +3984,7 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
               _evaluateEmotionalStateCall(onChunk: handleChunk),
               _evaluatePhysicalStateCall(onChunk: handleChunk),
               _evaluateNarrativeCall(onChunk: handleChunk),
+              if (_needsSimEnabled) _evaluateNeedsDeltasCall(onChunk: handleChunk),
             ]);
           }
         }
@@ -4202,6 +4247,21 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
             '[Realism:Regen] ⚠ No previous message baseline found, continuing with current reverted state',
           );
         }
+
+        // Ensure Needs has a pre-turn baseline for the structured eval during regen.
+        // Robust approach: if we don't have an explicit snapshot from the previous message,
+        // use the currently restored _needsVector (which is the correct pre-turn state
+        // after we reverted deltas from the rejected message). This lets the rich model-driven
+        // Needs evaluation run reliably on swipes/regens instead of falling back to legacy detectors.
+        if (_needsSimEnabled && _needsVector.isNotEmpty) {
+          _pendingRealismMetadata ??= {};
+          if (!_pendingRealismMetadata!.containsKey('needs_pre_turn_vector')) {
+            _pendingRealismMetadata!['needs_pre_turn_vector'] =
+                Map<String, int>.from(_needsVector);
+            debugPrint('[Realism:Regen] Synthesized needs_pre_turn_vector for regen from restored state');
+          }
+        }
+
         // Set UI streaming state
         _isEvaluatingRealism = true;
         _realismEvalStreamText = '';
@@ -4222,6 +4282,12 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
         if (_storageService.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
+          if (!_realismEvalCancelled && _needsSimEnabled) {
+            await _evaluateNeedsDeltasCall(onChunk: handleChunk);
+            if (_pendingRealismMetadata?['needs_deltas'] != null) {
+              debugPrint('[Realism:Needs] Rich deltas successfully captured on regen (one-shot) for chips');
+            }
+          }
           if (!_realismEvalCancelled &&
               _needsSimEnabled &&
               _needsVector.isNotEmpty) {
@@ -4243,18 +4309,31 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
             await _evaluateNarrativeCall(onChunk: handleChunk);
           }
 
+          // Run the full rich Needs structured evaluation on regen (same as normal send path)
+          // so we get model-driven deltas, good reasons, narrative memory, and long-term RAG events.
+          if (!_realismEvalCancelled && _needsSimEnabled) {
+            await _evaluateNeedsDeltasCall(onChunk: handleChunk);
+            if (_pendingRealismMetadata?['needs_deltas'] != null) {
+              debugPrint('[Realism:Needs] Rich deltas successfully captured on regen for chips');
+            }
+          }
+
           if (!_realismEvalCancelled) {
             _pendingRealismMetadata ??= {};
             _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
             _pendingRealismMetadata!['realism_state'] = _captureRealismState();
 
-            // Attach needs deltas + reasons for UI chips (regen path)
+            // Fallback / supplementary cheap computation (the rich eval above already populates
+            // needs_deltas if it succeeded, so this usually becomes a no-op).
             if (_needsSimEnabled) {
               final needsDeltas = _computeNeedsDeltasWithReasons();
-              if (needsDeltas.isNotEmpty) {
+              if (needsDeltas.isNotEmpty && !_pendingRealismMetadata!.containsKey('needs_deltas')) {
                 _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
               }
             }
+
+            // Make sure every changed need (including small decay) gets a chip entry on regen too.
+            _finalizeNeedsDeltasForChips();
 
             // Also record the (restored) needs baseline as the pre-turn vector
             // for this regenerated response, so any future regen of *it* has
@@ -4793,6 +4872,24 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     _setGroupRealismValue(charId, 'needs', needs);
   }
 
+  List<NeedsNarrativeMemory> _getGroupNeedsNarratives(String charId) {
+    final raw = _groupRealism[charId]?['needs_narratives'];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((e) => NeedsNarrativeMemory.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+    return const [];
+  }
+
+  void _setGroupNeedsNarratives(String charId, List<NeedsNarrativeMemory> narratives) {
+    if (_activeGroup == null) return;
+    _groupRealism.putIfAbsent(charId, () => <String, dynamic>{});
+    _groupRealism[charId]!['needs_narratives'] =
+        narratives.map((n) => n.toMap()).toList();
+  }
+
   /// Ensures the hidden inter-character 'relationships' map for this speaker
   /// contains a neutral (0) entry for every other current member of the group.
   /// This is the core of the invisible tracking mechanic: characters have
@@ -5191,9 +5288,10 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           final cooldown = _getNsfwCooldownInjection();
           final behavioral = _getBehavioralMechanicsInjection();
           final needs = _getNeedsInjection();
+          final needsPressure = _getNeedsPressureInjection();
           final interCharFeelings = _getInterCharacterFeelingsInjection();
           realismBlock =
-              '$relationship$emotion$time$trustBehavior$cooldown$behavioral$needs$interCharFeelings';
+              '$relationship$emotion$time$trustBehavior$cooldown$behavioral$needs$needsPressure$interCharFeelings';
         }
 
         // Chance Time injection — independent of realism mode
@@ -5267,10 +5365,14 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         }
       }
 
-      // ── RAG Memory Retrieval ──
-      // When messages are dropped from context, search for relevant past memories
-      // Skip retrieval for brand new chats to prevent old memories from interfering
+      // ── RAG Memory Retrieval (regular + salient Needs events) ──
+      // When messages are dropped from context, search for relevant past memories.
+      // Needs events are retrieved independently (when _needsSimEnabled) using the
+      // current speaker's character ID so group chats store/retrieve per-character.
+      // Skip for brand new chats. Respects shared memory budget for injection.
       String memoriesBlock = '';
+      String needsEventsBlock = '';
+      int usedTokens = 0; // shared token counter for regular memories + needs events budget
 
       final effectiveRagEnabled = _activeGroup != null
           ? groupRagEnabled
@@ -5280,69 +5382,130 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         debugPrint('[RAG:Chat] Skipping memory retrieval - new chat in progress');
       } else if (droppedMessages > 0 &&
           _memoryService != null &&
-          effectiveRagEnabled) {
-        debugPrint(
-          '[RAG:Chat] ── Prompt assembly: $droppedMessages messages dropped, triggering retrieval ──',
-        );
-        try {
-          // Use last 3 messages as the query
-          final queryMessages = _messages.reversed
-              .take(3)
-              .map((m) => '${m.sender}: ${m.displayText}')
-              .join('\n');
+          (effectiveRagEnabled || _needsSimEnabled)) {
+        // Hoist query construction so both regular RAG and Needs events can use it
+        final queryMessages = _messages.reversed
+            .take(3)
+            .map((m) => '${m.sender}: ${m.displayText}')
+            .join('\n');
 
-          final sourceIds = await _getMemorySourceIds();
-          debugPrint('[RAG:Chat] Memory source IDs: $sourceIds');
-
-          final memories = await _memoryService!.retrieve(
-            queryText: queryMessages,
-            sourceCharacterIds: sourceIds,
-            currentSessionId: _currentSessionId ?? '',
-            inContextStart:
-                droppedMessages, // only search messages that are out of context
-            limit: groupRetrievalCount == 0
-                ? 9999
-                : groupRetrievalCount,
-            characterPriorities: currentGroupRAGPriorities,
+        if (effectiveRagEnabled) {
+          debugPrint(
+            '[RAG:Chat] ── Prompt assembly: $droppedMessages messages dropped, triggering retrieval ──',
           );
+          try {
+            final sourceIds = await _getMemorySourceIds();
+            debugPrint('[RAG:Chat] Memory source IDs: $sourceIds');
 
-          if (memories.isNotEmpty) {
-            // Cap memory injection to the group's (or global) memory budget % of context.
-            // The summary carries the weight of context compression; RAG only
-            // supplements with specific details the summary missed. Too much
-            // RAG (2500+ tokens) overwhelms the model and causes it to
-            // reference stale events as if they're current ("going back in time").
-            final contextSize = _storageService.contextSize;
-            final budgetFraction = _activeGroup != null
-                ? (groupMemoryBudgetPercent / 100.0)
-                : 0.10;
-            final memoryBudget = (contextSize * budgetFraction).round();
-            final includedMemories = <String>[];
-            int usedTokens = 0;
-            for (final m in memories) {
-              final memTokens = (m.content.length / 4).ceil();
-              if (usedTokens + memTokens > memoryBudget &&
-                  includedMemories.isNotEmpty) {
-                debugPrint(
-                  '[RAG:Chat] ⚠ Trimmed ${memories.length - includedMemories.length} memories to fit budget ($memoryBudget tokens)',
-                );
-                break;
+            final memories = await _memoryService!.retrieve(
+              queryText: queryMessages,
+              sourceCharacterIds: sourceIds,
+              currentSessionId: _currentSessionId ?? '',
+              inContextStart:
+                  droppedMessages, // only search messages that are out of context
+              limit: groupRetrievalCount == 0
+                  ? 9999
+                  : groupRetrievalCount,
+              characterPriorities: currentGroupRAGPriorities,
+            );
+
+            if (memories.isNotEmpty) {
+              // Cap memory injection to the group's (or global) memory budget % of context.
+              // The summary carries the weight of context compression; RAG only
+              // supplements with specific details the summary missed. Too much
+              // RAG (2500+ tokens) overwhelms the model and causes it to
+              // reference stale events as if they're current ("going back in time").
+              final contextSize = _storageService.contextSize;
+              final budgetFraction = _activeGroup != null
+                  ? (groupMemoryBudgetPercent / 100.0)
+                  : 0.10;
+              final memoryBudget = (contextSize * budgetFraction).round();
+              final includedMemories = <String>[];
+              // 'usedTokens' is the hoisted outer var (initialized to 0 before the dropped check)
+              for (final m in memories) {
+                final memTokens = (m.content.length / 4).ceil();
+                if (usedTokens + memTokens > memoryBudget &&
+                    includedMemories.isNotEmpty) {
+                  debugPrint(
+                    '[RAG:Chat] ⚠ Trimmed ${memories.length - includedMemories.length} memories to fit budget ($memoryBudget tokens)',
+                  );
+                  break;
+                }
+                usedTokens += memTokens;
+                includedMemories.add('- ${m.content}');
               }
-              usedTokens += memTokens;
-              includedMemories.add('- ${m.content}');
+              if (includedMemories.isNotEmpty) {
+                memoriesBlock =
+                    '[Earlier in this conversation (already happened, do not revisit):\n${includedMemories.join('\n')}]\n';
+                debugPrint(
+                  '[RAG:Chat] ✅ Injecting ${includedMemories.length}/${memories.length} memories (~$usedTokens tokens, budget: $memoryBudget)',
+                );
+              }
+            } else {
+              debugPrint('[RAG:Chat] No relevant memories found for this turn');
             }
-            if (includedMemories.isNotEmpty) {
-              memoriesBlock =
-                  '[Earlier in this conversation (already happened, do not revisit):\n${includedMemories.join('\n')}]\n';
-              debugPrint(
-                '[RAG:Chat] ✅ Injecting ${includedMemories.length}/${memories.length} memories (~$usedTokens tokens, budget: $memoryBudget)',
-              );
-            }
-          } else {
-            debugPrint('[RAG:Chat] No relevant memories found for this turn');
+          } catch (e) {
+            debugPrint('[RAG:Chat] ✗ RAG retrieval failed: $e');
           }
-        } catch (e) {
-          debugPrint('[RAG:Chat] ✗ RAG retrieval failed: $e');
+        }
+
+        // ── Salient Needs Events Retrieval + Injection (independent of ragEnabled) ──
+        // Uses the *current speaker's* character ID (group-aware via speakingCharacter).
+        // Only when Needs sim is active for this speaker. Results are semantically
+        // filtered by the service; we still respect the overall memory token budget.
+        if (_needsSimEnabled && _memoryService!.isOperational) {
+          try {
+            final speakerCharId = (_activeGroup != null && !_observerMode)
+                ? _getCharacterIdFromCard(speakingCharacter)
+                : _getCharacterId();
+            if (speakerCharId.isNotEmpty) {
+              debugPrint(
+                  '[RAG:NeedsEvents] ── Retrieving salient needs events for speaker $speakerCharId (dropped=$droppedMessages) ──');
+              final salientNeeds = await _memoryService!.retrieveSalientNeedsEvents(
+                queryText: queryMessages,
+                characterIds: [speakerCharId],
+                limit: 3,
+                minScore: 0.2,
+                characterPriorities: currentGroupRAGPriorities,
+              );
+
+              if (salientNeeds.isNotEmpty) {
+                debugPrint('[RAG:NeedsEvents] Retrieved ${salientNeeds.length} salient event(s) for $speakerCharId');
+
+                // Share the memory budget with regular memories (usedTokens already includes regular if it ran this turn)
+                final contextSize = _storageService.contextSize;
+                final budgetFraction = _activeGroup != null
+                    ? (groupMemoryBudgetPercent / 100.0)
+                    : 0.10;
+                final memoryBudget = (contextSize * budgetFraction).round();
+
+                final remaining = (memoryBudget - usedTokens).clamp(0, memoryBudget);
+                final eventBudget = remaining > 80 ? (remaining * 0.65).round() : (memoryBudget ~/ 5).clamp(120, 600);
+
+                final includedEvents = <String>[];
+                int eventsUsed = 0;
+                for (final m in salientNeeds) {
+                  final t = (m.content.length / 4).ceil();
+                  if (eventsUsed + t > eventBudget && includedEvents.isNotEmpty) {
+                    break;
+                  }
+                  eventsUsed += t;
+                  includedEvents.add('- ${m.content}');
+                }
+
+                if (includedEvents.isNotEmpty) {
+                  needsEventsBlock =
+                      '[Memorable personal events:\n${includedEvents.join('\n')}]\n';
+                  debugPrint(
+                      '[RAG:NeedsEvents] ✅ Injecting ${includedEvents.length} event(s) (~$eventsUsed tokens, budget slice: $eventBudget) for speaker $speakerCharId');
+                }
+              } else {
+                debugPrint('[RAG:NeedsEvents] No salient needs events above threshold for this turn');
+              }
+            }
+          } catch (e) {
+            debugPrint('[RAG:NeedsEvents] ✗ retrieveSalientNeedsEvents failed: $e');
+          }
         }
       } else if (droppedMessages > 0 && _storageService.ragEnabled) {
         debugPrint(
@@ -5364,6 +5527,7 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           ? "<START>\n"
                 "$summaryBlock"
                 "$memoriesBlock"
+                "$needsEventsBlock"
                 "$history"
                 "$postHistoryBlock"
                 "$authorNoteBlock"
@@ -5381,6 +5545,7 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
                 "<START>\n"
                 "$summaryBlock"
                 "$memoriesBlock"
+                "$needsEventsBlock"
                 "$history"
                 "$postHistoryBlock"
                 "$authorNoteBlock"
@@ -5402,6 +5567,7 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         'Examples': (mesExampleBlock.length / 4).ceil(),
         'Summary': (summaryBlock.length / 4).ceil(),
         'Retrieved Memories': (memoriesBlock.length / 4).ceil(),
+        'Needs Events (RAG)': (needsEventsBlock.length / 4).ceil(),
         'Chat History': (history.length / 4).ceil(),
         'Post-History': (postHistoryBlock.length / 4).ceil(),
         'Author\'s Note': (authorNoteBlock.length / 4).ceil(),
@@ -5925,6 +6091,24 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           _checkClimaxInResponse(finalResponse); // fire-and-forget
         }
 
+        // Primary, reliable source for Needs deltas: parse any [Hunger +25: reason] etc.
+        // chips the model itself emitted at the end of its reply. The creative model
+        // that just roleplayed the scene is the best judge of what actually constituted
+        // meaningful fulfillment or drain. This replaces the previous collection of
+        // narrow, low-context, fire-and-forget "detective" LLM calls.
+        if (_needsSimEnabled && _realismActiveThisMode && finalResponse.isNotEmpty) {
+          final chips = _parseNeedsChipsFromResponse(finalResponse);
+          if (chips.isNotEmpty) {
+            _pendingRealismMetadata ??= {};
+            _pendingRealismMetadata!['needs_deltas'] = chips; // model's own reasons → beautiful UI chips
+
+            final applyMap = <String, int>{};
+            chips.forEach((k, v) => applyMap[k] = (v['delta'] as int));
+            _applyNeedsDeltas(applyMap);
+            debugPrint('[Realism:Needs] Authoritative chips parsed from model response → ${chips.keys.toList()}');
+          }
+        }
+
         // Check for non-climax sexual/intimate activity (heavy petting, oral, fingering, etc.)
         // so sex still feels rewarding and triggers afterglow even without orgasm.
         if (_needsSimEnabled && _realismActiveThisMode) {
@@ -5936,14 +6120,15 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           _checkDailyActivityEffects(finalResponse); // fire-and-forget
         }
 
-        // Needs fulfillment verification (post-response, fire-and-forget).
-        // Moved out of the pre-response realism eval path so the "Realism
-        // Engine processing" phase is never slowed by the needs system (even
-        // when the per-session flag is true due to old chat state or card
-        // defaults). The restore simply takes effect for the next turn.
-        if (_needsSimEnabled && _realismActiveThisMode) {
-          _verifyNeedFulfillmentCall(); // fire-and-forget, no chunk streaming needed
-        }
+        // Guarantee every need that moved this turn (including pure natural decay) gets a chip.
+        _finalizeNeedsDeltasForChips();
+
+        // Note: The old side-channel fulfillment verifier (_verifyNeedFulfillmentCall)
+        // has been retired. All need delta detection (increases from pleasure/relief,
+        // decreases from neglect, catastrophes, etc.) is now handled exclusively by the
+        // model-driven structured evaluation in _evaluateNeedsDeltasCall.
+        // The sexual activity and daily activity side-effect detectors above remain as
+        // lightweight supplements that can influence buffers (afterglow, etc.).
 
         // Check if summary needs updating (fire-and-forget)
         _maybeUpdateSummary();
@@ -8469,12 +8654,12 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     // KoboldCPP's stop_sequence handling is unreliable for short JSON evals —
     // models enter repetition loops until maxLength is hit. Use a small ceiling
     // (150 tokens) for non-thinking local evals since a JSON object is 10-30 tokens.
-    // Thinking models need ~2K tokens for their internal reasoning block before
-    // they produce the JSON answer, so they get a higher limit (2500).
-    // API backends get 4000 for thinking model runway.
+    // Thinking models (local Kobold or remote via reasoningEnabled) do long internal
+    // chain-of-thought before emitting the final JSON. We give them generous token
+    // budgets so they have proper "runway" to reason without being cut off.
     final evalMaxLength = _llmProvider!.isLocal
         ? (isThinkingModel ? 2500 : 150)
-        : 4000;
+        : (isThinkingModel ? 8000 : 4000);  // Give thinking models (Nano-GPT, OpenRouter reasoning models, etc.) plenty of runway for internal CoT before the JSON.
     final params = GenerationParams(
       prompt: prompt,
       maxLength: evalMaxLength,
@@ -9144,6 +9329,12 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           'Account for $charName\'s specific personality traits:\n"$p"\n\n';
     }
 
+    // Optional Needs narrative context — only present when Needs simulation is enabled.
+    // This gives the evaluator subjective flavor about recent high-impact physical/emotional events
+    // (intense pleasure, humiliation, relief, exhaustion, etc.) so it can produce appropriate
+    // bond/trust/emotion/fixation deltas. When Needs is off, this is always the empty string.
+    final needsContext = _getOptionalNeedsNarrativeContext();
+
     final prompt =
         'You are a nuanced evaluator of relationship dynamics between $charName and $userName in a roleplay.\n\n'
         '$personalityInjection'
@@ -9172,6 +9363,7 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         '   ⚠ Default to 0. Consider her personality — what one character finds threatening another may find attractive or trust-building.\n'
         '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
         '4. "trust_reason": One brief in-character thought from $charName explaining the trust shift, e.g. "He kept his promise." or "That felt like a lie." Use "none" if delta is 0.\n\n'
+        '$needsContext'
         'Recent conversation:\n$recent\n\n'
         'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason".';
 
@@ -9260,6 +9452,270 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     }
   }
 
+  /// First-class Needs delta evaluation — the sole authoritative path.
+  ///
+  /// This is the replacement for the entire previous collection of narrow,
+  /// side-channel detector calls (the old _verifyNeedFulfillmentCall and similar
+  /// legacy methods have been retired).
+  ///
+  /// The model is given rich philosophy guidance (especially around erotic pleasure,
+  /// embarrassment, relief, etc.) plus the pre-turn needs vector and recent dialogue,
+  /// then returns structured deltas + human-readable reasons. Those reasons power
+  /// both the UI chips and the internal short-term narrative memory + long-term RAG.
+  ///
+  /// This method, together with the narrative memory layer and the gated RAG events,
+  /// is what makes Needs a true first-class system alongside bond/trust/emotion/etc.
+  Future<void> _evaluateNeedsDeltasCall({void Function(String)? onChunk}) async {
+    if (!_needsSimEnabled || !_realismEnabled) return;
+    if (_activeCharacter == null && _activeGroup == null) return;
+    if (_activeGroup != null && _observerMode) return;
+
+    // We need the pre-turn snapshot that was captured before decay + any prior changes
+    final preTurn = _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
+    if (preTurn == null || preTurn.isEmpty) {
+      debugPrint('[Realism:Needs] No pre-turn vector snapshot — skipping structured eval');
+      return;
+    }
+
+    final recentCount = _messages.length < 4 ? _messages.length : 4;
+    final recent = _messages.reversed
+        .take(recentCount)
+        .toList()
+        .reversed
+        .map((m) => '${m.sender}: ${m.displayText}')
+        .join('\n');
+
+    String charName;
+    String speakerContext = '';
+
+    if (_activeGroup != null && !_observerMode) {
+      final speakerId = _getCurrentSpeakerIdForRealism();
+      final speakerCard = _groupCharacters.firstWhere(
+        (c) => _getCharacterIdFromCard(c) == speakerId,
+        orElse: () => _groupCharacters.first,
+      );
+      charName = speakerCard.name;
+      speakerContext = ' (current speaker in group chat)';
+    } else if (_activeCharacter != null) {
+      charName = _activeCharacter!.name;
+    } else {
+      return;
+    }
+
+    final preVectorJson = jsonEncode(preTurn);
+    final currentVectorJson = jsonEncode(_needsVector);
+
+    final prompt =
+        'You are a thoughtful evaluator of how the recent scene affected $charName\'s physical and emotional needs (the Sims-style needs system)$speakerContext.\n\n'
+        '=== NEEDS PHILOSOPHY (use this to guide your judgment) ===\n'
+        'Fun: Genuine enjoyment, pleasure, excitement, satisfaction, or emotional reward the character experienced. This includes physical pleasure, emotional fulfillment, thrill, connection, and "this feels good/right" moments.\n'
+        'Energy: Physical and mental vitality vs fatigue.\n'
+        'Hunger: Need for food/drink.\n'
+        'Bladder: Need for relief.\n'
+        'Social: Need for meaningful connection or interaction.\n'
+        'Hygiene: Feeling clean vs dirty/gross.\n'
+        'Comfort: Physical and emotional ease vs discomfort or strain.\n\n'
+        '=== IMPORTANT GUIDANCE ON PLEASURE AND EROTIC SCENES ===\n'
+        'Intense, desired sexual or intimate activity is usually a strong source of Fun for the character — especially when she is deeply aroused, actively participating, and enjoying the sensations and power dynamic.\n'
+        'Examples that should normally produce significant positive Fun (unless her personality or the specific emotional tone of the scene strongly suggests otherwise):\n'
+        '- Building arousal, edging, being close to orgasm\n'
+        '- Receiving focused oral, riding, being pleasured, intense physical stimulation\n'
+        '- Feeling desired, powerful, submissive in a wanted way, emotionally connected during sex\n'
+        '- The rising pleasure itself, even before release\n\n'
+        'You are allowed — and encouraged — to give generous positive Fun deltas when the scene you just wrote clearly depicts the character experiencing real, wanted erotic pleasure.\n'
+        'Do not be overly conservative here. If the character is clearly into it and the sensations are intense and pleasurable, that should move Fun upward meaningfully.\n'
+        'However, still use your judgment: some characters may find certain acts complicated, emotionally draining, or more about power/humiliation than simple "fun". Let the actual tone and $charName\'s personality guide you.\n\n'
+        'Pre-turn need levels (0 = completely empty/critical, 100 = fully satisfied):\n$preVectorJson\n\n'
+        'Recent exchange (most recent at the bottom):\n$recent\n\n'
+        '=== OUTPUT RULES ===\n'
+        '- Report the directional impact the specific events and sensations in the scene had on each need.\n'
+        '- You do NOT need to worry about the final meter value or any caps. The system will clamp values between 0-100 after you report the movement. If the character clearly experienced strong pleasure, power, connection, or satisfaction, report a positive movement in Fun (or other relevant needs) even if the need was already high before the turn.\n'
+        '- Normal background decay is already handled automatically — do not report small passive drops.\n'
+        '- Only report changes you genuinely believe resulted from the scene (roughly ±6 or more is a good guideline, but use your judgment).\n'
+        '- Be generous with positive Fun when the scene clearly shows wanted erotic pleasure, emotional fulfillment, or power. This is especially important in intimate or intense scenes.\n'
+        '- Be subjective to $charName\'s personality, current arousal, emotional state, and the tone of the scene.\n'
+        '- Think step by step, then respond with ONLY a flat JSON object (no markdown, no extra text). Preferred format:\n'
+        '  {"fun": {"delta": 18, "reason": "intense pleasure and emotional connection while being intimately dominant"}, "comfort": {"delta": 12, "reason": "deep satisfaction from being fully accepted and desired in her darkest desires"}}\n'
+        '- Do NOT wrap the result in "needs_deltas". The top level should directly contain the need names as keys.\n'
+        '- Use exactly these canonical names: hunger, energy, bladder, social, fun, hygiene, comfort.\n'
+        '- If you genuinely believe the scene produced no meaningful movement in any need, return {}';
+
+    try {
+      debugPrint('[Realism:Needs] Running first-class structured delta evaluation for $charName...');
+      debugPrint('[Realism:Needs] Pre-turn vector: $preVectorJson');
+      debugPrint('[Realism:Needs] Current vector:  $currentVectorJson');
+
+      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
+
+      // === RAW MODEL OUTPUT (very useful for prompt tuning) ===
+      debugPrint('══════════════════════════════════════════════════════════════');
+      debugPrint('[Realism:Needs] RAW MODEL OUTPUT for $charName:');
+      debugPrint(raw ?? '(null response from _fireLLMEval)');
+      debugPrint('══════════════════════════════════════════════════════════════');
+
+      if (raw == null) {
+        debugPrint('[Realism:Needs] Eval returned null — no deltas applied this turn.');
+        return;
+      }
+
+      final searchText = _stripThinkBlocks(raw);
+      final text = searchText.isNotEmpty ? searchText : raw;
+
+      // Try to parse Needs deltas from the response
+      final deltas = <String, Map<String, dynamic>>{};
+
+      // First try the chip parser (old [Name +N: reason] format)
+      final chipParsed = _parseNeedsChipsFromResponse(text);
+      if (chipParsed.isNotEmpty) {
+        deltas.addAll(chipParsed);
+      }
+
+      // Very strong "last valid JSON" extractor for heavy thinking models.
+      // It walks the text from the end, finds the last '}', walks back to the
+      // matching '{', and tries to parse. This is far more reliable than
+      // regex when the model produces thousands of tokens of reasoning before
+      // the final answer.
+      Map<String, dynamic>? extractedJson;
+
+      final cleaned = text.trim();
+
+      // First try last markdown code block (```json or ```)
+      final codeBlock = RegExp(r'```(?:json)?\s*([\s\S]*?)\s*```', dotAll: true)
+          .firstMatch(cleaned);
+      if (codeBlock != null) {
+        try {
+          final blockContent = codeBlock.group(1)!.trim();
+          final parsed = jsonDecode(blockContent);
+          if (parsed is Map<String, dynamic>) {
+            final inner = parsed['needs_deltas'] ?? parsed;
+            if (inner is Map<String, dynamic> &&
+                inner.keys.any((k) => _needKeys.contains(k.toString().toLowerCase()))) {
+              extractedJson = inner;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Fallback: scan from the end for the last complete, valid JSON object
+      if (extractedJson == null) {
+        for (int i = cleaned.length - 1; i >= 0; i--) {
+          if (cleaned[i] == '}') {
+            // Walk backwards to find the matching opening brace
+            int depth = 1;
+            int start = -1;
+            for (int j = i - 1; j >= 0; j--) {
+              if (cleaned[j] == '}') depth++;
+              if (cleaned[j] == '{') depth--;
+              if (depth == 0) {
+                start = j;
+                break;
+              }
+            }
+
+            if (start != -1) {
+              final candidate = cleaned.substring(start, i + 1);
+              try {
+                final parsed = jsonDecode(candidate);
+                if (parsed is Map<String, dynamic>) {
+                  final inner = parsed['needs_deltas'] ?? parsed;
+                  if (inner is Map<String, dynamic> &&
+                      inner.keys.any((k) => _needKeys.contains(k.toString().toLowerCase()))) {
+                    extractedJson = inner;
+                    break;
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      }
+
+      if (extractedJson != null) {
+        extractedJson.forEach((k, v) {
+          final key = k.toString().toLowerCase();
+          if (!_needKeys.contains(key)) return;
+          int delta = 0;
+          String reason = 'Scene action';
+          if (v is Map) {
+            delta = (v['delta'] as num?)?.toInt() ?? 0;
+            reason = (v['reason'] as String?)?.trim() ?? reason;
+          } else if (v is num) {
+            delta = v.toInt();
+          }
+          if (delta != 0) {
+            deltas[key] = {'delta': delta, 'reason': reason};
+          }
+        });
+      }
+
+      if (deltas.isEmpty) {
+        debugPrint('[Realism:Needs] Structured eval returned no meaningful deltas for $charName');
+        return;
+      }
+
+      debugPrint('[Realism:Needs] Successfully parsed ${deltas.length} rich deltas from model on this turn');
+
+      // Apply the deltas the model declared
+      final applyMap = deltas.map((k, v) => MapEntry(k, (v['delta'] as int)));
+      _applyNeedsDeltas(applyMap);
+
+      // Always store the rich deltas (with reasons) into pending metadata.
+      // This ensures they are available on both normal sends *and* regens/swipes.
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata!['needs_deltas'] = deltas;
+
+      // Record first-class narrative memories for significant deltas (internal-thought style).
+      // This is the authoritative source for short-term Needs narrative continuity.
+      deltas.forEach((need, data) {
+        final d = (data['delta'] as int);
+        final r = (data['reason'] as String?) ?? 'Scene action';
+        _recordNeedsNarrative(need, d, r, charName);
+
+        // ── Long-term RAG Needs event storage (high-impact only) ──
+        // Persists via MemoryService as memoryType='needs_event' for semantic recall
+        // across sessions. Guarded; fire-and-forget to avoid adding latency here.
+        final abs = d.abs();
+        final isCat = abs >= 30 ||
+            r.toLowerCase().contains('catastroph') ||
+            r.toLowerCase().contains('disaster') ||
+            r.toLowerCase().contains('lost control');
+        if (abs >= 15 || isCat) {
+          final memCharId = (_activeGroup != null && !_observerMode)
+              ? _getCurrentSpeakerIdForRealism()
+              : _getCharacterId();
+          if (memCharId.isNotEmpty &&
+              _needsSimEnabled &&
+              _memoryService != null &&
+              _memoryService!.isOperational) {
+            final narrative = _buildSalientNeedsEventNarrative(need, d, r, charName);
+            debugPrint('[RAG:NeedsEvents] Storing event (char=$memCharId, category=$need, mag=$abs, session=$_currentSessionId)');
+            _memoryService!.storeNeedsEventMemory(
+              narrative: narrative,
+              characterId: memCharId,
+              sessionId: _currentSessionId ?? '',
+              magnitude: abs,
+              category: need,
+            ).catchError((e) {
+              debugPrint('[RAG:NeedsEvents] ✗ storeNeedsEventMemory failed: $e');
+            });
+          }
+        }
+      });
+
+      // Store the rich (model-provided) reasons for the UI chips
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata!['needs_deltas'] = deltas;
+
+      debugPrint('[Realism:Needs] === EXTRACTED & APPLIED DELTAS for $charName ===');
+      deltas.forEach((need, data) {
+        debugPrint('  $need: ${data['delta']} → ${data['reason']}');
+      });
+      debugPrint('[Realism:Needs] ==============================================');
+    } catch (e) {
+      debugPrint('[Realism:Needs] Structured delta eval failed: $e');
+    }
+  }
+
   Future<void> _evaluateEmotionalStateCall({
     void Function(String)? onChunk,
   }) async {
@@ -9318,6 +9774,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
               'Only drift toward settled during truly mundane exchanges.\n\n'
         : '';
 
+    // Optional Needs narrative context for emotion evaluation (gated)
+    final needsContext = _getOptionalNeedsNarrativeContext();
+
     final prompt =
         'You are evaluating the emotional state for $charName.\n\n'
         '$personalityInjection'
@@ -9331,6 +9790,7 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         '${_storageService.expressionEnabled ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
         '2. "emotion_intensity": mild, moderate, or strong\n'
         '$arousalInstr\n'
+        '$needsContext'
         'Recent conversation:\n$recent\n\n'
         'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField.';
 
@@ -10097,6 +10557,21 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       if (needsDeltas.isNotEmpty) {
         (state['needs'] as Map<String, dynamic>)['deltas'] = needsDeltas;
       }
+
+      // Persist short-term narrative memories so they survive regen, swipe, and
+      // time-travel. Stored under the same 'needs' bucket as vector/deltas for
+      // this turn's speaker (1:1 or the active group speaker at capture time).
+      List<NeedsNarrativeMemory> narrsForSnapshot = _recentNeedsNarratives;
+      if (_activeGroup != null && !_observerMode) {
+        final id = _getCurrentSpeakerIdForRealism();
+        if (id.isNotEmpty) {
+          narrsForSnapshot = _getGroupNeedsNarratives(id);
+        }
+      }
+      if (narrsForSnapshot.isNotEmpty) {
+        (state['needs'] as Map<String, dynamic>)['narratives'] =
+            narrsForSnapshot.map((m) => m.toMap()).toList();
+      }
     }
 
     return state;
@@ -10289,6 +10764,58 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
   void _tickNeedsDecay() {
     if (!_needsSimEnabled || !_realismEnabled) return;
 
+    // ── Narrative memory decay + prune (runs every turn needsSim is active) ──
+    // Decrement turnsRemaining for all active entries and drop expired ones.
+    // Must be called from the turn-tick path so memories naturally fade.
+    if (_activeGroup != null && !_observerMode) {
+      final id = _getCurrentSpeakerIdForRealism();
+      final currentList = _getGroupNeedsNarratives(id);
+      if (currentList.isNotEmpty) {
+        final updated = <NeedsNarrativeMemory>[];
+        int pruned = 0;
+        for (final m in currentList) {
+          final nextRem = m.turnsRemaining - 1;
+          if (nextRem > 0) {
+            updated.add(NeedsNarrativeMemory(
+              narrative: m.narrative,
+              turnsRemaining: nextRem,
+              category: m.category,
+              magnitude: m.magnitude,
+            ));
+          } else {
+            pruned++;
+          }
+        }
+        if (pruned > 0) {
+          debugPrint('[Realism:Needs] Narrative decay (group $id): pruned $pruned expired entries, ${updated.length} still active');
+        }
+        _setGroupNeedsNarratives(id, updated);
+      }
+    } else {
+      // 1:1 path
+      if (_recentNeedsNarratives.isNotEmpty) {
+        final updated = <NeedsNarrativeMemory>[];
+        int pruned = 0;
+        for (final m in _recentNeedsNarratives) {
+          final nextRem = m.turnsRemaining - 1;
+          if (nextRem > 0) {
+            updated.add(NeedsNarrativeMemory(
+              narrative: m.narrative,
+              turnsRemaining: nextRem,
+              category: m.category,
+              magnitude: m.magnitude,
+            ));
+          } else {
+            pruned++;
+          }
+        }
+        if (pruned > 0) {
+          debugPrint('[Realism:Needs] Narrative decay (1:1): pruned $pruned expired entries, ${updated.length} still active');
+        }
+        _recentNeedsNarratives = updated;
+      }
+    }
+
     // Group mode (non-director): decay the current speaker's needs vector
     if (_activeGroup != null && !_observerMode) {
       final id = _getCurrentSpeakerIdForRealism();
@@ -10461,6 +10988,39 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
         _needsVector[worstNeed] = floor;
         debugPrint('[Realism:Needs] ⚠️ CATASTROPHE triggered for $worstNeed → lifted to $floor (accident=$wasAccidentOrCollapse)');
+
+        // Record a high-stickiness narrative memory for the catastrophe (max lifespan)
+        String catCharName = _activeCharacter?.name ?? 'the character';
+        if (_activeGroup != null && !_observerMode) {
+          final id = _getCurrentSpeakerIdForRealism();
+          try {
+            final card = _groupCharacters.firstWhere((c) => _getCharacterIdFromCard(c) == id);
+            catCharName = card.name;
+          } catch (_) {}
+        }
+        _recordNeedsNarrative(worstNeed!, -35, 'catastrophic involuntary $worstNeed event (disaster just occurred)', catCharName);
+
+        // ── Long-term RAG storage for catastrophe (always high-impact) ──
+        final memCharId = (_activeGroup != null && !_observerMode)
+            ? _getCurrentSpeakerIdForRealism()
+            : _getCharacterId();
+        if (memCharId.isNotEmpty &&
+            _needsSimEnabled &&
+            _memoryService != null &&
+            _memoryService!.isOperational) {
+          final narrative = _buildSalientNeedsEventNarrative(
+            worstNeed!, -35, 'catastrophic involuntary $worstNeed event (disaster just occurred)', catCharName);
+          debugPrint('[RAG:NeedsEvents] Storing catastrophe event (char=$memCharId, category=$worstNeed, mag=35, session=$_currentSessionId)');
+          _memoryService!.storeNeedsEventMemory(
+            narrative: narrative,
+            characterId: memCharId,
+            sessionId: _currentSessionId ?? '',
+            magnitude: 35,
+            category: worstNeed!,
+          ).catchError((e) {
+            debugPrint('[RAG:NeedsEvents] ✗ storeNeedsEventMemory (cat) failed: $e');
+          });
+        }
       }
     }
 
@@ -10508,10 +11068,61 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     return _needPostCatastropheFloor[need] ?? 30;
   }
 
+  /// Ensures that *every* need that changed this turn has an entry in
+  /// `needs_deltas` so chips are always shown for all seven needs.
+  /// Rich model-provided reasons are kept when available; simple reasons are
+  /// synthesized for anything the model didn't explicitly report (including pure decay).
+  void _finalizeNeedsDeltasForChips() {
+    if (!_needsSimEnabled) return;
+
+    final preTurn = _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
+    if (preTurn == null) return;
+
+    final currentDeltas = (_pendingRealismMetadata?['needs_deltas'] as Map?)?.cast<String, Map<String, dynamic>>() ?? <String, Map<String, dynamic>>{};
+
+    for (final need in _needKeys) {
+      final before = preTurn[need] ?? 50;
+      final after = _needsVector[need] ?? before;
+      final net = after - before;
+
+      if (net == 0) continue;
+
+      if (!currentDeltas.containsKey(need)) {
+        // Synthesize a basic reason
+        String reason;
+        if (net < 0) {
+          reason = 'Natural background decay';
+        } else {
+          reason = 'Scene activity and emotional state';
+        }
+        currentDeltas[need] = {
+          'delta': net,
+          'reason': reason,
+        };
+      }
+    }
+
+    if (currentDeltas.isNotEmpty) {
+      _pendingRealismMetadata!['needs_deltas'] = currentDeltas;
+    }
+  }
+
   /// Computes per-need deltas since the start of this turn and generates
   /// human-readable reasons. Used to power the Needs chips under bot messages
   /// (exactly like bond_delta / trust_delta + reasons for classic realism).
   Map<String, Map<String, dynamic>> _computeNeedsDeltasWithReasons() {
+    // If we already have authoritative chips parsed directly from the model's reply,
+    // use those (they have the model's own natural-language reasons). This is the
+    // new preferred path and prevents the generic "Scene action" / "Natural decay"
+    // reasons from clobbering the good ones the model provided.
+    final existing = _pendingRealismMetadata?['needs_deltas'];
+    if (existing is Map && existing.isNotEmpty) {
+      // Normalize to the expected shape just in case
+      return Map<String, Map<String, dynamic>>.from(
+        existing.map((k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v as Map))),
+      );
+    }
+
     final preTurn = _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
     if (preTurn == null || preTurn.isEmpty) return {};
 
@@ -10544,6 +11155,77 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     }
 
     return deltas;
+  }
+
+  /// Parses [Need +N: reason] or [Need -N: reason] chips from the model's response.
+  /// This is the primary, reliable way needs changes are now communicated
+  /// (the model that just wrote the scene declares what it considers meaningful).
+  /// Replaces the previous collection of fragile post-response "detective" LLM calls.
+  Map<String, Map<String, dynamic>> _parseNeedsChipsFromResponse(String text) {
+    final result = <String, Map<String, dynamic>>{};
+    if (text.trim().isEmpty) return result;
+
+    // Match things like [Hunger +25: enjoyed a big meal together] or [Energy -10: exhausting conversation]
+    final re = RegExp(
+      r'\[(\w+)\s*([+-]?\d+)\s*:\s*([^\]]{4,80})\]',
+      caseSensitive: false,
+    );
+
+    for (final match in re.allMatches(text)) {
+      final rawName = match.group(1)!.toLowerCase().trim();
+      final deltaStr = match.group(2)!;
+      final reason = match.group(3)!.trim();
+
+      // Normalize common aliases
+      String? canonical;
+      switch (rawName) {
+        case 'hunger':
+        case 'hungry':
+          canonical = 'hunger';
+          break;
+        case 'energy':
+        case 'tired':
+        case 'fatigue':
+          canonical = 'energy';
+          break;
+        case 'bladder':
+        case 'bathroom':
+        case 'pee':
+          canonical = 'bladder';
+          break;
+        case 'social':
+        case 'lonely':
+          canonical = 'social';
+          break;
+        case 'fun':
+        case 'bored':
+          canonical = 'fun';
+          break;
+        case 'hygiene':
+        case 'dirty':
+        case 'clean':
+          canonical = 'hygiene';
+          break;
+        case 'comfort':
+        case 'uncomfortable':
+          canonical = 'comfort';
+          break;
+        default:
+          if (_needKeys.contains(rawName)) canonical = rawName;
+      }
+      if (canonical == null || !_needKeys.contains(canonical)) continue;
+
+      final delta = int.tryParse(deltaStr) ?? 0;
+      if (delta == 0) continue;
+
+      // Last one wins if the model emits duplicates
+      result[canonical] = {
+        'delta': delta,
+        'reason': reason.isNotEmpty ? reason : 'Scene action',
+      };
+    }
+
+    return result;
   }
 
   /// Applies a map of need deltas (positive or negative) to the current vector.
@@ -10582,6 +11264,146 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     debugPrint('[Realism:Needs] Applied deltas: $deltas');
     _saveChat();
     notifyListeners();
+  }
+
+  // ── Short-term Narrative Needs Memory Core (recorder + helpers) ──────────
+
+  /// Formats a high-impact needs delta into a natural first-person internal thought
+  /// (lingering memory style). Uses the model's own reason for authenticity.
+  String _formatNeedsNarrative(String need, int delta, String reason, String charName) {
+    final r = reason.trim().isNotEmpty ? reason.trim() : 'the recent events';
+    final isPositive = delta > 0;
+    final n = need.toLowerCase();
+
+    if (isPositive) {
+      if (n == 'fun' || n == 'comfort') {
+        return 'Mmm… $r. I’m still feeling all warm and tingly from it.';
+      } else if (n == 'energy') {
+        return 'That really perked me up. $r — I feel so much more alive now.';
+      } else if (n == 'bladder') {
+        return 'Ahh, what a relief… $r. I feel so much lighter.';
+      } else if (n == 'hunger') {
+        return 'That hit the spot. $r — I’m not nearly as distracted anymore.';
+      } else if (n == 'social') {
+        return 'That connection really meant something. $r. I feel closer than before.';
+      } else if (n == 'hygiene') {
+        return 'Mmm, that feels so much better. $r — clean and fresh again.';
+      }
+      return 'God, that felt good… $r. I’m still a little floaty from it.';
+    } else {
+      if (n == 'bladder' || n == 'hunger') {
+        return 'Ugh… $r. This is getting really hard to ignore.';
+      } else if (n == 'energy') {
+        return 'I’m so drained… $r. I just want to curl up.';
+      } else if (n == 'fun' || n == 'comfort') {
+        return 'That really took a toll. $r — I feel kind of hollow now.';
+      }
+      return 'Shit… $r. I can’t stop replaying it in my head.';
+    }
+  }
+
+  /// Computes how many turns a narrative memory should linger, scaled by |delta|.
+  /// Catastrophes (large negative or explicit) get the longest stickiness (12–20).
+  int _computeNarrativeLifespan(int delta, {bool isCatastrophe = false}) {
+    final abs = delta.abs().clamp(1, 60);
+    if (isCatastrophe || abs >= 35) {
+      // Catastrophes / huge swings: very sticky for continuity through the aftermath
+      return 15 + (abs % 6); // 15–20 turns
+    }
+    if (abs >= 25) {
+      return 10 + (abs ~/ 6); // 10–14
+    }
+    if (abs >= 15) {
+      return 7 + (abs ~/ 8); // 7–10
+    }
+    if (abs >= 8) {
+      return 4 + (abs ~/ 5); // 4–7
+    }
+    return 3; // small but still worth a brief internal echo
+  }
+
+  /// Builds a rich, self-contained, number-free first-person narrative for
+  /// long-term RAG storage as memoryType='needs_event'. Only called for
+  /// significant deltas (|delta| >= 15) or catastrophes. Designed to be
+  /// recallable across sessions when the current context is emotionally similar.
+  String _buildSalientNeedsEventNarrative(String need, int delta, String reason, String charName) {
+    final r = reason.trim().isNotEmpty ? reason.trim() : 'the recent events';
+    final n = need.toLowerCase();
+    final isPos = delta >= 0;
+
+    if (isPos) {
+      switch (n) {
+        case 'fun':
+          return 'I felt a rush of real pleasure and excitement when $r. The sensation stayed with me.';
+        case 'comfort':
+          return 'I felt deeply comforted and at ease when $r. It left a warm, lasting impression.';
+        case 'energy':
+          return 'That experience really invigorated me when $r. I felt renewed and full of life afterward.';
+        case 'hunger':
+          return 'Satisfying my hunger felt wonderful when $r. The relief was memorable.';
+        case 'bladder':
+          return 'The relief was so welcome when $r. I felt much lighter and freer afterward.';
+        case 'social':
+          return 'That moment of real connection touched me when $r. It meant more than I expected.';
+        case 'hygiene':
+          return 'Feeling clean and fresh again was surprisingly uplifting after $r.';
+        default:
+          return 'I had a strong positive feeling about my $n when $r. It stands out in my memory.';
+      }
+    } else {
+      switch (n) {
+        case 'fun':
+        case 'comfort':
+          return 'That experience drained me when $r. The disappointment lingered for a while.';
+        case 'energy':
+          return 'I felt utterly drained and exhausted when $r. My body and spirit both suffered.';
+        case 'hunger':
+          return 'The gnawing hunger became really distracting when $r. It was hard to focus.';
+        case 'bladder':
+          return 'The urgent discomfort from my bladder was overwhelming when $r.';
+        case 'social':
+          return 'The lack of connection left me feeling isolated after $r.';
+        case 'hygiene':
+          return 'I felt gross and self-conscious when $r. The feeling stuck with me.';
+        default:
+          return 'I went through a tough $n episode when $r. The memory is still sharp.';
+      }
+    }
+  }
+
+  /// Records a new NeedsNarrativeMemory from a delta/reason (called from the
+  /// authoritative _evaluateNeedsDeltasCall after parsing good deltas, and from
+  /// the catastrophe trigger path). Respects group speaker vs 1:1 storage.
+  /// Always gated; produces rich debug logs on creation.
+  void _recordNeedsNarrative(String need, int delta, String reason, String charName) {
+    if (!_needsSimEnabled || !_realismEnabled || delta == 0 || need.isEmpty) return;
+
+    final absDelta = delta.abs();
+    final isCat = absDelta >= 30 || reason.toLowerCase().contains('catastroph') || reason.toLowerCase().contains('disaster') || reason.toLowerCase().contains('lost control');
+    final life = _computeNarrativeLifespan(delta, isCatastrophe: isCat);
+
+    final narrative = _formatNeedsNarrative(need, delta, reason, charName);
+    final mem = NeedsNarrativeMemory(
+      narrative: narrative,
+      turnsRemaining: life,
+      category: need,
+      magnitude: absDelta,
+    );
+
+    if (_activeGroup != null && !_observerMode) {
+      final id = _getCurrentSpeakerIdForRealism();
+      if (id.isNotEmpty) {
+        var list = _getGroupNeedsNarratives(id);
+        list.add(mem);
+        if (list.length > 7) list.removeAt(0); // keep recent only
+        _setGroupNeedsNarratives(id, list);
+        debugPrint('[Realism:Needs] Recorded narrative memory (group speaker $id / $charName | $need Δ$delta | life=$life | mag=$absDelta): "$narrative"');
+      }
+    } else {
+      _recentNeedsNarratives.add(mem);
+      if (_recentNeedsNarratives.length > 7) _recentNeedsNarratives.removeAt(0);
+      debugPrint('[Realism:Needs] Recorded narrative memory (1:1 $charName | $need Δ$delta | life=$life | mag=$absDelta): "$narrative"');
+    }
   }
 
   String _getNeedsInjection() {
@@ -10693,65 +11515,279 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
             ? ' (This heavy, sated exhaustion has the warm, post-orgasm quality — limbs like lead, deep drowsiness after intense release.)'
             : '';
 
-    return '[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n';
+    final stateBlock = '[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n';
+
+    // Output contract for Needs chips — the authoritative way the model declares
+    // meaningful fulfillment or drain that happened in the scene it just wrote.
+    // This replaces the previous janky post-response "detective" LLM calls.
+    if (_needsSimEnabled) {
+      return stateBlock +
+          '[Needs Chip Contract: If the events and actions you just roleplayed in this turn caused a *meaningful* change (roughly ±8 or more) to any of the character\'s needs, append one or more lines at the very end of your reply using exactly this format:\n'
+          '[Hunger +25: shared a hearty meal and felt much better]\n'
+          '[Energy -12: the long conversation was draining]\n'
+          'Canonical need names: hunger, energy, bladder, social, fun, hygiene, comfort.\n'
+          'Only emit chips for changes you actually narrated and that feel significant in context. The system will parse them to update the simulation and show the player the exact reasons you gave.]\n';
+    }
+    return stateBlock;
   }
 
-  Future<void> _verifyNeedFulfillmentCall({void Function(String)? onChunk}) async {
-    if (!_needsSimEnabled || !_realismEnabled || _activeCharacter == null) return;
+  /// Pre-response Needs pressure injection.
+  /// This is the main way the model learns the character's *current* needs state
+  /// *before* she speaks. It combines lingering short-term narrative memories
+  /// with optional OOC guidance when a need is urgent or had a big swing last turn.
+  ///
+  /// OOC style matches the rest of classic Realism (third-person, descriptive,
+  /// behavior-guiding notes) so the model understands what the character is
+  /// feeling and how it should influence her actions this turn.
+  String _getNeedsPressureInjection() {
+    if (!_needsSimEnabled || !_realismEnabled) return '';
 
-    final pendingNeeds = _needsVector.entries
-        .where((e) => e.value <= _needFulfillmentScanThreshold)
-        .map((e) => e.key)
-        .toList();
-    if (pendingNeeds.isEmpty) return;
+    final List<String> blocks = [];
 
-    final recentCount = _messages.length < 2 ? _messages.length : 2;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
+    // 1. Short-term narrative memories (first-person internal thoughts)
+    final narrativeBlock = _getNeedsNarrativeInjectionRaw();
+    if (narrativeBlock.isNotEmpty) {
+      blocks.add(narrativeBlock);
     }
-    final charName = _activeCharacter!.name;
-    final needListStr = pendingNeeds.join(', ');
 
-    final prompt =
-        'You are verifying whether character needs were actually fulfilled in a roleplay scene. '
-        'A need is only fulfilled if the action was COMPLETED in the scene — not just mentioned. '
-        'Character needs at critical or urgent level: $needListStr\n\n'
-        'Recent exchange:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object with "<need>_fulfilled": true or false.';
+    // 2. Long-term salient Needs RAG events (when relevant)
+    // (This is already handled in the main RAG path via needsEventsBlock.
+    // We don't duplicate it here.)
 
-    try {
-      debugPrint('[Realism:Needs] Running fulfillment verification');
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
+    // 3. OOC guidance when a need is urgent or had a significant swing
+    final oocBlock = _buildNeedsOOCGuidance();
+    if (oocBlock.isNotEmpty) {
+      blocks.add(oocBlock);
+    }
 
-      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
+    if (blocks.isEmpty) return '';
 
-      for (final need in pendingNeeds) {
-        final fulfilled = _extractJsonBool(text, '${need}_fulfilled') ?? false;
-        if (fulfilled) {
-          final restore = _needRestoreAmount(need);
-          _needsVector[need] = (_needsVector[need]! + restore).clamp(0, 100);
-          debugPrint('[Realism:Needs] ✅ $need fulfilled (+$restore)');
-        } else {
-          debugPrint('[Realism:Needs] ✗ $need NOT fulfilled');
+    return blocks.join('\n') + '\n';
+  }
+
+  /// Raw version of short-term narrative injection (without the outer wrapper).
+  /// Used internally by the pressure injector.
+  String _getNeedsNarrativeInjectionRaw() {
+    if (!_needsSimEnabled || !_realismEnabled) return '';
+
+    List<NeedsNarrativeMemory> active = [];
+    if (_activeGroup != null && !_observerMode) {
+      final id = _getCurrentSpeakerIdForRealism();
+      if (id.isNotEmpty) {
+        active = _getGroupNeedsNarratives(id);
+      }
+    } else {
+      active = List<NeedsNarrativeMemory>.from(_recentNeedsNarratives);
+    }
+
+    active = active.where((m) => m.turnsRemaining > 0 && m.narrative.isNotEmpty).toList();
+    if (active.length > 3) active = active.sublist(active.length - 3);
+    if (active.isEmpty) return '';
+
+    final thoughts = active.map((m) => '  "${m.narrative}"').join('\n');
+    return '[Recent thoughts lingering for the character:]\n$thoughts';
+  }
+
+  /// Builds an OOC guidance block for Needs when appropriate.
+  /// Matches the style of classic Realism OOC notes (e.g. Physical State, Relationship).
+  /// Fires on:
+  /// - Big swings from the previous turn
+  /// - High urgency / low values (negative pressure)
+  /// - Very high positive values (≥85) for fun/comfort/social/energy so the character naturally expresses satisfaction when those needs are genuinely full.
+  String _buildNeedsOOCGuidance() {
+    if (!_needsSimEnabled || !_realismEnabled) return '';
+
+    final List<String> lines = [];
+    const int swingThreshold = 15;
+    const int urgentThreshold = 25;
+
+    // We need previous deltas to detect swings. They live in the last message's metadata
+    // or were captured for this turn. Fall back to a light urgency-only check if missing.
+    final previousDeltas = _pendingRealismMetadata?['needs_deltas'] as Map<String, dynamic>?;
+
+    for (final need in _needKeys) {
+      final current = _needsVector[need] ?? 50;
+      int? delta;
+
+      if (previousDeltas != null && previousDeltas[need] is Map) {
+        delta = (previousDeltas[need]['delta'] as num?)?.toInt();
+      }
+
+      final isBigSwing = delta != null && delta.abs() >= swingThreshold;
+      final isUrgent = current <= urgentThreshold;
+      final isVeryHighPositive = current >= 85;
+
+      // Allow OOC for very high positive states (fun, comfort, social, energy)
+      // so the character naturally expresses satisfaction when those needs are genuinely full.
+      final allowPositiveHigh = isVeryHighPositive &&
+          ['fun', 'comfort', 'social', 'energy'].contains(need);
+
+      if (!isBigSwing && !isUrgent && !allowPositiveHigh) continue;
+
+      String description;
+      String behaviorHint;
+
+      switch (need) {
+        case 'bladder':
+          if (current <= 15) {
+            description = 'is in serious physical distress and becoming desperate to find relief';
+            behaviorHint = 'She may start showing visible signs of discomfort, become distracted, or urgently seek a way to excuse herself while trying to maintain composure.';
+          } else {
+            description = 'has a strong, distracting urge to relieve her bladder and is actively holding it';
+            behaviorHint = 'This is affecting her focus and may cause her to shift, cross her legs, or become slightly irritable or rushed.';
+          }
+          break;
+
+        case 'hunger':
+          description = current <= 20
+              ? 'is genuinely hungry and it is starting to affect her mood and energy'
+              : 'is noticeably hungry and distracted by it';
+          behaviorHint = 'She may become shorter-tempered, more opportunistic about food/drink, or lose some of her usual patience.';
+          break;
+
+        case 'fun':
+          if ((delta ?? 0) < -swingThreshold || current <= 25) {
+            description = 'is bored or underwhelmed and the lack of stimulation is grating on her';
+            behaviorHint = 'She is likely to try to change the activity, escalate, provoke, or seek out something more exciting.';
+          } else if (isVeryHighPositive) {
+            description = 'is feeling deeply satisfied, content, and full of genuine enjoyment right now';
+            behaviorHint = 'She is inclined to savor the current moment, prolong the activity, and express how good it feels.';
+          } else {
+            description = 'is experiencing strong genuine enjoyment and pleasure from the current situation';
+            behaviorHint = 'She wants to prolong, deepen, or escalate the activity that is giving her this feeling.';
+          }
+          break;
+
+        case 'energy':
+          if (current <= 25) {
+            description = 'is physically and mentally drained and running on fumes';
+            behaviorHint = 'She may move slower, speak less, seek rest, or become less willing to engage in high-effort activities.';
+          } else if (isVeryHighPositive) {
+            description = 'is feeling energetic, lively, and full of vitality';
+            behaviorHint = 'She feels ready for action and is likely to be more animated and engaged.';
+          } else {
+            description = 'is noticeably tired and low on energy';
+            behaviorHint = 'She may move slower, speak less, seek rest, or become less willing to engage in high-effort activities.';
+          }
+          break;
+
+        case 'social':
+          if (current <= 25) {
+            description = 'is feeling lonely or emotionally starved for connection';
+            behaviorHint = 'She is more likely to seek out closeness, conversation, or emotional engagement with people she cares about.';
+          } else if (isVeryHighPositive) {
+            description = 'is feeling deeply connected, seen, and emotionally fulfilled';
+            behaviorHint = 'She is inclined to express affection, seek more interaction, and show how much the connection means to her.';
+          } else {
+            description = 'has a strong craving for meaningful interaction or attention';
+            behaviorHint = 'She is more likely to seek out closeness, conversation, or emotional engagement with people she cares about.';
+          }
+          break;
+
+        case 'comfort':
+          if (current <= 25) {
+            description = 'is physically or emotionally uncomfortable and it is wearing on her';
+            behaviorHint = 'She may try to adjust her position, change the environment, or seek reassurance/comfort.';
+          } else if (isVeryHighPositive) {
+            description = 'is feeling deeply comfortable, at ease, and content in her body and surroundings';
+            behaviorHint = 'She is likely to relax into the moment, express how good it feels, and be more open and affectionate.';
+          } else {
+            description = 'is noticeably uncomfortable in the current situation';
+            behaviorHint = 'She may try to adjust her position, change the environment, or seek reassurance/comfort.';
+          }
+          break;
+
+        case 'hygiene':
+          description = current <= 25
+              ? 'is feeling gross or self-conscious about her current state of cleanliness'
+              : 'is aware that she is dirty and it is starting to bother her';
+          behaviorHint = current <= 15
+              ? 'She may become self-conscious, try to clean up, or become defensive if it is brought up.'
+              : 'She is aware of it but it is not yet dominating her thoughts.';
+          break;
+
+        default:
+          continue;
+      }
+
+      String charName = _activeCharacter?.name ?? 'the character';
+      if (_activeGroup != null && !_observerMode) {
+        final id = _getCurrentSpeakerIdForRealism();
+        if (id.isNotEmpty) {
+          try {
+            final card = _groupCharacters.firstWhere((c) => _getCharacterIdFromCard(c) == id);
+            charName = card.name;
+          } catch (_) {}
         }
       }
-      _saveChat(); // persist restored vector
-    } catch (e) {
-      debugPrint('[Realism:Needs] Fulfillment verification failed: $e');
+
+      lines.add(' $charName $description. $behaviorHint');
     }
+
+    if (lines.isEmpty) return '';
+
+    // Limit to the most important 1-2 lines so it doesn't become noisy
+    if (lines.length > 2) lines.removeRange(2, lines.length);
+
+    final ooc = '[OOC Note regarding Current Needs:\n${lines.join('\n')}\n]';
+    debugPrint('[Realism:Needs] Emitting pre-response OOC guidance:\n$ooc');
+    return ooc;
   }
 
-  int _needRestoreAmount(String need) {
-    return _needRestore[need] ?? _needRestoreDefault;
+  /// Original narrative-only injection kept for backward compatibility in a few places.
+  String _getNeedsNarrativeInjection() {
+    if (!_needsSimEnabled || !_realismEnabled) return '';
+
+    List<NeedsNarrativeMemory> active = [];
+    String labelChar = _activeCharacter?.name ?? 'the character';
+
+    if (_activeGroup != null && !_observerMode) {
+      final id = _getCurrentSpeakerIdForRealism();
+      if (id.isNotEmpty) {
+        active = _getGroupNeedsNarratives(id);
+        try {
+          final card = _groupCharacters.firstWhere(
+            (c) => _getCharacterIdFromCard(c) == id,
+            orElse: () => _groupCharacters.first,
+          );
+          labelChar = card.name;
+        } catch (_) {}
+      }
+    } else {
+      active = List<NeedsNarrativeMemory>.from(_recentNeedsNarratives);
+    }
+
+    // Filter live ones and take the most recent (last N) up to 3
+    active = active.where((m) => m.turnsRemaining > 0 && m.narrative.isNotEmpty).toList();
+    if (active.length > 3) {
+      active = active.sublist(active.length - 3);
+    }
+    if (active.isEmpty) return '';
+
+    final thoughts = active.map((m) => '  "${m.narrative}"').join('\n');
+    final block = '[Recent thoughts lingering for $labelChar:]\n$thoughts\n';
+
+    debugPrint('[Realism:Needs] Injecting ${active.length} narrative thought(s) for $labelChar (short-term memory)');
+    return block;
+  }
+
+  /// Returns a compact, optional context string for use *inside* Realism evaluation
+  /// prompts (relationship, emotion, fixation, one-shot, etc.).
+  ///
+  /// When Needs simulation is disabled, this always returns the empty string.
+  /// This is the ONLY surface through which any Realism eval code is allowed to
+  /// "see" Needs narrative state. It is purely advisory flavor for the model to
+  /// interpret subjectively when deciding bond/trust/emotion/fixation shifts.
+  String _getOptionalNeedsNarrativeContext() {
+    if (!_needsSimEnabled || !_realismEnabled) return '';
+
+    // Use the richer pre-response Needs pressure (narratives + OOC guidance when relevant)
+    // so that current needs state (including inverted hygiene, urgency, big swings, etc.)
+    // can meaningfully color the Realism evaluations (bond, trust, emotion, fixation).
+    final pressure = _getNeedsPressureInjection();
+    if (pressure.trim().isEmpty) return '';
+
+    return '\n[Recent physical/emotional state from needs simulation — interpret subjectively when judging how this exchange affected bond, trust, emotion, or fixation:\n$pressure]\n';
   }
 
   void _restoreRealismStateFromMessage(ChatMessage? msg) {
@@ -10819,6 +11855,33 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           (needsData['arousalSuppressionTurns'] as int?) ?? _arousalSuppressionTurnsRemaining;
       _postClimaxCrashTurnsRemaining =
           (needsData['postClimaxCrashTurns'] as int?) ?? _postClimaxCrashTurnsRemaining;
+
+      // Restore short-term narrative memories (if present in this turn's snapshot).
+      // They will be injected on the next prompt and will continue decaying.
+      if (needsData['narratives'] is List) {
+        try {
+          final rawList = needsData['narratives'] as List;
+          final restoredNarr = rawList
+              .whereType<Map>()
+              .map((e) => NeedsNarrativeMemory.fromMap(Map<String, dynamic>.from(e)))
+              .where((m) => m.turnsRemaining > 0 && m.narrative.isNotEmpty)
+              .toList();
+          _recentNeedsNarratives = restoredNarr;
+
+          // Best-effort push into the current speaker's group slot (for group swipe/regen of that speaker's turn)
+          if (_activeGroup != null && !_observerMode) {
+            final id = _getCurrentSpeakerIdForRealism();
+            if (id.isNotEmpty) {
+              _setGroupNeedsNarratives(id, List<NeedsNarrativeMemory>.from(restoredNarr));
+              debugPrint('[Realism:Needs] Restored ${restoredNarr.length} narrative memory entries into group speaker $id from realism_state snapshot');
+            }
+          } else if (restoredNarr.isNotEmpty) {
+            debugPrint('[Realism:Needs] Restored ${restoredNarr.length} narrative memory entries for 1:1 from realism_state snapshot');
+          }
+        } catch (e) {
+          debugPrint('[Realism:Needs] Failed parsing narratives from snapshot: $e');
+        }
+      }
     }
 
     debugPrint(
@@ -11258,6 +12321,13 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       _needsVector.clear();
       _needsAfterglowTurnsRemaining = 0;
       _arousalSuppressionTurnsRemaining = 0;
+      _postClimaxCrashTurnsRemaining = 0;
+      _recentNeedsNarratives.clear();
+      if (_activeGroup != null) {
+        for (final entry in _groupRealism.values) {
+          if (entry is Map) entry.remove('needs_narratives');
+        }
+      }
     }
     await _saveChat();
     notifyListeners();
