@@ -131,9 +131,13 @@ class HardwareService extends ChangeNotifier {
 
     // Determine vendor
     final lowerName = gpuName.toLowerCase();
-    if (lowerName.contains('nvidia')) vendor = 'Nvidia';
-    else if (lowerName.contains('amd') || lowerName.contains('ati')) vendor = 'AMD';
-    else if (lowerName.contains('intel')) vendor = 'Intel';
+    if (lowerName.contains('nvidia')) {
+      vendor = 'Nvidia';
+    } else if (lowerName.contains('amd') || lowerName.contains('ati')) {
+      vendor = 'AMD';
+    } else if (lowerName.contains('intel')) {
+      vendor = 'Intel';
+    }
 
     // VRAM detection
     if (vendor == 'Nvidia') {
@@ -314,8 +318,11 @@ class HardwareService extends ChangeNotifier {
              // qwMemorySize is returned as a long number, sometimes string in JSON
              var memSize = item['HardwareInformation.qwMemorySize'];
              int size = 0;
-             if (memSize is int) size = memSize;
-             else if (memSize is String) size = int.tryParse(memSize) ?? 0;
+             if (memSize is int) {
+               size = memSize;
+             } else if (memSize is String) {
+               size = int.tryParse(memSize) ?? 0;
+             }
              
              if (size > maxVram) {
                maxVram = size;
@@ -409,9 +416,13 @@ class HardwareService extends ChangeNotifier {
 
       // Determine Vendor from Name
       final nameLower = gpuName.toLowerCase();
-      if (nameLower.contains('nvidia') || nameLower.contains('geforce')) vendor = 'Nvidia';
-      else if (nameLower.contains('amd') || nameLower.contains('radeon')) vendor = 'AMD';
-      else if (nameLower.contains('intel') || nameLower.contains('iris') || nameLower.contains('uhd')) vendor = 'Intel';
+      if (nameLower.contains('nvidia') || nameLower.contains('geforce')) {
+        vendor = 'Nvidia';
+      } else if (nameLower.contains('amd') || nameLower.contains('radeon')) {
+        vendor = 'AMD';
+      } else if (nameLower.contains('intel') || nameLower.contains('iris') || nameLower.contains('uhd')) {
+        vendor = 'Intel';
+      }
 
     } catch (e) {
       print('Windows GPU detection failed: $e');

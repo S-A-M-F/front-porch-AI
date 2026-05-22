@@ -2138,7 +2138,9 @@ class ChatService extends ChangeNotifier {
   /// Wait for TTS to finish speaking, then apply the configured delay before auto-play.
   void _waitForTtsThenContinue() {
     if (!(_groupManager?.autoPlayActive ?? false) ||
-        !(_groupManager?.observerMode ?? false)) return;
+        !(_groupManager?.observerMode ?? false)) {
+      return;
+    }
 
     Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (!(_groupManager?.autoPlayActive ?? false) ||
@@ -2691,8 +2693,9 @@ class ChatService extends ChangeNotifier {
 
   Future<void> _saveChat() async {
     if ((_activeCharacter == null && _activeGroup == null) ||
-        _currentSessionId == null)
+        _currentSessionId == null) {
       return;
+    }
 
     // ── Safety guard: never overwrite existing session data with empty messages.
     // This prevents data loss if _messages is momentarily empty due to a rebuild
@@ -3254,8 +3257,9 @@ class ChatService extends ChangeNotifier {
   /// Copies messages 0..messageIndex into a new session and switches to it.
   Future<void> forkFromMessage(int messageIndex) async {
     if ((_activeCharacter == null && _activeGroup == null) ||
-        _currentSessionId == null)
+        _currentSessionId == null) {
       return;
+    }
     if (messageIndex < 0 || messageIndex >= _messages.length) return;
 
     final oldSessionId = _currentSessionId!;
@@ -3776,8 +3780,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
   Future<void> sendMessage(String text) async {
     if ((_activeCharacter == null && _activeGroup == null) ||
-        text.trim().isEmpty)
+        text.trim().isEmpty) {
       return;
+    }
     clearSuggestions();
 
     // ── Slash Command Handling ──────────────────────────────────────────
@@ -4436,8 +4441,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     String prefix = '',
     required Function(String accumulated) onToken,
   }) async {
-    if ((_activeCharacter == null && _activeGroup == null) || _isGenerating)
+    if ((_activeCharacter == null && _activeGroup == null) || _isGenerating) {
       return;
+    }
 
     _isGenerating = true;
     _cancelRequested = false;
@@ -4706,8 +4712,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
   /// Trigger the next character to speak in group mode.
   Future<void> triggerNextCharacter() async {
-    if (_activeGroup == null || _groupCharacters.isEmpty || _isGenerating)
+    if (_activeGroup == null || _groupCharacters.isEmpty || _isGenerating) {
       return;
+    }
     await _generateResponse(GenerationMode.normal);
   }
 
@@ -7014,16 +7021,18 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         final numbered = RegExp(r'^\d+[\.\)\-]?\s*(.+)').firstMatch(trimmed);
         if (numbered != null) {
           final desc = numbered.group(1)!.trim();
-          if (desc.isNotEmpty && !desc.startsWith('['))
+          if (desc.isNotEmpty && !desc.startsWith('[')) {
             genTasks.add({'description': desc, 'completed': false});
+          }
           continue;
         }
         // Try bullet: "- ...", "• ...", "* ..."
         final bullet = RegExp(r'^[-•*]\s+(.+)').firstMatch(trimmed);
         if (bullet != null) {
           final desc = bullet.group(1)!.trim();
-          if (desc.isNotEmpty)
+          if (desc.isNotEmpty) {
             genTasks.add({'description': desc, 'completed': false});
+          }
           continue;
         }
         // Plain sentence fallback (skip very short lines or header-like lines)
@@ -7188,8 +7197,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
   Future<void> _maybeCheckTaskCompletionSync() async {
     if (_activeObjectives.isEmpty ||
         _llmProvider == null ||
-        _isCheckingCompletion)
+        _isCheckingCompletion) {
       return;
+    }
 
     _messagesSinceLastCheck++;
     final freq = _realismEnabled
@@ -7225,8 +7235,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
             .map((t) => t['description'] as String)
             .firstOrNull;
 
-        if (currentTask == null && tasks.isNotEmpty)
+        if (currentTask == null && tasks.isNotEmpty) {
           continue; // All tasks finished but objective not manually resolved
+        }
 
         final evalTarget = currentTask != null
             ? 'Task to evaluate: "$currentTask"\n'
@@ -7320,8 +7331,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
     _userMessagesSinceLastPeriodicEval++;
     if (_userMessagesSinceLastPeriodicEval <
-        _storageService.autoPersonaInterval)
+        _storageService.autoPersonaInterval) {
       return;
+    }
     _userMessagesSinceLastPeriodicEval = 0;
 
     debugPrint(
@@ -7405,8 +7417,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
   /// Returns true if a fact passes the quality gate.
   /// Rejects RP actions, character-specific events, and scene-bound facts.
   bool _isValidFact(String fact) {
-    if (fact.length < _minFactLength || fact.length > _maxFactLength)
+    if (fact.length < _minFactLength || fact.length > _maxFactLength) {
       return false;
+    }
     for (final pattern in _factGarbagePatterns) {
       if (pattern.hasMatch(fact)) {
         debugPrint('[RAG:Persona] ✗ Rejected by quality gate: "$fact"');
@@ -9193,8 +9206,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
   /// Placed AFTER the character name suffix for maximum recency weight.
   /// Consumed after one use (cleared after response generation).
   String _getChanceTimeInjection() {
-    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty)
+    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty) {
       return '';
+    }
     final charName = _activeCharacter?.name ?? 'the character';
     final event = _pendingChaosInjection!;
     // Mark as delivered so it can be cleared on the NEXT sendMessage.
@@ -9328,10 +9342,12 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
         _pendingRealismMetadata ??= {};
         if (bondDelta != 0) _pendingRealismMetadata!['bond_delta'] = bondDelta;
-        if (arousalDelta != 0)
+        if (arousalDelta != 0) {
           _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-        if (trustDelta != 0)
+        }
+        if (trustDelta != 0) {
           _pendingRealismMetadata!['trust_delta'] = trustDelta;
+        }
       }
 
       // Extract and store per-chip reasons
@@ -9720,14 +9736,16 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       final emotionMatch = RegExp(
         r'"emotion"\s*:\s*"([^"]+)"',
       ).firstMatch(text);
-      if (emotionMatch != null)
+      if (emotionMatch != null) {
         _characterEmotion = emotionMatch.group(1)!.toLowerCase().trim();
+      }
 
       final intensityMatch = RegExp(
         r'"emotion_intensity"\s*:\s*"([^"]+)"',
       ).firstMatch(text);
-      if (intensityMatch != null)
+      if (intensityMatch != null) {
         _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
+      }
 
       if (_nsfwCooldownEnabled) {
         final arDelta = _extractJsonInt(text, 'arousal_delta');
@@ -10038,10 +10056,11 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
                       !o.isPrimary,
                 )
                 .firstOrNull;
-            if (addedObj != null)
+            if (addedObj != null) {
               unawaited(
                 generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
               );
+            }
           }
         }
       }
@@ -10743,8 +10762,11 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         final current = needs[key] ?? 80;
         int decay = _needDecay[key] ?? 0;
 
-        if (isMorning && _needDecayMorning.containsKey(key)) decay = _needDecayMorning[key] ?? decay;
-        else if (isNight && _needDecayNight.containsKey(key)) decay = _needDecayNight[key] ?? decay;
+        if (isMorning && _needDecayMorning.containsKey(key)) {
+          decay = _needDecayMorning[key] ?? decay;
+        } else if (isNight && _needDecayNight.containsKey(key)) {
+          decay = _needDecayNight[key] ?? decay;
+        }
 
         if (_needsAfterglowTurnsRemaining > 0 && (key == 'hunger' || key == 'energy' || key == 'social')) {
           decay = (decay * 0.45).round();
@@ -11848,10 +11870,15 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           // Intensity-scaled duration. Gated effect so it respects afterglow + lust haze.
           final intensity = _extractJsonInt(text, 'orgasm_intensity') ?? 5;
           int crashDur = 0;
-          if (intensity >= 9) crashDur = 5;
-          else if (intensity >= 7) crashDur = 4;
-          else if (intensity >= 5) crashDur = 3;
-          else if (intensity >= 3) crashDur = 2;
+          if (intensity >= 9) {
+            crashDur = 5;
+          } else if (intensity >= 7) {
+            crashDur = 4;
+          } else if (intensity >= 5) {
+            crashDur = 3;
+          } else if (intensity >= 3) {
+            crashDur = 2;
+          }
 
           if (crashDur > 0) {
             _postClimaxCrashTurnsRemaining =
@@ -12422,10 +12449,11 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     // Use microseconds for better entropy than milliseconds
     final roll = (DateTime.now().microsecondsSinceEpoch % 100);
     final fires = roll < effectiveChance;
-    if (fires)
+    if (fires) {
       debugPrint(
         '[ChanceTime] Auto-trigger! pressure=$_chaosPressure% roll=$roll',
       );
+    }
     return fires;
   }
 

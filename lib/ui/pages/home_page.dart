@@ -556,8 +556,9 @@ class _HomePageState extends State<HomePage> {
                             icon: const Icon(Icons.download),
                             onSelected: (value) {
                               if (value == 'cards') _importCharacter(context);
-                              if (value == 'folder')
+                              if (value == 'folder') {
                                 _folderImportCharacters(context);
+                              }
                               if (value == 'byaf') _importByaf(context);
                             },
                             itemBuilder: (_) => [
@@ -2628,8 +2629,9 @@ class _HomePageState extends State<HomePage> {
                                 )
                                 .replaceAll('"', '')
                                 .trim();
-                            if (result.isNotEmpty)
+                            if (result.isNotEmpty) {
                               scenarioController.text = result;
+                            }
                           } catch (_) {}
                           setDialogState(() => isGeneratingScenario = false);
                           // Auto-generate first message using the scenario
@@ -2700,10 +2702,11 @@ class _HomePageState extends State<HomePage> {
                                     '',
                                   );
                               final marker = result.indexOf('BEGIN SCENE:');
-                              if (marker >= 0)
+                              if (marker >= 0) {
                                 result = result.substring(
                                   marker + 'BEGIN SCENE:'.length,
                                 );
+                              }
                               final cleaned = result
                                   .split('\n')
                                   .where((line) {
@@ -2720,8 +2723,9 @@ class _HomePageState extends State<HomePage> {
                                   })
                                   .join('\n')
                                   .trim();
-                              if (cleaned.isNotEmpty)
+                              if (cleaned.isNotEmpty) {
                                 firstMessageController.text = cleaned;
+                              }
                             } catch (_) {}
                             setDialogState(
                               () => isGeneratingFirstMessage = false,
@@ -3667,8 +3671,9 @@ class _HomePageState extends State<HomePage> {
 
     if (result == null ||
         result.files.isEmpty ||
-        result.files.first.path == null)
+        result.files.first.path == null) {
       return;
+    }
     if (!context.mounted) return;
 
     final filePath = result.files.first.path!;

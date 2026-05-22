@@ -654,8 +654,9 @@ class _SettingsPageState extends State<SettingsPage> {
         // Glassmorphic download overlay — shown only while ONNX model is downloading
         Consumer<ExpressionClassifierService>(
           builder: (context, expressionService, _) {
-            if (!expressionService.isDownloading)
+            if (!expressionService.isDownloading) {
               return const SizedBox.shrink();
+            }
             return _buildDownloadOverlay(expressionService);
           },
         ),
@@ -1198,8 +1199,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         storageService.ttsEnabled
                             ? () {
                                 final voiceKey = storageService.ttsVoiceModel;
-                                if (voiceKey.isEmpty)
+                                if (voiceKey.isEmpty) {
                                   return 'Enabled — Voice: Not set';
+                                }
                                 final ttsService = Provider.of<TtsService>(
                                   context,
                                   listen: false,
@@ -1318,8 +1320,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ),
                               ],
                               onChanged: (val) {
-                                if (val != null)
+                                if (val != null) {
                                   storageService.setWhisperModel(val);
+                                }
                               },
                             ),
                           ],
@@ -1651,8 +1654,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                 }),
                               ],
                               onChanged: (val) {
-                                if (val != null)
+                                if (val != null) {
                                   storageService.setCallModelName(val);
+                                }
                               },
                             )
                           else
@@ -2058,8 +2062,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ),
                               ],
                               onChanged: (val) {
-                                if (val != null)
+                                if (val != null) {
                                   storage.setExpressionClassificationMode(val);
+                                }
                               },
                             ),
                           ),
@@ -2112,8 +2117,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ),
                               ],
                               onChanged: (val) {
-                                if (val != null)
+                                if (val != null) {
                                   storage.setExpressionDisplayMode(val);
+                                }
                               },
                             ),
                           ),
@@ -2192,8 +2198,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ),
                               ],
                               onChanged: (val) {
-                                if (val != null)
+                                if (val != null) {
                                   storage.setExpressionFallback(val);
+                                }
                               },
                             ),
                           ),
@@ -2668,8 +2675,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                                       .remoteModelName,
                                             )
                                             .toList();
-                                        if (match.isEmpty)
+                                        if (match.isEmpty) {
                                           return const SizedBox.shrink();
+                                        }
                                         return Text(
                                           match.first.pricingLabel,
                                           style: TextStyle(

@@ -571,8 +571,9 @@ class _ChatPageState extends State<ChatPage> {
                                          externalImagesAllowed:
                                              _externalImagesAllowed,
                                          onRequestImagePermission: () async {
-                                           if (_externalImagesAllowed != null)
+                                           if (_externalImagesAllowed != null) {
                                              return _externalImagesAllowed!;
+                                           }
                                            // Check persisted consent first
                                            if (!_imageConsentChecked) {
                                              _imageConsentChecked = true;
@@ -591,11 +592,12 @@ class _ChatPageState extends State<ChatPage> {
                                                  '';
                                              if (charName.isNotEmpty &&
                                                  consented.contains(charName)) {
-                                               if (mounted)
+                                               if (mounted) {
                                                  setState(
                                                    () => _externalImagesAllowed =
                                                        true,
                                                  );
+                                               }
                                                return true;
                                              }
                                            }
@@ -2136,8 +2138,9 @@ class _ChatPageState extends State<ChatPage> {
                                 if (confirm == true) {
                                   await chatService.deleteSession(s['id']);
                                   if (isCurrent) {
-                                    if (context.mounted)
+                                    if (context.mounted) {
                                       Navigator.of(context).pop();
+                                    }
                                   } else {
                                     sessions = await chatService.getSessions();
                                     setDialogState(() {});
@@ -3384,8 +3387,9 @@ class _ChatPageState extends State<ChatPage> {
                 // ── Active Fixation (always visible when set) ──
                 Consumer<ChatService>(
                   builder: (context, chat, _) {
-                    if (chat.activeFixation.isEmpty)
+                    if (chat.activeFixation.isEmpty) {
                       return const SizedBox.shrink();
+                    }
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16),
                       child: Container(
@@ -3464,8 +3468,9 @@ class _ChatPageState extends State<ChatPage> {
                       context,
                       listen: false,
                     );
-                    if (!storage.characterEvolutionEnabled)
+                    if (!storage.characterEvolutionEnabled) {
                       return const SizedBox.shrink();
+                    }
                     final evolvedP = chat.getEffectivePersonality;
                     final evolvedS = chat.getEffectiveScenario;
                     final count = chat.characterEvolutionCount;
@@ -4834,8 +4839,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                           !isDirectorNote)
                         Consumer2<TtsService, StorageService>(
                           builder: (context, tts, storage, _) {
-                            if (!storage.ttsEnabled)
+                            if (!storage.ttsEnabled) {
                               return const SizedBox.shrink();
+                            }
                             final msgId = 'msg_${widget.index}';
                             final isThisMsg = tts.currentMessageId == msgId;
                             final isGeneratingThis =
@@ -5077,8 +5083,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       message.thinkingDurationMs == 0)
                     Consumer<ChatService>(
                       builder: (context, chatService, _) {
-                        if (!chatService.isGenerating)
+                        if (!chatService.isGenerating) {
                           return const SizedBox.shrink();
+                        }
                         final elapsed =
                             DateTime.now().millisecondsSinceEpoch -
                             message.thinkingStartTime!;
@@ -5125,8 +5132,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         final character = chatService.activeCharacter;
                         if (character == null) return const SizedBox.shrink();
                         final allGreetings = character.allGreetings;
-                        if (allGreetings.length <= 1)
+                        if (allGreetings.length <= 1) {
                           return const SizedBox.shrink();
+                        }
 
                         return Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -5182,8 +5190,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         final hasSwipes = message.swipes.length > 1;
 
                         // Nothing to show if not last message and no swipes
-                        if (!isLastBotMessage && !hasSwipes)
+                        if (!isLastBotMessage && !hasSwipes) {
                           return const SizedBox.shrink();
+                        }
 
                         return Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -5502,8 +5511,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
         trustDelta == 0 &&
         timeSkipTo.isEmpty &&
         chanceTimeEvent.isEmpty &&
-        !timeReversal)
+        !timeReversal) {
       return const SizedBox.shrink();
+    }
 
     Widget maybeTooltip(Widget child, String tip) {
       if (tip.isEmpty) return child;
@@ -6156,11 +6166,12 @@ class _ExternalImageWidgetState extends State<_ExternalImageWidget> {
       final file = File('${cacheDir.path}/$hash$ext');
 
       if (await file.exists()) {
-        if (mounted)
+        if (mounted) {
           setState(() {
             _cachedFile = file;
             _loading = false;
           });
+        }
         return;
       }
 
@@ -6171,27 +6182,30 @@ class _ExternalImageWidgetState extends State<_ExternalImageWidget> {
         if (response.statusCode == 200) {
           final bytes = await consolidateHttpClientResponseBytes(response);
           await file.writeAsBytes(bytes);
-          if (mounted)
+          if (mounted) {
             setState(() {
               _cachedFile = file;
               _loading = false;
             });
+          }
         } else {
-          if (mounted)
+          if (mounted) {
             setState(() {
               _error = 'HTTP ${response.statusCode}';
               _loading = false;
             });
+          }
         }
       } finally {
         httpClient.close();
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = e.toString();
           _loading = false;
         });
+      }
     }
   }
 
@@ -7386,11 +7400,12 @@ class _MemorySectionState extends State<_MemorySection> {
                     if (result == true) {
                       await prefs.setBool('rag_setup_consented', true);
                       storage.setRagEnabled(true);
-                      if (context.mounted)
+                      if (context.mounted) {
                         Provider.of<EmbeddingSidecar>(
                           context,
                           listen: false,
                         ).ensureRunning();
+                      }
                     }
                   },
                   activeTrackColor: Colors.purpleAccent,
@@ -9907,8 +9922,9 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                                       taskCount: _taskCount,
                                       nsfw: _nsfw,
                                     );
-                                    if (mounted)
+                                    if (mounted) {
                                       setState(() => _generatingTasks = false);
+                                    }
                                   },
                             icon: _generatingTasks
                                 ? const SizedBox(

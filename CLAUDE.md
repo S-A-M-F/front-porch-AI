@@ -152,6 +152,26 @@ A multi-component system spanning chat_service.dart and the LLM provider:
 - External API integrations
 - Performance-critical code paths
 
+## Rules When the Human Cannot Review Code
+
+Because the user has **no ability to read or evaluate Dart code**, the following rules are **non-negotiable** and take precedence over normal task execution:
+
+- **You are the only line of defense.** You must act as a paranoid, hostile reviewer of your own output. Do not assume your changes are clean.
+- **Deletion is part of the task, not optional.** Any time you implement or modify behavior, you **must** audit the files you touch for dead code, duplicate logic, or obsolete methods and delete them.
+- **New private methods are expensive.** Before creating any new private method or helper, you **must first** check whether an existing method can be extended, generalized, or refactored. Creating new methods is a last resort.
+- **Method proliferation is forbidden.** If you introduce more than **two** new private methods while completing a piece of work, you must stop and either consolidate existing logic or explicitly justify in your response why deletion was not possible.
+- **Parallel implementations are banned** unless the user explicitly approves. Do not create separate code paths for 1:1 vs group chat, or old vs new systems, without first attempting to unify them.
+- **Mandatory commands at the end of non-trivial work** (you must run these and report the results):
+  - `flutter analyze --no-fatal-warnings --no-fatal-infos`
+  - `dart fix --dry-run` (apply safe fixes where appropriate)
+  - Grep/search for recently added methods to verify older similar methods are not now dead
+
+**Hygiene Summary Requirement**: At the end of any response involving non-trivial changes, include a short "Hygiene Summary" covering:
+- New private methods added (list them)
+- Methods deleted (list them)
+- Whether `flutter analyze` is clean
+- Any duplication or dead code you chose not to remove and why
+
 ## Code Style & Conventions
 
 ### Reuse Existing Code
@@ -159,11 +179,13 @@ A multi-component system spanning chat_service.dart and the LLM provider:
 - **Utilize existing functions whenever possible** — reuse patterns that already work
 - **Avoid over-engineering** — simpler solutions are better when they achieve the same goal
 - **Leverage shared state** (e.g., `StorageService`) as the single source of truth
+- **Consolidate before extending**: When modifying complex areas (especially Realism Engine, Needs simulation, or group chat logic), first attempt to generalize or extend existing methods rather than creating new ones. Creating parallel helpers for similar functionality is not acceptable.
 
 ### Verification
 - **ALWAYS run `flutter analyze` after making code changes** — the project is now at literal 0 warnings on the active rule set. New code must not introduce any warnings (CI will catch them on changed files in PRs). Never claim changes are "verified" without running it. Variables declared inside `try` blocks are not accessible outside — declare them before the `try` with default values instead.
 - **Cross-platform verification is mandatory**. Front Porch AI is a Windows + macOS + Linux desktop app. Every non-trivial change must be checked (or have an explicit plan) to ensure it does not regress on any of the three platforms. This is especially true for file paths, process spawning, Python sidecars, and anything touching `dart:io` or native binaries.
 - **Realism & Needs parity is mandatory** (see the dedicated section below). Any change to the Realism Engine or Needs simulation must keep 1:1 and group chat behavior consistent unless explicitly approved otherwise.
+- **Because the user cannot review code**, you must treat every change as if it will be accepted without scrutiny. This means you are responsible for leaving the codebase strictly cleaner (or at minimum no worse) than you found it.
 
 ### Task Completion Rules
 - **No skeleton or partial implementations are allowed.** Never create stub files, placeholder methods containing only TODO comments, incomplete classes, or "skeleton" functionality with the intention of finishing it in a later turn.
@@ -171,12 +193,23 @@ A multi-component system spanning chat_service.dart and the LLM provider:
 - This rule takes precedence over "getting something started." Partial progress that leaves the codebase in a broken or misleading state is not acceptable.
 - Only mark a task complete after it is fully functional and all verification steps (analyze + grep + manual review) have passed.
 
+**Mandatory Cleanup Requirements (especially when the user cannot review code):**
+- You **must** delete any code that is no longer reachable or needed as part of completing the task.
+- You **must** consolidate duplicate or near-duplicate logic instead of leaving parallel implementations.
+- You **must** remove any new private methods that became dead or obsolete during the work.
+- "It works" is not sufficient. The codebase must be measurably cleaner (or at least not worse) than when you started the task.
+
 ### Realism & Needs System Parity
 - The Realism Engine (Bond/Trust/Emotion/Arousal/Fixation) and especially the **Needs/Sims simulation** must maintain full functional parity between single-character (1:1) chats and group chats at all times.
 - Any fix, refactor, behavioral change, new feature, or tuning to realism or needs logic **must** be implemented so that both modes receive equivalent treatment, unless the change is explicitly discussed with the user and approved as group-only or 1:1-only.
 - Core simulation logic (decay rules, step thresholds, catastrophe text, erotic buffers, etc.) is intentionally shared. When editing these areas, you are responsible for ensuring group per-character behavior does not regress or diverge unintentionally.
 - Storage and per-turn orchestration already use branching (`_groupRealism` vs scalar fields, group vs 1:1 paths in `_tickNeedsDecay` and `_getNeedsInjection`). Changes to orchestration are allowed to differ, but the *observable simulation behavior* for a character should feel consistent whether they are in a 1:1 chat or a group.
 - When in doubt, default to keeping the two modes in parity. Breaking parity without discussion is considered a regression.
+
+**Anti-Accumulation Rules for Realism/Needs (Critical):**
+- Because this area has historically been the largest source of dead code and duplicated helpers, any work touching realism, needs, bond, trust, emotion, fixation, group state, or time progression **requires** an explicit dead code audit of the affected methods in `chat_service.dart`.
+- You must actively look for and delete older helper methods (`_getGroup*`, `_loadEvolved*`, `_apply*Decay`, narrative injection variants, etc.) that are made obsolete by new logic.
+- Creating new private methods with "Group", "Needs", "Realism", or "Decay" in the name triggers an automatic requirement to review and justify why similar existing methods could not be reused or deleted.
 
 ### Cross-Platform Compatibility (Critical)
 - **Never hardcode Unix paths** (`/tmp`, `/Users/`, `~/`, etc.). Always use `Directory.systemTemp`, `getApplicationDocumentsDirectory()`, `StorageService.rootPath`, or `path_provider` + `package:path/path.dart` with `p.join()`.

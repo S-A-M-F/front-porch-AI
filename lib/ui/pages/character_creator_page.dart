@@ -1903,7 +1903,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         setState(() {
                           _quickGreetingCount = val.round();
                           final maxTones = _quickGreetingCount + 1;
-                          while (_quickSelectedTones.length > maxTones) _quickSelectedTones.remove(_quickSelectedTones.last);
+                          while (_quickSelectedTones.length > maxTones) {
+                            _quickSelectedTones.remove(_quickSelectedTones.last);
+                          }
                         });
                         _saveState();
                       },
@@ -3091,7 +3093,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                       setState(() {
                                         _altGreetingCount = val.round();
                                         final maxTones = _altGreetingCount + 1;
-                                        while (_selectedTones.length > maxTones) _selectedTones.remove(_selectedTones.last);
+                                        while (_selectedTones.length > maxTones) {
+                                          _selectedTones.remove(_selectedTones.last);
+                                        }
                                       });
                                       _saveState();
                                     },

@@ -14,7 +14,9 @@ void main() {
         CharacterCard(name: 'C', tags: ['z_tag'], imagePath: 'c.png'),
       ];
       final tags = <String>{};
-      for (final c in chars) tags.addAll(c.tags);
+      for (final c in chars) {
+        tags.addAll(c.tags);
+      }
       final sorted = tags.toList()..sort();
       expect(sorted, ['a_tag', 'm_tag', 'z_tag']);
     });
@@ -22,7 +24,9 @@ void main() {
     test('allTags returns empty for no characters', () {
       final chars = <CharacterCard>[];
       final tags = <String>{};
-      for (final c in chars) tags.addAll(c.tags);
+      for (final c in chars) {
+        tags.addAll(c.tags);
+      }
       expect(tags.toList()..sort(), isEmpty);
     });
 
