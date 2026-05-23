@@ -364,19 +364,21 @@ void main(List<String> args) async {
           update: (context, storage, previous) =>
               previous ?? GroupChatRepository(storage, db),
         ),
-        ChangeNotifierProxyProvider3<
+        ChangeNotifierProxyProvider4<
           StorageService,
           BackendManager,
           KoboldService,
+          PseudoRemoteService,
           SetupService
         >(
           create: (context) => SetupService(
             Provider.of<StorageService>(context, listen: false),
             Provider.of<BackendManager>(context, listen: false),
             Provider.of<KoboldService>(context, listen: false),
+            Provider.of<PseudoRemoteService>(context, listen: false),
           ),
-          update: (context, storage, backend, kobold, previous) =>
-              previous ?? SetupService(storage, backend, kobold),
+          update: (context, storage, backend, kobold, pseudoRemote, previous) =>
+              previous ?? SetupService(storage, backend, kobold, pseudoRemote),
         ),
         ChangeNotifierProvider(create: (_) => UpdateService()),
         ChangeNotifierProxyProvider<StorageService, VoiceManager>(

@@ -55,6 +55,7 @@ class PseudoRemoteService extends LLMService {
   Future<void> start({
     required String executablePath,
     required String kcppsPath,
+    String? modelPath,
     int port = 5001,
   }) async {
     if (_isStarting) return;
@@ -71,6 +72,7 @@ class PseudoRemoteService extends LLMService {
       kcppsPath,
       '--port',
       port.toString(),
+      if (modelPath != null && modelPath.isNotEmpty) ...['--model', modelPath],
     ];
 
     try {

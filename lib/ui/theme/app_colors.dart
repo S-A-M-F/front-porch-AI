@@ -51,6 +51,20 @@ class AppColors {
   static const Color lightSurface = Color(0xFFE5E7EB);
 
   // ---------------------------------------------------------------------------
+  // Container surface for dropdowns, dialogs, and input fields
+  // ---------------------------------------------------------------------------
+
+  /// Dark container surface (slightly lighter than [card] for visual layering).
+  static const Color surfaceContainer = Color(0xFF374151);
+
+  /// Light container surface for the same purpose.
+  static const Color surfaceContainerLight = Color(0xFFE5E7EB);
+
+  /// Brightness-aware container surface.
+  static Color surfaceContainerOf(BuildContext context) =>
+      resolve(context, surfaceContainer, surfaceContainerLight);
+
+  // ---------------------------------------------------------------------------
   // Chat appearance defaults — light mode
   // ---------------------------------------------------------------------------
 

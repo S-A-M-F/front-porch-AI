@@ -185,10 +185,14 @@ class V2CardService {
             if (pos + 2 <= data.length) {
               pos += 2; // Skip compression flag and method
               // Skip language tag (null-terminated)
-              while (pos < data.length && data[pos] != 0) pos++;
+              while (pos < data.length && data[pos] != 0) {
+                pos++;
+              }
               pos++; // Skip null
               // Skip translated keyword (null-terminated)  
-              while (pos < data.length && data[pos] != 0) pos++;
+              while (pos < data.length && data[pos] != 0) {
+                pos++;
+              }
               pos++; // Skip null
               // Rest is the text
               if (pos < data.length) {

@@ -6385,12 +6385,9 @@ class _ExternalImageWidgetState extends State<_ExternalImageWidget> {
 class _SidebarSection extends StatefulWidget {
   final String title;
   final String content;
-  final bool initiallyExpanded;
-
   const _SidebarSection({
     required this.title,
     required this.content,
-    this.initiallyExpanded = false,
   });
 
   @override
@@ -6403,7 +6400,7 @@ class _SidebarSectionState extends State<_SidebarSection> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _expanded = false;
   }
 
   @override

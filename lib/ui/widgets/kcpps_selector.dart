@@ -1,10 +1,9 @@
-// Copyright (C) 2026 Front Porch AI
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 
 /// Scans [binDir] for .kcpps files and returns them sorted by filename.
@@ -24,12 +23,14 @@ List<File> scanKcppsPresets(Directory binDir) {
   }
 }
 
-/// A reusable .kcpps preset selector row.
+/// A reusable .kcpps preset selector row with model status indicator.
 ///
 /// Shows a full-path chip with a [X] close button when the active preset
 /// is outside the koboldcpp bin directory, or a [DropdownButton] of local
 /// presets otherwise. A Browse button opens a file picker.
-class KcppsSelector extends StatelessWidget {
+/// Below the picker, a status line indicates whether the preset has a valid
+/// model defined and the model file exists on disk.
+class KcppsSelector extends StatefulWidget {
   const KcppsSelector({
     super.key,
     required this.storage,
@@ -40,6 +41,7 @@ class KcppsSelector extends StatelessWidget {
     required this.onBrowsePicked,
     this.browseLabel,
     this.backgroundColor,
+    this.onModelStatusChanged,
   });
 
   final StorageService storage;
@@ -51,23 +53,116 @@ class KcppsSelector extends StatelessWidget {
   final String? browseLabel;
   final Color? backgroundColor;
 
+  /// Called when the "model defined + file exists" status changes for the
+  /// currently selected preset. [true] = valid model ready, [false] = otherwise.
+  final ValueChanged<bool>? onModelStatusChanged;
+
+  @override
+  State<KcppsSelector> createState() => _KcppsSelectorState();
+}
+
+class _KcppsSelectorState extends State<KcppsSelector> {
+  bool _lastValidModel = false;
+  String? _previousActivePath;
+
+  @override
+  void initState() {
+    super.initState();
+    _previousActivePath = widget.storage.activeKcppsPath;
+    _reportStatus();
+  }
+
+  @override
+  void didUpdateWidget(KcppsSelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final currentPath = widget.storage.activeKcppsPath;
+    if (oldWidget.localPresets != widget.localPresets ||
+        _previousActivePath != currentPath) {
+      _previousActivePath = currentPath;
+      _reportStatus();
+    }
+  }
+
+  /// Compute whether the active preset has a valid model and fire callback
+  /// if the value changed since last report.
+  void _reportStatus() {
+    final valid = widget.storage.kcppsHasModel && widget.storage.kcppsModelFileExists;
+    if (valid != _lastValidModel) {
+      _lastValidModel = valid;
+      widget.onModelStatusChanged?.call(valid);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final activePath = storage.activeKcppsPath;
-    final bgColor = backgroundColor ?? const Color(0xFF374151);
+    final activePath = widget.storage.activeKcppsPath;
+    final bgColor = widget.backgroundColor ?? AppColors.surfaceContainerOf(context);
     final isExternal = activePath != null &&
         activePath.isNotEmpty &&
-        !localPresets.any((f) => f.path == activePath);
+        !widget.localPresets.any((f) => f.path == activePath);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: isExternal
+                  ? _buildExternalChip(activePath, bgColor)
+                  : _buildDropdown(bgColor),
+            ),
+            const SizedBox(width: 8),
+            _buildBrowseButton(),
+          ],
+        ),
+        if (activePath != null && activePath.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          _buildModelStatus(),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildModelStatus() {
+    final hasModel = widget.storage.kcppsHasModel;
+    final fileExists = widget.storage.kcppsModelFileExists;
+
+    IconData icon;
+    Color color;
+    String text;
+
+    if (hasModel && fileExists) {
+      icon = Icons.check_circle;
+      color = Colors.greenAccent;
+      final parsed = _parseKcppsFile(widget.storage.activeKcppsPath);
+      final modelPath = parsed != null
+          ? (parsed['model_param'] is String && (parsed['model_param'] as String).isNotEmpty
+              ? parsed['model_param'] as String
+              : parsed['model'] as String? ?? '')
+          : '';
+      text = 'Model: ${p.basename(modelPath)}';
+    } else if (hasModel) {
+      icon = Icons.warning_amber_rounded;
+      color = Colors.orangeAccent;
+      text = 'Model file not found';
+    } else {
+      icon = Icons.remove_circle_outline;
+      color = Colors.white38;
+      text = 'No model defined in preset';
+    }
 
     return Row(
       children: [
-        Expanded(
-          child: isExternal
-              ? _buildExternalChip(activePath!, bgColor)
-              : _buildDropdown(bgColor),
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 11, color: color),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-        const SizedBox(width: 8),
-        _buildBrowseButton(),
       ],
     );
   }
@@ -96,7 +191,7 @@ class KcppsSelector extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           InkWell(
-            onTap: onExternalClear,
+            onTap: widget.onExternalClear,
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(2),
@@ -113,7 +208,7 @@ class KcppsSelector extends StatelessWidget {
   }
 
   Widget _buildDropdown(Color bgColor) {
-    final activePath = storage.activeKcppsPath;
+    final activePath = widget.storage.activeKcppsPath;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
@@ -123,11 +218,11 @@ class KcppsSelector extends StatelessWidget {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: activePath != null &&
-                  localPresets.any((f) => f.path == activePath)
+                  widget.localPresets.any((f) => f.path == activePath)
               ? activePath
               : null,
           isExpanded: true,
-          hint: Text(hint,
+          hint: Text(widget.hint,
               style: const TextStyle(fontSize: 13, color: Colors.white54)),
           dropdownColor: bgColor,
           style: const TextStyle(color: Colors.white, fontSize: 13),
@@ -138,7 +233,7 @@ class KcppsSelector extends StatelessWidget {
               child: Text('None (Use App Settings)',
                   style: TextStyle(fontSize: 13)),
             ),
-            ...localPresets.map((file) {
+            ...widget.localPresets.map((file) {
               return DropdownMenuItem<String>(
                 value: file.path,
                 child: Text(p.basename(file.path),
@@ -146,18 +241,18 @@ class KcppsSelector extends StatelessWidget {
               );
             }),
           ],
-          onChanged: onChanged,
+          onChanged: widget.onChanged,
         ),
       ),
     );
   }
 
   Widget _buildBrowseButton() {
-    if (browseLabel != null) {
+    if (widget.browseLabel != null) {
       return ElevatedButton.icon(
         onPressed: _onBrowse,
         icon: const Icon(Icons.folder_open, size: 16),
-        label: Text(browseLabel!),
+        label: Text(widget.browseLabel!),
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
         ),
@@ -168,7 +263,7 @@ class KcppsSelector extends StatelessWidget {
       icon: const Icon(Icons.folder_open, size: 20),
       tooltip: 'Browse',
       style: IconButton.styleFrom(
-        backgroundColor: const Color(0xFF374151),
+        backgroundColor: AppColors.surfaceContainerOf(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
@@ -181,8 +276,22 @@ class KcppsSelector extends StatelessWidget {
     );
     if (result != null && result.files.single.path != null) {
       final path = result.files.single.path!;
-      storage.setActiveKcppsPath(path);
-      onBrowsePicked(path);
+      widget.storage.setActiveKcppsPath(path);
+      widget.onBrowsePicked(path);
+    }
+  }
+
+  /// Parse a .kcpps JSON file (mirrors StorageService._parseKcppsFile).
+  static Map<String, dynamic>? _parseKcppsFile(String? kcppsPath) {
+    if (kcppsPath == null || kcppsPath.isEmpty) return null;
+    try {
+      final file = File(kcppsPath);
+      if (!file.existsSync()) return null;
+      return Map<String, dynamic>.from(
+        jsonDecode(file.readAsStringSync()),
+      );
+    } catch (_) {
+      return null;
     }
   }
 }

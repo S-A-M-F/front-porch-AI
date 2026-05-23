@@ -547,8 +547,12 @@ open -n "$destPath"
         .toList();
 
     // Normalize lengths for the numeric base
-    while (rBase.length < lBase.length) rBase.add(0);
-    while (lBase.length < rBase.length) lBase.add(0);
+    while (rBase.length < lBase.length) {
+      rBase.add(0);
+    }
+    while (lBase.length < rBase.length) {
+      lBase.add(0);
+    }
 
     // 1. Compare numeric base parts
     for (int i = 0; i < rBase.length; i++) {
@@ -560,10 +564,12 @@ open -n "$destPath"
     final rSuffix = rSplit.length > 1 ? rSplit[1] : '';
     final lSuffix = lSplit.length > 1 ? lSplit[1] : '';
 
-    if (rSuffix.isEmpty && lSuffix.isNotEmpty)
+    if (rSuffix.isEmpty && lSuffix.isNotEmpty) {
       return true; // Stable is newer than beta
-    if (rSuffix.isNotEmpty && lSuffix.isEmpty)
+    }
+    if (rSuffix.isNotEmpty && lSuffix.isEmpty) {
       return false; // Beta is older than stable
+    }
 
     // Both have suffixes, do a natural comparison
     return _compareAlphanumeric(rSuffix, lSuffix) > 0;

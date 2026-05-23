@@ -191,8 +191,12 @@ class StoryPipelineService extends ChangeNotifier {
     if (inString) repaired += '"';
 
     // Close open brackets and braces
-    for (int i = 0; i < openBrackets; i++) repaired += ']';
-    for (int i = 0; i < openBraces; i++) repaired += '}';
+    for (int i = 0; i < openBrackets; i++) {
+      repaired += ']';
+    }
+    for (int i = 0; i < openBraces; i++) {
+      repaired += '}';
+    }
 
     return repaired;
   }
