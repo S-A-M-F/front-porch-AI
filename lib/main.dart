@@ -148,7 +148,10 @@ void main(List<String> args) async {
           await windowManager.setSize(Size(windowWidth, windowHeight));
         }
         await windowManager.maximize();
-      } else if (windowX != null && windowY != null && windowWidth != null && windowHeight != null) {
+      } else if (windowX != null &&
+          windowY != null &&
+          windowWidth != null &&
+          windowHeight != null) {
         // Restore saved position + size
         await windowManager.setBounds(
           Rect.fromLTWH(windowX, windowY, windowWidth, windowHeight),
@@ -167,11 +170,23 @@ void main(List<String> args) async {
       providers: [
         Provider<AppDatabase>.value(value: db),
         Provider<bool>.value(value: needsMigration), // migration flag
-        ChangeNotifierProvider(create: (_) => AppState()),
         ChangeNotifierProvider(create: (_) => StorageService()),
+        ChangeNotifierProvider(
+          create: (ctx) {
+            final storage = Provider.of<StorageService>(ctx, listen: false);
+            final app = AppState();
+            if (!storage.isDark) {
+              app.toggleTheme(); // start in light mode if persisted
+            }
+            return app;
+          },
+        ),
         ChangeNotifierProxyProvider<StorageService, DownloadManager>(
           create: (context) => DownloadManager(
-            targetDir: Provider.of<StorageService>(context, listen: false).modelsDir.path,
+            targetDir: Provider.of<StorageService>(
+              context,
+              listen: false,
+            ).modelsDir.path,
           ),
           update: (context, storage, previous) =>
               previous ?? DownloadManager(targetDir: storage.modelsDir.path),
@@ -230,7 +245,11 @@ void main(List<String> args) async {
           update: (context, storage, previous) =>
               previous ?? BackendManager(storage),
         ),
-        ChangeNotifierProxyProvider2<StorageService, DownloadManager, ModelManager>(
+        ChangeNotifierProxyProvider2<
+          StorageService,
+          DownloadManager,
+          ModelManager
+        >(
           create: (context) => ModelManager(
             Provider.of<StorageService>(context, listen: false),
             Provider.of<DownloadManager>(context, listen: false),
@@ -253,8 +272,10 @@ void main(List<String> args) async {
             Provider.of<PseudoRemoteService>(context, listen: false),
             Provider.of<StorageService>(context, listen: false),
           ),
-          update: (context, kobold, openRouter, pseudoRemote, storage, previous) =>
-              previous ?? LLMProvider(kobold, openRouter, pseudoRemote, storage),
+          update:
+              (context, kobold, openRouter, pseudoRemote, storage, previous) =>
+                  previous ??
+                  LLMProvider(kobold, openRouter, pseudoRemote, storage),
         ),
         ChangeNotifierProxyProvider4<
           KoboldService,
@@ -325,9 +346,13 @@ void main(List<String> args) async {
             return chatService;
           },
         ),
-        ChangeNotifierProxyProvider<StorageService, ExpressionClassifierService>(
-          create: (context) =>
-              ExpressionClassifierService(Provider.of<StorageService>(context, listen: false)),
+        ChangeNotifierProxyProvider<
+          StorageService,
+          ExpressionClassifierService
+        >(
+          create: (context) => ExpressionClassifierService(
+            Provider.of<StorageService>(context, listen: false),
+          ),
           update: (context, storage, previous) =>
               previous ?? ExpressionClassifierService(storage),
         ),
@@ -675,8 +700,14 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       final folderService = Provider.of<FolderService>(context, listen: false);
-      final personaService = Provider.of<UserPersonaService>(context, listen: false);
-      final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+      final personaService = Provider.of<UserPersonaService>(
+        context,
+        listen: false,
+      );
+      final groupRepo = Provider.of<GroupChatRepository>(
+        context,
+        listen: false,
+      );
       final worldRepo = Provider.of<WorldRepository>(context, listen: false);
 
       charRepo.updateDatabase(newDb);
@@ -732,7 +763,10 @@ class _MyAppState extends State<MyApp> with WindowListener {
       debugPrint('AG_DEBUG: Error stopping Kobold on window close: $e');
     }
     try {
-      final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+      final pseudoRemote = Provider.of<PseudoRemoteService>(
+        context,
+        listen: false,
+      );
       if (pseudoRemote.isRunning) {
         await pseudoRemote.stop();
       }
@@ -1714,8 +1748,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
     final storage = Provider.of<StorageService>(context, listen: false);
     await storage.initialized;
-    if (!storage.cloudSyncEnabled || storage.cloudSyncProvider == 'none')
+    if (!storage.cloudSyncEnabled || storage.cloudSyncProvider == 'none') {
       return;
+    }
 
     final syncService = Provider.of<CloudSyncService>(context, listen: false);
 

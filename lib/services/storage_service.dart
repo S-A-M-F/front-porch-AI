@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/app_version.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import '../models/character_card.dart';
 
 class StorageService extends ChangeNotifier {
@@ -96,6 +97,17 @@ class StorageService extends ChangeNotifier {
   // Global chat font family
   String _globalChatFontFamily = '';
 
+  // Theme mode (persisted; drives which set of the 5 chat colors is active)
+  bool _isDark = true;
+
+  // Light-mode chat color defaults (populated from AppColors on first load if no prefs)
+  Color _lightUserBubbleColor = AppColors.userBubbleLight;
+  Color _lightUserTextColor = AppColors.userTextLight;
+  Color _lightAiBubbleColor = AppColors.aiBubbleLight;
+  Color _lightAiTextColor = AppColors.aiTextLight;
+  Color _lightDialogueColor = AppColors.dialogueLight;
+  Color _lightActionColor = AppColors.actionLight;
+
   double _repeatPenalty = 1.1;
   int _repeatPenaltyTokens = 64;
   bool _dynamicTempEnabled = false;
@@ -110,15 +122,18 @@ class StorageService extends ChangeNotifier {
   // ── Advanced KoboldCPP launch flags ──────────────────────────────────────
   // Defaults are chosen to match KoboldCPP's own Quick Launch GUI behaviour
   // and to give best out-of-box speed.
-  bool _flashAttentionEnabled = true;  // ~30% speed boost on RTX/Metal; off for ROCm
-  bool _mlockEnabled          = !Platform.isLinux; // prevent VRAM paging (needs root on Linux)
-  int  _blasBatchSize         = 512;   // tokens processed in parallel during prefill
-  int  _gpuId                 = 0;     // explicit GPU index — prevents iGPU routing on multi-GPU
+  bool _flashAttentionEnabled =
+      true; // ~30% speed boost on RTX/Metal; off for ROCm
+  bool _mlockEnabled =
+      !Platform.isLinux; // prevent VRAM paging (needs root on Linux)
+  int _blasBatchSize = 512; // tokens processed in parallel during prefill
+  int _gpuId = 0; // explicit GPU index — prevents iGPU routing on multi-GPU
   int _maxLength = 1024;
   int _minLength = 0;
   bool _autostartBackend = true;
   String? _lastUsedModelPath;
   String? _activeKcppsPath;
+
   /// True when the active .kcpps file contains a non-empty "model" key.
   /// KoboldCPP will load that model automatically, so the Flutter model picker
   /// should be disabled. False when no preset is active OR the preset has no
@@ -181,7 +196,8 @@ class StorageService extends ChangeNotifier {
   bool _ttsNarrateQuotedOnly = false;
   bool _ttsIgnoreAsterisks = false;
   int _ttsConcurrency = Platform.numberOfProcessors.clamp(1, 8);
-  int _ttsAudioLookahead = 6; // How many future chunks the OrderedAudioCollector will buffer
+  int _ttsAudioLookahead =
+      6; // How many future chunks the OrderedAudioCollector will buffer
   double _directorDelay =
       15.0; // seconds between auto-chat responses in Director Mode
 
@@ -223,10 +239,10 @@ class StorageService extends ChangeNotifier {
   String _imageGenPromptParadigm = 'natural'; // 'natural', 'tags'
   String _imageGenLora = ''; // selected LoRA filename (A1111/Forge/SDNext only)
   double _imageGenLoraWeight = 0.8; // LoRA strength 0.0–1.0
-  int    _imageGenSteps = 20; // sampling steps (5-50)
+  int _imageGenSteps = 20; // sampling steps (5-50)
   double _imageGenCfgScale = 7.0; // CFG scale (1.0-20.0)
   String _imageGenSampler = 'Euler a'; // sampler name
-  int    _imageGenSeed = -1; // -1 = random
+  int _imageGenSeed = -1; // -1 = random
 
   // Web server settings
   bool _webServerEnabled = false;
@@ -280,12 +296,19 @@ class StorageService extends ChangeNotifier {
   double get minP => _minP;
   double get temperature => _temperature;
   double get bubbleOpacity => _bubbleOpacity;
-  Color get globalUserBubbleColor => _globalUserBubbleColor;
-  Color get globalUserTextColor => _globalUserTextColor;
-  Color get globalAiBubbleColor => _globalAiBubbleColor;
-  Color get globalAiTextColor => _globalAiTextColor;
-  Color get globalDialogueColor => _globalDialogueColor;
-  Color get globalActionColor => _globalActionColor;
+  Color get globalUserBubbleColor =>
+      _isDark ? _globalUserBubbleColor : _lightUserBubbleColor;
+  Color get globalUserTextColor =>
+      _isDark ? _globalUserTextColor : _lightUserTextColor;
+  Color get globalAiBubbleColor =>
+      _isDark ? _globalAiBubbleColor : _lightAiBubbleColor;
+  Color get globalAiTextColor =>
+      _isDark ? _globalAiTextColor : _lightAiTextColor;
+  Color get globalDialogueColor =>
+      _isDark ? _globalDialogueColor : _lightDialogueColor;
+  Color get globalActionColor =>
+      _isDark ? _globalActionColor : _lightActionColor;
+  bool get isDark => _isDark;
   String get globalChatFontFamily => _globalChatFontFamily;
   double get repeatPenalty => _repeatPenalty;
   int get repeatPenaltyTokens => _repeatPenaltyTokens;
@@ -298,14 +321,15 @@ class StorageService extends ChangeNotifier {
   bool? get useMetal => _useMetal;
   bool? get useRocm => _useRocm;
   bool get flashAttentionEnabled => _flashAttentionEnabled;
-  bool get mlockEnabled          => _mlockEnabled;
-  int  get blasBatchSize         => _blasBatchSize;
-  int  get gpuId                 => _gpuId;
+  bool get mlockEnabled => _mlockEnabled;
+  int get blasBatchSize => _blasBatchSize;
+  int get gpuId => _gpuId;
   int get maxLength => _maxLength;
   int get minLength => _minLength;
   bool get autostartBackend => _autostartBackend;
   String? get lastUsedModelPath => _lastUsedModelPath;
   String? get activeKcppsPath => _activeKcppsPath;
+
   /// Whether the active .kcpps preset specifies its own model path.
   /// When true the Flutter model picker should be greyed out.
   bool get kcppsHasModel => _kcppsHasModel;
@@ -372,10 +396,10 @@ class StorageService extends ChangeNotifier {
   String get imageGenPromptParadigm => _imageGenPromptParadigm;
   String get imageGenLora => _imageGenLora;
   double get imageGenLoraWeight => _imageGenLoraWeight;
-  int    get imageGenSteps => _imageGenSteps;
+  int get imageGenSteps => _imageGenSteps;
   double get imageGenCfgScale => _imageGenCfgScale;
   String get imageGenSampler => _imageGenSampler;
-  int    get imageGenSeed => _imageGenSeed;
+  int get imageGenSeed => _imageGenSeed;
 
   bool get webServerEnabled => _webServerEnabled;
   int get webServerPort => _webServerPort;
@@ -446,13 +470,55 @@ class StorageService extends ChangeNotifier {
     _minP = _prefs?.getDouble(_k('min_p')) ?? _minP;
     _temperature = _prefs?.getDouble(_k('temperature')) ?? _temperature;
     _bubbleOpacity = _prefs?.getDouble(_k('bubble_opacity')) ?? _bubbleOpacity;
-    _globalUserBubbleColor = Color(_prefs?.getInt(_k('global_user_bubble_color')) ?? _globalUserBubbleColor.value);
-    _globalUserTextColor = Color(_prefs?.getInt(_k('global_user_text_color')) ?? _globalUserTextColor.value);
-    _globalAiBubbleColor = Color(_prefs?.getInt(_k('global_ai_bubble_color')) ?? _globalAiBubbleColor.value);
-    _globalAiTextColor = Color(_prefs?.getInt(_k('global_ai_text_color')) ?? _globalAiTextColor.value);
-    _globalDialogueColor = Color(_prefs?.getInt(_k('global_dialogue_color')) ?? _globalDialogueColor.value);
-    _globalActionColor = Color(_prefs?.getInt(_k('global_action_color')) ?? _globalActionColor.value);
-    _globalChatFontFamily = _prefs?.getString(_k('global_chat_font_family')) ?? _globalChatFontFamily;
+    _globalUserBubbleColor = Color(
+      _prefs?.getInt(_k('global_user_bubble_color')) ??
+          _globalUserBubbleColor.value,
+    );
+    _globalUserTextColor = Color(
+      _prefs?.getInt(_k('global_user_text_color')) ??
+          _globalUserTextColor.value,
+    );
+    _globalAiBubbleColor = Color(
+      _prefs?.getInt(_k('global_ai_bubble_color')) ??
+          _globalAiBubbleColor.value,
+    );
+    _globalAiTextColor = Color(
+      _prefs?.getInt(_k('global_ai_text_color')) ?? _globalAiTextColor.value,
+    );
+    _globalDialogueColor = Color(
+      _prefs?.getInt(_k('global_dialogue_color')) ?? _globalDialogueColor.value,
+    );
+    _globalActionColor = Color(
+      _prefs?.getInt(_k('global_action_color')) ?? _globalActionColor.value,
+    );
+    _globalChatFontFamily =
+        _prefs?.getString(_k('global_chat_font_family')) ??
+        _globalChatFontFamily;
+
+    // Theme + light-mode color set (fall back to AppColors light defaults if never saved)
+    _isDark = _prefs?.getBool(_k('dark_mode')) ?? true;
+    _lightUserBubbleColor = Color(
+      _prefs?.getInt(_k('light_user_bubble_color')) ??
+          AppColors.userBubbleLight.value,
+    );
+    _lightUserTextColor = Color(
+      _prefs?.getInt(_k('light_user_text_color')) ??
+          AppColors.userTextLight.value,
+    );
+    _lightAiBubbleColor = Color(
+      _prefs?.getInt(_k('light_ai_bubble_color')) ??
+          AppColors.aiBubbleLight.value,
+    );
+    _lightAiTextColor = Color(
+      _prefs?.getInt(_k('light_ai_text_color')) ?? AppColors.aiTextLight.value,
+    );
+    _lightDialogueColor = Color(
+      _prefs?.getInt(_k('light_dialogue_color')) ??
+          AppColors.dialogueLight.value,
+    );
+    _lightActionColor = Color(
+      _prefs?.getInt(_k('light_action_color')) ?? AppColors.actionLight.value,
+    );
     _repeatPenalty = _prefs?.getDouble(_k('repeat_penalty')) ?? _repeatPenalty;
     _repeatPenaltyTokens =
         _prefs?.getInt(_k('repeat_penalty_tokens')) ?? _repeatPenaltyTokens;
@@ -461,17 +527,20 @@ class StorageService extends ChangeNotifier {
     _dynamicTempRange =
         _prefs?.getDouble(_k('dynamic_temp_range')) ?? _dynamicTempRange;
     _xtcThreshold = _prefs?.getDouble(_k('xtc_threshold')) ?? _xtcThreshold;
-    _xtcProbability = _prefs?.getDouble(_k('xtc_probability')) ?? _xtcProbability;
+    _xtcProbability =
+        _prefs?.getDouble(_k('xtc_probability')) ?? _xtcProbability;
     _useCublas = _prefs?.getBool(_k('use_cublas'));
     _useVulkan = _prefs?.getBool(_k('use_vulkan'));
     _useMetal = _prefs?.getBool(_k('use_metal'));
     _useRocm = _prefs?.getBool(_k('use_rocm'));
-    _flashAttentionEnabled = _prefs?.getBool(_k('flash_attention_enabled')) ?? _flashAttentionEnabled;
-    _mlockEnabled          = _prefs?.getBool(_k('mlock_enabled'))           ?? _mlockEnabled;
+    _flashAttentionEnabled =
+        _prefs?.getBool(_k('flash_attention_enabled')) ??
+        _flashAttentionEnabled;
+    _mlockEnabled = _prefs?.getBool(_k('mlock_enabled')) ?? _mlockEnabled;
     // Cleanup orphaned prefs
     await _prefs?.remove(_k('context_shift_enabled'));
-    _blasBatchSize         = _prefs?.getInt(_k('blas_batch_size'))          ?? _blasBatchSize;
-    _gpuId                 = _prefs?.getInt(_k('gpu_id'))                   ?? _gpuId;
+    _blasBatchSize = _prefs?.getInt(_k('blas_batch_size')) ?? _blasBatchSize;
+    _gpuId = _prefs?.getInt(_k('gpu_id')) ?? _gpuId;
     _maxLength = _prefs?.getInt(_k('max_length')) ?? _maxLength;
     _minLength = _prefs?.getInt(_k('min_length')) ?? _minLength;
     _autostartBackend =
@@ -481,21 +550,27 @@ class StorageService extends ChangeNotifier {
     // Restore the kcppsHasModel flag and context size from the persisted preset path so the UI
     // is correct immediately after a hot restart or app relaunch.
     final parsed = _parseKcppsFile(_activeKcppsPath);
-    _kcppsHasModel = parsed != null && parsed['model'] is String && (parsed['model'] as String).trim().isNotEmpty;
+    _kcppsHasModel =
+        parsed != null &&
+        parsed['model'] is String &&
+        (parsed['model'] as String).trim().isNotEmpty;
     if (parsed != null && parsed['contextsize'] is int) {
       _contextSize = parsed['contextsize'] as int;
     }
     final presetMapJson = _prefs?.getString(_k('model_preset_map'));
     if (presetMapJson != null) {
       try {
-        _modelPresetMap = Map<String, String>.from(jsonDecode(presetMapJson) as Map);
+        _modelPresetMap = Map<String, String>.from(
+          jsonDecode(presetMapJson) as Map,
+        );
       } catch (_) {
         _modelPresetMap = {};
       }
     }
     _gpuLayers = _prefs?.getInt(_k('gpu_layers')) ?? _gpuLayers;
     _contextSize = _prefs?.getInt(_k('context_size')) ?? _contextSize;
-    _stopSequences = _prefs?.getStringList(_k('stop_sequences')) ?? _stopSequences;
+    _stopSequences =
+        _prefs?.getStringList(_k('stop_sequences')) ?? _stopSequences;
     // Ensure essential stop sequences are always present (migration for existing users)
     const essentialStops = ['</END>', '[END]', '<|end|>', '<START>'];
     bool added = false;
@@ -520,7 +595,8 @@ class StorageService extends ChangeNotifier {
         _customBackgrounds = [];
       }
     }
-    _displayBufferEnabled = _prefs?.getBool(_k('display_buffer_enabled')) ?? true;
+    _displayBufferEnabled =
+        _prefs?.getBool(_k('display_buffer_enabled')) ?? true;
     _targetDisplayTps = _prefs?.getDouble(_k('target_display_tps')) ?? 30.0;
     _bufferDurationSeconds =
         _prefs?.getDouble(_k('buffer_duration_seconds')) ?? 3.0;
@@ -529,11 +605,13 @@ class StorageService extends ChangeNotifier {
     _backendType = _prefs?.getString(_k('backend_type')) ?? 'kobold';
     _remoteApiKey = _prefs?.getString(_k('remote_api_key')) ?? '';
     _remoteApiUrl =
-        _prefs?.getString(_k('remote_api_url')) ?? 'https://openrouter.ai/api/v1';
+        _prefs?.getString(_k('remote_api_url')) ??
+        'https://openrouter.ai/api/v1';
     _remoteModelName = _prefs?.getString(_k('remote_model_name')) ?? '';
     _reasoningEnabled = _prefs?.getBool(_k('reasoning_enabled')) ?? false;
     _reasoningEffort = _prefs?.getString(_k('reasoning_effort')) ?? 'medium';
-    _koboldThinkingModel = _prefs?.getBool(_k('kobold_thinking_model')) ?? false;
+    _koboldThinkingModel =
+        _prefs?.getBool(_k('kobold_thinking_model')) ?? false;
 
     // TTS settings
     _ttsEnabled = _prefs?.getBool(_k('tts_enabled')) ?? false;
@@ -542,20 +620,24 @@ class StorageService extends ChangeNotifier {
     _ttsSpeechRate = _prefs?.getDouble(_k('tts_speech_rate')) ?? 1.0;
     _ttsAutoPlay = _prefs?.getBool(_k('tts_auto_play')) ?? false;
     _openaiTtsApiKey = _prefs?.getString(_k('openai_tts_api_key')) ?? '';
-    _ttsConcurrency = (_prefs?.getInt(_k('tts_concurrency')) ??
-        Platform.numberOfProcessors).clamp(1, 8);
+    _ttsConcurrency =
+        (_prefs?.getInt(_k('tts_concurrency')) ?? Platform.numberOfProcessors)
+            .clamp(1, 8);
     _ttsAudioLookahead = _prefs?.getInt(_k('tts_audio_lookahead')) ?? 6;
     _kvQuantizationLevel = _prefs?.getInt(_k('kv_quantization_level')) ?? 0;
     _openaiTtsModel = _prefs?.getString(_k('openai_tts_model')) ?? 'tts-1';
     _openaiTtsBaseUrl =
-        _prefs?.getString(_k('openai_tts_base_url')) ?? 'https://api.openai.com/v1';
+        _prefs?.getString(_k('openai_tts_base_url')) ??
+        'https://api.openai.com/v1';
     _elevenlabsApiKey = _prefs?.getString(_k('elevenlabs_api_key')) ?? '';
     _elevenlabsModel =
         _prefs?.getString(_k('elevenlabs_model')) ?? 'eleven_flash_v2_5';
     _elevenlabsStability = _prefs?.getDouble(_k('elevenlabs_stability')) ?? 0.5;
-    _elevenlabsSimilarity = _prefs?.getDouble(_k('elevenlabs_similarity')) ?? 0.75;
+    _elevenlabsSimilarity =
+        _prefs?.getDouble(_k('elevenlabs_similarity')) ?? 0.75;
     _elevenlabsStyle = _prefs?.getDouble(_k('elevenlabs_style')) ?? 0.0;
-    _ttsNarrateQuotedOnly = _prefs?.getBool(_k('tts_narrate_quoted_only')) ?? false;
+    _ttsNarrateQuotedOnly =
+        _prefs?.getBool(_k('tts_narrate_quoted_only')) ?? false;
     _ttsIgnoreAsterisks = _prefs?.getBool(_k('tts_ignore_asterisks')) ?? false;
     _directorDelay = _prefs?.getDouble(_k('director_delay')) ?? 15.0;
 
@@ -591,7 +673,8 @@ class StorageService extends ChangeNotifier {
     _imageGenNegativePrompt =
         _prefs?.getString(_k('image_gen_negative_prompt')) ??
         'blurry, low quality, watermark, text';
-    _imageGenStyle = _prefs?.getString(_k('image_gen_style')) ?? 'photorealistic';
+    _imageGenStyle =
+        _prefs?.getString(_k('image_gen_style')) ?? 'photorealistic';
     _imageGenPromptParadigm =
         _prefs?.getString(_k('image_gen_prompt_paradigm')) ?? 'natural';
     _imageGenLora = _prefs?.getString(_k('image_gen_lora')) ?? '';
@@ -630,9 +713,11 @@ class StorageService extends ChangeNotifier {
     _ragEnabled = _prefs?.getBool(_k('rag_enabled')) ?? false;
     _ragRetrievalCount = _prefs?.getInt(_k('rag_retrieval_count')) ?? 5;
     _ragWindowSize = _prefs?.getInt(_k('rag_window_size')) ?? 5;
-    _ragEmbeddingSource = _prefs?.getString(_k('rag_embedding_source')) ?? 'auto';
+    _ragEmbeddingSource =
+        _prefs?.getString(_k('rag_embedding_source')) ?? 'auto';
     _ragEmbeddingModel =
-        _prefs?.getString(_k('rag_embedding_model')) ?? 'text-embedding-3-small';
+        _prefs?.getString(_k('rag_embedding_model')) ??
+        'text-embedding-3-small';
 
     // Auto-persona settings
     _autoPersonaEnabled = _prefs?.getBool(_k('auto_persona_enabled')) ?? false;
@@ -645,8 +730,10 @@ class StorageService extends ChangeNotifier {
 
     // Realism Engine global defaults
     _realismDefault = _prefs?.getBool(_k('realism_default')) ?? false;
-    _nsfwCooldownDefault = _prefs?.getBool(_k('nsfw_cooldown_default')) ?? false;
-    _passageOfTimeDefault = _prefs?.getBool(_k('passage_of_time_default')) ?? true;
+    _nsfwCooldownDefault =
+        _prefs?.getBool(_k('nsfw_cooldown_default')) ?? false;
+    _passageOfTimeDefault =
+        _prefs?.getBool(_k('passage_of_time_default')) ?? true;
 
     // Realism Engine performance settings
     _realismOneShotEval = _prefs?.getBool(_k('realism_one_shot_eval')) ?? false;
@@ -657,7 +744,8 @@ class StorageService extends ChangeNotifier {
         _prefs?.getString(_k('expression_classification_mode')) ?? 'llm';
     _expressionDisplayMode =
         _prefs?.getString(_k('expression_display_mode')) ?? 'sidebar';
-    _expressionRerollSame = _prefs?.getBool(_k('expression_reroll_same')) ?? false;
+    _expressionRerollSame =
+        _prefs?.getBool(_k('expression_reroll_same')) ?? false;
     _expressionFallback =
         _prefs?.getString(_k('expression_fallback')) ?? 'neutral';
 
@@ -917,7 +1005,10 @@ class StorageService extends ChangeNotifier {
     _activeKcppsPath = value;
     // Parse synchronously so _kcppsHasModel and _contextSize are accurate in the same notifyListeners call.
     final parsed = _parseKcppsFile(value);
-    _kcppsHasModel = parsed != null && parsed['model'] is String && (parsed['model'] as String).trim().isNotEmpty;
+    _kcppsHasModel =
+        parsed != null &&
+        parsed['model'] is String &&
+        (parsed['model'] as String).trim().isNotEmpty;
     // Update context size from preset if present
     if (parsed != null && parsed['contextsize'] is int) {
       _contextSize = parsed['contextsize'] as int;
@@ -950,7 +1041,10 @@ class StorageService extends ChangeNotifier {
     } else {
       _modelPresetMap.remove(modelPath);
     }
-    await _prefs?.setString(_k('model_preset_map'), jsonEncode(_modelPresetMap));
+    await _prefs?.setString(
+      _k('model_preset_map'),
+      jsonEncode(_modelPresetMap),
+    );
     notifyListeners();
   }
 
@@ -999,7 +1093,11 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addCustomBackground(String id, String name, String filePath) async {
+  Future<void> addCustomBackground(
+    String id,
+    String name,
+    String filePath,
+  ) async {
     _customBackgrounds.add({'id': id, 'name': name, 'filePath': filePath});
     await _persistCustomBackgrounds();
     notifyListeners();
@@ -1016,7 +1114,10 @@ class StorageService extends ChangeNotifier {
   }
 
   Future<void> _persistCustomBackgrounds() async {
-    await _prefs?.setString(_k('custom_backgrounds'), jsonEncode(_customBackgrounds));
+    await _prefs?.setString(
+      _k('custom_backgrounds'),
+      jsonEncode(_customBackgrounds),
+    );
   }
 
   Future<void> setDisplayBufferEnabled(bool value) async {
@@ -1520,38 +1621,68 @@ class StorageService extends ChangeNotifier {
 
   // Global chat color and font setters
   Future<void> setGlobalUserBubbleColor(Color value) async {
-    _globalUserBubbleColor = value;
-    await _prefs?.setInt(_k('global_user_bubble_color'), value.value);
+    if (_isDark) {
+      _globalUserBubbleColor = value;
+      await _prefs?.setInt(_k('global_user_bubble_color'), value.value);
+    } else {
+      _lightUserBubbleColor = value;
+      await _prefs?.setInt(_k('light_user_bubble_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalUserTextColor(Color value) async {
-    _globalUserTextColor = value;
-    await _prefs?.setInt(_k('global_user_text_color'), value.value);
+    if (_isDark) {
+      _globalUserTextColor = value;
+      await _prefs?.setInt(_k('global_user_text_color'), value.value);
+    } else {
+      _lightUserTextColor = value;
+      await _prefs?.setInt(_k('light_user_text_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalAiBubbleColor(Color value) async {
-    _globalAiBubbleColor = value;
-    await _prefs?.setInt(_k('global_ai_bubble_color'), value.value);
+    if (_isDark) {
+      _globalAiBubbleColor = value;
+      await _prefs?.setInt(_k('global_ai_bubble_color'), value.value);
+    } else {
+      _lightAiBubbleColor = value;
+      await _prefs?.setInt(_k('light_ai_bubble_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalAiTextColor(Color value) async {
-    _globalAiTextColor = value;
-    await _prefs?.setInt(_k('global_ai_text_color'), value.value);
+    if (_isDark) {
+      _globalAiTextColor = value;
+      await _prefs?.setInt(_k('global_ai_text_color'), value.value);
+    } else {
+      _lightAiTextColor = value;
+      await _prefs?.setInt(_k('light_ai_text_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalDialogueColor(Color value) async {
-    _globalDialogueColor = value;
-    await _prefs?.setInt(_k('global_dialogue_color'), value.value);
+    if (_isDark) {
+      _globalDialogueColor = value;
+      await _prefs?.setInt(_k('global_dialogue_color'), value.value);
+    } else {
+      _lightDialogueColor = value;
+      await _prefs?.setInt(_k('light_dialogue_color'), value.value);
+    }
     notifyListeners();
   }
 
   Future<void> setGlobalActionColor(Color value) async {
-    _globalActionColor = value;
-    await _prefs?.setInt(_k('global_action_color'), value.value);
+    if (_isDark) {
+      _globalActionColor = value;
+      await _prefs?.setInt(_k('global_action_color'), value.value);
+    } else {
+      _lightActionColor = value;
+      await _prefs?.setInt(_k('light_action_color'), value.value);
+    }
     notifyListeners();
   }
 
@@ -1561,39 +1692,53 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setIsDark(bool value) async {
+    if (_isDark == value) return;
+    _isDark = value;
+    await _prefs?.setBool(_k('dark_mode'), value);
+    notifyListeners();
+  }
+
   /// Get effective user bubble color (per-character overrides global)
   Color getUserBubbleColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.userBubbleColor ?? _globalUserBubbleColor;
+    final fallback = _isDark ? _globalUserBubbleColor : _lightUserBubbleColor;
+    return character?.frontPorchExtensions?.userBubbleColor ?? fallback;
   }
 
   /// Get effective user text color (per-character overrides global)
   Color getUserTextColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.userTextColor ?? _globalUserTextColor;
+    final fallback = _isDark ? _globalUserTextColor : _lightUserTextColor;
+    return character?.frontPorchExtensions?.userTextColor ?? fallback;
   }
 
   /// Get effective AI bubble color (per-character overrides global)
   Color getAiBubbleColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.aiBubbleColor ?? _globalAiBubbleColor;
+    final fallback = _isDark ? _globalAiBubbleColor : _lightAiBubbleColor;
+    return character?.frontPorchExtensions?.aiBubbleColor ?? fallback;
   }
 
   /// Get effective AI text color (per-character overrides global)
   Color getAiTextColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.aiTextColor ?? _globalAiTextColor;
+    final fallback = _isDark ? _globalAiTextColor : _lightAiTextColor;
+    return character?.frontPorchExtensions?.aiTextColor ?? fallback;
   }
 
   /// Get effective dialogue color (per-character overrides global)
   Color getDialogueColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.dialogueColor ?? _globalDialogueColor;
+    final fallback = _isDark ? _globalDialogueColor : _lightDialogueColor;
+    return character?.frontPorchExtensions?.dialogueColor ?? fallback;
   }
 
   /// Get effective action color (per-character overrides global)
   Color getActionColor(CharacterCard? character) {
-    return character?.frontPorchExtensions?.actionColor ?? _globalActionColor;
+    final fallback = _isDark ? _globalActionColor : _lightActionColor;
+    return character?.frontPorchExtensions?.actionColor ?? fallback;
   }
 
   /// Get effective chat font family (per-character overrides global)
   String getChatFontFamily(CharacterCard? character) {
-    return character?.frontPorchExtensions?.chatFontFamily ?? _globalChatFontFamily;
+    return character?.frontPorchExtensions?.chatFontFamily ??
+        _globalChatFontFamily;
   }
 
   // Expression Images settings

@@ -906,9 +906,18 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               Text('Dark Mode', style: theme.textTheme.titleMedium),
               Switch(
-                value: Provider.of<AppState>(context).darkMode,
-                onChanged: (_) =>
-                    Provider.of<AppState>(context, listen: false).toggleTheme(),
+                value: Provider.of<StorageService>(context).isDark,
+                onChanged: (v) {
+                  Provider.of<StorageService>(
+                    context,
+                    listen: false,
+                  ).setIsDark(v);
+                  // Also notify AppState so the root MaterialApp Consumer rebuilds the ThemeData immediately
+                  try {
+                    final app = Provider.of<AppState>(context, listen: false);
+                    if (app.darkMode != v) app.toggleTheme();
+                  } catch (_) {}
+                },
               ),
             ],
           ),
@@ -2223,6 +2232,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final backendManager = Provider.of<BackendManager>(context);
     final koboldService = Provider.of<KoboldService>(context);
     final llmProvider = Provider.of<LLMProvider>(context);
+    final pseudoService = llmProvider.pseudoRemoteService;
     final theme = Theme.of(context);
 
     // Auto-select first model if none selected and models exist
@@ -2752,10 +2762,16 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
 
-          // ── Local KoboldCPP sections (only when local mode and not Intel Mac) ──
-          if (llmProvider.isLocal && !backendManager.isIntelMac) ...[
+          // ── Managed Backend sections (Kobold native or Pseudo-Remote; hidden on Intel Mac) ──
+          // Both managed backends share the same exe + .kcpps configuration UI.
+          if (llmProvider.hasManagedProcess && !backendManager.isIntelMac) ...[
             const SizedBox(height: 24),
-            _buildSectionHeader('Koboldcpp Backend', context),
+            _buildSectionHeader(
+              llmProvider.activeBackend == BackendType.pseudoRemote
+                  ? 'Pseudo-Remote (KoboldCPP via OpenAI compat)'
+                  : 'Koboldcpp Backend',
+              context,
+            ),
             // ... (Existing Backend Logic adapted) ...
             const SizedBox(height: 16),
             Column(
@@ -2923,12 +2939,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       );
                     }).toList(),
                     onChanged: (val) async {
-                      final koboldService = Provider.of<KoboldService>(
-                        context,
-                        listen: false,
-                      );
-                      if (koboldService.isRunning) {
-                        await koboldService.stopKobold();
+                      if (llmProvider.hasAnyManagedProcessRunning) {
+                        await llmProvider.stopAllManagedProcesses();
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Backend stopped to switch models.'),
@@ -3122,15 +3134,53 @@ class _SettingsPageState extends State<SettingsPage> {
               child: ElevatedButton.icon(
                 onPressed: backendManager.backendPath == null
                     ? null
-                    : () => _toggleKobold(context),
+                    : () {
+                        final isPseudo =
+                            llmProvider.activeBackend ==
+                            BackendType.pseudoRemote;
+                        if (isPseudo) {
+                          if (pseudoService.isRunning) {
+                            pseudoService.stop();
+                          } else {
+                            final kcpps = storageService.activeKcppsPath;
+                            if (kcpps == null || kcpps.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Select a .kcpps preset first (in Model & Backend tab).',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+                            llmProvider.startActiveManagedProcess(
+                              executablePath: backendManager.backendPath!,
+                              kcppsPath: kcpps,
+                            );
+                          }
+                        } else {
+                          _toggleKobold(context);
+                        }
+                      },
                 icon: Icon(
-                  koboldService.isRunning ? Icons.stop : Icons.play_arrow,
+                  (llmProvider.activeBackend == BackendType.pseudoRemote
+                          ? pseudoService.isRunning
+                          : koboldService.isRunning)
+                      ? Icons.stop
+                      : Icons.play_arrow,
                 ),
                 label: Text(
-                  koboldService.isRunning ? 'Stop Backend' : 'Start Backend',
+                  (llmProvider.activeBackend == BackendType.pseudoRemote
+                          ? pseudoService.isRunning
+                          : koboldService.isRunning)
+                      ? 'Stop Backend'
+                      : 'Start Backend',
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: koboldService.isRunning
+                  backgroundColor:
+                      (llmProvider.activeBackend == BackendType.pseudoRemote
+                          ? pseudoService.isRunning
+                          : koboldService.isRunning)
                       ? Colors.red.withValues(alpha: 0.8)
                       : Colors.green.withValues(alpha: 0.8),
                   foregroundColor: Colors.white,
@@ -3141,8 +3191,12 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 24),
             _buildSectionHeader('Process Logs', context),
             const SizedBox(height: 8),
-            LogView(logs: koboldService.logs),
-          ], // end isLocal
+            LogView(
+              logs: llmProvider.activeBackend == BackendType.pseudoRemote
+                  ? pseudoService.logs
+                  : koboldService.logs,
+            ),
+          ], // end managed-process section
         ],
       ),
     );
@@ -4489,7 +4543,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 listen: false,
               );
               final storage = Provider.of<StorageService>(ctx, listen: false);
+              final llm = Provider.of<LLMProvider>(ctx, listen: false);
               final canRestart =
+                  llm.activeBackend != BackendType.pseudoRemote &&
                   backendManager.backendPath != null &&
                   storage.lastUsedModelPath != null &&
                   File(storage.lastUsedModelPath!).existsSync();
