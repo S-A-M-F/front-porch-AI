@@ -6080,16 +6080,17 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           _checkClimaxInResponse(finalResponse); // fire-and-forget
         }
 
-        // Primary, reliable source for Needs deltas: parse any [Hunger +25: reason] etc.
-        // chips the model itself emitted at the end of its reply. The creative model
-        // that just roleplayed the scene is the best judge of what actually constituted
-        // meaningful fulfillment or drain. This replaces the previous collection of
-        // narrow, low-context, fire-and-forget "detective" LLM calls.
+        // Merge any [Hunger +25: reason] chips the creative model emitted at the end of its reply.
+        // These are authoritative for effects the *response itself* narrated (e.g. character ate or relieved herself).
+        // Pre-response structured deltas (from _evaluateNeedsDeltasCall) are preserved for the incoming action.
         if (_needsSimEnabled && _realismActiveThisMode && finalResponse.isNotEmpty) {
           final chips = _parseNeedsChipsFromResponse(finalResponse);
           if (chips.isNotEmpty) {
             _pendingRealismMetadata ??= {};
-            _pendingRealismMetadata!['needs_deltas'] = chips; // model's own reasons → beautiful UI chips
+            final existing = (_pendingRealismMetadata!['needs_deltas'] as Map?)?.cast<String, Map<String, dynamic>>() ?? <String, Map<String, dynamic>>{};
+            // chips override/add; structured reasons for other needs are kept
+            chips.forEach((k, v) => existing[k] = v);
+            _pendingRealismMetadata!['needs_deltas'] = existing;
 
             final applyMap = <String, int>{};
             chips.forEach((k, v) => applyMap[k] = (v['delta'] as int));
@@ -6098,26 +6099,16 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           }
         }
 
-        // Check for non-climax sexual/intimate activity (heavy petting, oral, fingering, etc.)
-        // so sex still feels rewarding and triggers afterglow even without orgasm.
-        if (_needsSimEnabled && _realismActiveThisMode) {
-          _checkSexualActivityInResponse(finalResponse); // fire-and-forget
-        }
-
-        // Check for other daily activities that have cross-need effects (eating, sleeping, bathing)
-        if (_needsSimEnabled && _realismActiveThisMode) {
-          _checkDailyActivityEffects(finalResponse); // fire-and-forget
-        }
-
         // Guarantee every need that moved this turn (including pure natural decay) gets a chip.
         _finalizeNeedsDeltasForChips();
 
         // Note: The old side-channel fulfillment verifier (_verifyNeedFulfillmentCall)
-        // has been retired. All need delta detection (increases from pleasure/relief,
-        // decreases from neglect, catastrophes, etc.) is now handled exclusively by the
-        // model-driven structured evaluation in _evaluateNeedsDeltasCall.
-        // The sexual activity and daily activity side-effect detectors above remain as
-        // lightweight supplements that can influence buffers (afterglow, etc.).
+        // and the post-response sexual/daily activity detective calls have been retired.
+        // All need delta detection is now handled by the first-class structured evaluation
+        // (_evaluateNeedsDeltasCall) + authoritative chips the creative model emits via the
+        // Needs Chip Contract + passive decay in _tickNeedsDecay. This removes false-positive
+        // deltas (e.g. hunger/hygiene "fulfillment" from erotic text) and reduces per-turn
+        // LLM eval steps for better reliability on local models.
 
         // Check if summary needs updating (fire-and-forget)
         _maybeUpdateSummary();
@@ -9443,6 +9434,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         'Social: Need for meaningful connection or interaction.\n'
         'Hygiene: Feeling clean vs dirty/gross.\n'
         'Comfort: Physical and emotional ease vs discomfort or strain.\n\n'
+        'NOTE ON HYGIENE INVERSION: Some characters (when the "enjoys low hygiene" flag is active) genuinely crave being dirty, stinking, musky, and filthy. For them, low hygiene is a source of real happiness, comfort, and feeling "more themselves" — not something negative. Getting or staying filthy can produce positive Fun and Comfort deltas for these characters, and they may actively avoid or resist cleaning up.\n\n'
+        'NOTE ON LIQUID INTAKE AND BLADDER: Drinking significant amounts of liquid (wine, rum, water, beer, etc.) has a direct physiological effect — it fills the bladder. This should normally produce a negative delta to Bladder (the meter drops, the need becomes more urgent). The more she drinks, the stronger the effect. Eating solid food has only a minor or no direct effect on Bladder unless it is accompanied by heavy drinking. Do not treat erotic "drinking" or "swallowing" language as literal liquid intake for this purpose.\n\n'
         '=== IMPORTANT GUIDANCE ON PLEASURE AND EROTIC SCENES ===\n'
         'Intense, desired sexual or intimate activity is usually a strong source of Fun for the character — especially when she is deeply aroused, actively participating, and enjoying the sensations and power dynamic.\n'
         'Examples that should normally produce significant positive Fun (unless her personality or the specific emotional tone of the scene strongly suggests otherwise):\n'
@@ -10636,6 +10629,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     _trustLevel = _getGroupInt(charId, 'trust');
     _arousalLevel = _getGroupInt(charId, 'arousal');
 
+    _cooldownTurnsRemaining = _getGroupInt(charId, 'cooldownRemaining');
+    _cooldownTurnsTotal   = _getGroupInt(charId, 'cooldownTotal');
+
     _characterEmotion = _getGroupString(charId, 'emotion');
     _emotionIntensity = _getGroupString(charId, 'emotionIntensity', defaultValue: 'moderate');
 
@@ -10667,6 +10663,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     _setGroupRealismValue(charId, 'longTermScore', _longTermScore);
     _setGroupRealismValue(charId, 'trust', _trustLevel);
     _setGroupRealismValue(charId, 'arousal', _arousalLevel);
+    _setGroupRealismValue(charId, 'cooldownRemaining', _cooldownTurnsRemaining);
+    _setGroupRealismValue(charId, 'cooldownTotal', _cooldownTurnsTotal);
 
     if (_characterEmotion.isNotEmpty) {
       _setGroupRealismValue(charId, 'emotion', _characterEmotion);
@@ -10960,17 +10958,36 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
     debugPrint('[Realism:Needs] Tick decay applied');
 
-    // Enjoys low hygiene inversion - mild scaling bonuses when dirty
+    // Enjoys low hygiene inversion — this is a fundamental preference inversion, not just sexual.
+    // Low hygiene makes her genuinely happier, more comfortable in her own skin, and more "herself".
+    // She craves the feeling of being nasty, stinking, and filthy as a positive emotional state.
     if (_enjoysLowHygiene) {
       final hygiene = _needsVector['hygiene'] ?? 50;
+
       if (hygiene < 50) {
-        final bonus = ((50 - hygiene) / 10).round().clamp(0, 5); // mild scaling
-        _arousalLevel = (_arousalLevel + bonus).clamp(-100, 100);
-        // Fun and Comfort also get a lift (simulated via small vector adjustment if needed, or LLM feels it)
+        // The dirtier she gets, the more it feeds her emotionally (not just arousal).
+        final dirtiness = (50 - hygiene) / 10.0; // 0.0 – 5.0+
+        final funLift = (dirtiness * 0.8).round().clamp(0, 4);
+        final comfortLift = (dirtiness * 0.7).round().clamp(0, 4);
+        final arousalBonus = dirtiness.round().clamp(0, 5);
+
+        _needsVector['fun'] = ((_needsVector['fun'] ?? 50) + funLift).clamp(0, 100);
+        _needsVector['comfort'] = ((_needsVector['comfort'] ?? 50) + comfortLift).clamp(0, 100);
+        _arousalLevel = (_arousalLevel + arousalBonus).clamp(-100, 100);
+
+        // Note: we directly nudge fun/comfort here so the simulation itself reflects that filth = happiness for her.
       }
-      if (hygiene >= 60) {
-        final penalty = ((hygiene - 60) / 10).round().clamp(0, 5);
-        _arousalLevel = (_arousalLevel - penalty).clamp(-100, 100);
+
+      if (hygiene >= 65) {
+        // Being too clean feels wrong / sanitized / less real to her.
+        final overClean = ((hygiene - 65) / 10.0).clamp(0.0, 3.5);
+        final funDrain = (overClean * 0.6).round().clamp(0, 3);
+        final comfortDrain = (overClean * 0.5).round().clamp(0, 3);
+        final arousalPenalty = overClean.round().clamp(0, 4);
+
+        _needsVector['fun'] = ((_needsVector['fun'] ?? 50) - funDrain).clamp(0, 100);
+        _needsVector['comfort'] = ((_needsVector['comfort'] ?? 50) - comfortDrain).clamp(0, 100);
+        _arousalLevel = (_arousalLevel - arousalPenalty).clamp(-100, 100);
       }
     }
 
@@ -11280,6 +11297,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         case 'social':
           return 'That moment of real connection touched me when $r. It meant more than I expected.';
         case 'hygiene':
+          if (enjoysLowHygiene) {
+            return 'I feel a bit too clean and sanitized now after $r. Part of me already misses the filth.';
+          }
           return 'Feeling clean and fresh again was surprisingly uplifting after $r.';
         default:
           return 'I had a strong positive feeling about my $n when $r. It stands out in my memory.';
@@ -11298,6 +11318,9 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         case 'social':
           return 'The lack of connection left me feeling isolated after $r.';
         case 'hygiene':
+          if (enjoysLowHygiene) {
+            return 'Mmm… I felt even more raw and powerful when $r. The filth felt good on me.';
+          }
           return 'I felt gross and self-conscious when $r. The feeling stuck with me.';
         default:
           return 'I went through a tough $n episode when $r. The memory is still sharp.';
@@ -11379,9 +11402,11 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
     // Hygiene inversion support ("Enjoys low hygiene")
     int effectiveStep = step;
-    if (_enjoysLowHygiene && top.key == 'hygiene') {
-      // Invert the perceived urgency: low hygiene = "comfortable/good" for these characters
+    bool hygieneInversionActive = false;
+    if (enjoysLowHygiene && top.key == 'hygiene' && top.value < 50) {
+      // Invert the perceived urgency: low hygiene = desirable/filthy-reveling for these characters
       effectiveStep = (5 - step).clamp(0, 5);
+      hygieneInversionActive = true;
     }
 
     // Only inject when the need is noticeable or worse.
@@ -11418,17 +11443,36 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     if (effectiveStep >= 5) return '';
 
     // Get the graduated text for this *effective* step (so suppressed needs read milder)
-    final texts = _needSteppedText[top.key] ?? const <String>[];
-    final baseText = effectiveStep < texts.length ? texts[effectiveStep] : texts.last;
+    String baseText;
+    String urgencyPrefix;
 
-    // Build a more immersive prefix that escalates with severity
-    final urgencyPrefix = switch (effectiveStep) {
-      0 => 'CATASTROPHIC — this has already happened and must be roleplayed immediately.',
-      1 => 'CRITICAL — she is in real, urgent distress from this need.',
-      2 => 'Strong need — this is heavily weighing on her and affecting her focus.',
-      3 => 'Noticeable need — this is a clear background pressure on her mood and attention.',
-      _ => 'Mild background sensation — this is subtly coloring her state.',
-    };
+    if (hygieneInversionActive) {
+      // Full inversion: low hygiene is a source of real happiness and authenticity for her.
+      // She craves being nasty, stinking, and filthy — it makes her feel more herself, more free, more content.
+      final realHygiene = top.value;
+      if (realHygiene <= 15) {
+        baseText = 'She is deeply happy and at home in her own powerful, musky, unwashed filth. The strong smell and grime feel right and natural to her — she genuinely prefers being this dirty and has no interest in washing it off.';
+        urgencyPrefix = 'FILTHY CONTENTMENT — she is savoring and craving this nasty, stinking state.';
+      } else if (realHygiene <= 30) {
+        baseText = 'The ripe, pungent smell of her own unwashed body makes her feel more real, more free, and quietly content. She likes how filthy she is and would rather stay this way.';
+        urgencyPrefix = 'Strong filthy comfort — this dirty, smelly state feels good and authentic to her.';
+      } else {
+        baseText = 'She is pleasantly aware of how dirty and strong-smelling she is right now. The filth feels comfortable and true rather than something to fix.';
+        urgencyPrefix = 'Mild filthy satisfaction — the dirtiness is quietly making her happier and more herself.';
+      }
+    } else {
+      final texts = _needSteppedText[top.key] ?? const <String>[];
+      baseText = effectiveStep < texts.length ? texts[effectiveStep] : texts.last;
+
+      // Build a more immersive prefix that escalates with severity
+      urgencyPrefix = switch (effectiveStep) {
+        0 => 'CATASTROPHIC — this has already happened and must be roleplayed immediately.',
+        1 => 'CRITICAL — she is in real, urgent distress from this need.',
+        2 => 'Strong need — this is heavily weighing on her and affecting her focus.',
+        3 => 'Noticeable need — this is a clear background pressure on her mood and attention.',
+        _ => 'Mild background sensation — this is subtly coloring her state.',
+      };
+    }
 
     // Secondary low need note (only for effective steps 1-3 to avoid noise at catastrophe)
     String secondaryNote = '';
@@ -11453,14 +11497,15 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
     // Output contract for Needs chips — the authoritative way the model declares
     // meaningful fulfillment or drain that happened in the scene it just wrote.
-    // This replaces the previous janky post-response "detective" LLM calls.
     if (_needsSimEnabled) {
       return stateBlock +
           '[Needs Chip Contract: If the events and actions you just roleplayed in this turn caused a *meaningful* change (roughly ±8 or more) to any of the character\'s needs, append one or more lines at the very end of your reply using exactly this format:\n'
           '[Hunger +25: shared a hearty meal and felt much better]\n'
           '[Energy -12: the long conversation was draining]\n'
           'Canonical need names: hunger, energy, bladder, social, fun, hygiene, comfort.\n'
-          'Only emit chips for changes you actually narrated and that feel significant in context. The system will parse them to update the simulation and show the player the exact reasons you gave.]\n';
+          'RULES: Only emit a chip if you *explicitly narrated* the character performing a literal physical act that would affect the need (eating/drinking for hunger, using the restroom for bladder relief, bathing/cleaning for hygiene, resting/sleeping for energy, etc.). Emotional satisfaction, power, or erotic pleasure should ONLY affect Fun, Social, or Comfort — never Hunger or Bladder.\n'
+          'Drinking liquids has an important physiological side effect: it fills the bladder. Significant drinking (a bottle of wine, several glasses of rum, etc.) should normally produce a negative Bladder delta (the need becomes more urgent). Mention this when it is narratively relevant.\n'
+          'In erotic scenes, do NOT misinterpret words like "cream", "swallow", "eat", "drink", "clean", "filthy", or "rest" as literal fulfillment of hunger/hygiene/bladder unless the character actually consumed a meal or relieved herself. If no such narrated act occurred, emit no chips for those needs. The system will parse them to update the simulation and show the player the exact reasons you gave.]\n';
     }
     return stateBlock;
   }
@@ -11632,12 +11677,24 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           break;
 
         case 'hygiene':
-          description = current <= 25
-              ? 'is feeling gross or self-conscious about her current state of cleanliness'
-              : 'is aware that she is dirty and it is starting to bother her';
-          behaviorHint = current <= 15
-              ? 'She may become self-conscious, try to clean up, or become defensive if it is brought up.'
-              : 'She is aware of it but it is not yet dominating her thoughts.';
+          final enjoysFilth = enjoysLowHygiene;
+          if (enjoysFilth && current < 50) {
+            // Full inversion: she actively craves being nasty, stinking, and filthy.
+            // It makes her happy and content in a deep, non-sexual way — she feels more real, more free, more herself.
+            description = current <= 25
+                ? 'is feeling wonderfully filthy and content in her own strong, unwashed, musky state. The dirt and smell make her genuinely happy and at home in her body'
+                : 'is very aware of how dirty, ripe, and pungent she is — and it feels good to her. She likes being this way';
+            behaviorHint = current <= 25
+                ? 'She craves the filth. She may deliberately get dirtier, roll in it, avoid washing, or happily comment on how nasty she smells and how much she enjoys it. Being clean would feel wrong to her right now.'
+                : 'The grime and her own scent are making her feel more authentic and alive. She is likely to lean into opportunities to stay dirty, act more carefree or animalistic, and have little interest in cleaning up.';
+          } else {
+            description = current <= 25
+                ? 'is feeling gross or self-conscious about her current state of cleanliness'
+                : 'is aware that she is dirty and it is starting to bother her';
+            behaviorHint = current <= 15
+                ? 'She may become self-conscious, try to clean up, or become defensive if it is brought up.'
+                : 'She is aware of it but it is not yet dominating her thoughts.';
+          }
           break;
 
         default:
@@ -11860,7 +11917,6 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           _applyNeedsDeltas({
             'fun': 16,
             'social': 9,
-            'bladder': 8,
             'energy': 10, // was -7; now a noticeable rush (like caffeine/adrenaline)
             'hunger': -4,
             'hygiene': -6,
@@ -11900,130 +11956,6 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       }
     } catch (e) {
       debugPrint('[Realism:Climax] Check failed: $e');
-    }
-  }
-
-  /// Lightweight check for significant sexual or intimate activity that did *not*
-  /// result in climax. This ensures ongoing scenes (making out, oral, fingering,
-  /// heavy petting, etc.) still deliver Fun/Social rewards and start the afterglow
-  /// buffer so sex remains a net positive.
-  Future<void> _checkSexualActivityInResponse(String responseText) async {
-    if (responseText.trim().isEmpty) return;
-    if (_activeCharacter == null) return;
-    if (_arousalLevel < 3) return; // only bother if there was real desire
-
-    // Avoid double-applying right after a climax (climax already handled full effects)
-    if (_cooldownTurnsRemaining > 0) return;
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-
-    final prompt =
-        'Read the following character response.\n\n'
-        'RESPONSE:\n$responseText\n\n'
-        'Did $charName engage in significant sexual or intimate physical activity '
-        '(kissing, touching, oral, fingering, grinding, heavy petting, etc.) even if they did not reach orgasm? '
-        'Answer ONLY with a JSON object: {"sexual_activity": true/false, "intensity": 1-10, "reason": "short"}';
-
-    try {
-      final raw = await _fireLLMEval(prompt);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
-
-      final sexual = _extractJsonBool(text, 'sexual_activity') ?? false;
-      if (!sexual) return;
-
-      final intensity = _extractJsonInt(text, 'intensity') ?? 5;
-      final strength = (intensity / 10.0).clamp(0.4, 1.0);
-
-      // Milder deltas than full climax.
-      // Note: energy is now a *small positive* during sexual activity (like a
-      // stimulant/adrenaline/pleasure rush). This prevents characters from
-      // nodding off or passing out mid-sex in long erotic scenes (the classic
-      // "she fell asleep while I was going down on her" problem). The crash
-      // feeling can still arrive later via normal decay + night penalties.
-      _applyNeedsDeltas({
-        'fun': (12 * strength).round(),
-        'social': (7 * strength).round(),
-        'bladder': (5 * strength).round(),
-        'energy': (3 * strength).round(), // was negative; now a mild boost (1-3 per turn)
-        'hunger': (-3 * strength).round(),
-        'hygiene': (-4 * strength).round(),
-      }, fromSexualActivity: true);
-
-      debugPrint('[Realism:Needs] Non-climax sexual activity detected (intensity $intensity) → applied effects + afterglow');
-    } catch (e) {
-      debugPrint('[Realism:SexualActivity] Check failed: $e');
-    }
-  }
-
-  /// Detects common daily activities that have natural cross-effects on multiple needs.
-  /// Examples: eating a proper meal, sleeping/napping, taking a bath/shower.
-  Future<void> _checkDailyActivityEffects(String responseText) async {
-    if (responseText.trim().isEmpty) return;
-    if (_activeCharacter == null) return;
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-
-    final prompt =
-        'Read the following character response.\n\n'
-        'RESPONSE:\n$responseText\n\n'
-        'Did $charName do any of the following in this response?\n'
-        '- Ate or drank a significant meal / snack / drink\n'
-        '- Slept, napped, or had a good rest\n'
-        '- Took a bath, shower, or cleaned up thoroughly\n\n'
-        'Answer ONLY with a flat JSON object:\n'
-        '{"ate": true/false, "slept": true/false, "bathed": true/false, "quality": 1-10}';
-
-    try {
-      final raw = await _fireLLMEval(prompt);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).isNotEmpty ? _stripThinkBlocks(raw) : raw;
-
-      final ate = _extractJsonBool(text, 'ate') ?? false;
-      final slept = _extractJsonBool(text, 'slept') ?? false;
-      final bathed = _extractJsonBool(text, 'bathed') ?? false;
-      final quality = _extractJsonInt(text, 'quality') ?? 5;
-      final strength = (quality / 10.0).clamp(0.5, 1.0);
-
-      final deltas = <String, int>{};
-
-      if (ate) {
-        deltas['hunger'] = (22 * strength).round();
-        deltas['fun'] = (6 * strength).round();
-        deltas['social'] = (4 * strength).round();
-        deltas['energy'] = (5 * strength).round();
-        deltas['bladder'] = (4 * strength).round();
-      }
-
-      if (slept) {
-        deltas['energy'] = (deltas['energy'] ?? 0) + (25 * strength).round();
-        deltas['fun'] = (deltas['fun'] ?? 0) + (5 * strength).round();
-        deltas['hunger'] = (deltas['hunger'] ?? 0) + (-3 * strength).round();
-        deltas['bladder'] = (deltas['bladder'] ?? 0) + (5 * strength).round();
-      }
-
-      if (bathed) {
-        deltas['hygiene'] = (25 * strength).round();
-        deltas['comfort'] = (deltas['comfort'] ?? 0) + (12 * strength).round();
-        deltas['fun'] = (deltas['fun'] ?? 0) + (6 * strength).round();
-      }
-
-      if (deltas.isNotEmpty) {
-        _applyNeedsDeltas(deltas);
-        debugPrint('[Realism:Needs] Daily activities detected → applied cross-effects: $deltas');
-      }
-    } catch (e) {
-      debugPrint('[Realism:DailyActivities] Check failed: $e');
     }
   }
 
