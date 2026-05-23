@@ -109,6 +109,25 @@ class AppColors {
       resolve(context, surface, lightSurface);
 
   // ---------------------------------------------------------------------------
+  // Process log / terminal output colors
+  // ---------------------------------------------------------------------------
+
+  /// Color for error/fail/fatal lines in process logs.
+  static const Color logError = Color(0xFFFF6B6B);
+
+  /// Color for warning lines in process logs.
+  static const Color logWarn = Color(0xFFFFD93D);
+
+  /// Color for ready/server-listen lines.
+  static const Color logReady = Color(0xFF69F0AE);
+
+  /// Color for loading/starting lines.
+  static const Color logLoading = Color(0xFF93C5FD);
+
+  /// Default color for normal lines.
+  static const Color logDefault = Color(0xFF86EFAC);
+
+  // ---------------------------------------------------------------------------
   // Preset palette for color pickers
   // ---------------------------------------------------------------------------
 

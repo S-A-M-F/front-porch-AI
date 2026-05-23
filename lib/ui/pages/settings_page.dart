@@ -33,6 +33,8 @@ import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/ui/widgets/log_view.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
+import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
 import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/update_service.dart';
@@ -148,33 +150,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _scanLocalPresets() {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final binDir = storage.binDir;
-    if (!binDir.existsSync()) {
-      if (mounted) setState(() => _localPresets = []);
-      return;
-    }
-    try {
-      final files =
-          binDir
-              .listSync()
-              .whereType<File>()
-              .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
-              .toList()
-            ..sort(
-              (a, b) => p
-                  .basename(a.path)
-                  .toLowerCase()
-                  .compareTo(p.basename(b.path).toLowerCase()),
-            );
-      if (mounted) {
-        setState(() {
-          _localPresets = files;
-        });
-      }
-    } catch (e) {
-      debugPrint('SettingsPage: Failed to scan presets: $e');
-      if (mounted) setState(() => _localPresets = []);
-    }
+    final files = scanKcppsPresets(storage.binDir);
+    setState(() {
+      _localPresets = files;
+    });
   }
 
   /// Fetch available models from the configured API on startup.
@@ -542,61 +521,73 @@ class _SettingsPageState extends State<SettingsPage> {
     _applyAutoConfiguration(silent: false);
   }
 
-  Future<void> _toggleKobold(BuildContext context) async {
+  Future<void> _toggleManagedBackend(BuildContext context) async {
     final koboldService = Provider.of<KoboldService>(context, listen: false);
+    final pseudoRemoteService =
+        Provider.of<PseudoRemoteService>(context, listen: false);
+    final llmProvider = Provider.of<LLMProvider>(context, listen: false);
     final backendManager = Provider.of<BackendManager>(context, listen: false);
 
-    if (koboldService.isRunning) {
-      await koboldService.stopKobold();
+    if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      if (pseudoRemoteService.isRunning) {
+        await pseudoRemoteService.stop();
+        return;
+      }
     } else {
-      if (backendManager.backendPath == null) {
+      if (koboldService.isRunning) {
+        await koboldService.stopKobold();
+        return;
+      }
+    }
+
+    if (backendManager.backendPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Backend not found. Please download it first.'),
+        ),
+      );
+      return;
+    }
+    final storage = Provider.of<StorageService>(context, listen: false);
+
+    final presetOwnsModel = storage.kcppsHasModel;
+
+    if (!presetOwnsModel) {
+      if (_selectedModelPath == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a model.')),
+        );
+        return;
+      }
+      if (!File(_selectedModelPath!).existsSync()) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Backend not found. Please download it first.'),
+            content: Text('Selected model file does not exist!'),
           ),
         );
         return;
       }
-      final storage = Provider.of<StorageService>(context, listen: false);
+    }
 
-      // Case A — preset has its own model: skip all model-path checks.
-      // Case B — preset has no model OR no preset: require a Flutter selection.
-      final presetOwnsModel = storage.kcppsHasModel;
+    final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 0;
+    final contextSize = int.tryParse(_contextSizeController.text) ?? 4096;
 
-      if (!presetOwnsModel) {
-        if (_selectedModelPath == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select a model.')),
-          );
-          return;
-        }
-        if (!File(_selectedModelPath!).existsSync()) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Selected model file does not exist!'),
-            ),
-          );
-          return;
-        }
-      }
+    storage.setGpuLayers(gpuLayers);
+    storage.setContextSize(contextSize);
+    storage.setUseCublas(_useCublas);
+    storage.setUseVulkan(_useVulkan);
+    storage.setUseMetal(_useMetal);
+    storage.setUseRocm(_useRocm);
 
-      final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 0;
-      final contextSize = int.tryParse(_contextSizeController.text) ?? 4096;
-
-      // Persist settings so autostart uses them on next launch
-      storage.setGpuLayers(gpuLayers);
-      storage.setContextSize(contextSize);
-      storage.setUseCublas(_useCublas);
-      storage.setUseVulkan(_useVulkan);
-      storage.setUseMetal(_useMetal);
-      storage.setUseRocm(_useRocm);
-
-      // When the preset owns the model, pass empty string — KoboldCPP reads
-      // it from the .kcpps config. When the user picked a model via the
-      // Flutter picker, pass it so KoboldCPP never opens its own file dialog.
+    if (llmProvider.activeBackend == BackendType.pseudoRemote) {
+      await pseudoRemoteService.start(
+        executablePath: backendManager.backendPath!,
+        kcppsPath: storage.activeKcppsPath ?? '',
+        port: 5001,
+      );
+    } else {
       final effectiveModel = presetOwnsModel ? '' : _selectedModelPath!;
-
-      koboldService.startKobold(
+      await koboldService.startKobold(
         backendManager.backendPath!,
         effectiveModel,
         kcppsPath: storage.activeKcppsPath,
@@ -2231,8 +2222,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final modelManager = Provider.of<ModelManager>(context);
     final backendManager = Provider.of<BackendManager>(context);
     final koboldService = Provider.of<KoboldService>(context);
+    final pseudoRemoteService = Provider.of<PseudoRemoteService>(context);
     final llmProvider = Provider.of<LLMProvider>(context);
-    final pseudoService = llmProvider.pseudoRemoteService;
     final theme = Theme.of(context);
 
     // Auto-select first model if none selected and models exist
@@ -2996,136 +2987,37 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.settings_applications,
-                        size: 18,
-                        color: Colors.blueAccent,
+            KcppsSelector(
+              storage: storageService,
+              localPresets: _localPresets,
+              hint: 'None (Use App Settings)',
+              onChanged: (val) {
+                storageService.setActiveKcppsPath(val);
+                if (_selectedModelPath != null && val != null) {
+                  storageService.setModelPreset(_selectedModelPath!, val);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Preset saved for model: ${p.basename(_selectedModelPath!)}',
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Preset overrides all other generation settings. Use .kcpps files placed in your bin directory.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.white70,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value:
-                                _localPresets.any(
-                                  (f) =>
-                                      f.path == storageService.activeKcppsPath,
-                                )
-                                ? storageService.activeKcppsPath
-                                : null,
-                            isExpanded: true,
-                            hint: const Text(
-                              'None (Use App Settings)',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                            dropdownColor: theme.cardColor,
-                            style: theme.textTheme.bodyMedium,
-                            icon: Icon(
-                              Icons.arrow_drop_down,
-                              color: theme.iconTheme.color,
-                            ),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: null,
-                                child: Text(
-                                  'None (Use App Settings)',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                              ),
-                              ..._localPresets.map((file) {
-                                return DropdownMenuItem<String>(
-                                  value: file.path,
-                                  child: Text(
-                                    p.basename(file.path),
-                                    style: const TextStyle(fontSize: 13),
-                                  ),
-                                );
-                              }),
-                            ],
-                            onChanged: (val) {
-                              storageService.setActiveKcppsPath(val);
-                              // Auto-associate with current model if one is selected
-                              if (_selectedModelPath != null && val != null) {
-                                storageService.setModelPreset(
-                                  _selectedModelPath!,
-                                  val,
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Preset saved for model: ${p.basename(_selectedModelPath!)}',
-                                    ),
-                                  ),
-                                );
-                              } else if (_selectedModelPath != null &&
-                                  val == null) {
-                                // Clear association if "None" is selected
-                                storageService.setModelPreset(
-                                  _selectedModelPath!,
-                                  '',
-                                );
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          final result = await FilePicker.platform.pickFiles(
-                            type: FileType.custom,
-                            allowedExtensions: ['kcpps'],
-                          );
-                          if (result != null &&
-                              result.files.single.path != null) {
-                            final path = result.files.single.path!;
-                            storageService.setActiveKcppsPath(path);
-                            if (_selectedModelPath != null) {
-                              storageService.setModelPreset(
-                                _selectedModelPath!,
-                                path,
-                              );
-                            }
-                            // Rescan to include the new file if it's not already there
-                            _scanLocalPresets();
-                          }
-                        },
-                        icon: const Icon(Icons.folder_open, size: 16),
-                        label: const Text('Browse'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 0,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                  );
+                } else if (_selectedModelPath != null && val == null) {
+                  storageService.setModelPreset(_selectedModelPath!, '');
+                }
+              },
+              onExternalClear: () {
+                storageService.setActiveKcppsPath(null);
+                if (_selectedModelPath != null) {
+                  storageService.setModelPreset(_selectedModelPath!, '');
+                }
+              },
+              onBrowsePicked: (path) {
+                if (_selectedModelPath != null) {
+                  storageService.setModelPreset(_selectedModelPath!, path);
+                }
+                _scanLocalPresets();
+              },
             ),
 
             const SizedBox(height: 24),
@@ -3134,44 +3026,17 @@ class _SettingsPageState extends State<SettingsPage> {
               child: ElevatedButton.icon(
                 onPressed: backendManager.backendPath == null
                     ? null
-                    : () {
-                        final isPseudo =
-                            llmProvider.activeBackend ==
-                            BackendType.pseudoRemote;
-                        if (isPseudo) {
-                          if (pseudoService.isRunning) {
-                            pseudoService.stop();
-                          } else {
-                            final kcpps = storageService.activeKcppsPath;
-                            if (kcpps == null || kcpps.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Select a .kcpps preset first (in Model & Backend tab).',
-                                  ),
-                                ),
-                              );
-                              return;
-                            }
-                            llmProvider.startActiveManagedProcess(
-                              executablePath: backendManager.backendPath!,
-                              kcppsPath: kcpps,
-                            );
-                          }
-                        } else {
-                          _toggleKobold(context);
-                        }
-                      },
+                    : () => _toggleManagedBackend(context),
                 icon: Icon(
                   (llmProvider.activeBackend == BackendType.pseudoRemote
-                          ? pseudoService.isRunning
+                          ? pseudoRemoteService.isRunning
                           : koboldService.isRunning)
                       ? Icons.stop
                       : Icons.play_arrow,
                 ),
                 label: Text(
                   (llmProvider.activeBackend == BackendType.pseudoRemote
-                          ? pseudoService.isRunning
+                          ? pseudoRemoteService.isRunning
                           : koboldService.isRunning)
                       ? 'Stop Backend'
                       : 'Start Backend',
@@ -3179,10 +3044,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
                       (llmProvider.activeBackend == BackendType.pseudoRemote
-                          ? pseudoService.isRunning
-                          : koboldService.isRunning)
-                      ? Colors.red.withValues(alpha: 0.8)
-                      : Colors.green.withValues(alpha: 0.8),
+                              ? pseudoRemoteService.isRunning
+                              : koboldService.isRunning)
+                          ? Colors.red.withValues(alpha: 0.8)
+                          : Colors.green.withValues(alpha: 0.8),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 20),
                 ),
@@ -3191,12 +3056,14 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 24),
             _buildSectionHeader('Process Logs', context),
             const SizedBox(height: 8),
-            LogView(
-              logs: llmProvider.activeBackend == BackendType.pseudoRemote
-                  ? pseudoService.logs
-                  : koboldService.logs,
+            Consumer2<KoboldService, PseudoRemoteService>(
+              builder: (context, ks, prs, child) => LogView(
+                logs: llmProvider.activeBackend == BackendType.pseudoRemote
+                    ? prs.logs
+                    : ks.logs,
+              ),
             ),
-          ], // end managed-process section
+          ], // end hasManagedProcess
         ],
       ),
     );

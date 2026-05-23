@@ -29,6 +29,9 @@ import 'package:front_porch_ai/services/hardware_service.dart';
 import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
+import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
+import 'package:front_porch_ai/ui/widgets/log_view.dart';
 
 class ModelSettingsDialog extends StatefulWidget {
   const ModelSettingsDialog({super.key});
@@ -79,26 +82,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
 
   void _scanLocalPresets() {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final binDir = storage.binDir;
-    if (!binDir.existsSync()) {
-      if (mounted) setState(() => _localPresets = []);
-      return;
-    }
-    try {
-      final files = binDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
-          .toList()
-        ..sort((a, b) => pathLib.basename(a.path).toLowerCase().compareTo(pathLib.basename(b.path).toLowerCase()));
-      if (mounted) {
-        setState(() {
-          _localPresets = files;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _localPresets = []);
-    }
+    setState(() {
+      _localPresets = scanKcppsPresets(storage.binDir);
+    });
   }
 
   /// Check whether a .kcpps preset is currently active.
@@ -430,7 +416,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final llmProvider = Provider.of<LLMProvider>(context);
-    final isLocal = llmProvider.isLocal;
+    final backend = llmProvider.activeBackend;
 
     return Dialog(
        backgroundColor: const Color(0xFF1F2937),
@@ -464,15 +450,23 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                      child: _buildToggleButton(
                        label: 'Local',
                        icon: Icons.computer,
-                       isSelected: isLocal,
+                       isSelected: backend == BackendType.kobold,
                        onTap: () => llmProvider.setActiveBackend(BackendType.kobold),
+                     ),
+                   ),
+                   Expanded(
+                     child: _buildToggleButton(
+                       label: 'Pseudo',
+                       icon: Icons.laptop,
+                       isSelected: backend == BackendType.pseudoRemote,
+                       onTap: () => llmProvider.setActiveBackend(BackendType.pseudoRemote),
                      ),
                    ),
                    Expanded(
                      child: _buildToggleButton(
                        label: 'Remote API',
                        icon: Icons.cloud,
-                       isSelected: !isLocal,
+                       isSelected: backend == BackendType.openRouter,
                        onTap: () => llmProvider.setActiveBackend(BackendType.openRouter),
                      ),
                    ),
@@ -484,7 +478,11 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
              // Content area
              Flexible(
                child: SingleChildScrollView(
-                 child: isLocal ? _buildLocalSettings() : _buildRemoteSettings(),
+                 child: backend == BackendType.kobold
+                     ? _buildLocalSettings()
+                     : backend == BackendType.pseudoRemote
+                         ? _buildPseudoRemoteSettings()
+                         : _buildRemoteSettings(),
                ),
              ),
            ],
@@ -1171,6 +1169,95 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           );
         }),
       ],
+    );
+  }
+
+  Widget _buildPseudoRemoteSettings() {
+    final pseudoRemote = Provider.of<PseudoRemoteService>(context);
+    final llmProvider = Provider.of<LLMProvider>(context);
+    final anyRunning = llmProvider.hasAnyManagedProcessRunning;
+    final storage = Provider.of<StorageService>(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Configuration Preset (.kcpps)',
+          style: TextStyle(fontSize: 13, color: Colors.white70),
+        ),
+        const SizedBox(height: 8),
+        KcppsSelector(
+          storage: storage,
+          localPresets: _localPresets,
+          hint: 'Required — select a .kcpps preset',
+          onChanged: (val) {
+            storage.setActiveKcppsPath(val);
+          },
+          onExternalClear: () {
+            storage.setActiveKcppsPath(null);
+          },
+          onBrowsePicked: (_) {},
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: anyRunning
+                ? () => _stopManagedBackend(context)
+                : (storage.activeKcppsPath == null ||
+                        storage.activeKcppsPath!.isEmpty)
+                    ? null
+                    : () => _startPseudoRemote(context),
+            icon: Icon(anyRunning ? Icons.stop : Icons.play_arrow),
+            label: Text(
+              anyRunning ? 'Stop Backend' : 'Start Pseudo-Remote',
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: anyRunning ? Colors.redAccent : Colors.greenAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Process Logs',
+          style: TextStyle(fontSize: 13, color: Colors.white70),
+        ),
+        const SizedBox(height: 8),
+        LogView(logs: pseudoRemote.logs),
+      ],
+    );
+  }
+
+  void _stopManagedBackend(BuildContext context) {
+    Provider.of<LLMProvider>(context, listen: false).stopAllManagedProcesses();
+  }
+
+  Future<void> _startPseudoRemote(BuildContext context) async {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final backendManager = Provider.of<BackendManager>(context, listen: false);
+    final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+
+    if (backendManager.backendPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Backend not found.')),
+      );
+      return;
+    }
+    if (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a .kcpps preset first.'),
+        ),
+      );
+      return;
+    }
+
+    await pseudoRemote.start(
+      executablePath: backendManager.backendPath!,
+      kcppsPath: storage.activeKcppsPath!,
     );
   }
 
