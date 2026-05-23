@@ -600,9 +600,10 @@ class ChatService extends ChangeNotifier {
     'comfort': 2,
   };
 
-  // Morning-specific overrides (hunger drains faster after sleep / breakfast window).
+  // Morning-specific overrides (modest boost for the morning period after the one-time wake-up penalty).
   static const Map<String, int> _needDecayMorning = {
-    'hunger': 6,
+    'hunger': 8,
+    'bladder': 8,
   };
 
   // Night-specific overrides (energy drains faster at night).
@@ -9798,6 +9799,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       final bool timeEligible = _turnsSinceLastTimeAdvance >= _turnsPerTimePeriod;
 
       if (timeEligible) {
+        final previousTimeOfDay = _timeOfDay;
+
         final currentPostureCtx = _spatialStance.isNotEmpty
             ? 'Recent position reference: $charName was "$_spatialStance".\n'
             : '';
@@ -9838,6 +9841,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
               debugPrint(
                 '[Realism:Time] Advanced to $_timeOfDay (Day $_dayCount)',
               );
+
+              _applyWakingUpPenaltyIfNeeded(previousTimeOfDay, _timeOfDay);
             } else {
               debugPrint(
                 '[Realism:Time] Held — scene mid-action, time stays at $_timeOfDay',
@@ -9858,6 +9863,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
               debugPrint(
                 '[Realism:Time] Explicit new-day transition. Day $_dayCount',
               );
+
+              _applyWakingUpPenaltyIfNeeded(previousTimeOfDay, _timeOfDay);
             }
 
             final postureMatch = RegExp(
@@ -9883,6 +9890,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
           debugPrint(
             '[Realism:Time] Eval error, auto-advanced to $_timeOfDay: $e',
           );
+
+          _applyWakingUpPenaltyIfNeeded(previousTimeOfDay, _timeOfDay);
         }
       } else {
         // Not yet eligible — grab posture only
@@ -11004,6 +11013,17 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       if (value <= _needStepUpperBounds[s]) return s;
     }
     return 5; // comfortable
+  }
+
+  /// One-time brutal "waking up" penalty when time transitions from night into dawn/morning.
+  /// This is deliberately large and only happens once per transition so the player feels
+  /// real consequences for going to sleep with low hunger or bladder.
+  void _applyWakingUpPenaltyIfNeeded(String from, String to) {
+    if (from == 'night' && (to == 'dawn' || to == 'morning')) {
+      _needsVector['hunger'] = ((_needsVector['hunger'] ?? 50) - 30).clamp(0, 100);
+      _needsVector['bladder'] = ((_needsVector['bladder'] ?? 50) - 40).clamp(0, 100);
+      debugPrint('[Realism:Time] One-time waking penalty applied (hunger -30, bladder -40)');
+    }
   }
 
   /// Returns the catastrophic narrative text for the given need (the event that
@@ -12172,6 +12192,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
   /// Called by the sidebar chevron buttons. delta = +1 (forward) or -1 (back).
   Future<void> nudgeTimePeriod(int delta) async {
     if (!_realismEnabled) return;
+    final previousTimeOfDay = _timeOfDay;
+
     final validTimes = [
       'dawn',
       'morning',
@@ -12192,6 +12214,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
     }
     _timeOfDay = validTimes[idx];
     _turnsSinceLastTimeAdvance = 0; // reset clock after manual nudge
+
+    _applyWakingUpPenaltyIfNeeded(previousTimeOfDay, _timeOfDay);
 
     // CRITICAL: Patch the realism_state snapshot on the last message so that
     // _restoreRealismStateFromMessage cannot revert the manually-set time.
@@ -12247,6 +12271,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
 
     if (!hasOocMarker && !hasSkipPhrase) return;
 
+    final previousTimeOfDay = _timeOfDay;
+
     // Estimate period count from duration language
     int periods = 1;
     if (RegExp(
@@ -12263,6 +12289,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
       _pendingRealismMetadata!['time_skip_to'] = 'Dawn · Day $_dayCount';
       notifyListeners();
       debugPrint('[Realism:OOC] Next-day transition → Day $_dayCount, dawn');
+
+      _applyWakingUpPenaltyIfNeeded(previousTimeOfDay, _timeOfDay);
       return;
     } else if (RegExp(
       r'\b(several hours|many hours|a long time|hours? pass)\b',
@@ -12307,6 +12335,8 @@ if (_realismActiveThisMode && _activeCharacter!.frontPorchExtensions == null) {
         .map((w) => w[0].toUpperCase() + w.substring(1))
         .join(' ');
     _pendingRealismMetadata!['time_skip_to'] = displayTime;
+
+    _applyWakingUpPenaltyIfNeeded(previousTimeOfDay, _timeOfDay);
     notifyListeners();
     debugPrint(
       '[Realism:OOC] Time-skip: +$periods period(s) → $_timeOfDay (Day $_dayCount)',
