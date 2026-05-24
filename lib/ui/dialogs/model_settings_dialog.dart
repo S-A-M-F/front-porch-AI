@@ -323,15 +323,15 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select Model', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text('Select Model', style: TextStyle(color: AppColors.textPrimary(context), fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   TextField(
                     autofocus: true,
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
                     decoration: InputDecoration(
                       hintText: 'Search models...',
-                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-                      prefixIcon: const Icon(Icons.search, color: Colors.white38, size: 18),
+                      hintStyle: TextStyle(color: AppColors.textTertiary(context)),
+                      prefixIcon: Icon(Icons.search, color: AppColors.iconSecondary(context), size: 18),
                       filled: true,
                       fillColor: AppColors.surfaceContainerOf(context),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
@@ -346,7 +346,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                 width: 480,
                 height: 400,
                 child: filtered.isEmpty
-                    ? Center(child: Text('No models match "$searchQuery"', style: const TextStyle(color: Colors.white38)))
+                    ? Center(child: Text('No models match "$searchQuery"', style: TextStyle(color: AppColors.textTertiary(context))))
                     : ListView.builder(
                         itemCount: filtered.length,
                         itemBuilder: (ctx, index) {
@@ -359,7 +359,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                             title: Text(
                               model.id,
                               style: TextStyle(
-                                color: isSelected ? Colors.blueAccent : Colors.white,
+                                color: isSelected ? Colors.blueAccent : AppColors.textPrimary(context),
                                 fontSize: 13,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                               ),
@@ -380,7 +380,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                                 Flexible(
                                   child: Text(
                                     model.pricingLabel,
-                                    style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -397,7 +397,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                  child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary(context))),
                 ),
               ],
             );
@@ -433,8 +433,8 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
              Row(
                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                children: [
-                 const Text('Model Settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                 IconButton(icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.pop(context)),
+                 Text('Model Settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary(context))),
+                 IconButton(icon: Icon(Icons.close, color: AppColors.textSecondary(context)), onPressed: () => Navigator.pop(context)),
                ],
              ),
              const SizedBox(height: 16),
@@ -509,12 +509,12 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.white54),
+            Icon(icon, size: 16, color: isSelected ? Colors.white : AppColors.textSecondary(context)),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white54,
+                color: isSelected ? Colors.white : AppColors.textSecondary(context),
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -573,7 +573,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Configuration Preset', style: TextStyle(fontSize: 13, color: Colors.white70)),
+                Text('Configuration Preset', style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context))),
                 const SizedBox(height: 8),
                 KcppsSelector(
                   storage: storage,
@@ -702,7 +702,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         const SizedBox(height: 12),
         Row(
           children: [
-            const Text('KV Quantization:', style: TextStyle(fontSize: 13, color: Colors.white70)),
+            Text('KV Quantization:', style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context))),
             const SizedBox(width: 12),
             Expanded(
               child: DropdownButtonHideUnderline(
@@ -710,7 +710,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                   value: Provider.of<StorageService>(context).kvQuantizationLevel,
                   isExpanded: true,
                   dropdownColor: AppColors.surfaceContainerOf(context),
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
                   onChanged: (val) {
                     if (val != null) {
                       Provider.of<StorageService>(context, listen: false).setKvQuantizationLevel(val);
@@ -726,9 +726,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               ),
             ),
             const SizedBox(width: 8),
-            const Tooltip(
+            Tooltip(
               message: 'Quantizes the context window to save significant VRAM with minimal quality loss. Note: KoboldCPP dynamically disables Context Shifting when this is active.',
-              child: Icon(Icons.info_outline, size: 16, color: Colors.white54),
+              child: Icon(Icons.info_outline, size: 16, color: AppColors.iconSecondary(context)),
             ),
           ],
         ),
@@ -746,8 +746,8 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             children: [
               const Icon(Icons.psychology, size: 16, color: Colors.purpleAccent),
               const SizedBox(width: 8),
-              const Expanded(
-                child: Text('Thinking Model', style: TextStyle(fontSize: 13, color: Colors.white70)),
+              Expanded(
+                child: Text('Thinking Model', style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context))),
               ),
               Switch(
                 value: storage.koboldThinkingModel,
@@ -755,11 +755,11 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                 activeTrackColor: Colors.purpleAccent,
               ),
               const SizedBox(width: 4),
-              const Tooltip(
+              Tooltip(
                 message: 'Enable for QwQ, Deepseek-R1, Qwen3, Precog, or any model that\n'
                     'outputs <think> blocks. Disables grammar constraints so the\n'
                     'model can think freely before producing eval JSON.',
-                child: Icon(Icons.info_outline, size: 16, color: Colors.white54),
+                child: Icon(Icons.info_outline, size: 16, color: AppColors.iconSecondary(context)),
               ),
             ],
           );
@@ -903,7 +903,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
-              color: Colors.black26,
+              color: AppColors.surfaceContainerOf(context),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
@@ -914,13 +914,13 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     children: [
                       Text(
                         'Model',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                        style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         _modelNameController.text.isEmpty ? 'Tap to select a model...' : _modelNameController.text,
                         style: TextStyle(
-                          color: _modelNameController.text.isEmpty ? Colors.white38 : Colors.white,
+                          color: _modelNameController.text.isEmpty ? AppColors.textTertiary(context) : AppColors.textPrimary(context),
                           fontSize: 14,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -928,7 +928,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     ],
                   ),
                 ),
-                const Icon(Icons.arrow_drop_down, color: Colors.white54),
+                Icon(Icons.arrow_drop_down, color: AppColors.iconSecondary(context)),
               ],
             ),
           ),
@@ -984,8 +984,8 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                 icon: const Icon(Icons.save),
                 label: const Text('Save'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white70,
-                  side: const BorderSide(color: Colors.white24),
+                  foregroundColor: AppColors.textSecondary(context),
+                  side: BorderSide(color: AppColors.borderOf(context)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
@@ -994,7 +994,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         ),
 
         const SizedBox(height: 16),
-        const Divider(color: Colors.white10),
+        Divider(color: AppColors.borderOf(context)),
         const SizedBox(height: 8),
 
         // Reasoning toggle
@@ -1007,7 +1007,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                 children: [
                   const Icon(Icons.psychology, size: 18, color: Colors.blueAccent),
                   const SizedBox(width: 8),
-                  const Text('Request Reasoning', style: TextStyle(color: Colors.white)),
+                  Text('Request Reasoning', style: TextStyle(color: AppColors.textPrimary(context))),
                   const Spacer(),
                   Switch(
                     value: storage.reasoningEnabled,
@@ -1021,7 +1021,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                   padding: const EdgeInsets.only(left: 26, bottom: 4),
                   child: Row(
                     children: [
-                      const Text('Effort', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                      Text('Effort', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13)),
                       const SizedBox(width: 12),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1034,7 +1034,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                             value: storage.reasoningEffort,
                             isDense: true,
                             dropdownColor: AppColors.surfaceContainerOf(context),
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: AppColors.textPrimary(context)),
                             items: const [
                               DropdownMenuItem(value: 'low', child: Text('Low')),
                               DropdownMenuItem(value: 'medium', child: Text('Medium')),
@@ -1054,7 +1054,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                   padding: const EdgeInsets.only(left: 26),
                   child: Text(
                     'Request thinking output from compatible models',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11),
+                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
                   ),
                 ),
             ],
@@ -1075,9 +1075,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Configuration Preset (.kcpps)',
-          style: TextStyle(fontSize: 13, color: Colors.white70),
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context)),
         ),
         const SizedBox(height: 8),
         KcppsSelector(
@@ -1151,9 +1151,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Process Logs',
-          style: TextStyle(fontSize: 13, color: Colors.white70),
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context)),
         ),
         const SizedBox(height: 8),
         LogView(logs: pseudoRemote.logs),
@@ -1202,12 +1202,12 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
       padding: const EdgeInsets.only(bottom: 4.0),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          Text(label, style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12)),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
               value,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(color: AppColors.textPrimary(context), fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
             ),
@@ -1227,12 +1227,12 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
       controller: controller,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       obscureText: isObscured,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: AppColors.textPrimary(context)),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.white54),
+        labelStyle: TextStyle(color: AppColors.textSecondary(context)),
         filled: true,
-        fillColor: Colors.black26,
+        fillColor: AppColors.surfaceContainerOf(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,

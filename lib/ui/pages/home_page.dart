@@ -22,6 +22,7 @@ import 'package:path/path.dart' as path;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
@@ -138,7 +139,7 @@ class _HomePageState extends State<HomePage> {
                 const Text('Model loaded and ready!'),
               ],
             ),
-            backgroundColor: const Color(0xFF2A2A2A),
+            backgroundColor: AppColors.surfaceContainerOf(context),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
           ),
@@ -244,7 +245,13 @@ class _HomePageState extends State<HomePage> {
                   'Get started by creating a new character!',
                   style: Theme.of(
                     context,
-                  ).textTheme.titleLarge?.copyWith(color: Colors.white70),
+                  ).textTheme.titleLarge?.copyWith(
+                    color: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.color
+                        ?.withValues(alpha: 0.7),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -411,21 +418,21 @@ class _HomePageState extends State<HomePage> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1E293B),
+                              color: AppColors.surfaceContainerOf(context),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.white12),
+                              border: Border.all(color: AppColors.borderOf(context)),
                             ),
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
                                 value: _sortMode,
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.sort,
                                   size: 18,
-                                  color: Colors.white54,
+                                  color: AppColors.iconSecondary(context),
                                 ),
-                                dropdownColor: const Color(0xFF1E293B),
-                                style: const TextStyle(
-                                  color: Colors.white70,
+                                dropdownColor: AppColors.surfaceContainerOf(context),
+                                style: TextStyle(
+                                  color: AppColors.textSecondary(context),
                                   fontSize: 13,
                                 ),
                                 isDense: true,
@@ -465,10 +472,10 @@ class _HomePageState extends State<HomePage> {
                             width: 120,
                             child: Row(
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.grid_view,
                                   size: 16,
-                                  color: Colors.white38,
+                                  color: AppColors.iconSecondary(context),
                                 ),
                                 Expanded(
                                   child: SliderTheme(
@@ -483,7 +490,11 @@ class _HomePageState extends State<HomePage> {
                                           ),
                                       activeTrackColor: Colors.blueAccent
                                           .withValues(alpha: 0.7),
-                                      inactiveTrackColor: Colors.white12,
+                                      inactiveTrackColor: AppColors.resolve(
+                                        context,
+                                        Colors.white.withValues(alpha: 0.12),
+                                        Colors.black.withValues(alpha: 0.12),
+                                      ),
                                       thumbColor: Colors.blueAccent,
                                     ),
                                     child: Slider(
@@ -501,10 +512,10 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                 ),
-                                const Icon(
+                                Icon(
                                   Icons.view_module,
                                   size: 16,
-                                  color: Colors.white38,
+                                  color: AppColors.iconSecondary(context),
                                 ),
                               ],
                             ),
@@ -614,12 +625,12 @@ class _HomePageState extends State<HomePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: TextField(
                       controller: _searchController,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: AppColors.textPrimary(context)),
                       decoration: InputDecoration(
                         hintText: _activeFolderId != null && _searchScope != SearchScope.allCharacters
                             ? 'Search this folder...'
                             : 'Search by name or tag...',
-                        hintStyle: const TextStyle(color: Colors.white38),
+                        hintStyle: TextStyle(color: AppColors.textTertiary(context)),
                         prefixIcon: _activeFolderId != null
                             ? PopupMenuButton<SearchScope>(
                                 icon: Icon(
@@ -630,7 +641,7 @@ class _HomePageState extends State<HomePage> {
                                   size: 20,
                                 ),
                                 tooltip: 'Search scope',
-                                color: const Color(0xFF1E293B),
+                                color: AppColors.surfaceContainerOf(context),
                                 onSelected: (val) =>
                                     setState(() => _searchScope = val),
                                 itemBuilder: (_) => [
@@ -643,7 +654,7 @@ class _HomePageState extends State<HomePage> {
                                           size: 18,
                                           color: _searchScope == SearchScope.currentFolder
                                               ? Colors.amberAccent
-                                              : Colors.white54,
+                                              : AppColors.iconSecondary(context),
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
@@ -651,7 +662,7 @@ class _HomePageState extends State<HomePage> {
                                           style: TextStyle(
                                             color: _searchScope == SearchScope.currentFolder
                                                 ? Colors.amberAccent
-                                                : Colors.white70,
+                                                : AppColors.textSecondary(context),
                                             fontSize: 13,
                                           ),
                                         ),
@@ -667,7 +678,7 @@ class _HomePageState extends State<HomePage> {
                                           size: 18,
                                           color: _searchScope == SearchScope.folderRecursive
                                               ? Colors.amberAccent
-                                              : Colors.white54,
+                                              : AppColors.iconSecondary(context),
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
@@ -675,7 +686,7 @@ class _HomePageState extends State<HomePage> {
                                           style: TextStyle(
                                             color: _searchScope == SearchScope.folderRecursive
                                                 ? Colors.amberAccent
-                                                : Colors.white70,
+                                                : AppColors.textSecondary(context),
                                             fontSize: 13,
                                           ),
                                         ),
@@ -691,7 +702,7 @@ class _HomePageState extends State<HomePage> {
                                           size: 18,
                                           color: _searchScope == SearchScope.allCharacters
                                               ? Colors.blueAccent
-                                              : Colors.white54,
+                                              : AppColors.iconSecondary(context),
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
@@ -699,7 +710,7 @@ class _HomePageState extends State<HomePage> {
                                           style: TextStyle(
                                             color: _searchScope == SearchScope.allCharacters
                                                 ? Colors.blueAccent
-                                                : Colors.white70,
+                                                : AppColors.textSecondary(context),
                                             fontSize: 13,
                                           ),
                                         ),
@@ -708,12 +719,12 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                 ],
                               )
-                            : const Icon(Icons.search, color: Colors.white38),
+                            : Icon(Icons.search, color: AppColors.iconSecondary(context)),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.clear,
-                                  color: Colors.white38,
+                                  color: AppColors.iconSecondary(context),
                                 ),
                                 onPressed: () {
                                   _searchController.clear();
@@ -722,7 +733,7 @@ class _HomePageState extends State<HomePage> {
                               )
                             : null,
                         filled: true,
-                        fillColor: const Color(0xFF1E293B),
+                        fillColor: AppColors.surfaceContainerOf(context),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -761,13 +772,17 @@ class _HomePageState extends State<HomePage> {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1F2937),
-                      border: const Border(
-                        top: BorderSide(color: Colors.white10),
+                      color: AppColors.surfaceContainerOf(context),
+                      border: Border(
+                        top: BorderSide(color: AppColors.borderOf(context)),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
+                          color: AppColors.resolve(
+                            context,
+                            Colors.black.withValues(alpha: 0.3),
+                            Colors.black.withValues(alpha: 0.1),
+                          ),
                           blurRadius: 8,
                           offset: const Offset(0, -2),
                         ),
@@ -782,17 +797,17 @@ class _HomePageState extends State<HomePage> {
                         const SizedBox(width: 12),
                         Text(
                           '${_selectedCharacterIds.length} selected',
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: AppColors.textSecondary(context),
                             fontSize: 14,
                           ),
                         ),
                         const Spacer(),
                         TextButton(
                           onPressed: _cancelSelection,
-                          child: const Text(
+                          child: Text(
                             'Cancel',
-                            style: TextStyle(color: Colors.white54),
+                            style: TextStyle(color: AppColors.textSecondary(context)),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -805,7 +820,11 @@ class _HomePageState extends State<HomePage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.purpleAccent,
                             foregroundColor: Colors.white,
-                            disabledBackgroundColor: Colors.white10,
+                            disabledBackgroundColor: AppColors.resolve(
+                              context,
+                              Colors.white10,
+                              Colors.black12,
+                            ),
                           ),
                         ),
                       ],
@@ -824,13 +843,17 @@ class _HomePageState extends State<HomePage> {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1F2937),
-                      border: const Border(
-                        top: BorderSide(color: Colors.white10),
+                      color: AppColors.surfaceContainerOf(context),
+                      border: Border(
+                        top: BorderSide(color: AppColors.borderOf(context)),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
+                          color: AppColors.resolve(
+                            context,
+                            Colors.black.withValues(alpha: 0.3),
+                            Colors.black.withValues(alpha: 0.1),
+                          ),
                           blurRadius: 8,
                           offset: const Offset(0, -2),
                         ),
@@ -845,17 +868,17 @@ class _HomePageState extends State<HomePage> {
                         const SizedBox(width: 12),
                         Text(
                           '${_selectedCharacterIds.length} selected',
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: AppColors.textSecondary(context),
                             fontSize: 14,
                           ),
                         ),
                         const Spacer(),
                         TextButton(
                           onPressed: _cancelSelection,
-                          child: const Text(
+                          child: Text(
                             'Cancel',
-                            style: TextStyle(color: Colors.white54),
+                            style: TextStyle(color: AppColors.textSecondary(context)),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -872,7 +895,11 @@ class _HomePageState extends State<HomePage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blueAccent,
                             foregroundColor: Colors.white,
-                            disabledBackgroundColor: Colors.white10,
+                            disabledBackgroundColor: AppColors.resolve(
+                              context,
+                              Colors.white10,
+                              Colors.black12,
+                            ),
                           ),
                         ),
                       ],
@@ -1024,7 +1051,7 @@ class _HomePageState extends State<HomePage> {
           _searchQuery.isNotEmpty
               ? 'No characters match "$_searchQuery"'
               : 'This folder is empty',
-          style: const TextStyle(color: Colors.white38, fontSize: 16),
+          style: TextStyle(color: AppColors.textTertiary(context), fontSize: 16),
         ),
       );
     }
@@ -1086,15 +1113,19 @@ class _HomePageState extends State<HomePage> {
         final isHovering = candidateData.isNotEmpty;
         return Card(
           color: isHovering
-              ? Colors.amber.shade900.withValues(alpha: 0.4)
-              : const Color(0xFF1E293B),
+              ? AppColors.resolve(
+                  context,
+                  Colors.amber.shade900.withValues(alpha: 0.4),
+                  Colors.amber.withValues(alpha: 0.1),
+                )
+              : AppColors.cardOf(context),
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
               color: isHovering
                   ? Colors.amber
-                  : Colors.white.withValues(alpha: 0.1),
+                  : AppColors.borderOf(context),
               width: isHovering ? 2 : 1,
             ),
           ),
@@ -1118,7 +1149,7 @@ class _HomePageState extends State<HomePage> {
                     Icon(
                       Icons.folder,
                       size: iconSize,
-                      color: isHovering ? Colors.amber : Colors.amber.shade700,
+                      color: isHovering ? Colors.amber : AppColors.iconSecondary(context),
                     ),
                     SizedBox(height: isTiny ? 4 : (isSmall ? 8 : 16)),
                     Padding(
@@ -1126,7 +1157,7 @@ class _HomePageState extends State<HomePage> {
                       child: Text(
                         folder.name,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textPrimary(context),
                           fontWeight: FontWeight.bold,
                           fontSize: fontSize,
                         ),
@@ -1140,7 +1171,7 @@ class _HomePageState extends State<HomePage> {
                       Text(
                         '$charCount character${charCount == 1 ? '' : 's'}',
                         style: TextStyle(
-                          color: Colors.white54,
+                          color: AppColors.textSecondary(context),
                           fontSize: isSmall ? 11 : 13,
                         ),
                       ),
@@ -1152,9 +1183,9 @@ class _HomePageState extends State<HomePage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.edit,
-                              color: Colors.white54,
+                              color: AppColors.iconSecondary(context),
                               size: 18,
                             ),
                             tooltip: 'Rename',
@@ -1184,13 +1215,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Wraps content with an optional model-loading status bar at the bottom.
   Widget _buildModeToggle() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.surfaceContainerOf(context),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppColors.borderOf(context)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1225,11 +1255,21 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: isActive
-              ? Colors.amber.shade800.withValues(alpha: 0.25)
+              ? AppColors.resolve(
+                  context,
+                  Colors.amber.shade800.withValues(alpha: 0.25),
+                  Colors.amber.withValues(alpha: 0.15),
+                )
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: isActive
-              ? Border.all(color: Colors.amber.shade700.withValues(alpha: 0.5))
+              ? Border.all(
+                  color: AppColors.resolve(
+                    context,
+                    Colors.amber.shade700.withValues(alpha: 0.5),
+                    Colors.amber.shade700.withValues(alpha: 0.4),
+                  ),
+                )
               : null,
         ),
         child: Row(
@@ -1238,13 +1278,21 @@ class _HomePageState extends State<HomePage> {
             Icon(
               icon,
               size: 18,
-              color: isActive ? Colors.amber.shade400 : Colors.white38,
+              color: isActive
+                  ? AppColors.resolve(
+                      context,
+                      Colors.amber.shade400,
+                      Colors.amber.shade800,
+                    )
+                  : AppColors.iconSecondary(context),
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? Colors.white : Colors.white54,
+                color: isActive
+                    ? AppColors.textPrimary(context)
+                    : AppColors.textSecondary(context),
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                 fontSize: 14,
               ),
@@ -1271,24 +1319,28 @@ class _HomePageState extends State<HomePage> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            border: Border(top: BorderSide(color: Colors.white12)),
+            color: AppColors.surfaceContainerOf(context),
+            border: Border(top: BorderSide(color: AppColors.borderOf(context))),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 status,
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: const LinearProgressIndicator(
+                child: LinearProgressIndicator(
                   minHeight: 4,
-                  backgroundColor: Color(0xFF333333),
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                  backgroundColor: AppColors.resolve(
+                    context,
+                    const Color(0xFF333333),
+                    AppColors.surfaceContainerLight,
+                  ),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
                 ),
               ),
             ],
@@ -1311,7 +1363,7 @@ class _HomePageState extends State<HomePage> {
           width: 150,
           height: 200,
           child: Card(
-            color: const Color(0xFF1E293B),
+            color: AppColors.cardOf(context),
             clipBehavior: Clip.antiAlias,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -1322,11 +1374,11 @@ class _HomePageState extends State<HomePage> {
                     fit: BoxFit.cover,
                     alignment: Alignment.topCenter,
                     errorBuilder: (_, _, _) => Container(
-                      color: Colors.black26,
-                      child: const Icon(Icons.person, color: Colors.white24, size: 48),
+                      color: AppColors.resolve(context, Colors.black26, Colors.black12),
+                      child: Icon(Icons.person, color: AppColors.resolve(context, Colors.white24, Colors.black45), size: 48),
                     ),
                   )
-                : const Icon(Icons.person, size: 64, color: Colors.white24),
+                : Icon(Icons.person, size: 64, color: AppColors.resolve(context, Colors.white24, Colors.black45)),
           ),
         ),
       ),
@@ -1350,14 +1402,14 @@ class _HomePageState extends State<HomePage> {
     final isSelected = _selectedCharacterIds.contains(stringId);
 
     return Card(
-      color: Theme.of(context).cardColor,
+      color: AppColors.cardOf(context),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: isSelected
               ? Colors.purpleAccent
-              : Theme.of(context).dividerColor.withValues(alpha: 0.1),
+              : AppColors.borderOf(context).withValues(alpha: 0.3),
           width: isSelected ? 2.5 : 1,
         ),
       ),
@@ -1418,20 +1470,20 @@ class _HomePageState extends State<HomePage> {
                               fit: BoxFit.cover,
                               alignment: Alignment.topCenter,
                               errorBuilder: (_, _, _) => Container(
-                                color: Colors.grey.shade800,
-                                child: const Icon(
+                                color: AppColors.resolve(context, Colors.grey.shade800, Colors.grey.shade200),
+                                child: Icon(
                                   Icons.person,
                                   size: 32,
-                                  color: Colors.white24,
+                                  color: AppColors.resolve(context, Colors.white24, Colors.black45),
                                 ),
                               ),
                             )
                           : Container(
-                              color: Colors.grey.shade800,
-                              child: const Icon(
+                              color: AppColors.resolve(context, Colors.grey.shade800, Colors.grey.shade200),
+                              child: Icon(
                                 Icons.person,
                                 size: 32,
-                                color: Colors.white24,
+                                color: AppColors.resolve(context, Colors.white24, Colors.black45),
                               ),
                             ),
                       Positioned(
@@ -1447,7 +1499,10 @@ class _HomePageState extends State<HomePage> {
                             gradient: LinearGradient(
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
-                              colors: [Colors.black87, Colors.transparent],
+                              colors: [
+                                AppColors.resolve(context, Colors.black87, Colors.black54),
+                                Colors.transparent,
+                              ],
                             ),
                           ),
                           child: Text(
@@ -1477,20 +1532,20 @@ class _HomePageState extends State<HomePage> {
                               fit: BoxFit.cover,
                               alignment: Alignment.topCenter,
                               errorBuilder: (_, _, _) => Container(
-                                color: Colors.grey.shade800,
+                                color: AppColors.resolve(context, Colors.grey.shade800, Colors.grey.shade200),
                                 child: Icon(
                                   Icons.person,
                                   size: isCompact ? 32 : 64,
-                                  color: Colors.white24,
+                                  color: AppColors.resolve(context, Colors.white24, Colors.black45),
                                 ),
                               ),
                             )
                           : Container(
-                              color: Colors.grey.shade800,
+                              color: AppColors.resolve(context, Colors.grey.shade800, Colors.grey.shade200),
                               child: Icon(
                                 Icons.person,
                                 size: isCompact ? 32 : 64,
-                                color: Colors.white24,
+                                color: AppColors.resolve(context, Colors.white24, Colors.black45),
                               ),
                             ),
                     ),
@@ -1524,13 +1579,13 @@ class _HomePageState extends State<HomePage> {
                                       Icon(
                                         Icons.chat_bubble_outline,
                                         size: 11,
-                                        color: Colors.white38,
+                                        color: AppColors.iconSecondary(context),
                                       ),
                                       const SizedBox(width: 3),
                                       Text(
                                         '$msgCount',
                                         style: TextStyle(
-                                          color: Colors.white38,
+                                          color: AppColors.textTertiary(context),
                                           fontSize: isCompact ? 10 : 11,
                                         ),
                                       ),
@@ -1555,16 +1610,30 @@ class _HomePageState extends State<HomePage> {
                                               vertical: 2,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: Colors.amber.shade900
-                                                  .withValues(alpha: 0.3),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
+                                              color: AppColors.resolve(
+                                                context,
+                                                Colors.amber.withValues(alpha: 0.22),
+                                                const Color(0xFFFFF8E1), // warm light amber tint on paper
+                                              ),
+                                              border: Border.all(
+                                                color: AppColors.resolve(
+                                                  context,
+                                                  Colors.amber.withValues(alpha: 0.45),
+                                                  Colors.amber.shade600.withValues(alpha: 0.35),
+                                                ),
+                                              ),
+                                              borderRadius: BorderRadius.circular(4),
                                             ),
                                             child: Text(
                                               tag,
                                               style: TextStyle(
-                                                color: Colors.amber.shade300,
+                                                color: AppColors.resolve(
+                                                  context,
+                                                  Colors.amber.shade200,
+                                                  Colors.amber.shade800,
+                                                ),
                                                 fontSize: 10,
+                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
                                           ),
@@ -1607,14 +1676,14 @@ class _HomePageState extends State<HomePage> {
                       ? (_isOrganizing
                             ? Colors.blueAccent
                             : Colors.purpleAccent)
-                      : Colors.black54,
+                      : AppColors.resolve(context, Colors.black54, Colors.black12),
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: isSelected
                         ? (_isOrganizing
                               ? Colors.blueAccent
                               : Colors.purpleAccent)
-                        : Colors.white38,
+                        : AppColors.resolve(context, Colors.white38, Colors.black38),
                     width: 2,
                   ),
                 ),
@@ -1638,54 +1707,54 @@ class _HomePageState extends State<HomePage> {
                       position.dx,
                       position.dy,
                     ),
-                    color: const Color(0xFF2A2A2A),
+                    color: AppColors.surfaceContainerOf(context),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                     items: [
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'edit',
                         child: ListTile(
                           leading: Icon(
                             Icons.edit,
-                            color: Colors.white70,
+                            color: AppColors.iconSecondary(context),
                             size: 20,
                           ),
                           title: Text(
                             'Edit Character',
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(color: AppColors.textPrimary(context)),
                           ),
                           dense: true,
                           contentPadding: EdgeInsets.zero,
                         ),
                       ),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'duplicate',
                         child: ListTile(
                           leading: Icon(
                             Icons.copy,
-                            color: Colors.white70,
+                            color: AppColors.iconSecondary(context),
                             size: 20,
                           ),
                           title: Text(
                             'Duplicate Character',
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(color: AppColors.textPrimary(context)),
                           ),
                           dense: true,
                           contentPadding: EdgeInsets.zero,
                         ),
                       ),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'export',
                         child: ListTile(
                           leading: Icon(
                             Icons.upload,
-                            color: Colors.white70,
+                            color: AppColors.iconSecondary(context),
                             size: 20,
                           ),
                           title: Text(
                             'Export PNG',
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(color: AppColors.textPrimary(context)),
                           ),
                           dense: true,
                           contentPadding: EdgeInsets.zero,
@@ -1774,7 +1843,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     return Card(
-      color: const Color(0xFF1E293B),
+      color: AppColors.cardOf(context),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -1869,19 +1938,19 @@ class _HomePageState extends State<HomePage> {
                                                 fit: BoxFit.cover,
                                                 alignment: Alignment.topCenter,
                                                 errorBuilder: (_, _, _) => Container(
-                                                  color: Colors.grey.shade700,
-                                                  child: const Icon(
+                                                  color: AppColors.resolve(context, Colors.grey.shade700, Colors.grey.shade200),
+                                                  child: Icon(
                                                     Icons.person,
-                                                    color: Colors.white24,
+                                                    color: AppColors.resolve(context, Colors.white24, Colors.black45),
                                                   ),
                                                 ),
                                               ),
                                             )
                                           : Container(
-                                              color: Colors.grey.shade700,
+                                              color: AppColors.resolve(context, Colors.grey.shade700, Colors.grey.shade200),
                                               child: Icon(
                                                 Icons.person,
-                                                color: Colors.white24,
+                                                color: AppColors.resolve(context, Colors.white24, Colors.black45),
                                                 size: avatarSize * 0.5,
                                               ),
                                             ),
@@ -1906,7 +1975,7 @@ class _HomePageState extends State<HomePage> {
                         child: Text(
                           group.name,
                           style: TextStyle(
-                            color: Colors.white,
+                            color: AppColors.textPrimary(context),
                             fontWeight: FontWeight.bold,
                             fontSize: nameFontSize,
                           ),
@@ -1921,7 +1990,7 @@ class _HomePageState extends State<HomePage> {
                       Text(
                         '${characters.length} character${characters.length == 1 ? '' : 's'}',
                         style: TextStyle(
-                          color: Colors.white54,
+                          color: AppColors.textSecondary(context),
                           fontSize: subFontSize,
                         ),
                       ),
@@ -1957,7 +2026,7 @@ class _HomePageState extends State<HomePage> {
               top: 8,
               right: 8,
               child: Material(
-                color: Colors.black54,
+                color: AppColors.resolve(context, Colors.black54, Colors.black12),
                 borderRadius: BorderRadius.circular(20),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(20),
@@ -1989,7 +2058,7 @@ class _HomePageState extends State<HomePage> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: Colors.blueAccent, width: 0.5),
@@ -2005,9 +2074,10 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: Text(
                 'Continue a chat with $characterName?',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary(context),
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -2029,13 +2099,13 @@ class _HomePageState extends State<HomePage> {
                   label: const Text('Start New Chat'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.greenAccent,
-                    side: const BorderSide(color: Colors.greenAccent),
+                    side: BorderSide(color: Colors.greenAccent),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
-              const Divider(color: Colors.white10),
+              Divider(color: AppColors.borderOf(context)),
               const SizedBox(height: 4),
               // Session list
               Expanded(
@@ -2052,7 +2122,7 @@ class _HomePageState extends State<HomePage> {
                     final description = s['session_description'] as String?;
 
                     return Card(
-                      color: const Color(0xFF374151),
+                      color: AppColors.cardOf(context),
                       margin: const EdgeInsets.symmetric(vertical: 4),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -2064,16 +2134,16 @@ class _HomePageState extends State<HomePage> {
                                 size: 20,
                                 color: Colors.blueAccent,
                               )
-                            : const Icon(
+                            : Icon(
                                 Icons.chat,
                                 size: 20,
-                                color: Colors.white38,
+                                color: AppColors.textTertiary(context),
                               ),
                         title: Text(
                           s['preview'],
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
-                            color: Colors.white,
+                            color: AppColors.textPrimary(context),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -2084,18 +2154,18 @@ class _HomePageState extends State<HomePage> {
                             const SizedBox(height: 4),
                             Text(
                               dateStr,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white54,
+                                color: AppColors.textTertiary(context),
                               ),
                             ),
                             if (description != null && description.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
                                 description,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.white38,
+                                  color: AppColors.textTertiary(context),
                                   fontStyle: FontStyle.italic,
                                 ),
                                 maxLines: 1,
@@ -2116,11 +2186,11 @@ class _HomePageState extends State<HomePage> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.forum, size: 10, color: Colors.blueAccent.shade100),
+                                      Icon(Icons.forum, size: 10, color: AppColors.resolve(context, Colors.blueAccent.shade200, Colors.blueAccent.shade700)),
                                       const SizedBox(width: 4),
                                       Text(
                                         '$messageCount total',
-                                        style: TextStyle(fontSize: 10, color: Colors.blueAccent.shade100, fontWeight: FontWeight.w500),
+                                        style: TextStyle(fontSize: 10, color: AppColors.resolve(context, Colors.blueAccent.shade200, Colors.blueAccent.shade700), fontWeight: FontWeight.w500),
                                       ),
                                     ],
                                   ),
@@ -2136,11 +2206,11 @@ class _HomePageState extends State<HomePage> {
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.person, size: 10, color: Colors.greenAccent.shade100),
+                                        Icon(Icons.person, size: 10, color: AppColors.resolve(context, Colors.greenAccent.shade200, Colors.greenAccent.shade700)),
                                         const SizedBox(width: 4),
                                         Text(
                                           '$userMessageCount user',
-                                          style: TextStyle(fontSize: 10, color: Colors.greenAccent.shade100, fontWeight: FontWeight.w500),
+                                          style: TextStyle(fontSize: 10, color: AppColors.resolve(context, Colors.greenAccent.shade200, Colors.greenAccent.shade700), fontWeight: FontWeight.w500),
                                         ),
                                       ],
                                     ),
@@ -2151,9 +2221,9 @@ class _HomePageState extends State<HomePage> {
                               const SizedBox(height: 4),
                               Text(
                                 '↳ Branched at message #${(s['fork_index'] ?? 0) + 1}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10,
-                                  color: Colors.blueAccent,
+                                  color: AppColors.textSecondary(context),
                                 ),
                               ),
                             ],
@@ -2174,9 +2244,9 @@ class _HomePageState extends State<HomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: AppColors.textSecondary(context)),
             ),
           ),
         ],
@@ -3515,12 +3585,16 @@ class _HomePageState extends State<HomePage> {
 
   ButtonStyle _buttonStyle() {
     return ElevatedButton.styleFrom(
-      backgroundColor: Colors.white.withValues(alpha: 0.1),
-      foregroundColor: Colors.white,
+      backgroundColor: AppColors.resolve(
+        context,
+        Colors.white.withValues(alpha: 0.1),
+        Colors.black.withValues(alpha: 0.05),
+      ),
+      foregroundColor: AppColors.textPrimary(context),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Colors.white24),
+        side: BorderSide(color: AppColors.resolve(context, Colors.white24, Colors.black26)),
       ),
     );
   }

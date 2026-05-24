@@ -41,14 +41,14 @@ class AppColors {
   // Light-mode backgrounds
   // ---------------------------------------------------------------------------
 
-  /// Light-mode scaffold background.
-  static const Color lightBackground = Color(0xFFF3F4F6);
+  /// Light-mode scaffold background (warmer paper tone for long-session comfort; chosen to eliminate glare).
+  static const Color lightBackground = Color(0xFFF8F4ED);
 
   /// Light-mode card/container background.
   static const Color lightCard = Colors.white;
 
-  /// Light-mode surface background for dialogs and panels.
-  static const Color lightSurface = Color(0xFFE5E7EB);
+  /// Light-mode surface background for dialogs and panels (warmer paper tone).
+  static const Color lightSurface = Color(0xFFF0EBE3);
 
   // ---------------------------------------------------------------------------
   // Container surface for dropdowns, dialogs, and input fields
@@ -57,8 +57,11 @@ class AppColors {
   /// Dark container surface (slightly lighter than [card] for visual layering).
   static const Color surfaceContainer = Color(0xFF374151);
 
-  /// Light container surface for the same purpose.
-  static const Color surfaceContainerLight = Color(0xFFE5E7EB);
+  /// Light container surface for the same purpose (warmer paper tone).
+  static const Color surfaceContainerLight = Color(0xFFEDE7DF);
+
+  /// Subtle border color for cards/panels in light mode (defines shape without harsh contrast on paper bg).
+  static const Color lightBorder = Color(0xFFD4CFC6);
 
   /// Brightness-aware container surface.
   static Color surfaceContainerOf(BuildContext context) =>
@@ -106,6 +109,14 @@ class AppColors {
   static Color textTertiary(BuildContext context) =>
       isLight(context) ? Colors.black45 : Colors.white38;
 
+  /// Primary icon color (reuses exact isLight + ternary scaffold of textPrimary; no new logic).
+  static Color iconPrimary(BuildContext context) =>
+      isLight(context) ? Colors.black87 : Colors.white;
+
+  /// Secondary / muted icon color (matches textSecondary pattern).
+  static Color iconSecondary(BuildContext context) =>
+      isLight(context) ? Colors.black54 : Colors.white70;
+
   /// Resolves a dark/light color pair based on current brightness.
   static Color resolve(BuildContext context, Color dark, Color light) =>
       isLight(context) ? light : dark;
@@ -121,6 +132,10 @@ class AppColors {
   /// Surface color for the current brightness.
   static Color surfaceOf(BuildContext context) =>
       resolve(context, surface, lightSurface);
+
+  /// Subtle border color for the current brightness (reuses resolve scaffold; no new logic).
+  static Color borderOf(BuildContext context) =>
+      resolve(context, const Color(0xFF334155), lightBorder);
 
   // ---------------------------------------------------------------------------
   // Process log / terminal output colors

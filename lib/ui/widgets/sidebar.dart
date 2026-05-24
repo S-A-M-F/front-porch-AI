@@ -79,17 +79,17 @@ class Sidebar extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.psychology,
-                    color: Colors.amberAccent,
+                    color: AppColors.resolve(context, Colors.amberAccent, Colors.amber.shade700),
                     size: 22,
                   ),
                   const SizedBox(width: 12),
-                  const Flexible(
+                  Flexible(
                     child: Text(
                       'AI Character Creator',
                       style: TextStyle(
-                        color: Colors.amberAccent,
+                        color: AppColors.resolve(context, Colors.amberAccent, Colors.amber.shade700),
                         fontWeight: FontWeight.w600,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -149,18 +149,18 @@ class Sidebar extends StatelessWidget {
                   vertical: 12.0,
                   horizontal: 12.0,
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.coffee_outlined,
                       color: Color(0xFFFF5E5B), // Ko-fi brand coral
                       size: 22,
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Flexible(
                       child: Text(
                         'Buy Me a Coffee ☕',
-                        style: TextStyle(color: Colors.white70),
+                        style: TextStyle(color: AppColors.textSecondary(context)),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -180,12 +180,12 @@ class Sidebar extends StatelessWidget {
                   child: GestureDetector(
                     onTap: () =>
                         launchUrl(Uri.parse('https://discord.gg/e4tET6rpdv')),
-                    child: const MouseRegion(
+                    child: MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: Icon(
                         Icons.discord,
                         size: 20,
-                        color: Colors.white54,
+                        color: AppColors.textSecondary(context),
                       ),
                     ),
                   ),
@@ -195,12 +195,12 @@ class Sidebar extends StatelessWidget {
                   child: GestureDetector(
                     onTap: () =>
                         launchUrl(Uri.parse('https://matrix.dreamersai.art')),
-                    child: const MouseRegion(
+                    child: MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: Icon(
                         Icons.grid_view_rounded,
                         size: 20,
-                        color: Colors.white54,
+                        color: AppColors.textSecondary(context),
                       ),
                     ),
                   ),
@@ -223,7 +223,7 @@ class Sidebar extends StatelessWidget {
                     Text(
                       version,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.white38,
+                        color: AppColors.textTertiary(context),
                       ),
                     ),
                     if (updateService.updateAvailable) ...[
@@ -273,8 +273,14 @@ class _SidebarItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Container(
           decoration: BoxDecoration(
+            // Subtle selection: light blue tint in light mode (paper bg), low-alpha white in dark.
+            // Reuses AppColors.resolve (existing scaffold) — no new helper or private method.
             color: isSelected
-                ? Colors.white.withValues(alpha: 0.1)
+                ? AppColors.resolve(
+                    context,
+                    Colors.white.withValues(alpha: 0.08),
+                    const Color(0xFFBFDBFE),
+                  )
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
@@ -283,7 +289,9 @@ class _SidebarItem extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: isSelected ? Colors.white : Colors.white70,
+                color: isSelected
+                    ? AppColors.textPrimary(context)
+                    : AppColors.textSecondary(context),
                 size: 22,
               ),
               const SizedBox(width: 12),
@@ -291,7 +299,9 @@ class _SidebarItem extends StatelessWidget {
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white70,
+                    color: isSelected
+                        ? AppColors.textPrimary(context)
+                        : AppColors.textSecondary(context),
                     fontWeight: isSelected
                         ? FontWeight.w600
                         : FontWeight.normal,

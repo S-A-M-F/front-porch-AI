@@ -4,6 +4,8 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- ☀️ **Light mode is now fully usable and comfortable** — The "blinding" experience (harsh cool grays + invisible white text/icons on the sidebar, home, forms, dialogs, and model lists) is gone. Warmer paper tones (`#F8F4ED` family), proper adaptive surfaces/borders/text/icons across the main screen, settings, Realism/Needs/Chaos panel, character & group dialogs, model manager, and download UI. Theme now driven by a single reliable source of truth (`StorageService.isDark`) so your preference sticks on restart and toggles are instant. 100% feature parity with dark mode — every slider, dropdown, button, text field, and workflow works identically; only the palette changes. Many dead dark-only constants and helpers were deleted in the process.
+
 - 🖥️ **Pseudo-Remote backend fully delivered** (PR #36) — Run KoboldCPP locally on your machine but talk to it through a clean OpenAI-compatible `/v1` endpoint. Choose your `.kcpps` preset, hit Start, and get full support for chat, Realism, Needs, and reasoning. The entire settings UI, model switching, process logs, autostart, and connection status now work consistently for managed Kobold instances.
 
 - 🧠 **Major Realism & Needs upgrade** — Per-character group Realism is now first-class. Every character in a group chat maintains their own independent bond, trust, emotion, arousal, fixation, and full Needs state. Much richer proactive pre-response Needs pressure with natural OOC guidance. The strong "Enjoys low hygiene" personality inversion is fully supported — filthy characters are properly rewarded for enjoying it. Characters in groups finally feel like distinct individuals instead of sharing one blob of state.
@@ -13,3 +15,5 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 - 📖 **Story & stability fixes** — LLMs returning doubles instead of ints in Story projects no longer break things. Narrative weekday progression is now stable across app restarts. AUR nightly automation continues to work as before.
 
 (The Pseudo-Remote backend code was left 100% untouched except for one small authorized addition to display per-character fixation in group member panels.)
+
+- 📖 **Porch Stories now fully light-mode compatible** — Cards, export pop-up sub-menus, delete confirmation dialogs, main dashboard, act & cast expandable sub-menus (with editable title/desc fields), thread/lore boxes, and voice dropdowns all switched from hard-coded dark surfaces + white70/38/24 text to `AppColors.cardOf`/`surfaceOf`/`textPrimary`/`textSecondary` + `resolve`. The "Porch Stories" boxes and sub-menus are finally readable and consistent with the rest of the app in both themes.

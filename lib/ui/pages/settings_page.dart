@@ -38,7 +38,6 @@ import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
 import 'package:front_porch_ai/ui/widgets/model_selector.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
-import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
@@ -622,8 +621,8 @@ class _SettingsPageState extends State<SettingsPage> {
               elevation: 0,
               iconTheme: theme.iconTheme,
               bottom: TabBar(
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white60,
+                labelColor: AppColors.textPrimary(context),
+                unselectedLabelColor: AppColors.textSecondary(context),
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 overlayColor: WidgetStateProperty.all(Colors.transparent),
@@ -905,15 +904,13 @@ class _SettingsPageState extends State<SettingsPage> {
               Switch(
                 value: Provider.of<StorageService>(context).isDark,
                 onChanged: (v) {
+                  // StorageService is now the single source of truth for theme.
+                  // Its notifyListeners() after set + after async load causes the root
+                  // Consumer2<StorageService, AppState> in main.dart to rebuild the ThemeData.
                   Provider.of<StorageService>(
                     context,
                     listen: false,
                   ).setIsDark(v);
-                  // Also notify AppState so the root MaterialApp Consumer rebuilds the ThemeData immediately
-                  try {
-                    final app = Provider.of<AppState>(context, listen: false);
-                    if (app.darkMode != v) app.toggleTheme();
-                  } catch (_) {}
                 },
               ),
             ],
@@ -1149,7 +1146,7 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           Text(
             label,
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
           ),
           const Spacer(),
           Container(
@@ -1158,10 +1155,10 @@ class _SettingsPageState extends State<SettingsPage> {
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.white24, width: 1),
+              border: Border.all(color: AppColors.borderOf(context), width: 1),
             ),
             child: IconButton(
-              icon: const Icon(Icons.color_lens, size: 20, color: Colors.white),
+              icon: Icon(Icons.color_lens, size: 20, color: AppColors.iconPrimary(context)),
               onPressed: () => _showColorPicker(context, color, onChanged),
             ),
           ),

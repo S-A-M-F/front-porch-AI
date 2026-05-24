@@ -24,6 +24,7 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
@@ -196,7 +197,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
       barrierDismissible: false,
       builder: (ctx) => Dialog(
         insetPadding: const EdgeInsets.all(16),
-        backgroundColor: const Color(0xFF1a1a2e),
+        backgroundColor: AppColors.surfaceOf(ctx),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: SizedBox(
           width: double.infinity,
@@ -207,12 +208,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Icon(Icons.edit_note, color: Colors.white70, size: 22),
+                    Icon(Icons.edit_note, color: AppColors.iconSecondary(ctx), size: 22),
                     const SizedBox(width: 8),
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppColors.textPrimary(ctx),
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
                       ),
@@ -232,7 +233,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Colors.white12),
+              Divider(height: 1, color: AppColors.borderOf(ctx)),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -241,16 +242,16 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     maxLines: null,
                     expands: true,
                     textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppColors.textPrimary(ctx),
                       fontSize: 14,
                       height: 1.5,
                     ),
                     decoration: InputDecoration(
                       hintText: hintText,
-                      hintStyle: const TextStyle(color: Colors.white54),
+                      hintStyle: TextStyle(color: AppColors.textSecondary(ctx)),
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.05),
+                      fillColor: AppColors.surfaceContainerOf(ctx),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -434,7 +435,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
           return AlertDialog(
-            backgroundColor: const Color(0xFF1E293B),
+            backgroundColor: AppColors.cardOf(context),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -442,9 +443,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
               children: [
                 const Icon(Icons.menu_book, color: Colors.blueAccent, size: 20),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'Edit Lorebook Entry',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: AppColors.textPrimary(context)),
                 ),
               ],
             ),
@@ -530,11 +531,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   const SizedBox(height: 12),
                   TextField(
                     controller: nameController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.textPrimary(context)),
                     decoration: InputDecoration(
                       labelText: 'Name (optional)',
                       filled: true,
-                      fillColor: const Color(0xFF0F172A),
+                      fillColor: AppColors.surfaceContainerOf(context),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -545,15 +546,15 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   TextField(
                     controller: keyController,
                     enabled: !isConstant,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.textPrimary(context)),
                     decoration: InputDecoration(
                       labelText: isConstant
                           ? 'Keywords (Disabled — Always Active)'
                           : 'Keywords (comma separated)',
                       filled: true,
                       fillColor: isConstant
-                          ? const Color(0xFF0F172A).withValues(alpha: 0.5)
-                          : const Color(0xFF0F172A),
+                          ? AppColors.surfaceContainerOf(context).withValues(alpha: 0.5)
+                          : AppColors.surfaceContainerOf(context),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -564,11 +565,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   TextField(
                     controller: contentController,
                     maxLines: 5,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.textPrimary(context)),
                     decoration: InputDecoration(
                       labelText: 'Content',
                       filled: true,
-                      fillColor: const Color(0xFF0F172A),
+                      fillColor: AppColors.surfaceContainerOf(context),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -622,7 +623,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surfaceOf(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 800,
@@ -633,22 +634,22 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             // Header
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.white10)),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: AppColors.borderOf(context))),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     'Edit ${widget.character.name}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textPrimary(context),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: Icon(Icons.close, color: AppColors.iconSecondary(context)),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -657,11 +658,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
 
             // Tabs
             Container(
-              color: const Color(0xFF111827),
+              color: AppColors.surfaceContainerOf(context),
               child: TabBar(
                 controller: _tabController,
                 labelColor: Colors.blueAccent,
-                unselectedLabelColor: Colors.white54,
+                unselectedLabelColor: AppColors.textSecondary(context),
                 indicatorColor: Colors.blueAccent,
                 tabs: const [
                   Tab(text: 'Details'),
@@ -686,17 +687,17 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             // Actions
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Colors.white10)),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.borderOf(context))),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text(
+                    child: Text(
                       'Cancel',
-                      style: TextStyle(color: Colors.white54),
+                      style: TextStyle(color: AppColors.textSecondary(context)),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -731,16 +732,16 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 children: [
                   CircleAvatar(
                     radius: 48,
-                    backgroundColor: const Color(0xFF374151),
+                    backgroundColor: AppColors.surfaceContainerOf(context),
                     backgroundImage:
                         _avatarFile != null && _avatarFile!.existsSync()
                         ? FileImage(_avatarFile!) as ImageProvider
                         : null,
                     child: _avatarFile == null || !_avatarFile!.existsSync()
-                        ? const Icon(
+                        ? Icon(
                             Icons.person,
                             size: 48,
-                            color: Colors.white54,
+                            color: AppColors.iconSecondary(context),
                           )
                         : null,
                   ),
@@ -771,7 +772,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
           const SizedBox(height: 8),
           Text(
             'Tap to change avatar',
-            style: TextStyle(fontSize: 11, color: Colors.white54),
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context)),
           ),
           const SizedBox(height: 16),
           _buildTextField(controller: _nameController, label: 'Name'),
@@ -807,12 +808,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
           // Alternate Greetings
           Row(
             children: [
-              const Text(
+              Text(
                 'Alternate Greetings',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
-                  color: Colors.white70,
+                  color: AppColors.textSecondary(context),
                 ),
               ),
               const Spacer(),
@@ -897,12 +898,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
           ),
           const SizedBox(height: 24),
           // Tags editor
-          const Text(
+          Text(
             'Tags',
             style: TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 14,
-              color: Colors.white54,
+              color: AppColors.textSecondary(context),
             ),
           ),
           const SizedBox(height: 6),
@@ -931,15 +932,15 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
               Expanded(
                 child: TextField(
                   controller: _tagInputController,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
                   decoration: InputDecoration(
                     hintText: 'Add a tag...',
-                    hintStyle: const TextStyle(
-                      color: Colors.white54,
+                    hintStyle: TextStyle(
+                      color: AppColors.textSecondary(context),
                       fontSize: 13,
                     ),
                     filled: true,
-                    fillColor: Colors.black26,
+                    fillColor: AppColors.surfaceContainerOf(context),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -979,12 +980,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
           ),
           const SizedBox(height: 24),
           // Chat Colors
-          const Text(
+          Text(
             'Chat Colors',
             style: TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 14,
-              color: Colors.white54,
+              color: AppColors.textSecondary(context),
             ),
           ),
           const SizedBox(height: 8),
@@ -1058,7 +1059,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
         children: [
           Text(
             label,
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
           ),
           const Spacer(),
           Container(
@@ -1067,10 +1068,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.white24, width: 1),
+              border: Border.all(color: AppColors.borderOf(context), width: 1),
             ),
             child: IconButton(
-              icon: const Icon(Icons.color_lens, size: 20, color: Colors.white),
+              icon: Icon(Icons.color_lens, size: 20, color: AppColors.iconPrimary(context)),
               onPressed: () => _showColorPicker(context, color, onChanged),
             ),
           ),
@@ -1087,7 +1088,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1096,13 +1097,13 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textPrimary(context),
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
                       'World lore entries inject context when keywords are detected.',
-                      style: TextStyle(fontSize: 11, color: Colors.white54),
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context)),
                     ),
                   ],
                 ),
@@ -1149,9 +1150,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             Container(
               padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
+                color: AppColors.cardOf(context),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.5)),
               ),
               child: Center(
                 child: Column(
@@ -1159,17 +1160,17 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     Icon(
                       Icons.menu_book_outlined,
                       size: 40,
-                      color: Colors.white.withValues(alpha: 0.12),
+                      color: AppColors.textTertiary(context),
                     ),
                     const SizedBox(height: 10),
-                    const Text(
+                    Text(
                       'No lorebook entries yet',
-                      style: TextStyle(color: Colors.white38, fontSize: 13),
+                      style: TextStyle(color: AppColors.textTertiary(context), fontSize: 13),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Add entries manually or import a JSON lorebook.',
-                      style: TextStyle(color: Colors.white24, fontSize: 11),
+                      style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
                     ),
                   ],
                 ),
@@ -1193,14 +1194,14 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: entry.constant
               ? Colors.amberAccent.withValues(alpha: 0.3)
               : entry.enabled
               ? Colors.blueAccent.withValues(alpha: 0.15)
-              : Colors.white.withValues(alpha: 0.06),
+              : AppColors.borderOf(context).withValues(alpha: 0.5),
         ),
       ),
       child: Column(
@@ -1222,7 +1223,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 child: Text(
                   entry.displayName,
                   style: TextStyle(
-                    color: entry.enabled ? Colors.white : Colors.white70,
+                    color: entry.enabled ? AppColors.textPrimary(context) : AppColors.textSecondary(context),
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -1338,7 +1339,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             entry.content,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11, height: 1.4),
           ),
         ],
       ),
@@ -1365,13 +1366,13 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             return CheckboxListTile(
               title: Text(
                 world.name,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.textPrimary(context)),
               ),
               subtitle: Text(
                 world.description,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white54),
+                style: TextStyle(color: AppColors.textSecondary(context)),
               ),
               value: isSelected,
               checkColor: Colors.black,
@@ -1406,10 +1407,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
           children: [
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
-                color: Colors.white54,
+                color: AppColors.textSecondary(context),
               ),
             ),
             if (expandable) ...[
@@ -1418,12 +1419,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 onTap: () =>
                     _openExpandedEditor(label, controller, hintText: hintText),
                 borderRadius: BorderRadius.circular(4),
-                child: const Padding(
-                  padding: EdgeInsets.all(2),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
                   child: Icon(
                     Icons.open_in_full,
                     size: 14,
-                    color: Colors.white54,
+                    color: AppColors.iconSecondary(context),
                   ),
                 ),
               ),
@@ -1434,12 +1435,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
         AppTextField(
           controller: controller,
           maxLines: maxLines,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.textPrimary(context)),
           decoration: InputDecoration(
             hintText: hintText,
-            hintStyle: const TextStyle(color: Colors.white54),
+            hintStyle: TextStyle(color: AppColors.textSecondary(context)),
             filled: true,
-            fillColor: Colors.black26,
+            fillColor: AppColors.surfaceContainerOf(context),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             contentPadding: const EdgeInsets.all(12),
           ),

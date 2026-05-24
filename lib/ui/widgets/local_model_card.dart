@@ -19,6 +19,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/local_model_info.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/utils/vram_estimator.dart';
 
 /// Glassmorphic card displaying a locally installed model.
@@ -70,14 +71,14 @@ class _LocalModelCardState extends State<LocalModelCard> {
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             decoration: BoxDecoration(
-              color: _isHovered
-                  ? Colors.indigo.withValues(alpha: 0.12)
-                  : Colors.indigo.withValues(alpha: 0.06),
+              color: AppColors.isLight(context)
+                  ? AppColors.cardOf(context)
+                  : (_isHovered
+                      ? Colors.indigo.withValues(alpha: 0.12)
+                      : Colors.indigo.withValues(alpha: 0.06)),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: _isHovered
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : Colors.white.withValues(alpha: 0.08),
+                color: AppColors.borderOf(context),
                 width: 1,
               ),
             ),
@@ -141,8 +142,8 @@ class _LocalModelCardState extends State<LocalModelCard> {
                           Expanded(
                             child: Text(
                               widget.model.filename,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: AppColors.textPrimary(context),
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -181,7 +182,11 @@ class _LocalModelCardState extends State<LocalModelCard> {
                       Container(
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.1),
+                          color: AppColors.resolve(
+                            context,
+                            Colors.white.withValues(alpha: 0.1),
+                            AppColors.borderOf(context).withValues(alpha: 0.3),
+                          ),
                           borderRadius: BorderRadius.circular(2),
                         ),
                         child: FractionallySizedBox(
@@ -199,7 +204,7 @@ class _LocalModelCardState extends State<LocalModelCard> {
                       Text(
                         '${(usagePercent * 100).toStringAsFixed(0)}% of available VRAM',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
+                          color: AppColors.textTertiary(context),
                           fontSize: 10,
                         ),
                       ),
@@ -214,9 +219,9 @@ class _LocalModelCardState extends State<LocalModelCard> {
                   children: [
                     if (widget.onSettings != null)
                       IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.settings_rounded,
-                          color: Colors.white54,
+                          color: AppColors.iconSecondary(context),
                           size: 18,
                         ),
                         onPressed: widget.onSettings,
@@ -227,9 +232,9 @@ class _LocalModelCardState extends State<LocalModelCard> {
                     const SizedBox(height: 4),
                     if (widget.onOpenLocation != null)
                       IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.folder_open_rounded,
-                          color: Colors.white54,
+                          color: AppColors.iconSecondary(context),
                           size: 18,
                         ),
                         onPressed: widget.onOpenLocation,
@@ -239,9 +244,9 @@ class _LocalModelCardState extends State<LocalModelCard> {
                       ),
                     const SizedBox(height: 4),
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.delete_rounded,
-                        color: Colors.white54,
+                        color: AppColors.iconSecondary(context),
                         size: 18,
                       ),
                       onPressed: widget.onDelete,
@@ -263,11 +268,11 @@ class _LocalModelCardState extends State<LocalModelCard> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 12, color: Colors.white54),
+        Icon(icon, size: 12, color: AppColors.iconSecondary(context)),
         const SizedBox(width: 4),
         Text(
           label,
-          style: const TextStyle(color: Colors.white70, fontSize: 11),
+          style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11),
         ),
       ],
     );

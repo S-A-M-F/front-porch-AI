@@ -24,6 +24,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/utils/persona_colors.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class UserPersonaPage extends StatefulWidget {
   const UserPersonaPage({super.key});
@@ -141,10 +142,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   size: 18,
                 ),
                 const SizedBox(width: 8),
-                const Text('Persona saved successfully'),
+                Text('Persona saved successfully', style: TextStyle(color: AppColors.textPrimary(context))),
               ],
             ),
-            backgroundColor: const Color(0xFF2A2A2A),
+            backgroundColor: AppColors.surfaceContainerOf(context),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -182,10 +183,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     size: 18,
                   ),
                   const SizedBox(width: 8),
-                  Text('Imported "${imported.name}" successfully'),
+                  Text('Imported "${imported.name}" successfully', style: TextStyle(color: AppColors.textPrimary(context))),
                 ],
               ),
-              backgroundColor: const Color(0xFF2A2A2A),
+              backgroundColor: AppColors.surfaceContainerOf(context),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -200,10 +201,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     size: 18,
                   ),
                   const SizedBox(width: 8),
-                  const Text('Import failed — unrecognized format'),
+                  Text('Import failed — unrecognized format', style: TextStyle(color: AppColors.textPrimary(context))),
                 ],
               ),
-              backgroundColor: const Color(0xFF2A2A2A),
+              backgroundColor: AppColors.surfaceContainerOf(context),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -228,8 +229,8 @@ class _UserPersonaPageState extends State<UserPersonaPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Exported to $outputFile'),
-            backgroundColor: const Color(0xFF2A2A2A),
+            content: Text('Exported to $outputFile', style: TextStyle(color: AppColors.textPrimary(context))),
+            backgroundColor: AppColors.surfaceContainerOf(context),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -240,7 +241,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
         title: Text(
           _isEditing
@@ -298,7 +299,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           );
         },
         child: _isEditing
-            ? _buildEditForm(key: const ValueKey('edit'))
+            ? _buildEditForm(context, key: const ValueKey('edit'))
             : _buildMainView(key: const ValueKey('list')),
       ),
     );
@@ -311,7 +312,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
       key: key,
       builder: (context, service, child) {
         if (service.personas.isEmpty) {
-          return _buildEmptyState();
+          return _buildEmptyState(context);
         }
 
         final activePersona = service.persona;
@@ -327,7 +328,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             // Learned facts section
             if (activePersona.learnedFacts.isNotEmpty)
               SliverToBoxAdapter(
-                child: _buildLearnedFactsSection(activePersona, service),
+                child: _buildLearnedFactsSection(context, activePersona, service),
               ),
 
             // Section label
@@ -347,10 +348,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     const SizedBox(width: 10),
                     Text(
                       'All Personas (${service.personas.length})',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: Colors.white70,
+                        color: AppColors.textSecondary(context),
                         letterSpacing: 0.3,
                       ),
                     ),
@@ -372,7 +373,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final persona = service.personas[index];
                   final isActive = persona.id == activePersona.id;
-                  return _buildPersonaCard(persona, isActive, service);
+                  return _buildPersonaCard(context, persona, isActive, service);
                 }, childCount: service.personas.length),
               ),
             ),
@@ -404,8 +405,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 accentColor.withValues(
                   alpha: 0.08 + _headerGlowAnimation.value * 0.06,
                 ),
-                const Color(0xFF1E293B).withValues(alpha: 0.9),
-                const Color(0xFF0F172A).withValues(alpha: 0.95),
+                AppColors.resolve(context, const Color(0xFF1E293B), AppColors.lightCard)
+                    .withValues(alpha: 0.9),
+                AppColors.resolve(context, const Color(0xFF0F172A), AppColors.lightBackground)
+                    .withValues(alpha: 0.95),
               ],
             ),
             border: Border.all(
@@ -455,10 +458,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                         Flexible(
                           child: Text(
                             activePersona.displayLabel,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: AppColors.textPrimary(context),
                               letterSpacing: -0.3,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -485,9 +488,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                         activePersona.persona,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
-                          color: Colors.white54,
+                          color: AppColors.textSecondary(context),
                           height: 1.4,
                         ),
                       ),
@@ -499,11 +502,13 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       runSpacing: 6,
                       children: [
                         _buildStatChip(
+                          context,
                           Icons.people_outline,
                           '${service.personas.length} persona${service.personas.length != 1 ? 's' : ''}',
                         ),
                         if (activePersona.learnedFacts.isNotEmpty)
                           _buildStatChip(
+                            context,
                             Icons.auto_awesome,
                             '${activePersona.learnedFacts.length} fact${activePersona.learnedFacts.length != 1 ? 's' : ''}',
                           ),
@@ -557,22 +562,32 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     );
   }
 
-  Widget _buildStatChip(IconData icon, String label) {
+  Widget _buildStatChip(BuildContext context, IconData icon, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppColors.resolve(
+          context,
+          Colors.white.withValues(alpha: 0.05),
+          Colors.black.withValues(alpha: 0.04),
+        ),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(
+          color: AppColors.resolve(
+            context,
+            Colors.white.withValues(alpha: 0.06),
+            AppColors.lightBorder.withValues(alpha: 0.6),
+          ),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: Colors.white38),
+          Icon(icon, size: 13, color: AppColors.textTertiary(context)),
           const SizedBox(width: 5),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Colors.white54),
+            style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context)),
           ),
         ],
       ),
@@ -582,6 +597,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
   // ── Learned Facts ─────────────────────────────────────────────────────
 
   Widget _buildLearnedFactsSection(
+    BuildContext context,
     UserPersona persona,
     UserPersonaService service,
   ) {
@@ -593,11 +609,13 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           filter: ImageFilter.blur(sigmaX: 0, sigmaY: 0),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1E293B).withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: Colors.tealAccent.withValues(alpha: 0.12),
+              color: AppColors.resolve(
+                context,
+                const Color(0xFF1E293B).withValues(alpha: 0.6),
+                AppColors.lightCard.withValues(alpha: 0.8),
               ),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderOf(context)),
             ),
             child: Theme(
               data: Theme.of(
@@ -618,15 +636,15 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 ),
                 title: Text(
                   'Learned Facts (${persona.learnedFacts.length})',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white70,
+                    color: AppColors.textSecondary(context),
                   ),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Auto-extracted from your conversations',
-                  style: TextStyle(fontSize: 11, color: Colors.white30),
+                  style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context)),
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -645,7 +663,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       ),
                     Icon(
                       _factsExpanded ? Icons.expand_less : Icons.expand_more,
-                      color: Colors.white38,
+                      color: AppColors.textTertiary(context),
                     ),
                   ],
                 ),
@@ -657,19 +675,19 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       return Chip(
                         label: Text(
                           persona.learnedFacts[i],
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
-                            color: Colors.white70,
+                            color: AppColors.textSecondary(context),
                           ),
                         ),
-                        backgroundColor: const Color(0xFF374151),
+                        backgroundColor: AppColors.surfaceContainerOf(context),
                         side: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.05),
+                          color: AppColors.borderOf(context),
                         ),
-                        deleteIcon: const Icon(
+                        deleteIcon: Icon(
                           Icons.close,
                           size: 14,
-                          color: Colors.white38,
+                          color: AppColors.textTertiary(context),
                         ),
                         onDeleted: () => service.removeLearnedFact(i),
                         visualDensity: VisualDensity.compact,
@@ -689,6 +707,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
   // ── Persona Card ──────────────────────────────────────────────────────
 
   Widget _buildPersonaCard(
+    BuildContext context,
     UserPersona persona,
     bool isActive,
     UserPersonaService service,
@@ -719,10 +738,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     children: [
                       Text(
                         persona.displayLabel,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
-                          color: Colors.white,
+                          color: AppColors.textPrimary(context),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -743,9 +762,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   icon: Icon(
                     Icons.more_vert,
                     size: 18,
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: AppColors.iconSecondary(context),
                   ),
-                  color: const Color(0xFF1E293B),
+                  color: AppColors.surfaceContainerOf(context),
                   onSelected: (action) {
                     switch (action) {
                       case 'edit':
@@ -760,17 +779,17 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     }
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'edit',
                       child: Row(
                         children: [
-                          Icon(Icons.edit, size: 16, color: Colors.white70),
-                          SizedBox(width: 8),
-                          Text('Edit', style: TextStyle(fontSize: 13)),
+                          Icon(Icons.edit, size: 16, color: AppColors.iconPrimary(context)),
+                          const SizedBox(width: 8),
+                          Text('Edit', style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'export',
                       child: Row(
                         children: [
@@ -779,13 +798,13 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                             size: 16,
                             color: Colors.cyanAccent,
                           ),
-                          SizedBox(width: 8),
-                          Text('Export JSON', style: TextStyle(fontSize: 13)),
+                          const SizedBox(width: 8),
+                          Text('Export JSON', style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
                         ],
                       ),
                     ),
                     if (service.personas.length > 1)
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [
@@ -794,7 +813,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                               size: 16,
                               color: Colors.redAccent,
                             ),
-                            SizedBox(width: 8),
+                            const SizedBox(width: 8),
                             Text(
                               'Delete',
                               style: TextStyle(
@@ -818,9 +837,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.white.withValues(
-                    alpha: persona.persona.isNotEmpty ? 0.55 : 0.3,
-                  ),
+                  color: persona.persona.isNotEmpty
+                      ? AppColors.textSecondary(context)
+                      : AppColors.textTertiary(context),
                   height: 1.5,
                 ),
               ),
@@ -840,7 +859,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     '${persona.learnedFacts.length} facts',
                     style: TextStyle(
                       fontSize: 10,
-                      color: Colors.white.withValues(alpha: 0.35),
+                      color: AppColors.textTertiary(context),
                     ),
                   ),
                   const Spacer(),
@@ -882,7 +901,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
 
   // ── Empty State ───────────────────────────────────────────────────────
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -904,19 +923,19 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
+          Text(
             'No personas yet',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.white70,
+              color: AppColors.textSecondary(context),
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Create a persona to personalize your AI conversations,\nor import one from SillyTavern / Backyard AI.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Colors.white38, height: 1.5),
+            style: TextStyle(fontSize: 13, color: AppColors.textTertiary(context), height: 1.5),
           ),
           const SizedBox(height: 28),
           Row(
@@ -966,7 +985,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
 
   // ── Edit Form ─────────────────────────────────────────────────────────
 
-  Widget _buildEditForm({Key? key}) {
+  Widget _buildEditForm(BuildContext context, {Key? key}) {
     return Center(
       key: key,
       child: SingleChildScrollView(
@@ -975,12 +994,20 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.85),
+            color: AppColors.resolve(
+              context,
+              const Color(0xFF1E293B).withValues(alpha: 0.85),
+              AppColors.lightSurface.withValues(alpha: 0.95),
+            ),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            border: Border.all(color: AppColors.borderOf(context)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
+                color: AppColors.resolve(
+                  context,
+                  Colors.black.withValues(alpha: 0.2),
+                  Colors.black.withValues(alpha: 0.08),
+                ),
                 blurRadius: 24,
                 spreadRadius: -4,
               ),
@@ -1004,7 +1031,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                           width: 110,
                           height: 110,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.04),
+                            color: AppColors.resolve(
+                              context,
+                              Colors.white.withValues(alpha: 0.04),
+                              Colors.black.withValues(alpha: 0.03),
+                            ),
                             shape: BoxShape.circle,
                             image: _avatarPath != null
                                 ? DecorationImage(
@@ -1035,18 +1066,14 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                                     Icon(
                                       Icons.add_a_photo,
                                       size: 28,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.4,
-                                      ),
+                                      color: AppColors.textTertiary(context),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       'Avatar',
                                       style: TextStyle(
                                         fontSize: 10,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.3,
-                                        ),
+                                        color: AppColors.textTertiary(context),
                                       ),
                                     ),
                                   ],
@@ -1060,6 +1087,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       child: Column(
                         children: [
                           _buildFormField(
+                            context: context,
                             controller: _titleController,
                             label: 'Title',
                             hint:
@@ -1067,6 +1095,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                           ),
                           const SizedBox(height: 14),
                           _buildFormField(
+                            context: context,
                             controller: _nameController,
                             label: 'Name',
                             hint: 'Name sent to the AI',
@@ -1081,6 +1110,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 const SizedBox(height: 18),
                 // Persona text — expandable
                 _buildExpandableFormField(
+                  context: context,
                   controller: _personaController,
                   label: 'Persona Text (injected into AI context)',
                   hint:
@@ -1096,9 +1126,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   children: [
                     TextButton(
                       onPressed: _cancelEditing,
-                      child: const Text(
+                      child: Text(
                         'Cancel',
-                        style: TextStyle(color: Colors.white54),
+                        style: TextStyle(color: AppColors.textSecondary(context)),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1129,6 +1159,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
   }
 
   Widget _buildFormField({
+    required BuildContext context,
     required TextEditingController controller,
     required String label,
     String? hint,
@@ -1138,32 +1169,32 @@ class _UserPersonaPageState extends State<UserPersonaPage>
   }) {
     return TextFormField(
       controller: controller,
-      style: const TextStyle(color: Colors.white, fontSize: 14),
+      style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
       maxLines: maxLines,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         hintStyle: TextStyle(
-          color: Colors.white.withValues(alpha: 0.2),
+          color: AppColors.textTertiary(context),
           fontSize: 13,
         ),
-        labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
+        labelStyle: TextStyle(color: AppColors.textSecondary(context)),
         helperText: helperText,
         helperStyle: TextStyle(
-          color: Colors.white.withValues(alpha: 0.25),
+          color: AppColors.textTertiary(context),
           fontSize: 11,
         ),
         helperMaxLines: 2,
         filled: true,
-        fillColor: const Color(0xFF374151).withValues(alpha: 0.7),
+        fillColor: AppColors.surfaceContainerOf(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          borderSide: BorderSide(color: AppColors.borderOf(context)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          borderSide: BorderSide(color: AppColors.borderOf(context)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
@@ -1178,6 +1209,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
   }
 
   Widget _buildExpandableFormField({
+    required BuildContext context,
     required TextEditingController controller,
     required String label,
     String? hint,
@@ -1186,6 +1218,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     return Stack(
       children: [
         _buildFormField(
+          context: context,
           controller: controller,
           label: label,
           hint: hint,
@@ -1229,9 +1262,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         child: Container(
           constraints: const BoxConstraints(maxWidth: 700, maxHeight: 600),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: AppColors.surfaceOf(dialogContext),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(color: AppColors.borderOf(dialogContext)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1240,47 +1273,47 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                 child: Row(
                   children: [
-                    const Text(
+                    Text(
                       'Edit Persona Text',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textPrimary(dialogContext),
                       ),
                     ),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white54),
+                      icon: Icon(Icons.close, color: AppColors.textSecondary(dialogContext)),
                       onPressed: () => Navigator.of(dialogContext).pop(),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Colors.white12),
+              Divider(height: 1, color: AppColors.borderOf(dialogContext)),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: TextField(
                     controller: tempController,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: TextStyle(color: AppColors.textPrimary(dialogContext), fontSize: 14),
                     maxLines: null,
                     decoration: InputDecoration(
                       hintText: 'Enter detailed persona info...',
                       hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.2),
+                        color: AppColors.textTertiary(dialogContext),
                       ),
                       filled: true,
-                      fillColor: const Color(0xFF374151).withValues(alpha: 0.7),
+                      fillColor: AppColors.surfaceContainerOf(dialogContext),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.08),
+                          color: AppColors.borderOf(dialogContext),
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.08),
+                          color: AppColors.borderOf(dialogContext),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -1302,9 +1335,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   children: [
                     TextButton(
                       onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: const Text(
+                      child: Text(
                         'Cancel',
-                        style: TextStyle(color: Colors.white54),
+                        style: TextStyle(color: AppColors.textSecondary(dialogContext)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1338,34 +1371,34 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.surfaceOf(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Delete Persona',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary(context)),
         ),
         content: RichText(
           text: TextSpan(
-            style: const TextStyle(color: Colors.white70, height: 1.5),
+            style: TextStyle(color: AppColors.textSecondary(context), height: 1.5),
             children: [
-              const TextSpan(text: 'Are you sure you want to delete '),
+              TextSpan(text: 'Are you sure you want to delete '),
               TextSpan(
                 text: '"${persona.name}"',
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: AppColors.textPrimary(context),
                 ),
               ),
-              const TextSpan(text: '? This cannot be undone.'),
+              TextSpan(text: '? This cannot be undone.'),
             ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: AppColors.textSecondary(context)),
             ),
           ),
           ElevatedButton(
@@ -1394,22 +1427,22 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.surfaceOf(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Clear All Facts',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary(context)),
         ),
         content: Text(
           'Remove all ${service.persona.learnedFacts.length} learned facts? This cannot be undone.',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppColors.textSecondary(context)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: AppColors.textSecondary(context)),
             ),
           ),
           ElevatedButton(
@@ -1507,16 +1540,16 @@ class _HoverScaleCardState extends State<_HoverScaleCard>
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: _isHovered
-                      ? const Color(0xFF1E293B)
-                      : const Color(0xFF1E293B).withValues(alpha: 0.7),
+                      ? AppColors.resolve(context, const Color(0xFF1E293B), AppColors.lightCard)
+                      : AppColors.resolve(context, const Color(0xFF1E293B).withValues(alpha: 0.7), AppColors.lightCard.withValues(alpha: 0.85)),
                   border: Border.all(
                     color: widget.isActive
                         ? widget.accentColor.withValues(
                             alpha: 0.35 + _borderAnimation.value * 0.15,
                           )
                         : _isHovered
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : Colors.white.withValues(alpha: 0.06),
+                        ? AppColors.borderOf(context).withValues(alpha: 0.5)
+                        : AppColors.borderOf(context),
                     width: widget.isActive ? 1.5 : 1,
                   ),
                   boxShadow: [
@@ -1524,7 +1557,7 @@ class _HoverScaleCardState extends State<_HoverScaleCard>
                       BoxShadow(
                         color: widget.isActive
                             ? widget.accentColor.withValues(alpha: 0.08)
-                            : Colors.white.withValues(alpha: 0.02),
+                            : AppColors.resolve(context, Colors.white.withValues(alpha: 0.02), Colors.black.withValues(alpha: 0.04)),
                         blurRadius: 16,
                         spreadRadius: -4,
                       ),

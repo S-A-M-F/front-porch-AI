@@ -27,6 +27,7 @@ import 'package:front_porch_ai/models/story_project.dart';
 import 'package:front_porch_ai/ui/pages/story_setup_page.dart';
 import 'package:front_porch_ai/ui/pages/story_dashboard_page.dart';
 import 'package:front_porch_ai/ui/pages/story_reader_page.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// The "Porch Stories" home view — shows all story projects with create/delete.
 class StoryHomeView extends StatefulWidget {
@@ -60,14 +61,14 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                   'No stories yet',
                   style: Theme.of(
                     context,
-                  ).textTheme.headlineSmall?.copyWith(color: Colors.white70),
+                  ).textTheme.headlineSmall?.copyWith(color: AppColors.textPrimary(context)),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Create your first AI-generated story!',
                   style: Theme.of(
                     context,
-                  ).textTheme.bodyLarge?.copyWith(color: Colors.white38),
+                  ).textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary(context)),
                 ),
                 const SizedBox(height: 24),
                 _buildCreateButton(context, repo),
@@ -88,14 +89,20 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                 children: [
                   Icon(
                     Icons.auto_stories,
-                    color: Colors.amber.shade600,
+                    color: AppColors.resolve(
+                      context,
+                      Colors.amber.shade400,
+                      Colors.amber.shade700,
+                    ),
                     size: 28,
                   ),
                   const SizedBox(width: 12),
                   Text(
                     'Porch Stories',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    style: TextStyle(
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary(context),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -105,14 +112,30 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.amber.shade900.withValues(alpha: 0.3),
+                      color: AppColors.resolve(
+                        context,
+                        Colors.amber.withValues(alpha: 0.2),
+                        Colors.amber.withValues(alpha: 0.15),
+                      ),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amber.withValues(alpha: 0.4),
+                          Colors.amber.withValues(alpha: 0.3),
+                        ),
+                      ),
                     ),
                     child: Text(
                       '${repo.projects.length}',
                       style: TextStyle(
-                        color: Colors.amber.shade400,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amber.shade300,
+                          Colors.amber.shade700,
+                        ),
                         fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -153,11 +176,11 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Text(
                               'Generating Audiobook...',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: AppColors.textPrimary(context),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -177,7 +200,7 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                       const SizedBox(height: 10),
                       LinearProgressIndicator(
                         value: abService.progress,
-                        backgroundColor: Colors.white12,
+                        backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.3),
                         valueColor: AlwaysStoppedAnimation<Color>(
                           Colors.amber.shade600,
                         ),
@@ -187,8 +210,8 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                       const SizedBox(height: 6),
                       Text(
                         abService.status,
-                        style: const TextStyle(
-                          color: Colors.white60,
+                        style: TextStyle(
+                          color: AppColors.textSecondary(context),
                           fontSize: 12,
                         ),
                       ),
@@ -230,8 +253,12 @@ class _StoryHomeViewState extends State<StoryHomeView> {
       icon: const Icon(Icons.add),
       label: const Text('New Story'),
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.amber.shade800,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.resolve(
+          context,
+          Colors.amber.shade800,
+          Colors.amber.shade700,
+        ),
+        foregroundColor: AppColors.resolve(context, Colors.white, Colors.white),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       ),
     );
@@ -273,16 +300,16 @@ class _StoryHomeViewState extends State<StoryHomeView> {
       statusIcon = Icons.menu_book;
     } else {
       statusLabel = 'New — needs concept';
-      statusColor = Colors.white38;
+      statusColor = AppColors.textTertiary(context);
       statusIcon = Icons.lightbulb_outline;
     }
 
     return Card(
-      color: const Color(0xFF1E293B),
+      color: AppColors.cardOf(context),
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        side: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.1)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -321,8 +348,8 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                   children: [
                     Text(
                       project.title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppColors.textPrimary(context),
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -332,7 +359,7 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                       Text(
                         '${project.style.genre} • ${project.style.mood}',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
+                          color: AppColors.textSecondary(context),
                           fontSize: 13,
                         ),
                       ),
@@ -386,38 +413,38 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                 PopupMenuButton<String>(
                   icon: Icon(
                     Icons.download,
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: AppColors.iconSecondary(context),
                     size: 20,
                   ),
                   tooltip: 'Export',
-                  color: const Color(0xFF1E293B),
+                  color: AppColors.surfaceContainerOf(context),
                   onSelected: (value) {
                     if (value == 'audiobook') _startAudiobookExport(project);
                     if (value == 'epub') _startEpubExport(project);
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'audiobook',
                       child: Row(
                         children: [
-                          Icon(Icons.headphones, color: Colors.amber, size: 18),
-                          SizedBox(width: 10),
+                          const Icon(Icons.headphones, color: Colors.amber, size: 18),
+                          const SizedBox(width: 10),
                           Text(
                             'Export Audiobook (.wav)',
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(color: AppColors.textPrimary(context)),
                           ),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'epub',
                       child: Row(
                         children: [
-                          Icon(Icons.book, color: Colors.blue, size: 18),
-                          SizedBox(width: 10),
+                          const Icon(Icons.book, color: Colors.blue, size: 18),
+                          const SizedBox(width: 10),
                           Text(
                             'Export eBook (.epub)',
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(color: AppColors.textPrimary(context)),
                           ),
                         ],
                       ),
@@ -543,14 +570,14 @@ class _StoryHomeViewState extends State<StoryHomeView> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text(
+        backgroundColor: AppColors.surfaceOf(context),
+        title: Text(
           'Delete Story?',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.textPrimary(context)),
         ),
         content: Text(
           'Delete "${project.title}" and all its content? This cannot be undone.',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppColors.textSecondary(context)),
         ),
         actions: [
           TextButton(

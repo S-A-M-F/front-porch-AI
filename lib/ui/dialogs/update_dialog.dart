@@ -22,6 +22,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:front_porch_ai/services/update_service.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Dialog shown when a new version is available.
 /// Three stages: prompt → downloading → ready to install.
@@ -58,13 +59,13 @@ class UpdateDialog extends StatelessWidget {
   /// Stage 1: "A new version is available, would you like to download?"
   Widget _buildPromptDialog(BuildContext context, UpdateService service) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: AppColors.surfaceOf(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [
           Icon(Icons.system_update, color: Colors.greenAccent, size: 28),
           const SizedBox(width: 12),
-          const Text('Update Available', style: TextStyle(color: Colors.white)),
+          Text('Update Available', style: TextStyle(color: AppColors.textPrimary(context))),
         ],
       ),
       content: Column(
@@ -73,16 +74,16 @@ class UpdateDialog extends StatelessWidget {
         children: [
           RichText(
             text: TextSpan(
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
+              style: TextStyle(color: AppColors.textSecondary(context), fontSize: 14),
               children: [
                 const TextSpan(
                   text: 'A new version of Front Porch AI is available.\n\n',
                 ),
-                const TextSpan(
+                TextSpan(
                   text: 'Current: ',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.white54,
+                    color: AppColors.textTertiary(context),
                   ),
                 ),
                 TextSpan(text: '${service.displayCurrentVersion}\n'),
@@ -100,25 +101,25 @@ class UpdateDialog extends StatelessWidget {
           const SizedBox(height: 12),
           _buildChangelogSection(context, service),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Would you like to download the update?',
-            style: TextStyle(color: Colors.white, fontSize: 14),
+            style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
           ),
           const SizedBox(height: 16),
-          const Divider(color: Colors.white12),
+          Divider(color: AppColors.borderOf(context)),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             '☕ Enjoying Front Porch AI?',
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.textPrimary(context),
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'This project is free, open source, and built with love. If you enjoy this program please consider buying me a coffee. It helps keep development going!',
-            style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
+            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 13, height: 1.4),
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -127,7 +128,7 @@ class UpdateDialog extends StatelessWidget {
               onPressed: () =>
                   launchUrl(Uri.parse('https://ko-fi.com/sosukeaizen37411')),
               icon: const Icon(Icons.coffee_outlined, size: 18),
-              label: const Text('Support on Ko-fi'),
+              label: Text('Support on Ko-fi'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFFFF5E5B),
                 side: const BorderSide(color: Color(0xFFFF5E5B), width: 1),
@@ -140,12 +141,12 @@ class UpdateDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Not Now', style: TextStyle(color: Colors.white54)),
+          child: Text('Not Now', style: TextStyle(color: AppColors.textTertiary(context))),
         ),
         ElevatedButton.icon(
           onPressed: () => service.downloadUpdate(),
           icon: const Icon(Icons.download, size: 18),
-          label: const Text('Download'),
+          label: Text('Download'),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.greenAccent.shade700,
             foregroundColor: Colors.white,
@@ -166,9 +167,9 @@ class UpdateDialog extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Full release notes are available on GitHub.',
-            style: TextStyle(color: Colors.white54, fontSize: 13),
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -179,7 +180,7 @@ class UpdateDialog extends StatelessWidget {
                 launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
               },
               icon: const Icon(Icons.open_in_browser, size: 16),
-              label: const Text('View on GitHub'),
+              label: Text('View on GitHub'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white70,
                 side: const BorderSide(color: Colors.white24),
@@ -196,8 +197,8 @@ class UpdateDialog extends StatelessWidget {
       children: [
         Text(
           "What's New in ${service.displayLatestVersion}",
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: AppColors.textPrimary(context),
             fontWeight: FontWeight.w600,
             fontSize: 14,
           ),
@@ -206,9 +207,9 @@ class UpdateDialog extends StatelessWidget {
         Container(
           constraints: const BoxConstraints(maxHeight: 220),
           decoration: BoxDecoration(
-            color: Colors.black26,
+            color: AppColors.surfaceContainerOf(context),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.white12),
+            border: Border.all(color: AppColors.borderOf(context)),
           ),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(10),
@@ -224,35 +225,35 @@ class UpdateDialog extends StatelessWidget {
                 }
               },
               styleSheet: MarkdownStyleSheet(
-                p: const TextStyle(
-                  color: Colors.white70,
+                p: TextStyle(
+                  color: AppColors.textSecondary(context),
                   fontSize: 13,
                   height: 1.35,
                 ),
-                h1: const TextStyle(
-                  color: Colors.white,
+                h1: TextStyle(
+                  color: AppColors.textPrimary(context),
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
                 ),
                 h2: TextStyle(
-                  color: Colors.greenAccent.shade200,
+                  color: Colors.greenAccent,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
-                listBullet: const TextStyle(
-                  color: Colors.white54,
+                listBullet: TextStyle(
+                  color: AppColors.textSecondary(context),
                   fontSize: 13,
                 ),
-                a: const TextStyle(
+                a: TextStyle(
                   color: Colors.lightBlueAccent,
                   decoration: TextDecoration.underline,
                 ),
-                em: const TextStyle(
-                  color: Colors.white70,
+                em: TextStyle(
+                  color: AppColors.textSecondary(context),
                   fontStyle: FontStyle.italic,
                 ),
-                strong: const TextStyle(
-                  color: Colors.white,
+                strong: TextStyle(
+                  color: AppColors.textPrimary(context),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -266,11 +267,11 @@ class UpdateDialog extends StatelessWidget {
   /// Stage 2: Download in progress
   Widget _buildDownloadingDialog(BuildContext context, UpdateService service) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: AppColors.surfaceOf(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text(
+      title: Text(
         'Downloading Update...',
-        style: TextStyle(color: Colors.white),
+        style: TextStyle(color: AppColors.textPrimary(context)),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -279,13 +280,13 @@ class UpdateDialog extends StatelessWidget {
             value: service.downloadProgress > 0
                 ? service.downloadProgress
                 : null,
-            backgroundColor: Colors.white12,
+            backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
             valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
           ),
           const SizedBox(height: 16),
           Text(
             '${(service.downloadProgress * 100).toStringAsFixed(0)}%',
-            style: const TextStyle(color: Colors.white70, fontSize: 16),
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 16),
           ),
         ],
       ),
@@ -298,36 +299,36 @@ class UpdateDialog extends StatelessWidget {
     UpdateService service,
   ) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: AppColors.surfaceOf(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [
           const Icon(Icons.check_circle, color: Colors.greenAccent, size: 28),
           const SizedBox(width: 12),
-          const Text('Ready to Install', style: TextStyle(color: Colors.white)),
+          Text('Ready to Install', style: TextStyle(color: AppColors.textPrimary(context))),
         ],
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'The update has been downloaded. Would you like to install it now?',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 14),
           ),
           const SizedBox(height: 12),
           Text(
             Platform.isLinux
                 ? 'If you choose "Later", the update will be applied when you close the app.'
                 : 'If you choose "Later", the update will install automatically when you close the app.',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
+            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
           ),
         ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Later', style: TextStyle(color: Colors.white54)),
+          child: Text('Later', style: TextStyle(color: AppColors.textTertiary(context))),
         ),
         ElevatedButton.icon(
           onPressed: () async {
@@ -346,7 +347,7 @@ class UpdateDialog extends StatelessWidget {
             }
           },
           icon: const Icon(Icons.install_desktop, size: 18),
-          label: const Text('Install Now'),
+          label: Text('Install Now'),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.greenAccent.shade700,
             foregroundColor: Colors.white,

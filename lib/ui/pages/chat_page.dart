@@ -43,6 +43,7 @@ import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/services/stt_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
@@ -139,7 +140,7 @@ class _StyledTextController extends TextEditingController {
           TextSpan(
             text: matchText,
             style: style?.copyWith(
-              color: Colors.amberAccent,
+              color: AppColors.resolve(context, Colors.amberAccent, const Color(0xFFB45309)),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -148,7 +149,7 @@ class _StyledTextController extends TextEditingController {
         spans.add(
           TextSpan(
             text: matchText,
-            style: style?.copyWith(color: const Color(0xFF90CAF9)),
+            style: style?.copyWith(color: AppColors.resolve(context, const Color(0xFF90CAF9), const Color(0xFF1565C0))),
           ),
         );
       }
@@ -348,9 +349,7 @@ class _ChatPageState extends State<ChatPage> {
         return Stack(
           children: [
             Scaffold(
-              backgroundColor: const Color(
-                0xFF111827,
-              ), // Darker background like Backyard
+              backgroundColor: AppColors.backgroundOf(context),
               appBar: isGroup
                   ? _buildGroupAppBar(context, chatService)
                   : _buildAppBar(context, character!),
@@ -770,7 +769,11 @@ class _ChatPageState extends State<ChatPage> {
             ),
             if (chatService.isLoadingSession)
               Container(
-                color: Colors.black54,
+                color: AppColors.resolve(
+                  context,
+                  Colors.black54,
+                  Colors.black.withValues(alpha: 0.25),
+                ),
                 child: const Center(child: CircularProgressIndicator()),
               ),
             // Voice call overlay
@@ -815,7 +818,7 @@ class _ChatPageState extends State<ChatPage> {
     CharacterCard character,
   ) {
     return AppBar(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surfaceOf(context),
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
@@ -838,9 +841,10 @@ class _ChatPageState extends State<ChatPage> {
             children: [
               Text(
                 character.name,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary(context),
                 ),
               ),
               if (character.description.isNotEmpty)
@@ -848,7 +852,7 @@ class _ChatPageState extends State<ChatPage> {
                   character.description.length > 30
                       ? '${character.description.substring(0, 30)}...'
                       : character.description,
-                  style: const TextStyle(fontSize: 12, color: Colors.white54),
+                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary(context)),
                 ),
             ],
           ),
@@ -858,7 +862,7 @@ class _ChatPageState extends State<ChatPage> {
         IconButton(
           icon: Icon(
             _sidebarWidth > 0 ? Icons.last_page : Icons.first_page,
-            color: Colors.white70,
+            color: AppColors.iconSecondary(context),
           ),
           tooltip: 'Toggle Sidebar',
           onPressed: () =>
@@ -876,7 +880,7 @@ class _ChatPageState extends State<ChatPage> {
     final group = chatService.activeGroup!;
     final chars = chatService.groupCharacters;
     return AppBar(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surfaceOf(context),
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
@@ -919,14 +923,15 @@ class _ChatPageState extends State<ChatPage> {
             children: [
               Text(
                 group.name,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary(context),
                 ),
               ),
               Text(
                 '${chars.length} characters • ${group.turnOrder.name}',
-                style: const TextStyle(fontSize: 12, color: Colors.white54),
+                style: TextStyle(fontSize: 12, color: AppColors.textTertiary(context)),
               ),
             ],
           ),
@@ -936,7 +941,7 @@ class _ChatPageState extends State<ChatPage> {
         IconButton(
           icon: Icon(
             _sidebarWidth > 0 ? Icons.last_page : Icons.first_page,
-            color: Colors.white70,
+            color: AppColors.iconSecondary(context),
           ),
           tooltip: 'Toggle Sidebar',
           onPressed: () =>
@@ -1044,23 +1049,24 @@ class _ChatPageState extends State<ChatPage> {
     if (tier >= 6) return Colors.pink.shade200;
     if (tier >= 5) return Colors.orangeAccent;
     if (tier >= 4) return Colors.greenAccent;
-    if (tier >= 3) return Colors.lightBlue;
-    if (tier >= 2) return Colors.blueGrey;
-    if (tier >= 1) return Colors.grey.shade400;
-    if (tier == 0) return Colors.white54;
-    if (tier >= -1) return Colors.orangeAccent.shade100;
-    if (tier >= -2) return Colors.redAccent.shade100;
+    if (tier >= 3) return AppColors.resolve(context, Colors.lightBlue, Colors.blue.shade700);
+    if (tier >= 2) return AppColors.resolve(context, Colors.blueGrey, Colors.blueGrey.shade700);
+    if (tier >= 1) return AppColors.resolve(context, Colors.grey.shade400, Colors.grey.shade700);
+    if (tier == 0) return AppColors.textTertiary(context);
+    if (tier >= -1) return AppColors.resolve(context, Colors.orangeAccent.shade100, Colors.orange.shade700);
+    if (tier >= -2) return AppColors.resolve(context, Colors.redAccent.shade100, Colors.red.shade600);
     if (tier >= -3) return Colors.redAccent;
     if (tier >= -4) return Colors.red;
-    if (tier >= -5) return Colors.red.shade900;
-    if (tier >= -6) return Colors.brown.shade900;
-    if (tier >= -7) return Colors.deepOrange.shade900;
-    if (tier >= -8) return Colors.amber.shade900;
-    if (tier >= -9) return Colors.orange.shade900;
-    return Colors.black87;
+    if (tier >= -5) return AppColors.resolve(context, Colors.red.shade900, Colors.red.shade800);
+    if (tier >= -6) return AppColors.resolve(context, Colors.brown.shade900, Colors.brown.shade700);
+    if (tier >= -7) return AppColors.resolve(context, Colors.deepOrange.shade900, Colors.deepOrange.shade700);
+    if (tier >= -8) return AppColors.resolve(context, Colors.amber.shade900, Colors.amber.shade800);
+    if (tier >= -9) return AppColors.resolve(context, Colors.orange.shade900, Colors.orange.shade800);
+    return AppColors.textPrimary(context);
   }
 
   Widget _buildGroupRealismRichRow({
+    required BuildContext context, // Added for AppColors access in light-mode chrome hardening of sidebar realism panels (per rules, edit to existing helper)
     required String label,
     required int value,
     required int tier,
@@ -1106,7 +1112,7 @@ class _ChatPageState extends State<ChatPage> {
               const SizedBox(width: 8),
               Text(
                 '$absVal/$target',
-                style: const TextStyle(fontSize: 10, color: Colors.white38),
+                style: TextStyle(fontSize: 10, color: AppColors.textTertiary(context)),
               ),
             ],
           ),
@@ -1117,7 +1123,7 @@ class _ChatPageState extends State<ChatPage> {
           child: LinearProgressIndicator(
             value: norm,
             minHeight: 5,
-            backgroundColor: Colors.white10,
+            backgroundColor: AppColors.resolve(context, Colors.white10, Colors.black.withValues(alpha: 0.08)),
             valueColor: AlwaysStoppedAnimation<Color>(displayColor),
           ),
         ),
@@ -1125,7 +1131,8 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _buildGroupCharacterFullRealismUI(ChatService chatService, CharacterCard character) {
+  Widget _buildGroupCharacterFullRealismUI(BuildContext context, ChatService chatService, CharacterCard character) {
+    // Added BuildContext param (documented) to existing private helper for AppColors in light-mode sidebar realism UI; required to pass to _buildGroupRealismRichRow
     if (!chatService.isGroupRealismActive) return const SizedBox.shrink();
 
     final affection = chatService.getAffectionForGroupCharacter(character);
@@ -1186,6 +1193,7 @@ class _ChatPageState extends State<ChatPage> {
 
             // Short-Term Bond (full 1:1 visual treatment using group affection)
             _buildGroupRealismRichRow(
+              context: context,
               label: 'Short-Term Bond',
               value: affection,
               tier: bondTier,
@@ -1197,6 +1205,7 @@ class _ChatPageState extends State<ChatPage> {
 
             // Long-Term Bond (same data for groups, full visual so it looks complete)
             _buildGroupRealismRichRow(
+              context: context,
               label: 'Long-Term Bond',
               value: affection,
               tier: bondTier,
@@ -1208,6 +1217,7 @@ class _ChatPageState extends State<ChatPage> {
 
             // Trust (full style)
             _buildGroupRealismRichRow(
+              context: context,
               label: 'Trust',
               value: trust,
               tier: trustTier,
@@ -1220,6 +1230,7 @@ class _ChatPageState extends State<ChatPage> {
 
             // Arousal (full style)
             _buildGroupRealismRichRow(
+              context: context,
               label: 'Arousal',
               value: arousal,
               tier: arousalTier,
@@ -1234,16 +1245,16 @@ class _ChatPageState extends State<ChatPage> {
             if (needs.isNotEmpty)
               Row(
                 children: [
-                  const Text('Needs', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                  Text('Needs', style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context))),
                   const SizedBox(width: 4),
                   InkWell(
                     onTap: () => _showGroupCharacterNeedsPopup(chatService, character),
                     borderRadius: BorderRadius.circular(10),
                     child: Tooltip(
                       message: 'View full needs details for ${character.name}',
-                      child: const Padding(
-                        padding: EdgeInsets.all(2),
-                        child: Icon(Icons.info_outline, size: 14, color: Colors.white54),
+                      child: Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Icon(Icons.info_outline, size: 14, color: AppColors.iconSecondary(context)),
                       ),
                     ),
                   ),
@@ -1273,7 +1284,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: Text('Needs — ${character.name}', style: const TextStyle(fontSize: 16)),
         content: SizedBox(
           width: 320,
@@ -1387,7 +1398,7 @@ class _ChatPageState extends State<ChatPage> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surfaceOf(context),
           title: const Text('Import Failed'),
           content: Text('Error importing chat: $e'),
           actions: [
@@ -1450,7 +1461,7 @@ class _ChatPageState extends State<ChatPage> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surfaceOf(context),
           title: const Text('Export Failed'),
           content: Text('Error exporting chat: $e'),
           actions: [
@@ -1480,7 +1491,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: Row(
           children: [
             const Icon(
@@ -1696,7 +1707,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: const Text('Reset Character Evolution?'),
         content: const Text(
           'This will reset the character\'s personality and scenario back to the original card values. '
@@ -1761,7 +1772,7 @@ class _ChatPageState extends State<ChatPage> {
           // Evolution failed — show error
           if (!isEvolving && error.isNotEmpty) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF1F2937),
+              backgroundColor: AppColors.surfaceOf(context),
               title: Row(
                 children: [
                   const Icon(
@@ -1800,13 +1811,13 @@ class _ChatPageState extends State<ChatPage> {
             final evolvedP = chat.getEffectivePersonality;
             final evolvedS = chat.getEffectiveScenario;
             return AlertDialog(
-              backgroundColor: const Color(0xFF1F2937),
+              backgroundColor: AppColors.surfaceOf(context),
               title: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.check_circle,
                     size: 20,
-                    color: Colors.tealAccent,
+                    color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                   ),
                   const SizedBox(width: 8),
                   const Text(
@@ -1824,19 +1835,19 @@ class _ChatPageState extends State<ChatPage> {
                     children: [
                       Text(
                         'Evolved $count time${count > 1 ? "s" : ""}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.tealAccent,
+                          color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                         ),
                       ),
                       if (evolvedP != null && evolvedP.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'Evolved Personality',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Colors.tealAccent,
+                            color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1844,19 +1855,19 @@ class _ChatPageState extends State<ChatPage> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0D1117),
+                            color: AppColors.surfaceContainerOf(context),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                              color: Colors.tealAccent.withOpacity(0.2),
+                              color: AppColors.resolve(context, Colors.tealAccent.withValues(alpha: 0.3), Colors.teal.shade200.withValues(alpha: 0.4)),
                             ),
                           ),
                           constraints: const BoxConstraints(maxHeight: 120),
                           child: SingleChildScrollView(
                             child: Text(
                               evolvedP,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white54,
+                                color: AppColors.textPrimary(context),
                               ),
                             ),
                           ),
@@ -1864,12 +1875,12 @@ class _ChatPageState extends State<ChatPage> {
                       ],
                       if (evolvedS != null && evolvedS.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'Evolved Scenario',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Colors.tealAccent,
+                            color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1877,19 +1888,19 @@ class _ChatPageState extends State<ChatPage> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0D1117),
+                            color: AppColors.surfaceContainerOf(context),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                              color: Colors.tealAccent.withOpacity(0.2),
+                              color: AppColors.resolve(context, Colors.tealAccent.withValues(alpha: 0.3), Colors.teal.shade200.withValues(alpha: 0.4)),
                             ),
                           ),
                           constraints: const BoxConstraints(maxHeight: 120),
                           child: SingleChildScrollView(
                             child: Text(
                               evolvedS,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white54,
+                                color: AppColors.textPrimary(context),
                               ),
                             ),
                           ),
@@ -1913,7 +1924,7 @@ class _ChatPageState extends State<ChatPage> {
 
           // Evolution in progress — show spinner + status
           return AlertDialog(
-            backgroundColor: const Color(0xFF1F2937),
+            backgroundColor: AppColors.surfaceOf(context),
             title: Row(
               children: [
                 const SizedBox(
@@ -1986,7 +1997,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: const Text('New Chat'),
         content: const Text(
           'This will clear the current conversation and start fresh. This can\'t be undone. Are you sure?',
@@ -2025,7 +2036,7 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surfaceOf(context),
           title: const Text('Chat History'),
           content: SizedBox(
             width: 420,
@@ -2120,7 +2131,7 @@ class _ChatPageState extends State<ChatPage> {
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
-                                    backgroundColor: const Color(0xFF1F2937),
+                                    backgroundColor: AppColors.surfaceOf(context),
                                     title: const Text('Delete Chat?'),
                                     content: Text(
                                       'This will permanently delete this chat and all its messages.\n\n"${s['preview']}"',
@@ -2202,7 +2213,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: const Text('Edit Chat Session'),
         content: SizedBox(
           width: 360,
@@ -2326,7 +2337,7 @@ class _ChatPageState extends State<ChatPage> {
       customPrompt = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surfaceOf(context),
           title: const Row(
             children: [
               Icon(Icons.brush, color: Colors.purpleAccent),
@@ -2460,19 +2471,23 @@ class _ChatPageState extends State<ChatPage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: const Color(0xFF7C2D12),
-            child: const Row(
+            color: AppColors.resolve(
+              context,
+              const Color(0xFF7C2D12),
+              const Color(0xFFFEF3C7),
+            ),
+            child: Row(
               children: [
                 Icon(
                   Icons.warning_amber_rounded,
                   size: 14,
                   color: Colors.orangeAccent,
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Trust is on the line — your next message is your only chance to explain yourself.',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.orangeAccent,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -2504,7 +2519,7 @@ class _ChatPageState extends State<ChatPage> {
                       height: 3,
                       width: 50,
                       decoration: BoxDecoration(
-                        color: Colors.white38,
+                        color: AppColors.resolve(context, Colors.white38, Colors.black38),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -2514,9 +2529,9 @@ class _ChatPageState extends State<ChatPage> {
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF1F2937),
-                border: Border(top: BorderSide(color: Colors.white10)),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceContainerOf(context),
+                border: Border(top: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.35))),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -2535,15 +2550,15 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                       child: CircleAvatar(
                         radius: 16,
-                        backgroundColor: Colors.white24,
+                        backgroundColor: AppColors.resolve(context, Colors.white24, Colors.black12),
                         backgroundImage: persona.avatarPath != null
                             ? FileImage(File(persona.avatarPath!))
                             : null,
                         child: persona.avatarPath == null
-                            ? const Icon(
+                            ? Icon(
                                 Icons.person,
                                 size: 18,
-                                color: Colors.white70,
+                                color: AppColors.iconSecondary(context),
                               )
                             : null,
                       ),
@@ -2554,7 +2569,7 @@ class _ChatPageState extends State<ChatPage> {
 
               // Chat Management Menu
               PopupMenuButton<String>(
-                icon: const Icon(Icons.folder_open, color: Colors.white70),
+                icon: Icon(Icons.folder_open, color: AppColors.iconSecondary(context)),
                 padding: EdgeInsets.zero,
                 tooltip: 'Chat Management',
                 onSelected: (value) {
@@ -2791,18 +2806,18 @@ class _ChatPageState extends State<ChatPage> {
                   maxLines: 10,
                   minLines: _inputMinLines,
                   textInputAction: TextInputAction.newline,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: AppColors.textPrimary(context)),
                   decoration: InputDecoration(
                     hintText: chatService.observerMode
                         ? 'Direct the scene...'
                         : 'Type a message...',
                     hintStyle: TextStyle(
                       color: chatService.observerMode
-                          ? Colors.amberAccent.withValues(alpha: 0.5)
-                          : Colors.white38,
+                          ? Colors.amberAccent.withValues(alpha: 0.6)
+                          : AppColors.textTertiary(context),
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF374151),
+                    fillColor: AppColors.surfaceContainerOf(context),
                     isDense: true,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -2870,7 +2885,7 @@ class _ChatPageState extends State<ChatPage> {
                         sttService.isRecording ? Icons.stop_circle : Icons.mic,
                         color: sttService.isRecording
                             ? Colors.redAccent
-                            : Colors.white70,
+                            : AppColors.iconSecondary(context),
                       ),
                       onPressed: chatService.isGenerating
                           ? null
@@ -3076,7 +3091,7 @@ class _ChatPageState extends State<ChatPage> {
                   width: 3,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: AppColors.resolve(context, Colors.white24, Colors.black12),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -3101,9 +3116,9 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1F2937),
-        border: Border(left: BorderSide(color: Colors.white10)),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceOf(context),
+        border: Border(left: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.35))),
       ),
       child: Column(
         children: [
@@ -3217,8 +3232,8 @@ class _ChatPageState extends State<ChatPage> {
                         fit: BoxFit.cover,
                         alignment: Alignment.topCenter,
                         errorBuilder: (_, _, _) => Container(
-                          color: Colors.black26,
-                          child: const Icon(Icons.person, color: Colors.white24, size: 64),
+                          color: AppColors.resolve(context, Colors.black26, Colors.black.withValues(alpha: 0.1)),
+                          child: Icon(Icons.person, color: AppColors.iconSecondary(context), size: 64),
                         ),
                       ),
                     ),
@@ -3233,7 +3248,7 @@ class _ChatPageState extends State<ChatPage> {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
+                            color: AppColors.resolve(context, Colors.black.withOpacity(0.7), Colors.black.withOpacity(0.45)),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -3256,21 +3271,21 @@ class _ChatPageState extends State<ChatPage> {
           // Settings Button
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.white10)),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.35))),
             ),
             child: SizedBox(
               width: double.infinity,
               child: PopupMenuButton<String>(
-                color: const Color(0xFF1e293b),
+                color: AppColors.surfaceContainerOf(context),
                 elevation: 8,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white70,
-                  side: const BorderSide(color: Colors.white24),
+                  foregroundColor: AppColors.textSecondary(context),
+                  side: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
                 ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                side: const BorderSide(color: Colors.white12),
+                side: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.3)),
               ),
               offset: const Offset(0, 8),
               onSelected: (value) async {
@@ -3410,29 +3425,29 @@ class _ChatPageState extends State<ChatPage> {
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.purpleAccent.withValues(alpha: 0.08),
+                          color: AppColors.resolve(context, Colors.purpleAccent.withValues(alpha: 0.12), Colors.purple.shade50.withValues(alpha: 0.6)),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: Colors.purpleAccent.withValues(alpha: 0.35),
+                            color: AppColors.resolve(context, Colors.purpleAccent.withValues(alpha: 0.4), Colors.purple.shade200.withValues(alpha: 0.5)),
                           ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.psychology,
                               size: 16,
-                              color: Colors.purpleAccent,
+                              color: AppColors.resolve(context, Colors.purpleAccent, Colors.purple.shade700),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     'CURRENT FIXATION',
                                     style: TextStyle(
                                       fontSize: 9,
-                                      color: Colors.purpleAccent,
+                                      color: AppColors.resolve(context, Colors.purpleAccent, Colors.purple.shade700),
                                       fontWeight: FontWeight.bold,
                                       letterSpacing: 1.2,
                                     ),
@@ -3440,9 +3455,9 @@ class _ChatPageState extends State<ChatPage> {
                                   const SizedBox(height: 2),
                                   Text(
                                     chat.activeFixation,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.white,
+                                      color: AppColors.textPrimary(context),
                                       fontStyle: FontStyle.italic,
                                     ),
                                   ),
@@ -3488,13 +3503,13 @@ class _ChatPageState extends State<ChatPage> {
                     final count = chat.characterEvolutionCount;
                     return _CollapsibleSidebarSection(
                       icon: Icons.psychology_alt,
-                      iconColor: Colors.tealAccent,
+                      iconColor: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                       title: 'Character Evolution',
                       trailing: Text(
                         count > 0 ? 'Evolved $count×' : 'Not evolved',
                         style: TextStyle(
                           fontSize: 11,
-                          color: count > 0 ? Colors.tealAccent : Colors.white30,
+                          color: count > 0 ? AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700) : AppColors.textTertiary(context),
                         ),
                       ),
                       initiallyExpanded: false,
@@ -3503,21 +3518,21 @@ class _ChatPageState extends State<ChatPage> {
                         children: [
                           if (count > 0) ...[
                             if (evolvedP != null && evolvedP.isNotEmpty) ...[
-                              const Text(
+                              Text(
                                 'Evolved Personality',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.white38,
+                                  color: AppColors.textSecondary(context),
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF0D1117),
+                                  color: AppColors.surfaceContainerOf(context),
                                   borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
-                                    color: Colors.tealAccent.withOpacity(0.2),
+                                    color: AppColors.resolve(context, Colors.tealAccent.withValues(alpha: 0.3), Colors.teal.shade200.withValues(alpha: 0.4)),
                                   ),
                                 ),
                                 constraints: const BoxConstraints(
@@ -3526,9 +3541,9 @@ class _ChatPageState extends State<ChatPage> {
                                 child: SingleChildScrollView(
                                   child: Text(
                                     evolvedP,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11,
-                                      color: Colors.white54,
+                                      color: AppColors.textPrimary(context),
                                     ),
                                   ),
                                 ),
@@ -3536,21 +3551,21 @@ class _ChatPageState extends State<ChatPage> {
                             ],
                             if (evolvedS != null && evolvedS.isNotEmpty) ...[
                               const SizedBox(height: 8),
-                              const Text(
+                              Text(
                                 'Evolved Scenario',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.white38,
+                                  color: AppColors.textSecondary(context),
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF0D1117),
+                                  color: AppColors.surfaceContainerOf(context),
                                   borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
-                                    color: Colors.tealAccent.withOpacity(0.2),
+                                    color: AppColors.resolve(context, Colors.tealAccent.withValues(alpha: 0.3), Colors.teal.shade200.withValues(alpha: 0.4)),
                                   ),
                                 ),
                                 constraints: const BoxConstraints(
@@ -3559,9 +3574,9 @@ class _ChatPageState extends State<ChatPage> {
                                 child: SingleChildScrollView(
                                   child: Text(
                                     evolvedS,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11,
-                                      color: Colors.white54,
+                                      color: AppColors.textPrimary(context),
                                     ),
                                   ),
                                 ),
@@ -3691,9 +3706,9 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildGroupSidebar(ChatService chatService) {
     final chars = chatService.groupCharacters;
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1F2937),
-        border: Border(left: BorderSide(color: Colors.white10)),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceOf(context),
+        border: Border(left: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.35))),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3701,8 +3716,8 @@ class _ChatPageState extends State<ChatPage> {
           // ── Settings buttons ──
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.white10)),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.35))),
             ),
             child: Column(
               children: [
@@ -3722,8 +3737,8 @@ class _ChatPageState extends State<ChatPage> {
                           style: TextStyle(fontSize: 12),
                         ),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white70,
-                          side: const BorderSide(color: Colors.white24),
+                          foregroundColor: AppColors.textSecondary(context),
+                          side: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                         ),
                       ),
@@ -3743,8 +3758,8 @@ class _ChatPageState extends State<ChatPage> {
                           style: TextStyle(fontSize: 12),
                         ),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white70,
-                          side: const BorderSide(color: Colors.white24),
+                          foregroundColor: AppColors.textSecondary(context),
+                          side: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                         ),
                       ),
@@ -3764,8 +3779,8 @@ class _ChatPageState extends State<ChatPage> {
                           style: TextStyle(fontSize: 12),
                         ),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white70,
-                          side: const BorderSide(color: Colors.white24),
+                          foregroundColor: AppColors.textSecondary(context),
+                          side: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                         ),
                       ),
@@ -3780,8 +3795,8 @@ class _ChatPageState extends State<ChatPage> {
                     icon: const Icon(Icons.settings, size: 16),
                     label: const Text('Group Settings'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white70,
-                      side: const BorderSide(color: Colors.white24),
+                      foregroundColor: AppColors.textSecondary(context),
+                      side: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
                     ),
                   ),
                 ),
@@ -3789,15 +3804,15 @@ class _ChatPageState extends State<ChatPage> {
                 // ── Director Mode toggle ──
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.movie_creation,
                       size: 16,
-                      color: Colors.white54,
+                      color: AppColors.iconSecondary(context),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       'Director Mode',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                      style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
                     ),
                     const Spacer(),
                     Switch(
@@ -3903,7 +3918,7 @@ class _ChatPageState extends State<ChatPage> {
               'Tap a character to make them respond next',
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.white.withValues(alpha: 0.3),
+                color: AppColors.textTertiary(context).withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -3995,16 +4010,18 @@ class _ChatPageState extends State<ChatPage> {
                                 vertical: 1,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.tealAccent.withValues(
-                                  alpha: 0.15,
+                                color: AppColors.resolve(
+                                  context,
+                                  Colors.tealAccent.withValues(alpha: 0.15),
+                                  Colors.teal.shade100.withValues(alpha: 0.5),
                                 ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
                                 'Evolved $evolutionCount\u00d7',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 9,
-                                  color: Colors.tealAccent,
+                                  color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                                 ),
                               ),
                             ),
@@ -4017,9 +4034,9 @@ class _ChatPageState extends State<ChatPage> {
                             ch.description.length > 40
                                 ? '${ch.description.substring(0, 40)}...'
                                 : ch.description,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
-                              color: Colors.white38,
+                              color: AppColors.textTertiary(context),
                             ),
                           ),
                           // Fixation under character summary (smaller text, per user request)
@@ -4032,7 +4049,7 @@ class _ChatPageState extends State<ChatPage> {
                             }(),
                           // Full realism UI per character (rich 1:1 style bars + needs info button)
                           if (chatService.isGroupRealismActive)
-                            _buildGroupCharacterFullRealismUI(chatService, ch),
+                            _buildGroupCharacterFullRealismUI(context, chatService, ch),
                           Wrap(
                             spacing: 4,
                             runSpacing: 0,
@@ -4206,7 +4223,7 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surfaceOf(context),
           title: Text(
             'Voice for ${character.name}',
             style: const TextStyle(fontSize: 16),
@@ -4337,7 +4354,7 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
+          backgroundColor: AppColors.surfaceOf(context),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: const BorderSide(color: Colors.purpleAccent, width: 0.5),
@@ -4556,7 +4573,7 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: Colors.purpleAccent, width: 0.5),
@@ -4699,10 +4716,18 @@ class _MessageBubbleState extends State<_MessageBubble> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFD166).withValues(alpha: 0.12),
+            color: AppColors.resolve(
+              context,
+              const Color(0xFFFFD166).withValues(alpha: 0.12),
+              const Color(0xFFF59E0B).withValues(alpha: 0.18),
+            ),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: const Color(0xFFFFD166).withValues(alpha: 0.35),
+              color: AppColors.resolve(
+                context,
+                const Color(0xFFFFD166).withValues(alpha: 0.35),
+                const Color(0xFFF59E0B).withValues(alpha: 0.4),
+              ),
             ),
           ),
           child: Row(
@@ -4716,10 +4741,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       .replaceAll('[🎰 CHANCE TIME! ', '')
                       .replaceAll(']', ''),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFFFD166),
+                    color: AppColors.resolve(context, const Color(0xFFFFD166), const Color(0xFFB45309)),
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -4755,7 +4780,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
               padding: const EdgeInsets.all(12),
                decoration: BoxDecoration(
                   color: isDirectorNote
-                      ? Colors.amberAccent.withValues(alpha: 0.1 * bubbleOpacity)
+                      ? AppColors.resolve(
+                          context,
+                          Colors.amberAccent.withValues(alpha: 0.1 * bubbleOpacity),
+                          const Color(0xFFD97706).withValues(alpha: 0.12 * bubbleOpacity),
+                        )
                       : message.isUser
                       ? storage.getUserBubbleColor(character).withValues(alpha: bubbleOpacity)
                       : storage.getAiBubbleColor(character).withValues(alpha: bubbleOpacity),
@@ -4771,7 +4800,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
                  ),
                  border: isDirectorNote
                      ? Border.all(
-                         color: Colors.amberAccent.withValues(alpha: 0.3),
+                         color: AppColors.resolve(
+                           context,
+                           Colors.amberAccent.withValues(alpha: 0.3),
+                           const Color(0xFFD97706).withValues(alpha: 0.35),
+                         ),
                        )
                      : null,
                ),
@@ -4782,18 +4815,18 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (isDirectorNote) ...[
-                        const Icon(
+                        Icon(
                           Icons.movie_creation,
                           size: 14,
-                          color: Colors.amberAccent,
+                          color: AppColors.resolve(context, Colors.amberAccent, const Color(0xFFD97706)),
                         ),
                         const SizedBox(width: 6),
-                        const Text(
+                        Text(
                           'Director',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
-                            color: Colors.amberAccent,
+                            color: AppColors.resolve(context, Colors.amberAccent, const Color(0xFFD97706)),
                             fontStyle: FontStyle.italic,
                           ),
                         ),
@@ -5433,7 +5466,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: const Text('Delete Message'),
         content: const Text(
           'This can\'t be undone. Are you sure you want to delete this message?',
@@ -5464,7 +5497,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: Row(
           children: const [
             Icon(Icons.call_split, color: Colors.blueAccent, size: 22),
@@ -5854,7 +5887,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: const Text('Edit Message'),
         content: SizedBox(
           width: 500,
@@ -6418,14 +6451,14 @@ class _SidebarSectionState extends State<_SidebarSection> {
                 Icon(
                   _expanded ? Icons.expand_more : Icons.chevron_right,
                   size: 16,
-                  color: Colors.white38,
+                  color: AppColors.iconSecondary(context),
                 ),
                 const SizedBox(width: 4),
                 Text(
                   widget.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.white70,
+                    color: AppColors.textSecondary(context),
                   ),
                 ),
               ],
@@ -6438,7 +6471,7 @@ class _SidebarSectionState extends State<_SidebarSection> {
             padding: const EdgeInsets.only(left: 20.0),
             child: Text(
               widget.content,
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
+              style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
             ),
           ),
         ],
@@ -6507,7 +6540,7 @@ class _CollapsibleSidebarSectionState
                 Icon(
                   _expanded ? Icons.expand_more : Icons.chevron_right,
                   size: 16,
-                  color: Colors.white38,
+                  color: AppColors.iconSecondary(context),
                 ),
               ],
             ),
@@ -6544,14 +6577,14 @@ class _LorebookSectionState extends State<_LorebookSection> {
                 Icon(
                   _expanded ? Icons.expand_more : Icons.chevron_right,
                   size: 16,
-                  color: Colors.white38,
+                  color: AppColors.iconSecondary(context),
                 ),
                 const SizedBox(width: 4),
-                const Text(
+                Text(
                   'Lorebook Triggers',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.white70,
+                    color: AppColors.textSecondary(context),
                   ),
                 ),
               ],
@@ -6571,19 +6604,31 @@ class _LorebookSectionState extends State<_LorebookSection> {
                       if (widget.character.lorebook!.entries
                           .where((e) => e.enabled)
                           .isEmpty)
-                        const Text(
+                        Text(
                           'No enabled entries.',
-                          style: TextStyle(color: Colors.white30, fontSize: 12),
+                          style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
                         ),
 
                       ...widget.character.lorebook!.entries
                           .where((e) => e.enabled)
                           .map((entry) {
-                            Color dotColor = Colors.redAccent;
+                            Color dotColor = AppColors.resolve(
+                              context,
+                              Colors.redAccent,
+                              Colors.red.shade700,
+                            );
                             if (entry.constant) {
-                              dotColor = Colors.blueAccent;
+                              dotColor = AppColors.resolve(
+                                context,
+                                Colors.blueAccent,
+                                Colors.blue.shade700,
+                              );
                             } else if (entry.isTriggered) {
-                              dotColor = Colors.greenAccent;
+                              dotColor = AppColors.resolve(
+                                context,
+                                Colors.greenAccent,
+                                Colors.green.shade700,
+                              );
                             }
 
                             return Padding(
@@ -6596,7 +6641,11 @@ class _LorebookSectionState extends State<_LorebookSection> {
                                     width: 8,
                                     height: 8,
                                     decoration: BoxDecoration(
-                                      color: dotColor,
+                                      color: AppColors.resolve(
+                                        context,
+                                        dotColor,
+                                        dotColor.withValues(alpha: 0.85),
+                                      ),
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -6607,11 +6656,9 @@ class _LorebookSectionState extends State<_LorebookSection> {
                                           ? 'Always Active'
                                           : entry.displayName,
                                       style: TextStyle(
-                                        color:
-                                            (entry.isTriggered ||
-                                                entry.constant)
-                                            ? Colors.white
-                                            : Colors.white54,
+                                        color: (entry.isTriggered || entry.constant)
+                                            ? AppColors.textPrimary(context)
+                                            : AppColors.textSecondary(context),
                                         fontSize: 12,
                                       ),
                                       maxLines: 1,
@@ -6624,9 +6671,9 @@ class _LorebookSectionState extends State<_LorebookSection> {
                           }),
                     ],
                   )
-                : const Text(
+                : Text(
                     'No lorebook entries.',
-                    style: TextStyle(color: Colors.white30, fontSize: 12),
+                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
                   ),
           ),
         ],
@@ -6688,9 +6735,9 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
                   : 'Author\'s Note — injected into the character\'s context.',
               child: Text(
                 isGroup ? "Group Author's Note" : "Author's Note",
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Colors.white70,
+                  color: AppColors.textPrimary(context),
                   fontSize: 13,
                 ),
               ),
@@ -6702,23 +6749,23 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
           controller: _controller,
           maxLines: 4,
           minLines: 2,
-          style: const TextStyle(color: Colors.white, fontSize: 12),
+          style: TextStyle(color: AppColors.textPrimary(context), fontSize: 12),
           decoration: InputDecoration(
             hintText: 'Instructions injected into context...',
-            hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+            hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
             filled: true,
-            fillColor: const Color(0xFF111827),
+            fillColor: AppColors.surfaceContainerOf(context),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.white12),
+              borderSide: BorderSide(color: AppColors.borderOf(context)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.white12),
+              borderSide: BorderSide(color: AppColors.borderOf(context)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.blueAccent),
+              borderSide: BorderSide(color: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700)),
             ),
             contentPadding: const EdgeInsets.all(10),
           ),
@@ -6749,7 +6796,7 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
               children: [
                 Row(
                   children: [
-                    const Tooltip(
+                    Tooltip(
                       message:
                           'Controls how forcefully the author\'s note is applied.\n'
                           'Subtle: a gentle suggestion the AI may follow.\n'
@@ -6757,7 +6804,7 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
                           'Strong: an urgent directive the AI should apply immediately.',
                       child: Text(
                         'Strength: ',
-                        style: TextStyle(color: Colors.white54, fontSize: 11),
+                        style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11),
                       ),
                     ),
                     Expanded(
@@ -6771,7 +6818,7 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
                             overlayRadius: 12,
                           ),
                           activeTrackColor: sliderColor,
-                          inactiveTrackColor: Colors.white12,
+                          inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.3),
                           thumbColor: sliderColor,
                         ),
                         child: Slider(
@@ -6792,7 +6839,7 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
                     Text(
                       '$strength',
                       style: TextStyle(
-                        color: sliderColor,
+                        color: AppColors.textPrimary(context),
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                       ),
@@ -6818,7 +6865,7 @@ class _AuthorNoteSectionState extends State<_AuthorNoteSection> {
                         child: Text(
                           tierLabel,
                           style: TextStyle(
-                            color: sliderColor,
+                            color: AppColors.textPrimary(context),
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
                           ),
@@ -6890,33 +6937,33 @@ class _SummarySectionState extends State<_SummarySection> {
                 Icon(
                   _expanded ? Icons.expand_more : Icons.chevron_right,
                   size: 16,
-                  color: Colors.white38,
+                  color: AppColors.iconSecondary(context),
                 ),
                 const SizedBox(width: 4),
-                const Icon(
+                Icon(
                   Icons.auto_stories,
                   size: 14,
-                  color: Colors.tealAccent,
+                  color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                 ),
                 const SizedBox(width: 6),
-                const Text(
+                Text(
                   'Chat Summary',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.white70,
+                    color: AppColors.textPrimary(context),
                     fontSize: 13,
                   ),
                 ),
                 const Spacer(),
                 if (enabled && widget.chatService.isSummaryGenerating)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
                     child: SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.tealAccent,
+                        color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                       ),
                     ),
                   ),
@@ -6929,7 +6976,7 @@ class _SummarySectionState extends State<_SummarySection> {
                         storage.setSummaryEnabled(val);
                         if (val) setState(() => _expanded = true);
                       },
-                      activeTrackColor: Colors.tealAccent,
+                      activeTrackColor: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                     ),
                   ),
                 ),
@@ -6940,11 +6987,11 @@ class _SummarySectionState extends State<_SummarySection> {
 
         if (_expanded) ...[
           if (!enabled)
-            const Padding(
-              padding: EdgeInsets.only(top: 4, left: 20),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 20),
               child: Text(
                 'Auto-summarize conversations so the AI remembers earlier events even after they leave the context window.',
-                style: TextStyle(fontSize: 11, color: Colors.white30),
+                style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context)),
               ),
             ),
 
@@ -6957,27 +7004,27 @@ class _SummarySectionState extends State<_SummarySection> {
                 controller: _controller,
                 maxLines: 6,
                 minLines: 2,
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+                style: TextStyle(color: AppColors.textPrimary(context), fontSize: 12),
                 decoration: InputDecoration(
                   hintText:
                       'No summary yet. It will generate after enough messages...',
-                  hintStyle: const TextStyle(
-                    color: Colors.white24,
+                  hintStyle: TextStyle(
+                    color: AppColors.textTertiary(context),
                     fontSize: 12,
                   ),
                   filled: true,
-                  fillColor: const Color(0xFF111827),
+                  fillColor: AppColors.surfaceContainerOf(context),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Colors.white12),
+                    borderSide: BorderSide(color: AppColors.borderOf(context)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Colors.white12),
+                    borderSide: BorderSide(color: AppColors.borderOf(context)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Colors.tealAccent),
+                    borderSide: BorderSide(color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700)),
                   ),
                   contentPadding: const EdgeInsets.all(10),
                 ),
@@ -7012,8 +7059,8 @@ class _SummarySectionState extends State<_SummarySection> {
                                 : Icons.pause,
                             size: 14,
                             color: widget.chatService.summaryPaused
-                                ? Colors.orangeAccent
-                                : Colors.white38,
+                                ? AppColors.resolve(context, Colors.orangeAccent, Colors.orange.shade700)
+                                : AppColors.iconSecondary(context),
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -7023,8 +7070,8 @@ class _SummarySectionState extends State<_SummarySection> {
                             style: TextStyle(
                               fontSize: 10,
                               color: widget.chatService.summaryPaused
-                                  ? Colors.orangeAccent
-                                  : Colors.white38,
+                                  ? AppColors.resolve(context, Colors.orangeAccent, Colors.orange.shade700)
+                                  : AppColors.textSecondary(context),
                             ),
                           ),
                         ],
@@ -7587,9 +7634,9 @@ class _MemorySectionState extends State<_MemorySection> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFF111827),
+                color: AppColors.surfaceContainerOf(context),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white12),
+                border: Border.all(color: AppColors.borderOf(context)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -7597,9 +7644,9 @@ class _MemorySectionState extends State<_MemorySection> {
                   // Memories per turn
                   Row(
                     children: [
-                      const Text(
+                      Text(
                         'Memories per turn',
-                        style: TextStyle(color: Colors.white54, fontSize: 11),
+                        style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11),
                       ),
                       const Spacer(),
                       Text(
@@ -7759,9 +7806,9 @@ class _MemorySectionState extends State<_MemorySection> {
                         color: Colors.tealAccent,
                       ),
                       const SizedBox(width: 6),
-                      const Text(
+                      Text(
                         'Character Evolution',
-                        style: TextStyle(color: Colors.white54, fontSize: 11),
+                        style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11),
                       ),
                       const Spacer(),
                       SizedBox(
@@ -8007,7 +8054,7 @@ class _MemorySectionState extends State<_MemorySection> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: Row(
           children: [
             const Icon(
@@ -8159,7 +8206,7 @@ class _MemorySectionState extends State<_MemorySection> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: const Text('Reset Character Evolution?'),
         content: const Text(
           'This will reset the character\'s personality and scenario back to the original card values. '
@@ -8680,8 +8727,9 @@ class _RealismSectionState extends State<_RealismSection> {
         final enabled = chat.realismEnabled;
         final storageService = Provider.of<StorageService>(context);
 
-        // Bond colors per tier
+        // Bond colors per tier — made light-mode safe
         Color getTierColor(int tier) {
+          // Strong positive tiers (vibrant, work on both themes)
           if (tier >= 10) return Colors.deepPurpleAccent;
           if (tier >= 9) return Colors.purpleAccent;
           if (tier >= 8) return Colors.pinkAccent;
@@ -8689,20 +8737,32 @@ class _RealismSectionState extends State<_RealismSection> {
           if (tier >= 6) return Colors.pink.shade200;
           if (tier >= 5) return Colors.orangeAccent;
           if (tier >= 4) return Colors.greenAccent;
-          if (tier >= 3) return Colors.lightBlue;
-          if (tier >= 2) return Colors.blueGrey;
-          if (tier >= 1) return Colors.grey.shade400;
-          if (tier == 0) return Colors.white54;
-          if (tier >= -1) return Colors.orangeAccent.shade100;
-          if (tier >= -2) return Colors.redAccent.shade100;
+
+          // Neutral / low tiers — use context-aware versions for light mode readability
+          if (tier >= 3) {
+            return AppColors.resolve(context, Colors.lightBlue, Colors.blue.shade700);
+          }
+          if (tier >= 2) {
+            return AppColors.resolve(context, Colors.blueGrey, Colors.blueGrey.shade700);
+          }
+          if (tier >= 1) {
+            return AppColors.resolve(context, Colors.grey.shade400, Colors.grey.shade700);
+          }
+          if (tier == 0) {
+            return AppColors.textTertiary(context);
+          }
+
+          // Negative tiers (mostly dark reds/browns in dark mode — they become readable darks on light)
+          if (tier >= -1) return AppColors.resolve(context, Colors.orangeAccent.shade100, Colors.orange.shade700);
+          if (tier >= -2) return AppColors.resolve(context, Colors.redAccent.shade100, Colors.red.shade600);
           if (tier >= -3) return Colors.redAccent;
           if (tier >= -4) return Colors.red;
-          if (tier >= -5) return Colors.red.shade900;
-          if (tier >= -6) return Colors.brown.shade900;
-          if (tier >= -7) return Colors.deepOrange.shade900;
-          if (tier >= -8) return Colors.amber.shade900;
-          if (tier >= -9) return Colors.orange.shade900;
-          return Colors.black87;
+          if (tier >= -5) return AppColors.resolve(context, Colors.red.shade900, Colors.red.shade800);
+          if (tier >= -6) return AppColors.resolve(context, Colors.brown.shade900, Colors.brown.shade700);
+          if (tier >= -7) return AppColors.resolve(context, Colors.deepOrange.shade900, Colors.deepOrange.shade700);
+          if (tier >= -8) return AppColors.resolve(context, Colors.amber.shade900, Colors.amber.shade800);
+          if (tier >= -9) return AppColors.resolve(context, Colors.orange.shade900, Colors.orange.shade800);
+          return AppColors.textPrimary(context);
         }
 
         final shortTermColor = getTierColor(chat.relationshipTier);
@@ -8710,8 +8770,9 @@ class _RealismSectionState extends State<_RealismSection> {
 
         return Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF111827),
+            color: AppColors.cardOf(context),
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.15)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -8727,21 +8788,21 @@ class _RealismSectionState extends State<_RealismSection> {
                       Icon(
                         _expanded ? Icons.expand_more : Icons.chevron_right,
                         size: 16,
-                        color: Colors.white38,
+                        color: AppColors.iconSecondary(context),
                       ),
                       const SizedBox(width: 4),
-                      const Icon(
+                      Icon(
                         Icons.theater_comedy,
                         size: 14,
-                        color: Colors.white54,
+                        color: AppColors.iconSecondary(context),
                       ),
                       const SizedBox(width: 6),
-                      const Text(
+                      Text(
                         'Realism Mode',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white70,
+                          color: AppColors.textPrimary(context),
                         ),
                       ),
                       const Spacer(),
@@ -8749,7 +8810,11 @@ class _RealismSectionState extends State<_RealismSection> {
                         height: 24,
                         child: Switch(
                           value: enabled,
-                          activeThumbColor: Colors.tealAccent,
+                          activeThumbColor: AppColors.resolve(
+                            context,
+                            Colors.tealAccent,
+                            Colors.teal.shade700,
+                          ),
                           onChanged: chat.isGenerating
                               ? null
                               : (val) {
@@ -8770,7 +8835,7 @@ class _RealismSectionState extends State<_RealismSection> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Divider(color: Colors.white12, height: 1),
+                      Divider(color: AppColors.borderOf(context).withValues(alpha: 0.2), height: 1),
                       const SizedBox(height: 10),
 
                       // ── Short-Term Tension ──
@@ -8801,9 +8866,9 @@ class _RealismSectionState extends State<_RealismSection> {
                             const SizedBox(width: 8),
                             Text(
                               '${chat.affectionScore.abs()}/${chat.shortTermProgressTarget}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.white38,
+                                color: AppColors.textSecondary(context),
                               ),
                             ),
                           ],
@@ -8815,7 +8880,7 @@ class _RealismSectionState extends State<_RealismSection> {
                         child: LinearProgressIndicator(
                           value: chat.shortTermProgressPercent,
                           minHeight: 5,
-                          backgroundColor: Colors.white10,
+                          backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
                           valueColor: AlwaysStoppedAnimation<Color>(
                             shortTermColor,
                           ),
@@ -8851,9 +8916,9 @@ class _RealismSectionState extends State<_RealismSection> {
                             const SizedBox(width: 8),
                             Text(
                               '${chat.longTermScore.abs()}/${chat.longTermProgressTarget}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.white38,
+                                color: AppColors.textSecondary(context),
                               ),
                             ),
                           ],
@@ -8865,7 +8930,7 @@ class _RealismSectionState extends State<_RealismSection> {
                         child: LinearProgressIndicator(
                           value: chat.longTermProgressPercent,
                           minHeight: 5,
-                          backgroundColor: Colors.white10,
+                          backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
                           valueColor: AlwaysStoppedAnimation<Color>(
                             longTermColor,
                           ),
@@ -8905,9 +8970,9 @@ class _RealismSectionState extends State<_RealismSection> {
                             const SizedBox(width: 8),
                             Text(
                               '${chat.trustLevel.abs()}/${chat.trustProgressTarget}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.white38,
+                                color: AppColors.textSecondary(context),
                               ),
                             ),
                           ],
@@ -8919,7 +8984,7 @@ class _RealismSectionState extends State<_RealismSection> {
                         child: LinearProgressIndicator(
                           value: chat.trustProgressPercent,
                           minHeight: 5,
-                          backgroundColor: Colors.white10,
+                          backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
                           valueColor: AlwaysStoppedAnimation<Color>(
                             chat.trustLevel < 0
                                 ? Colors.redAccent
@@ -8927,8 +8992,6 @@ class _RealismSectionState extends State<_RealismSection> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-
                       const SizedBox(height: 12),
 
                       // ── Emotion ──
@@ -8943,9 +9006,9 @@ class _RealismSectionState extends State<_RealismSection> {
                             Expanded(
                               child: Text(
                                 '${chat.characterEmotion.substring(0, 1).toUpperCase()}${chat.characterEmotion.substring(1)} (${chat.emotionIntensity})',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.white54,
+                                  color: AppColors.textSecondary(context),
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -8965,9 +9028,9 @@ class _RealismSectionState extends State<_RealismSection> {
                           const SizedBox(width: 5),
                           Text(
                             _timeLabel(chat.timeOfDay),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white54,
+                              color: AppColors.textSecondary(context),
                             ),
                           ),
                           const Spacer(),
@@ -8975,33 +9038,33 @@ class _RealismSectionState extends State<_RealismSection> {
                           if (chat.realismEnabled)
                             GestureDetector(
                               onTap: () => chat.nudgeTimePeriod(-1),
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 4),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
                                 child: Icon(
                                   Icons.chevron_left,
                                   size: 16,
-                                  color: Colors.white30,
+                                  color: AppColors.iconSecondary(context),
                                 ),
                               ),
                             ),
                           Text(
                             '${chat.narrativeWeekday.substring(0, 3)} · Day ${chat.dayCount}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white38,
+                              color: AppColors.textSecondary(context),
                             ),
                           ),
                           // Manual time nudge: forward
                           if (chat.realismEnabled)
                             GestureDetector(
                               onTap: () => chat.nudgeTimePeriod(1),
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 4),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
                                 child: Icon(
                                   Icons.chevron_right,
                                   size: 16,
-                                  color: Colors.white30,
+                                  color: AppColors.iconSecondary(context),
                                 ),
                               ),
                             ),
@@ -9028,8 +9091,8 @@ class _RealismSectionState extends State<_RealismSection> {
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: chat.timeOfDay == period
-                                        ? Colors.amber
-                                        : Colors.white12,
+                                        ? AppColors.resolve(context, Colors.amber, Colors.amber.shade700)
+                                        : AppColors.borderOf(context).withValues(alpha: 0.25),
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -9038,8 +9101,8 @@ class _RealismSectionState extends State<_RealismSection> {
                                   style: TextStyle(
                                     fontSize: 8,
                                     color: chat.timeOfDay == period
-                                        ? Colors.amber
-                                        : Colors.white24,
+                                        ? AppColors.resolve(context, Colors.amber, Colors.amber.shade800)
+                                        : AppColors.textTertiary(context),
                                   ),
                                 ),
                               ],
@@ -9053,18 +9116,18 @@ class _RealismSectionState extends State<_RealismSection> {
                       // ── Automatic Passage of Time Toggle ──
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.access_time,
                             size: 14,
-                            color: Colors.white54,
+                            color: AppColors.iconSecondary(context),
                           ),
                           const SizedBox(width: 5),
-                          const Expanded(
+                          Expanded(
                             child: Text(
                               'Automatic Passage of Time',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.white70,
+                                color: AppColors.textSecondary(context),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -9073,7 +9136,11 @@ class _RealismSectionState extends State<_RealismSection> {
                             height: 24,
                             child: Switch(
                               value: chat.passageOfTimeEnabled,
-                              activeThumbColor: Colors.blueAccent,
+                              activeThumbColor: AppColors.resolve(
+                                context,
+                                Colors.blueAccent,
+                                Colors.blue.shade700,
+                              ),
                               onChanged: chat.isGenerating
                                   ? null
                                   : (val) => chat.setPassageOfTimeEnabled(val),
@@ -9082,27 +9149,27 @@ class _RealismSectionState extends State<_RealismSection> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      const Text(
+                      Text(
                         'Time advances automatically as you chat. Manual controls remain available.',
-                        style: TextStyle(color: Colors.white54, fontSize: 10),
+                        style: TextStyle(color: AppColors.textTertiary(context), fontSize: 10),
                       ),
                       const SizedBox(height: 12),
 
                       // ── Needs Simulation Toggle + Bars ──
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.battery_std,
                             size: 14,
-                            color: Colors.white54,
+                            color: AppColors.iconSecondary(context),
                           ),
                           const SizedBox(width: 5),
-                          const Expanded(
+                          Expanded(
                             child: Text(
                               'Needs Simulation',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.white70,
+                                color: AppColors.textSecondary(context),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -9111,7 +9178,11 @@ class _RealismSectionState extends State<_RealismSection> {
                             height: 24,
                             child: Switch(
                               value: chat.needsSimEnabled,
-                              activeThumbColor: Colors.tealAccent,
+                              activeThumbColor: AppColors.resolve(
+                                context,
+                                Colors.tealAccent,
+                                Colors.teal.shade700,
+                              ),
                               onChanged: chat.isGenerating
                                   ? null
                                   : (val) => chat.setNeedsSimEnabled(val),
@@ -9120,9 +9191,9 @@ class _RealismSectionState extends State<_RealismSection> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      const Text(
+                      Text(
                         'Tracks hunger, bladder, energy, social, fun, hygiene, comfort. Affects AI prompts & behavior when low.',
-                        style: TextStyle(color: Colors.white54, fontSize: 10),
+                        style: TextStyle(color: AppColors.textTertiary(context), fontSize: 10),
                       ),
                       if (chat.needsSimEnabled && chat.needsVector.isNotEmpty) ...[
                         const SizedBox(height: 8),
@@ -9135,7 +9206,7 @@ class _RealismSectionState extends State<_RealismSection> {
                                   width: 58,
                                   child: Text(
                                     entry.key[0].toUpperCase() + entry.key.substring(1),
-                                    style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary(context)),
                                   ),
                                 ),
                                 Expanded(
@@ -9144,17 +9215,17 @@ class _RealismSectionState extends State<_RealismSection> {
                                     child: LinearProgressIndicator(
                                       value: (entry.value / 100.0).clamp(0.0, 1.0),
                                       minHeight: 4,
-                                      backgroundColor: Colors.white10,
+                                      backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
                                       valueColor: AlwaysStoppedAnimation<Color>(
                                         entry.value <= ChatService.needCriticalThreshold
                                             ? Colors.redAccent
-                                            : Colors.tealAccent,
+                                            : AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                                       ),
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 4),
-                                Text('${entry.value}', style: const TextStyle(fontSize: 9, color: Colors.white38)),
+                                Text('${entry.value}', style: TextStyle(fontSize: 9, color: AppColors.textTertiary(context))),
                               ],
                             ),
                           ),
@@ -9165,29 +9236,29 @@ class _RealismSectionState extends State<_RealismSection> {
                       _NsfwEnhancementsSection(chat: chat),
 
                       const SizedBox(height: 12),
-                      const Divider(color: Colors.white12, height: 1),
+                      Divider(color: AppColors.borderOf(context).withValues(alpha: 0.2), height: 1),
                       const SizedBox(height: 10),
 
                       // ── Realism Performance ──
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.speed,
                             size: 14,
-                            color: Colors.tealAccent,
+                            color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                           ),
                           const SizedBox(width: 5),
                           Expanded(
                             child: RichText(
                               overflow: TextOverflow.ellipsis,
-                              text: const TextSpan(
+                              text: TextSpan(
                                 children: [
                                   TextSpan(
                                     text: 'One-Shot Eval ',
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.tealAccent,
+                                      color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                                     ),
                                   ),
                                   TextSpan(
@@ -9205,7 +9276,7 @@ class _RealismSectionState extends State<_RealismSection> {
                             height: 20,
                             child: Switch(
                               value: storageService.realismOneShotEval,
-                              activeThumbColor: Colors.tealAccent,
+                              activeThumbColor: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
                               onChanged: chat.isGenerating
                                   ? null
                                   : (val) {
@@ -9216,9 +9287,9 @@ class _RealismSectionState extends State<_RealismSection> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Fuses relationship + scene evals into a single LLM call to double the processing speed. May be less accurate on \u003c 8B param models.',
-                        style: TextStyle(color: Colors.white54, fontSize: 11),
+                      Text(
+                        'Fuses relationship + scene evals into a single LLM call to double the processing speed. May be less accurate on < 8B param models.',
+                        style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
                       ),
                     ],
                   ),
@@ -9365,7 +9436,7 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                 Icon(
                   _expanded ? Icons.expand_more : Icons.chevron_right,
                   size: 16,
-                  color: Colors.white38,
+                  color: AppColors.iconSecondary(context),
                 ),
                 const SizedBox(width: 4),
                 const Icon(
@@ -9450,10 +9521,10 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                              : Icons.favorite_border,
                          size: 13,
                          color: widget.chat.arousalTier >= 6
-                             ? Colors.deepOrangeAccent
+                             ? AppColors.resolve(context, Colors.deepOrangeAccent, Colors.deepOrange.shade700)
                              : widget.chat.arousalTier <= -1
-                             ? Colors.lightBlueAccent
-                             : Colors.white38,
+                             ? AppColors.resolve(context, Colors.lightBlueAccent, Colors.blue.shade700)
+                             : AppColors.iconSecondary(context),
                        ),
                        const SizedBox(width: 5),
                        Expanded(
@@ -9462,10 +9533,10 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                            style: TextStyle(
                              fontSize: 12,
                              color: widget.chat.arousalTier >= 6
-                                 ? Colors.deepOrangeAccent
+                                 ? AppColors.resolve(context, Colors.deepOrangeAccent, Colors.deepOrange.shade700)
                                  : widget.chat.arousalTier <= -1
-                                 ? Colors.lightBlueAccent
-                                 : Colors.white54,
+                                 ? AppColors.resolve(context, Colors.lightBlueAccent, Colors.blue.shade700)
+                                 : AppColors.textSecondary(context),
                            ),
                            overflow: TextOverflow.ellipsis,
                          ),
@@ -9473,9 +9544,9 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                        const SizedBox(width: 8),
                        Text(
                          '${widget.chat.arousalLevel.clamp(-100, 100)}/100',
-                         style: const TextStyle(
+                         style: TextStyle(
                            fontSize: 10,
-                           color: Colors.white38,
+                           color: AppColors.textTertiary(context),
                          ),
                        ),
                     ],
@@ -9486,13 +9557,11 @@ class _NsfwEnhancementsSectionState extends State<_NsfwEnhancementsSection> {
                     child: LinearProgressIndicator(
                       value: (widget.chat.arousalLevel.abs() / 100).clamp(0.0, 1.0),
                       minHeight: 4,
-                      backgroundColor: Colors.white10,
+                      backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.25),
                       valueColor: AlwaysStoppedAnimation<Color>(
                         widget.chat.arousalTier >= 6
-                            ? Colors.deepOrangeAccent
-                            : widget.chat.arousalLevel < 0
-                                ? Colors.lightBlueAccent
-                                : Colors.lightBlueAccent,
+                            ? AppColors.resolve(context, Colors.deepOrangeAccent, Colors.deepOrange.shade700)
+                            : AppColors.resolve(context, Colors.lightBlueAccent, Colors.blue.shade700),
                       ),
                     ),
                   ),
@@ -9547,16 +9616,16 @@ class _ChaosModeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final borderColor = chat.chaosModeEnabled
+        ? _pressureColor.withValues(alpha: 0.5)
+        : AppColors.borderOf(context).withValues(alpha: 0.3);
+
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF111827),
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: chat.chaosModeEnabled
-              ? _pressureColor.withOpacity(0.5)
-              : Colors.white12,
-        ),
+        border: Border.all(color: borderColor),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -9574,19 +9643,23 @@ class _ChaosModeSection extends StatelessWidget {
           ),
           title: Row(
             children: [
-              const Text(
+              Text(
                 'Chaos Mode',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: AppColors.textPrimary(context),
                 ),
               ),
               const Spacer(),
               Switch(
                 value: chat.chaosModeEnabled,
                 onChanged: (v) => chat.setChaosModeEnabled(v),
-                activeThumbColor: const Color(0xFFFFD166),
+                activeThumbColor: AppColors.resolve(
+                  context,
+                  const Color(0xFFFFD166),
+                  Colors.amber.shade700,
+                ),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ],
@@ -9622,7 +9695,7 @@ class _ChaosModeSection extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: (chat.chaosPressure / 100).clamp(0.0, 1.0),
                       minHeight: 5,
-                      backgroundColor: Colors.white10,
+                      backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
                       valueColor: AlwaysStoppedAnimation<Color>(_pressureColor),
                     ),
                   ),
@@ -9632,12 +9705,12 @@ class _ChaosModeSection extends StatelessWidget {
                     children: [
                       const Text('🌶️', style: TextStyle(fontSize: 12)),
                       const SizedBox(width: 6),
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Include spicy events',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Colors.white60,
+                            color: AppColors.textSecondary(context),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -9647,7 +9720,11 @@ class _ChaosModeSection extends StatelessWidget {
                         child: Switch(
                           value: chat.chaosNsfwEnabled,
                           onChanged: (v) => chat.setChaosNsfwEnabled(v),
-                          activeThumbColor: const Color(0xFFFF6B9D),
+                          activeThumbColor: AppColors.resolve(
+                            context,
+                            const Color(0xFFFF6B9D),
+                            Colors.pink.shade600,
+                          ),
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
                         ),
@@ -9666,8 +9743,8 @@ class _ChaosModeSection extends StatelessWidget {
                           gradient: LinearGradient(
                             colors: chat.hasPendingChaosEvent
                                 ? [
-                                    const Color(0xFF555555),
-                                    const Color(0xFF444444),
+                                    AppColors.surfaceContainerOf(context),
+                                    AppColors.cardOf(context),
                                   ]
                                 : [
                                     const Color(0xFFFFD166),
@@ -9675,13 +9752,14 @@ class _ChaosModeSection extends StatelessWidget {
                                   ],
                           ),
                           borderRadius: BorderRadius.circular(8),
+                          border: chat.hasPendingChaosEvent
+                              ? Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.3))
+                              : null,
                           boxShadow: chat.hasPendingChaosEvent
                               ? []
                               : [
                                   BoxShadow(
-                                    color: const Color(
-                                      0xFFFFD166,
-                                    ).withOpacity(0.3),
+                                    color: const Color(0xFFFFD166).withValues(alpha: 0.3),
                                     blurRadius: 10,
                                   ),
                                 ],
@@ -9702,7 +9780,7 @@ class _ChaosModeSection extends StatelessWidget {
                                 fontSize: 12,
                                 fontWeight: FontWeight.w900,
                                 color: chat.hasPendingChaosEvent
-                                    ? Colors.white38
+                                    ? AppColors.textTertiary(context)
                                     : const Color(0xFF1A1200),
                                 letterSpacing: 1.5,
                               ),
@@ -9715,9 +9793,9 @@ class _ChaosModeSection extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     'Auto-triggers grow more likely each turn.\nBase: 5% · +5% per turn · cap: 100%',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 9,
-                      color: Colors.white38,
+                      color: AppColors.textTertiary(context),
                       height: 1.5,
                     ),
                     textAlign: TextAlign.center,
@@ -9777,8 +9855,9 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF111827),
+            color: AppColors.cardOf(context),
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.15)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -9791,30 +9870,30 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                     Icon(
                       _expanded ? Icons.expand_more : Icons.chevron_right,
                       size: 16,
-                      color: Colors.white38,
+                      color: AppColors.iconSecondary(context),
                     ),
                     const SizedBox(width: 4),
-                    const Icon(
+                    Icon(
                       Icons.flag,
                       size: 14,
                       color: Colors.orangeAccent,
                     ),
                     const SizedBox(width: 6),
-                    const Text(
+                    Text(
                       'Objectives',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white70,
+                        color: AppColors.textPrimary(context),
                       ),
                     ),
                     const Spacer(),
                     if (pObj != null)
                       Text(
                         '$completedCount/${primaryTasks.length}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
-                          color: Colors.white30,
+                          color: AppColors.textTertiary(context),
                         ),
                       ),
                   ],
@@ -9825,7 +9904,7 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                 const SizedBox(height: 6),
                 Text(
                   '▸ ${currentTask['description']}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
                     color: Colors.orangeAccent,
                   ),
@@ -9839,7 +9918,7 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
 
                 // Primary Objective Display
                 if (pObj != null) ...[
-                  const Text(
+                  Text(
                     'PRIMARY QUEST',
                     style: TextStyle(
                       fontSize: 9,
@@ -9860,7 +9939,7 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.star,
                           size: 14,
                           color: Colors.orangeAccent,
@@ -9869,17 +9948,17 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                         Expanded(
                           child: Text(
                             pObj.objective,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white,
+                              color: AppColors.textPrimary(context),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
                         InkWell(
                           onTap: () => chatService.clearObjective(pObj),
-                          child: const Padding(
-                            padding: EdgeInsets.all(4),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
                             child: Icon(
                               Icons.close,
                               size: 14,
@@ -9895,15 +9974,15 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.warning_amber_rounded,
                         size: 14,
-                        color: Colors.white24,
+                        color: AppColors.iconSecondary(context),
                       ),
                       const SizedBox(width: 4),
-                      const Text(
+                      Text(
                         'NSFW Tasks',
-                        style: TextStyle(fontSize: 11, color: Colors.white38),
+                        style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context)),
                       ),
                       const Spacer(),
                       SizedBox(
@@ -9937,12 +10016,12 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                                     }
                                   },
                             icon: _generatingTasks
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: 14,
                                     height: 14,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white,
+                                      color: AppColors.textPrimary(context),
                                     ),
                                   )
                                 : const Icon(Icons.auto_awesome, size: 14),
@@ -9952,7 +10031,7 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                                   : 'Generate Tasks',
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF374151),
+                              backgroundColor: AppColors.surfaceContainerOf(context),
                               padding: const EdgeInsets.symmetric(vertical: 6),
                               textStyle: const TextStyle(fontSize: 12),
                             ),
@@ -9962,15 +10041,15 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF374151),
+                            color: AppColors.surfaceContainerOf(context),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: DropdownButton<int>(
                             value: _taskCount,
                             underline: const SizedBox.shrink(),
-                            dropdownColor: const Color(0xFF374151),
-                            style: const TextStyle(
-                              color: Colors.white,
+                            dropdownColor: AppColors.surfaceContainerOf(context),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
                               fontSize: 12,
                             ),
                             isDense: true,
@@ -9996,18 +10075,18 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                       Expanded(
                         child: AppTextField(
                           controller: _manualTaskController,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: AppColors.textPrimary(context),
                             fontSize: 11,
                           ),
                           decoration: InputDecoration(
                             hintText: 'Add a task manually...',
-                            hintStyle: const TextStyle(
-                              color: Colors.white24,
+                            hintStyle: TextStyle(
+                              color: AppColors.textTertiary(context),
                               fontSize: 11,
                             ),
                             filled: true,
-                            fillColor: const Color(0xFF374151),
+                            fillColor: AppColors.surfaceContainerOf(context),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(6),
                             ),
@@ -10071,21 +10150,21 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text(
+                        Text(
                           'Check every ',
-                          style: TextStyle(fontSize: 10, color: Colors.white38),
+                          style: TextStyle(fontSize: 10, color: AppColors.textSecondary(context)),
                         ),
                         SizedBox(
                           width: 80,
                           child: SliderTheme(
-                            data: const SliderThemeData(
+                            data: SliderThemeData(
                               trackHeight: 2,
-                              thumbShape: RoundSliderThumbShape(
+                              thumbShape: const RoundSliderThumbShape(
                                 enabledThumbRadius: 5,
                               ),
-                              activeTrackColor: Colors.white30,
-                              inactiveTrackColor: Colors.white10,
-                              thumbColor: Colors.white54,
+                              activeTrackColor: AppColors.resolve(context, Colors.white30, Colors.black26),
+                              inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.2),
+                              thumbColor: AppColors.textSecondary(context),
                             ),
                             child: Slider(
                               value: pObj.checkFrequency.toDouble(),
@@ -10099,14 +10178,14 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                         ),
                         Text(
                           '${pObj.checkFrequency} msgs',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10,
-                            color: Colors.white38,
+                            color: AppColors.textSecondary(context),
                           ),
                         ),
                         const SizedBox(width: 8),
                         chatService.isCheckingCompletion
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 12,
                                 height: 12,
                                 child: CircularProgressIndicator(
@@ -10116,8 +10195,8 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                               )
                             : InkWell(
                                 onTap: () => chatService.forceCheckCompletion(),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(2),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(2),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -10146,11 +10225,11 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                 // Secondary Objectives
                 if (secondaries.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     'SIDE QUESTS',
                     style: TextStyle(
                       fontSize: 9,
-                      color: Colors.grey,
+                      color: AppColors.textSecondary(context),
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.2,
                     ),
@@ -10161,23 +10240,23 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
+                        color: AppColors.surfaceContainerOf(context),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.circle_outlined,
                             size: 10,
-                            color: Colors.grey,
+                            color: AppColors.iconSecondary(context),
                           ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               sObj.objective,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white70,
+                                color: AppColors.textPrimary(context),
                               ),
                             ),
                           ),
@@ -10219,18 +10298,18 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                     Expanded(
                       child: AppTextField(
                         controller: _goalController,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
                           fontSize: 11,
                         ),
                         decoration: InputDecoration(
                           hintText: 'Add new goal...',
-                          hintStyle: const TextStyle(
-                            color: Colors.white24,
+                          hintStyle: TextStyle(
+                            color: AppColors.textTertiary(context),
                             fontSize: 11,
                           ),
                           filled: true,
-                          fillColor: const Color(0xFF374151),
+                          fillColor: AppColors.surfaceContainerOf(context),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(6),
                           ),
@@ -10282,8 +10361,8 @@ class _ObjectiveSectionState extends State<_ObjectiveSection> {
                         _goalController.clear();
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4B5563),
-                        foregroundColor: Colors.white,
+                        backgroundColor: AppColors.surfaceContainerOf(context),
+                        foregroundColor: AppColors.textPrimary(context),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
                           vertical: 0,
@@ -10378,7 +10457,7 @@ class _EditableTaskRowState extends State<_EditableTaskRow> {
                   ? Colors.greenAccent
                   : widget.isCurrent
                   ? Colors.orangeAccent
-                  : Colors.white24,
+                  : AppColors.iconSecondary(context),
             ),
           ),
           const SizedBox(width: 6),
@@ -10389,7 +10468,7 @@ class _EditableTaskRowState extends State<_EditableTaskRow> {
                 ? TextField(
                     controller: _controller,
                     autofocus: true,
-                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                    style: TextStyle(color: AppColors.textPrimary(context), fontSize: 11),
                     decoration: InputDecoration(
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(
@@ -10397,7 +10476,7 @@ class _EditableTaskRowState extends State<_EditableTaskRow> {
                         vertical: 4,
                       ),
                       filled: true,
-                      fillColor: const Color(0xFF374151),
+                      fillColor: AppColors.surfaceContainerOf(context),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(4),
                         borderSide: const BorderSide(
@@ -10420,10 +10499,10 @@ class _EditableTaskRowState extends State<_EditableTaskRow> {
                       style: TextStyle(
                         fontSize: 11,
                         color: widget.completed
-                            ? Colors.white30
+                            ? AppColors.textTertiary(context)
                             : widget.isCurrent
-                            ? Colors.white
-                            : Colors.white54,
+                            ? AppColors.textPrimary(context)
+                            : AppColors.textSecondary(context),
                         decoration: widget.completed
                             ? TextDecoration.lineThrough
                             : null,
@@ -10457,7 +10536,7 @@ class _EditableTaskRowState extends State<_EditableTaskRow> {
           else
             GestureDetector(
               onTap: () => setState(() => _editing = true),
-              child: const Icon(Icons.edit, size: 12, color: Colors.white24),
+              child: Icon(Icons.edit, size: 12, color: AppColors.iconSecondary(context)),
             ),
 
           const SizedBox(width: 4),
@@ -10465,7 +10544,7 @@ class _EditableTaskRowState extends State<_EditableTaskRow> {
           // Delete button
           GestureDetector(
             onTap: widget.onDelete,
-            child: const Icon(Icons.close, size: 12, color: Colors.white24),
+            child: Icon(Icons.close, size: 12, color: AppColors.iconSecondary(context)),
           ),
         ],
       ),

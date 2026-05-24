@@ -148,7 +148,7 @@ class _KcppsSelectorState extends State<KcppsSelector> {
       text = 'Model file not found';
     } else {
       icon = Icons.remove_circle_outline;
-      color = Colors.white38;
+      color = AppColors.textTertiary(context);
       text = 'No model defined in preset';
     }
 
@@ -174,14 +174,15 @@ class _KcppsSelectorState extends State<KcppsSelector> {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderOf(context)),
       ),
       child: Row(
         children: [
           Expanded(
             child: Text(
               activePath,
-              style: const TextStyle(
-                color: Colors.white54,
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
                 fontSize: 12,
                 fontFamily: 'monospace',
               ),
@@ -198,7 +199,7 @@ class _KcppsSelectorState extends State<KcppsSelector> {
               child: Icon(
                 Icons.close,
                 size: 16,
-                color: Colors.white.withValues(alpha: 0.4),
+                color: AppColors.iconSecondary(context),
               ),
             ),
           ),
@@ -214,6 +215,7 @@ class _KcppsSelectorState extends State<KcppsSelector> {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderOf(context)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -223,21 +225,21 @@ class _KcppsSelectorState extends State<KcppsSelector> {
               : null,
           isExpanded: true,
           hint: Text(widget.hint,
-              style: const TextStyle(fontSize: 13, color: Colors.white54)),
+              style: TextStyle(fontSize: 13, color: AppColors.textTertiary(context))),
           dropdownColor: bgColor,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
-          icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
+          style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
+          icon: Icon(Icons.arrow_drop_down, color: AppColors.iconSecondary(context)),
           items: [
-            const DropdownMenuItem<String>(
+            DropdownMenuItem<String>(
               value: null,
               child: Text('None (Use App Settings)',
-                  style: TextStyle(fontSize: 13)),
+                  style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
             ),
             ...widget.localPresets.map((file) {
               return DropdownMenuItem<String>(
                 value: file.path,
                 child: Text(p.basename(file.path),
-                    style: const TextStyle(fontSize: 13)),
+                    style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
               );
             }),
           ],

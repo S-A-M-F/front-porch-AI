@@ -171,16 +171,10 @@ void main(List<String> args) async {
         Provider<AppDatabase>.value(value: db),
         Provider<bool>.value(value: needsMigration), // migration flag
         ChangeNotifierProvider(create: (_) => StorageService()),
-        ChangeNotifierProvider(
-          create: (ctx) {
-            final storage = Provider.of<StorageService>(ctx, listen: false);
-            final app = AppState();
-            if (!storage.isDark) {
-              app.toggleTheme(); // start in light mode if persisted
-            }
-            return app;
-          },
-        ),
+        // AppState owns only transient UI state (selected tab index).
+        // Theme / dark mode is now driven exclusively by StorageService (single source of truth,
+        // persisted, notifies after async prefs load). This eliminates the prior race + glue bugs.
+        ChangeNotifierProvider(create: (_) => AppState()),
         ChangeNotifierProxyProvider<StorageService, DownloadManager>(
           create: (context) => DownloadManager(
             targetDir: Provider.of<StorageService>(
@@ -817,26 +811,28 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, appState, child) {
+    // StorageService is the single source of truth for isDark (persisted + notifies on load/toggle).
+    // Using Consumer2 ensures the entire MaterialApp tree (and thus ThemeData) rebuilds when the user
+    // toggles or when the async prefs load completes. AppState is kept only for selectedIndex.
+    return Consumer2<StorageService, AppState>(
+      builder: (context, storage, appState, child) {
+        final isDark = storage.isDark;
         return MaterialApp(
           title: 'Front Porch AI',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
-            brightness: appState.darkMode ? Brightness.dark : Brightness.light,
+            brightness: isDark ? Brightness.dark : Brightness.light,
             primarySwatch: Colors.blue,
-            scaffoldBackgroundColor: appState.darkMode
+            scaffoldBackgroundColor: isDark
                 ? const Color(0xFF0F172A)
-                : const Color(0xFFF3F4F6),
-            cardColor: appState.darkMode
+                : const Color(0xFFF8F4ED), // warmer paper
+            cardColor: isDark
                 ? const Color(0xFF1E293B)
                 : Colors.white,
             textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme)
                 .apply(
-                  bodyColor: appState.darkMode ? Colors.white : Colors.black87,
-                  displayColor: appState.darkMode
-                      ? Colors.white
-                      : Colors.black87,
+                  bodyColor: isDark ? Colors.white : Colors.black87,
+                  displayColor: isDark ? Colors.white : Colors.black87,
                 ),
             useMaterial3: true,
           ),

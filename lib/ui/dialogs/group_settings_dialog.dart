@@ -4,6 +4,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
@@ -49,28 +50,28 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
         width: 720,
         height: 620,
         decoration: BoxDecoration(
-          color: const Color(0xFF1F2937),
+          color: AppColors.surfaceOf(context),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(color: AppColors.borderOf(context)),
         ),
         child: Column(
           children: [
             // Header
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF111827),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceContainerOf(context),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
               ),
               child: Row(
                 children: [
-                  const Text(
+                  Text(
                     'Group Settings',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary(context)),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: Icon(Icons.close, color: AppColors.iconSecondary(context)),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -89,7 +90,7 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
               ],
             ),
 
-            const Divider(height: 1, color: Colors.white12),
+            Divider(height: 1, color: AppColors.borderOf(context)),
 
             // Tab Content
             Expanded(
@@ -119,8 +120,8 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
             // Footer
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF111827),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceContainerOf(context),
                 borderRadius: BorderRadius.vertical(
                   bottom: Radius.circular(12),
                 ),
@@ -130,7 +131,7 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Close'),
+                    child: Text('Close', style: TextStyle(color: AppColors.textSecondary(context))),
                   ),
                   const SizedBox(width: 8),
                   if (widget.groupRepo != null)
@@ -146,7 +147,7 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
                           );
                         }
                       },
-                      child: const Text('Save All Changes'),
+                      child: Text('Save All Changes', style: TextStyle(color: AppColors.textPrimary(context))),
                     ),
                   const SizedBox(width: 8),
                   ElevatedButton(
@@ -368,22 +369,22 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                   controller: _groupSystemController,
                   maxLines: 5,
                   minLines: 3,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 12),
                   decoration: InputDecoration(
                     hintText: 'Custom system prompt for the entire group...',
-                    hintStyle: const TextStyle(
-                      color: Colors.white24,
+                    hintStyle: TextStyle(
+                      color: AppColors.textTertiary(context),
                       fontSize: 12,
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF111827),
+                    fillColor: AppColors.surfaceContainerOf(context),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.white12),
+                      borderSide: BorderSide(color: AppColors.borderOf(context)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.white12),
+                      borderSide: BorderSide(color: AppColors.borderOf(context)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -437,9 +438,9 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
         // ── Save bar at bottom of tab ─────────────────────────────────────
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: const BoxDecoration(
-            border: Border(top: BorderSide(color: Colors.white12)),
-            color: Color(0xFF111827),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: AppColors.borderOf(context))),
+            color: AppColors.surfaceContainerOf(context),
           ),
           child: Row(
             children: [
@@ -496,9 +497,9 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF111827),
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppColors.borderOf(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -527,8 +528,8 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
               Expanded(
                 child: Text(
                   c.name,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -547,16 +548,16 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
             style: const TextStyle(color: Colors.white, fontSize: 12),
             decoration: InputDecoration(
               hintText: "Author's note for ${c.name} (when they speak)...",
-              hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
+              hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
               filled: true,
-              fillColor: const Color(0xFF1F2937),
+              fillColor: AppColors.surfaceContainerOf(context),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: Colors.white10),
+                borderSide: BorderSide(color: AppColors.borderOf(context)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: Colors.white10),
+                borderSide: BorderSide(color: AppColors.borderOf(context)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
@@ -2118,22 +2119,22 @@ class _GeneralTabState extends State<_GeneralTab> {
                 const SizedBox(height: 6),
                 AppTextField(
                   controller: _nameController,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
                   decoration: InputDecoration(
                     hintText: 'e.g. The Fellowship',
-                    hintStyle: const TextStyle(
-                      color: Colors.white24,
+                    hintStyle: TextStyle(
+                      color: AppColors.textTertiary(context),
                       fontSize: 13,
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF111827),
+                    fillColor: AppColors.surfaceContainerOf(context),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.white12),
+                      borderSide: BorderSide(color: AppColors.borderOf(context)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.white12),
+                      borderSide: BorderSide(color: AppColors.borderOf(context)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -2426,9 +2427,9 @@ class _GeneralTabState extends State<_GeneralTab> {
         // ── Save bar ───────────────────────────────────────────────
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: const BoxDecoration(
-            border: Border(top: BorderSide(color: Colors.white12)),
-            color: Color(0xFF111827),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: AppColors.borderOf(context))),
+            color: AppColors.surfaceContainerOf(context),
           ),
           child: Row(
             children: [

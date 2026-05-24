@@ -29,6 +29,7 @@ import 'package:front_porch_ai/services/audiobook_generator_service.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/services/epub_generator_service.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Dashboard page — story bible overview: concept, themes, cast, threads, lore.
 class StoryDashboardPage extends StatefulWidget {
@@ -54,9 +55,6 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
   // Editable act controllers
   final Map<int, TextEditingController> _actTitleControllers = {};
   final Map<int, TextEditingController> _actDescControllers = {};
-
-  static const _bgDark = Color(0xFF0F172A);
-  static const _bgCard = Color(0xFF1E293B);
 
   @override
   void didChangeDependencies() {
@@ -322,22 +320,22 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       builder: (context, repo, pipeline, child) {
         final project = repo.getById(widget.projectId);
         if (project == null) {
-          return const Scaffold(
+          return Scaffold(
             body: Center(
               child: Text(
                 'Project not found',
-                style: TextStyle(color: Colors.white70),
+                style: TextStyle(color: AppColors.textSecondary(context)),
               ),
             ),
           );
         }
 
         return Scaffold(
-          backgroundColor: _bgDark,
+          backgroundColor: AppColors.backgroundOf(context),
           appBar: AppBar(
             title: Text(project.title),
-            backgroundColor: _bgCard,
-            foregroundColor: Colors.white,
+            backgroundColor: AppColors.surfaceContainerOf(context),
+            foregroundColor: AppColors.textPrimary(context),
             elevation: 0,
             actions: [
               if (project.acts.isNotEmpty)
@@ -716,9 +714,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.shade800.withValues(alpha: 0.4)),
+        border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -982,7 +980,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     final sceneCount = project.scenes[act.number - 1]?.length ?? 0;
 
     return Card(
-      color: _bgCard,
+      color: AppColors.cardOf(context),
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
@@ -997,8 +995,8 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
         ),
         title: Text(
           _actTitleControllers[index]?.text ?? act.title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: AppColors.textPrimary(context),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -1007,7 +1005,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
               ? '${act.description.substring(0, 100)}...'
               : act.description),
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.4),
+            color: AppColors.textSecondary(context).withValues(alpha: 0.85),
             fontSize: 12,
           ),
         ),
@@ -1024,7 +1022,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                 ),
               )
             : null,
-        iconColor: Colors.white38,
+        iconColor: AppColors.iconSecondary(context),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1042,11 +1040,11 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                 const SizedBox(height: 4),
                 AppTextField(
                   controller: _actTitleControllers[index],
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: _bgDark,
+                    fillColor: AppColors.surfaceContainerOf(context),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -1058,7 +1056,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                 Text(
                   'Description',
                   style: TextStyle(
-                    color: Colors.indigo.shade300,
+                    color: AppColors.textSecondary(context),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1066,11 +1064,11 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                 const SizedBox(height: 4),
                 AppTextField(
                   controller: _actDescControllers[index],
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
                   maxLines: 8,
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: _bgDark,
+                    fillColor: AppColors.surfaceContainerOf(context),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -1152,9 +1150,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1176,8 +1174,8 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
           const SizedBox(height: 8),
           Text(
             content,
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
               fontSize: 13,
               height: 1.5,
             ),
@@ -1189,21 +1187,21 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
   Widget _castCard(StoryCastMember c) {
     return Card(
-      color: _bgCard,
+      color: AppColors.cardOf(context),
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 16),
         title: Text(
           c.name,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: AppColors.textPrimary(context),
             fontWeight: FontWeight.w500,
           ),
         ),
         subtitle: Text(
           c.role,
-          style: const TextStyle(color: Colors.white38, fontSize: 12),
+          style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12),
         ),
         leading: CircleAvatar(
           backgroundColor: Colors.orange.shade900.withValues(alpha: 0.4),
@@ -1212,7 +1210,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
             style: TextStyle(color: Colors.orange.shade300),
           ),
         ),
-        iconColor: Colors.white38,
+        iconColor: AppColors.iconSecondary(context),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -1221,14 +1219,14 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
               children: [
                 Text(
                   c.description,
-                  style: const TextStyle(color: Colors.white60, fontSize: 13),
+                  style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
                 ),
                 if (c.voiceSample != null && c.voiceSample!.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(
                     'Voice: "${c.voiceSample}"',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.4),
+                      color: AppColors.textSecondary(context).withValues(alpha: 0.8),
                       fontStyle: FontStyle.italic,
                       fontSize: 12,
                     ),
@@ -1266,7 +1264,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                                 fontSize: 12,
                               ),
                             ),
-                            dropdownColor: const Color(0xFF1E293B),
+                            dropdownColor: AppColors.surfaceContainerOf(context),
                             isExpanded: true,
                             underline: Container(
                               height: 1,
@@ -1335,7 +1333,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
   Widget _threadCard(StoryThread t) {
     return Card(
-      color: _bgCard,
+      color: AppColors.cardOf(context),
       margin: const EdgeInsets.only(bottom: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
@@ -1343,12 +1341,12 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
         leading: Icon(Icons.timeline, size: 18, color: Colors.cyan.shade400),
         title: Text(
           t.name,
-          style: const TextStyle(color: Colors.white70, fontSize: 13),
+          style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
         ),
         subtitle: Text(
           t.description,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.4),
+            color: AppColors.textSecondary(context).withValues(alpha: 0.85),
             fontSize: 12,
           ),
         ),
@@ -1362,9 +1360,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       child: Chip(
         label: Text(
           l.topic,
-          style: const TextStyle(fontSize: 12, color: Colors.white70),
+          style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
         ),
-        backgroundColor: _bgCard,
+        backgroundColor: AppColors.cardOf(context),
         side: BorderSide(color: Colors.green.shade800.withValues(alpha: 0.3)),
       ),
     );

@@ -19,20 +19,14 @@
 import 'package:flutter/material.dart';
 
 class AppState extends ChangeNotifier {
-  // Placeholder for global app state
-  bool _darkMode = true;
-  bool get darkMode => _darkMode;
-
+  // Transient UI state only. Theme/dark mode lives in StorageService (single source of truth,
+  // persisted, drives root MaterialApp rebuild via Consumer2). Removing the old duplication
+  // also removes the source of prior "setState during build" and init-race bugs.
   int _selectedIndex = 0;
   int get selectedIndex => _selectedIndex;
 
   void setIndex(int index) {
     _selectedIndex = index;
-    notifyListeners();
-  }
-
-  void toggleTheme() {
-    _darkMode = !_darkMode;
     notifyListeners();
   }
 }
