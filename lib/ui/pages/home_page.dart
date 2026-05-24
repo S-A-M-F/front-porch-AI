@@ -1321,6 +1321,10 @@ class _HomePageState extends State<HomePage> {
                     _resolveCharImage(character.imagePath!),
                     fit: BoxFit.cover,
                     alignment: Alignment.topCenter,
+                    errorBuilder: (_, _, _) => Container(
+                      color: Colors.black26,
+                      child: const Icon(Icons.person, color: Colors.white24, size: 48),
+                    ),
                   )
                 : const Icon(Icons.person, size: 64, color: Colors.white24),
           ),
@@ -1413,6 +1417,14 @@ class _HomePageState extends State<HomePage> {
                               _resolveCharImage(character.imagePath!),
                               fit: BoxFit.cover,
                               alignment: Alignment.topCenter,
+                              errorBuilder: (_, _, _) => Container(
+                                color: Colors.grey.shade800,
+                                child: const Icon(
+                                  Icons.person,
+                                  size: 32,
+                                  color: Colors.white24,
+                                ),
+                              ),
                             )
                           : Container(
                               color: Colors.grey.shade800,
@@ -1464,6 +1476,14 @@ class _HomePageState extends State<HomePage> {
                               _resolveCharImage(character.imagePath!),
                               fit: BoxFit.cover,
                               alignment: Alignment.topCenter,
+                              errorBuilder: (_, _, _) => Container(
+                                color: Colors.grey.shade800,
+                                child: Icon(
+                                  Icons.person,
+                                  size: isCompact ? 32 : 64,
+                                  color: Colors.white24,
+                                ),
+                              ),
                             )
                           : Container(
                               color: Colors.grey.shade800,
@@ -1828,46 +1848,50 @@ class _HomePageState extends State<HomePage> {
                                 i < characters.take(4).length;
                                 i++
                               )
-                                Positioned(
-                                  left: i * overlapStep,
-                                  child: Container(
-                                    width: avatarSize,
-                                    height: avatarSize,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.purpleAccent,
-                                        width: 2,
+                                  Positioned(
+                                    left: i * overlapStep,
+                                    child: Container(
+                                      width: avatarSize,
+                                      height: avatarSize,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.purpleAccent,
+                                          width: 2,
+                                        ),
                                       ),
-                                      image: characters[i].imagePath != null
-                                          ? DecorationImage(
-                                              image: FileImage(
+                                      child: characters[i].imagePath != null
+                                          ? ClipOval(
+                                              child: Image.file(
                                                 _resolveCharImage(
                                                   characters[i].imagePath!,
                                                 ),
+                                                fit: BoxFit.cover,
+                                                alignment: Alignment.topCenter,
+                                                errorBuilder: (_, _, _) => Container(
+                                                  color: Colors.grey.shade700,
+                                                  child: const Icon(
+                                                    Icons.person,
+                                                    color: Colors.white24,
+                                                  ),
+                                                ),
                                               ),
-                                              fit: BoxFit.cover,
-                                              alignment: Alignment.topCenter,
                                             )
-                                          : null,
-                                      color: characters[i].imagePath == null
-                                          ? Colors.grey.shade700
-                                          : null,
+                                          : Container(
+                                              color: Colors.grey.shade700,
+                                              child: Icon(
+                                                Icons.person,
+                                                color: Colors.white24,
+                                                size: avatarSize * 0.5,
+                                              ),
+                                            ),
                                     ),
-                                    child: characters[i].imagePath == null
-                                        ? Icon(
-                                            Icons.person,
-                                            color: Colors.white24,
-                                            size: avatarSize * 0.5,
-                                          )
-                                        : null,
                                   ),
-                                ),
-                            ],
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
                     SizedBox(height: isCompact ? 4 : 16),
                     // Group icon badge
                     Icon(
@@ -2450,8 +2474,14 @@ class _HomePageState extends State<HomePage> {
                           (c) => Chip(
                             avatar: c.imagePath != null
                                 ? CircleAvatar(
-                                    backgroundImage: FileImage(
-                                      _resolveCharImage(c.imagePath!),
+                                    child: ClipOval(
+                                      child: Image.file(
+                                        _resolveCharImage(c.imagePath!),
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => const Icon(Icons.person, size: 14),
+                                        width: 24,
+                                        height: 24,
+                                      ),
                                     ),
                                   )
                                 : const CircleAvatar(
@@ -2779,8 +2809,14 @@ class _HomePageState extends State<HomePage> {
                             c.imagePath != null
                                 ? CircleAvatar(
                                     radius: 12,
-                                    backgroundImage: FileImage(
-                                      _resolveCharImage(c.imagePath!),
+                                    child: ClipOval(
+                                      child: Image.file(
+                                        _resolveCharImage(c.imagePath!),
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => const Icon(Icons.person, size: 12),
+                                        width: 24,
+                                        height: 24,
+                                      ),
                                     ),
                                   )
                                 : const CircleAvatar(

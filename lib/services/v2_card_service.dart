@@ -32,10 +32,11 @@ class V2CardService {
         avatar = img.decodeImage(bytes);
       }
     } catch (e) {
-      print('Error loading source image: $e');
+      if (sourceImagePath != null) {
+        rethrow;
+      }
     }
 
-    // Fallback if image load fails or is null
     if (avatar == null) {
       avatar = img.Image(width: 400, height: 600);
       img.fill(avatar, color: img.ColorRgb8(50, 50, 50));

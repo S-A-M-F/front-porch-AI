@@ -130,7 +130,8 @@ class StorageService extends ChangeNotifier {
   int _gpuId = 0; // explicit GPU index — prevents iGPU routing on multi-GPU
   int _maxLength = 1024;
   int _minLength = 0;
-  bool _autostartBackend = true;
+  bool _autostartBackend = false;
+  bool _autostartPseudoRemote = false;
   String? _lastUsedModelPath;
   String? _activeKcppsPath;
 
@@ -327,12 +328,26 @@ class StorageService extends ChangeNotifier {
   int get maxLength => _maxLength;
   int get minLength => _minLength;
   bool get autostartBackend => _autostartBackend;
+  bool get autostartPseudoRemote => _autostartPseudoRemote;
   String? get lastUsedModelPath => _lastUsedModelPath;
   String? get activeKcppsPath => _activeKcppsPath;
 
   /// Whether the active .kcpps preset specifies its own model path.
   /// When true the Flutter model picker should be greyed out.
   bool get kcppsHasModel => _kcppsHasModel;
+
+  /// Whether the model file referenced in the active .kcpps preset exists on disk.
+  bool get kcppsModelFileExists {
+    final parsed = _parseKcppsFile(_activeKcppsPath);
+    if (parsed == null) return false;
+    final modelPath = parsed['model_param'] is String && (parsed['model_param'] as String).trim().isNotEmpty
+        ? (parsed['model_param'] as String).trim()
+        : parsed['model'] is String
+            ? (parsed['model'] as String).trim()
+            : null;
+    if (modelPath == null) return false;
+    return File(modelPath).existsSync();
+  }
   Map<String, String> get modelPresetMap => Map.unmodifiable(_modelPresetMap);
   int get gpuLayers => _gpuLayers;
   int get contextSize => _contextSize;
@@ -472,24 +487,24 @@ class StorageService extends ChangeNotifier {
     _bubbleOpacity = _prefs?.getDouble(_k('bubble_opacity')) ?? _bubbleOpacity;
     _globalUserBubbleColor = Color(
       _prefs?.getInt(_k('global_user_bubble_color')) ??
-          _globalUserBubbleColor.value,
+          _globalUserBubbleColor.toARGB32(),
     );
     _globalUserTextColor = Color(
       _prefs?.getInt(_k('global_user_text_color')) ??
-          _globalUserTextColor.value,
+          _globalUserTextColor.toARGB32(),
     );
     _globalAiBubbleColor = Color(
       _prefs?.getInt(_k('global_ai_bubble_color')) ??
-          _globalAiBubbleColor.value,
+          _globalAiBubbleColor.toARGB32(),
     );
     _globalAiTextColor = Color(
-      _prefs?.getInt(_k('global_ai_text_color')) ?? _globalAiTextColor.value,
+      _prefs?.getInt(_k('global_ai_text_color')) ?? _globalAiTextColor.toARGB32(),
     );
     _globalDialogueColor = Color(
-      _prefs?.getInt(_k('global_dialogue_color')) ?? _globalDialogueColor.value,
+      _prefs?.getInt(_k('global_dialogue_color')) ?? _globalDialogueColor.toARGB32(),
     );
     _globalActionColor = Color(
-      _prefs?.getInt(_k('global_action_color')) ?? _globalActionColor.value,
+      _prefs?.getInt(_k('global_action_color')) ?? _globalActionColor.toARGB32(),
     );
     _globalChatFontFamily =
         _prefs?.getString(_k('global_chat_font_family')) ??
@@ -499,25 +514,25 @@ class StorageService extends ChangeNotifier {
     _isDark = _prefs?.getBool(_k('dark_mode')) ?? true;
     _lightUserBubbleColor = Color(
       _prefs?.getInt(_k('light_user_bubble_color')) ??
-          AppColors.userBubbleLight.value,
+          AppColors.userBubbleLight.toARGB32(),
     );
     _lightUserTextColor = Color(
       _prefs?.getInt(_k('light_user_text_color')) ??
-          AppColors.userTextLight.value,
+          AppColors.userTextLight.toARGB32(),
     );
     _lightAiBubbleColor = Color(
       _prefs?.getInt(_k('light_ai_bubble_color')) ??
-          AppColors.aiBubbleLight.value,
+          AppColors.aiBubbleLight.toARGB32(),
     );
     _lightAiTextColor = Color(
-      _prefs?.getInt(_k('light_ai_text_color')) ?? AppColors.aiTextLight.value,
+      _prefs?.getInt(_k('light_ai_text_color')) ?? AppColors.aiTextLight.toARGB32(),
     );
     _lightDialogueColor = Color(
       _prefs?.getInt(_k('light_dialogue_color')) ??
-          AppColors.dialogueLight.value,
+          AppColors.dialogueLight.toARGB32(),
     );
     _lightActionColor = Color(
-      _prefs?.getInt(_k('light_action_color')) ?? AppColors.actionLight.value,
+      _prefs?.getInt(_k('light_action_color')) ?? AppColors.actionLight.toARGB32(),
     );
     _repeatPenalty = _prefs?.getDouble(_k('repeat_penalty')) ?? _repeatPenalty;
     _repeatPenaltyTokens =
@@ -545,6 +560,8 @@ class StorageService extends ChangeNotifier {
     _minLength = _prefs?.getInt(_k('min_length')) ?? _minLength;
     _autostartBackend =
         _prefs?.getBool(_k('autostart_backend')) ?? _autostartBackend;
+    _autostartPseudoRemote =
+        _prefs?.getBool(_k('autostart_pseudo_remote')) ?? _autostartPseudoRemote;
     _lastUsedModelPath = _prefs?.getString(_k('last_used_model_path'));
     _activeKcppsPath = _prefs?.getString(_k('active_kcpps_path'));
     // Restore the kcppsHasModel flag and context size from the persisted preset path so the UI
@@ -991,6 +1008,12 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setAutostartPseudoRemote(bool value) async {
+    _autostartPseudoRemote = value;
+    await _prefs?.setBool(_k('autostart_pseudo_remote'), value);
+    notifyListeners();
+  }
+
   Future<void> setLastUsedModelPath(String? value) async {
     _lastUsedModelPath = value;
     if (value != null) {
@@ -1005,10 +1028,10 @@ class StorageService extends ChangeNotifier {
     _activeKcppsPath = value;
     // Parse synchronously so _kcppsHasModel and _contextSize are accurate in the same notifyListeners call.
     final parsed = _parseKcppsFile(value);
-    _kcppsHasModel =
-        parsed != null &&
-        parsed['model'] is String &&
-        (parsed['model'] as String).trim().isNotEmpty;
+    _kcppsHasModel = parsed != null && (
+        (parsed['model_param'] is String && (parsed['model_param'] as String).trim().isNotEmpty) ||
+        (parsed['model'] is String && (parsed['model'] as String).trim().isNotEmpty)
+    );
     // Update context size from preset if present
     if (parsed != null && parsed['contextsize'] is int) {
       _contextSize = parsed['contextsize'] as int;
@@ -1623,10 +1646,10 @@ class StorageService extends ChangeNotifier {
   Future<void> setGlobalUserBubbleColor(Color value) async {
     if (_isDark) {
       _globalUserBubbleColor = value;
-      await _prefs?.setInt(_k('global_user_bubble_color'), value.value);
+      await _prefs?.setInt(_k('global_user_bubble_color'), value.toARGB32());
     } else {
       _lightUserBubbleColor = value;
-      await _prefs?.setInt(_k('light_user_bubble_color'), value.value);
+      await _prefs?.setInt(_k('light_user_bubble_color'), value.toARGB32());
     }
     notifyListeners();
   }
@@ -1634,10 +1657,10 @@ class StorageService extends ChangeNotifier {
   Future<void> setGlobalUserTextColor(Color value) async {
     if (_isDark) {
       _globalUserTextColor = value;
-      await _prefs?.setInt(_k('global_user_text_color'), value.value);
+      await _prefs?.setInt(_k('global_user_text_color'), value.toARGB32());
     } else {
       _lightUserTextColor = value;
-      await _prefs?.setInt(_k('light_user_text_color'), value.value);
+      await _prefs?.setInt(_k('light_user_text_color'), value.toARGB32());
     }
     notifyListeners();
   }
@@ -1645,10 +1668,10 @@ class StorageService extends ChangeNotifier {
   Future<void> setGlobalAiBubbleColor(Color value) async {
     if (_isDark) {
       _globalAiBubbleColor = value;
-      await _prefs?.setInt(_k('global_ai_bubble_color'), value.value);
+      await _prefs?.setInt(_k('global_ai_bubble_color'), value.toARGB32());
     } else {
       _lightAiBubbleColor = value;
-      await _prefs?.setInt(_k('light_ai_bubble_color'), value.value);
+      await _prefs?.setInt(_k('light_ai_bubble_color'), value.toARGB32());
     }
     notifyListeners();
   }
@@ -1656,10 +1679,10 @@ class StorageService extends ChangeNotifier {
   Future<void> setGlobalAiTextColor(Color value) async {
     if (_isDark) {
       _globalAiTextColor = value;
-      await _prefs?.setInt(_k('global_ai_text_color'), value.value);
+      await _prefs?.setInt(_k('global_ai_text_color'), value.toARGB32());
     } else {
       _lightAiTextColor = value;
-      await _prefs?.setInt(_k('light_ai_text_color'), value.value);
+      await _prefs?.setInt(_k('light_ai_text_color'), value.toARGB32());
     }
     notifyListeners();
   }
@@ -1667,10 +1690,10 @@ class StorageService extends ChangeNotifier {
   Future<void> setGlobalDialogueColor(Color value) async {
     if (_isDark) {
       _globalDialogueColor = value;
-      await _prefs?.setInt(_k('global_dialogue_color'), value.value);
+      await _prefs?.setInt(_k('global_dialogue_color'), value.toARGB32());
     } else {
       _lightDialogueColor = value;
-      await _prefs?.setInt(_k('light_dialogue_color'), value.value);
+      await _prefs?.setInt(_k('light_dialogue_color'), value.toARGB32());
     }
     notifyListeners();
   }
@@ -1678,10 +1701,10 @@ class StorageService extends ChangeNotifier {
   Future<void> setGlobalActionColor(Color value) async {
     if (_isDark) {
       _globalActionColor = value;
-      await _prefs?.setInt(_k('global_action_color'), value.value);
+      await _prefs?.setInt(_k('global_action_color'), value.toARGB32());
     } else {
       _lightActionColor = value;
-      await _prefs?.setInt(_k('light_action_color'), value.value);
+      await _prefs?.setInt(_k('light_action_color'), value.toARGB32());
     }
     notifyListeners();
   }

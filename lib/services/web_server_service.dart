@@ -2175,7 +2175,7 @@ class WebServerService extends ChangeNotifier {
 
       // Find the character in the repository  
       final character = _characterRepository!.characters.firstWhere(
-        (c) => c.dbId == dbId,
+        (c) => c.dbId == id,
         orElse: () => throw Exception('Character not found'),
       );
 

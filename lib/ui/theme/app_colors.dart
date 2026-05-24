@@ -51,6 +51,20 @@ class AppColors {
   static const Color lightSurface = Color(0xFFE5E7EB);
 
   // ---------------------------------------------------------------------------
+  // Container surface for dropdowns, dialogs, and input fields
+  // ---------------------------------------------------------------------------
+
+  /// Dark container surface (slightly lighter than [card] for visual layering).
+  static const Color surfaceContainer = Color(0xFF374151);
+
+  /// Light container surface for the same purpose.
+  static const Color surfaceContainerLight = Color(0xFFE5E7EB);
+
+  /// Brightness-aware container surface.
+  static Color surfaceContainerOf(BuildContext context) =>
+      resolve(context, surfaceContainer, surfaceContainerLight);
+
+  // ---------------------------------------------------------------------------
   // Chat appearance defaults — light mode
   // ---------------------------------------------------------------------------
 
@@ -107,6 +121,25 @@ class AppColors {
   /// Surface color for the current brightness.
   static Color surfaceOf(BuildContext context) =>
       resolve(context, surface, lightSurface);
+
+  // ---------------------------------------------------------------------------
+  // Process log / terminal output colors
+  // ---------------------------------------------------------------------------
+
+  /// Color for error/fail/fatal lines in process logs.
+  static const Color logError = Color(0xFFFF6B6B);
+
+  /// Color for warning lines in process logs.
+  static const Color logWarn = Color(0xFFFFD93D);
+
+  /// Color for ready/server-listen lines.
+  static const Color logReady = Color(0xFF69F0AE);
+
+  /// Color for loading/starting lines.
+  static const Color logLoading = Color(0xFF93C5FD);
+
+  /// Default color for normal lines.
+  static const Color logDefault = Color(0xFF86EFAC);
 
   // ---------------------------------------------------------------------------
   // Preset palette for color pickers

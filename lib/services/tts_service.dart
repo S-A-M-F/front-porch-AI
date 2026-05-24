@@ -583,7 +583,6 @@ class TtsService extends ChangeNotifier {
     // Shared queue between producer and consumer
     final audioQueue = <File>[];
     bool producerDone = false;
-    Completer<void>? audioAvailable;
     int bufferTarget = _storageService.callBufferSentences.clamp(1, 10);
 
     try {
@@ -650,9 +649,7 @@ class TtsService extends ChangeNotifier {
           final file = completedFiles[nextToQueue]!;
           audioQueue.add(file);
           nextToQueue++;
-          if (audioAvailable != null && !audioAvailable!.isCompleted) {
-            audioAvailable!.complete();
-          }
+
         }
       }
 

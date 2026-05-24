@@ -389,6 +389,11 @@ class CharacterRepository extends ChangeNotifier {
           '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
       await file.copy(destPath);
 
+      final destFile = File(destPath);
+      if (!destFile.existsSync() || destFile.lengthSync() == 0) {
+        debugPrint('[Import] Copied file missing or empty: $destPath (source: ${file.path})');
+      }
+
       // Update the imagePath to point to the local copy
       card.imagePath = destPath;
 

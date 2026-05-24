@@ -469,18 +469,24 @@ class _ChatPageState extends State<ChatPage> {
                                              duration: const Duration(
                                                milliseconds: 500,
                                              ),
-                                             child: Container(
-                                               key: ValueKey(
-                                                 'expr_bg_${avatar.id}',
-                                               ),
-                                               decoration: BoxDecoration(
-                                                 image: DecorationImage(
-                                                   image: FileImage(avatarFile),
-                                                   fit: BoxFit.cover,
-                                                   opacity: 0.15,
-                                                 ),
-                                               ),
-                                             ),
+                                              child: Stack(
+                                                key: ValueKey(
+                                                  'expr_bg_${avatar.id}',
+                                                ),
+                                                fit: StackFit.expand,
+                                                children: [
+                                                  Image.file(
+                                                    avatarFile,
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                                                  ),
+                                                  Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withValues(alpha: 0.85),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                            ),
                                          ),
                                        );
@@ -824,6 +830,7 @@ class _ChatPageState extends State<ChatPage> {
             child: character.imagePath == null
                 ? const Icon(Icons.person)
                 : null,
+            onBackgroundImageError: (_, _) {},
           ),
           const SizedBox(width: 12),
           Column(
@@ -3208,6 +3215,10 @@ class _ChatPageState extends State<ChatPage> {
                         width: _sidebarWidth,
                         fit: BoxFit.cover,
                         alignment: Alignment.topCenter,
+                        errorBuilder: (_, _, _) => Container(
+                          color: Colors.black26,
+                          child: const Icon(Icons.person, color: Colors.white24, size: 64),
+                        ),
                       ),
                     ),
                     // Emotion label badge
@@ -6374,12 +6385,9 @@ class _ExternalImageWidgetState extends State<_ExternalImageWidget> {
 class _SidebarSection extends StatefulWidget {
   final String title;
   final String content;
-  final bool initiallyExpanded;
-
   const _SidebarSection({
     required this.title,
     required this.content,
-    this.initiallyExpanded = false,
   });
 
   @override
@@ -6392,7 +6400,7 @@ class _SidebarSectionState extends State<_SidebarSection> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _expanded = false;
   }
 
   @override

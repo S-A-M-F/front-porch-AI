@@ -70,7 +70,7 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
     return Dialog(
       backgroundColor: const Color(0xFF1F2937),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
+      child: SizedBox(
         width: 900,
         height: 700,
         child: Column(
