@@ -40,8 +40,12 @@ class StableDbImportDialog extends StatelessWidget {
     final betaRoot = p.join(docsDir.path, 'FrontPorchAI-Beta');
     final stableRoot = p.join(docsDir.path, 'FrontPorchAI');
 
-    final betaDb = File(p.join(betaRoot, 'KoboldManager', 'front_porch_beta.db'));
-    final stableDb = File(p.join(stableRoot, 'KoboldManager', 'front_porch.db'));
+    final betaDb = File(
+      p.join(betaRoot, 'KoboldManager', 'front_porch_beta.db'),
+    );
+    final stableDb = File(
+      p.join(stableRoot, 'KoboldManager', 'front_porch.db'),
+    );
 
     return stableDb.existsSync() && !betaDb.existsSync();
   }
@@ -137,9 +141,7 @@ class StableDbImportDialog extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.04),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.06),
-                  ),
+                  border: Border.all(color: Colors.white.withOpacity(0.06)),
                 ),
                 child: const Text(
                   'Note: your stable database will be unaffected and still '
@@ -162,10 +164,7 @@ class StableDbImportDialog extends StatelessWidget {
                   OutlinedButton(
                     onPressed: () => _handleSkip(context),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(
-                        color: Colors.white24,
-                        width: 1,
-                      ),
+                      side: const BorderSide(color: Colors.white24, width: 1),
                       foregroundColor: Colors.white.withOpacity(0.7),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
@@ -197,7 +196,10 @@ class StableDbImportDialog extends StatelessWidget {
                     ),
                     child: const Text(
                       'Import Stable DB',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],

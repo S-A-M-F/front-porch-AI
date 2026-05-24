@@ -135,7 +135,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.greenAccent, size: 18),
+                const Icon(
+                  Icons.check_circle,
+                  color: Colors.greenAccent,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 const Text('Persona saved successfully'),
               ],
@@ -172,7 +176,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.download_done, color: Colors.greenAccent, size: 18),
+                  const Icon(
+                    Icons.download_done,
+                    color: Colors.greenAccent,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   Text('Imported "${imported.name}" successfully'),
                 ],
@@ -186,7 +194,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.redAccent,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   const Text('Import failed — unrecognized format'),
                 ],
@@ -203,7 +215,8 @@ class _UserPersonaPageState extends State<UserPersonaPage>
   Future<void> _exportPersona(UserPersona persona) async {
     String? outputFile = await FilePicker.platform.saveFile(
       dialogTitle: 'Export Persona',
-      fileName: '${persona.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_')}_persona.json',
+      fileName:
+          '${persona.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_')}_persona.json',
       type: FileType.custom,
       allowedExtensions: ['json'],
     );
@@ -259,7 +272,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6366F1),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -353,14 +369,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
                 ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final persona = service.personas[index];
-                    final isActive = persona.id == activePersona.id;
-                    return _buildPersonaCard(persona, isActive, service);
-                  },
-                  childCount: service.personas.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final persona = service.personas[index];
+                  final isActive = persona.id == activePersona.id;
+                  return _buildPersonaCard(persona, isActive, service);
+                }, childCount: service.personas.length),
               ),
             ),
           ],
@@ -371,7 +384,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
 
   // ── Hero Header ────────────────────────────────────────────────────────
 
-  Widget _buildHeroHeader(UserPersona activePersona, Color accentColor, UserPersonaService service) {
+  Widget _buildHeroHeader(
+    UserPersona activePersona,
+    Color accentColor,
+    UserPersonaService service,
+  ) {
     return AnimatedBuilder(
       animation: _headerGlowAnimation,
       builder: (context, child) {
@@ -384,13 +401,17 @@ class _UserPersonaPageState extends State<UserPersonaPage>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                accentColor.withValues(alpha: 0.08 + _headerGlowAnimation.value * 0.06),
+                accentColor.withValues(
+                  alpha: 0.08 + _headerGlowAnimation.value * 0.06,
+                ),
                 const Color(0xFF1E293B).withValues(alpha: 0.9),
                 const Color(0xFF0F172A).withValues(alpha: 0.95),
               ],
             ),
             border: Border.all(
-              color: accentColor.withValues(alpha: 0.15 + _headerGlowAnimation.value * 0.1),
+              color: accentColor.withValues(
+                alpha: 0.15 + _headerGlowAnimation.value * 0.1,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -408,7 +429,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: accentColor.withValues(alpha: 0.25 + _headerGlowAnimation.value * 0.15),
+                      color: accentColor.withValues(
+                        alpha: 0.25 + _headerGlowAnimation.value * 0.15,
+                      ),
                       blurRadius: 24,
                       spreadRadius: -2,
                     ),
@@ -491,7 +514,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
               ),
               // Edit button
               IconButton(
-                icon: Icon(Icons.edit_outlined, color: accentColor.withValues(alpha: 0.7)),
+                icon: Icon(
+                  Icons.edit_outlined,
+                  color: accentColor.withValues(alpha: 0.7),
+                ),
                 tooltip: 'Edit active persona',
                 onPressed: () => _startEditing(activePersona),
               ),
@@ -519,7 +545,12 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           const SizedBox(width: 4),
           Text(
             'Active',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color, letterSpacing: 0.3),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color,
+              letterSpacing: 0.3,
+            ),
           ),
         ],
       ),
@@ -539,7 +570,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         children: [
           Icon(icon, size: 13, color: Colors.white38),
           const SizedBox(width: 5),
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Colors.white54),
+          ),
         ],
       ),
     );
@@ -547,7 +581,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
 
   // ── Learned Facts ─────────────────────────────────────────────────────
 
-  Widget _buildLearnedFactsSection(UserPersona persona, UserPersonaService service) {
+  Widget _buildLearnedFactsSection(
+    UserPersona persona,
+    UserPersonaService service,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
       child: ClipRRect(
@@ -558,16 +595,27 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             decoration: BoxDecoration(
               color: const Color(0xFF1E293B).withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.12)),
+              border: Border.all(
+                color: Colors.tealAccent.withValues(alpha: 0.12),
+              ),
             ),
             child: Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
                 initiallyExpanded: _factsExpanded,
                 onExpansionChanged: (v) => setState(() => _factsExpanded = v),
-                tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                tilePadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 2,
+                ),
                 childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                leading: const Icon(Icons.auto_awesome, size: 18, color: Colors.tealAccent),
+                leading: const Icon(
+                  Icons.auto_awesome,
+                  size: 18,
+                  color: Colors.tealAccent,
+                ),
                 title: Text(
                   'Learned Facts (${persona.learnedFacts.length})',
                   style: const TextStyle(
@@ -585,10 +633,15 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   children: [
                     if (persona.learnedFacts.length > 5)
                       IconButton(
-                        icon: const Icon(Icons.delete_sweep, size: 16, color: Colors.redAccent),
+                        icon: const Icon(
+                          Icons.delete_sweep,
+                          size: 16,
+                          color: Colors.redAccent,
+                        ),
                         tooltip: 'Clear all facts',
                         visualDensity: VisualDensity.compact,
-                        onPressed: () => _showClearFactsConfirmation(context, service),
+                        onPressed: () =>
+                            _showClearFactsConfirmation(context, service),
                       ),
                     Icon(
                       _factsExpanded ? Icons.expand_less : Icons.expand_more,
@@ -604,11 +657,20 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       return Chip(
                         label: Text(
                           persona.learnedFacts[i],
-                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white70,
+                          ),
                         ),
                         backgroundColor: const Color(0xFF374151),
-                        side: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
-                        deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white38),
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.05),
+                        ),
+                        deleteIcon: const Icon(
+                          Icons.close,
+                          size: 14,
+                          color: Colors.white38,
+                        ),
                         onDeleted: () => service.removeLearnedFact(i),
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -626,7 +688,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
 
   // ── Persona Card ──────────────────────────────────────────────────────
 
-  Widget _buildPersonaCard(UserPersona persona, bool isActive, UserPersonaService service) {
+  Widget _buildPersonaCard(
+    UserPersona persona,
+    bool isActive,
+    UserPersonaService service,
+  ) {
     final cardColor = PersonaColors.getColorForPersona(persona.id);
 
     return _HoverScaleCard(
@@ -663,7 +729,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       if (persona.title.isNotEmpty)
                         Text(
                           persona.name,
-                          style: TextStyle(fontSize: 12, color: cardColor.withValues(alpha: 0.7)),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cardColor.withValues(alpha: 0.7),
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                     ],
@@ -671,7 +740,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 ),
                 // Actions
                 PopupMenuButton<String>(
-                  icon: Icon(Icons.more_vert, size: 18, color: Colors.white.withValues(alpha: 0.4)),
+                  icon: Icon(
+                    Icons.more_vert,
+                    size: 18,
+                    color: Colors.white.withValues(alpha: 0.4),
+                  ),
                   color: const Color(0xFF1E293B),
                   onSelected: (action) {
                     switch (action) {
@@ -701,7 +774,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       value: 'export',
                       child: Row(
                         children: [
-                          Icon(Icons.upload, size: 16, color: Colors.cyanAccent),
+                          Icon(
+                            Icons.upload,
+                            size: 16,
+                            color: Colors.cyanAccent,
+                          ),
                           SizedBox(width: 8),
                           Text('Export JSON', style: TextStyle(fontSize: 13)),
                         ],
@@ -712,9 +789,19 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                         value: 'delete',
                         child: Row(
                           children: [
-                            Icon(Icons.delete, size: 16, color: Colors.redAccent),
+                            Icon(
+                              Icons.delete,
+                              size: 16,
+                              color: Colors.redAccent,
+                            ),
                             SizedBox(width: 8),
-                            Text('Delete', style: TextStyle(fontSize: 13, color: Colors.redAccent)),
+                            Text(
+                              'Delete',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.redAccent,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -731,7 +818,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.white.withValues(alpha: persona.persona.isNotEmpty ? 0.55 : 0.3),
+                  color: Colors.white.withValues(
+                    alpha: persona.persona.isNotEmpty ? 0.55 : 0.3,
+                  ),
                   height: 1.5,
                 ),
               ),
@@ -741,26 +830,42 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             Row(
               children: [
                 if (persona.learnedFacts.isNotEmpty) ...[
-                  Icon(Icons.auto_awesome, size: 12, color: Colors.tealAccent.withValues(alpha: 0.6)),
+                  Icon(
+                    Icons.auto_awesome,
+                    size: 12,
+                    color: Colors.tealAccent.withValues(alpha: 0.6),
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     '${persona.learnedFacts.length} facts',
-                    style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.35)),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white.withValues(alpha: 0.35),
+                    ),
                   ),
                   const Spacer(),
                 ],
                 if (!isActive) ...[
                   if (persona.learnedFacts.isEmpty) const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: cardColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: cardColor.withValues(alpha: 0.2)),
+                      border: Border.all(
+                        color: cardColor.withValues(alpha: 0.2),
+                      ),
                     ),
                     child: Text(
                       'Select',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cardColor),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: cardColor,
+                      ),
                     ),
                   ),
                 ] else ...[
@@ -788,14 +893,24 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: const Color(0xFF6366F1).withValues(alpha: 0.08),
-              border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.15)),
+              border: Border.all(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+              ),
             ),
-            child: const Icon(Icons.person_add_alt_1, size: 44, color: Color(0xFF6366F1)),
+            child: const Icon(
+              Icons.person_add_alt_1,
+              size: 44,
+              color: Color(0xFF6366F1),
+            ),
           ),
           const SizedBox(height: 20),
           const Text(
             'No personas yet',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white70),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white70,
+            ),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -814,17 +929,32 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6366F1),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: _importPersona,
-                icon: const Icon(Icons.download, size: 18, color: Colors.cyanAccent),
-                label: const Text('Import JSON', style: TextStyle(color: Colors.cyanAccent)),
+                icon: const Icon(
+                  Icons.download,
+                  size: 18,
+                  color: Colors.cyanAccent,
+                ),
+                label: const Text(
+                  'Import JSON',
+                  style: TextStyle(color: Colors.cyanAccent),
+                ),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.cyanAccent.withValues(alpha: 0.3)),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  side: BorderSide(
+                    color: Colors.cyanAccent.withValues(alpha: 0.3),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
                 ),
               ),
             ],
@@ -883,12 +1013,16 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                                   )
                                 : null,
                             border: Border.all(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.25),
+                              color: const Color(
+                                0xFF6366F1,
+                              ).withValues(alpha: 0.25),
                               width: 2,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                                color: const Color(
+                                  0xFF6366F1,
+                                ).withValues(alpha: 0.08),
                                 blurRadius: 16,
                                 spreadRadius: -2,
                               ),
@@ -898,13 +1032,22 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                               ? Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.add_a_photo, size: 28,
-                                        color: Colors.white.withValues(alpha: 0.4)),
+                                    Icon(
+                                      Icons.add_a_photo,
+                                      size: 28,
+                                      color: Colors.white.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                    ),
                                     const SizedBox(height: 4),
                                     Text(
                                       'Avatar',
                                       style: TextStyle(
-                                          fontSize: 10, color: Colors.white.withValues(alpha: 0.3)),
+                                        fontSize: 10,
+                                        color: Colors.white.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 )
@@ -919,14 +1062,16 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                           _buildFormField(
                             controller: _titleController,
                             label: 'Title',
-                            hint: 'Label to distinguish this persona (optional)',
+                            hint:
+                                'Label to distinguish this persona (optional)',
                           ),
                           const SizedBox(height: 14),
                           _buildFormField(
                             controller: _nameController,
                             label: 'Name',
                             hint: 'Name sent to the AI',
-                            validator: (v) => v?.isEmpty ?? true ? 'Name is required' : null,
+                            validator: (v) =>
+                                v?.isEmpty ?? true ? 'Name is required' : null,
                           ),
                         ],
                       ),
@@ -938,9 +1083,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 _buildExpandableFormField(
                   controller: _personaController,
                   label: 'Persona Text (injected into AI context)',
-                  hint: 'Detailed persona info the AI will know about you — '
+                  hint:
+                      'Detailed persona info the AI will know about you — '
                       'appearance, traits, background, preferences...',
-                  helperText: 'This text is sent to the AI in every conversation. '
+                  helperText:
+                      'This text is sent to the AI in every conversation. '
                       'Import from SillyTavern or Backyard AI auto-populates this.',
                 ),
                 const SizedBox(height: 28),
@@ -949,7 +1096,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   children: [
                     TextButton(
                       onPressed: _cancelEditing,
-                      child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.white54),
+                      ),
                     ),
                     const SizedBox(width: 16),
                     ElevatedButton.icon(
@@ -959,7 +1109,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF6366F1),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 14,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -991,10 +1144,16 @@ class _UserPersonaPageState extends State<UserPersonaPage>
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 13),
+        hintStyle: TextStyle(
+          color: Colors.white.withValues(alpha: 0.2),
+          fontSize: 13,
+        ),
         labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
         helperText: helperText,
-        helperStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 11),
+        helperStyle: TextStyle(
+          color: Colors.white.withValues(alpha: 0.25),
+          fontSize: 11,
+        ),
         helperMaxLines: 2,
         filled: true,
         fillColor: const Color(0xFF374151).withValues(alpha: 0.7),
@@ -1010,7 +1169,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -1080,7 +1242,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   children: [
                     const Text(
                       'Edit Persona Text',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                     const Spacer(),
                     IconButton(
@@ -1100,20 +1266,29 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     maxLines: null,
                     decoration: InputDecoration(
                       hintText: 'Enter detailed persona info...',
-                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.2),
+                      ),
                       filled: true,
                       fillColor: const Color(0xFF374151).withValues(alpha: 0.7),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
+                        borderSide: const BorderSide(
+                          color: Color(0xFF6366F1),
+                          width: 1.5,
+                        ),
                       ),
                       contentPadding: const EdgeInsets.all(14),
                     ),
@@ -1127,7 +1302,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   children: [
                     TextButton(
                       onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.white54),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton(
@@ -1138,7 +1316,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF6366F1),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                       child: const Text('Save'),
                     ),
@@ -1160,7 +1340,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Persona', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Delete Persona',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: RichText(
           text: TextSpan(
             style: const TextStyle(color: Colors.white70, height: 1.5),
@@ -1168,7 +1351,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
               const TextSpan(text: 'Are you sure you want to delete '),
               TextSpan(
                 text: '"${persona.name}"',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const TextSpan(text: '? This cannot be undone.'),
             ],
@@ -1177,11 +1363,17 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
-              Provider.of<UserPersonaService>(context, listen: false).deletePersona(persona.id);
+              Provider.of<UserPersonaService>(
+                context,
+                listen: false,
+              ).deletePersona(persona.id);
               Navigator.of(context).pop();
             },
             style: ElevatedButton.styleFrom(
@@ -1195,13 +1387,19 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     );
   }
 
-  void _showClearFactsConfirmation(BuildContext context, UserPersonaService service) {
+  void _showClearFactsConfirmation(
+    BuildContext context,
+    UserPersonaService service,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Clear All Facts', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Clear All Facts',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: Text(
           'Remove all ${service.persona.learnedFacts.length} learned facts? This cannot be undone.',
           style: const TextStyle(color: Colors.white70),
@@ -1209,7 +1407,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1310,10 +1511,12 @@ class _HoverScaleCardState extends State<_HoverScaleCard>
                       : const Color(0xFF1E293B).withValues(alpha: 0.7),
                   border: Border.all(
                     color: widget.isActive
-                        ? widget.accentColor.withValues(alpha: 0.35 + _borderAnimation.value * 0.15)
+                        ? widget.accentColor.withValues(
+                            alpha: 0.35 + _borderAnimation.value * 0.15,
+                          )
                         : _isHovered
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.white.withValues(alpha: 0.06),
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : Colors.white.withValues(alpha: 0.06),
                     width: widget.isActive ? 1.5 : 1,
                   ),
                   boxShadow: [

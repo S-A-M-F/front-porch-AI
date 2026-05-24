@@ -6,9 +6,9 @@ import 'package:front_porch_ai/utils/emotion_labels.dart';
 
 void main() {
   group('EmotionLabels', () {
-test('all labels count is 30', () {
-  expect(EmotionLabels.all.length, equals(30));
-});
+    test('all labels count is 30', () {
+      expect(EmotionLabels.all.length, equals(30));
+    });
 
     test('all labels have emoji mappings', () {
       for (final label in EmotionLabels.all) {
@@ -62,10 +62,7 @@ test('all labels count is 30', () {
     });
 
     test('maps heartbroken to grief', () {
-      expect(
-        EmotionLabels.nuancedToStandard['heartbroken'],
-        equals('grief'),
-      );
+      expect(EmotionLabels.nuancedToStandard['heartbroken'], equals('grief'));
     });
 
     test('maps suspicious to confusion', () {
@@ -76,10 +73,7 @@ test('all labels count is 30', () {
     });
 
     test('maps determined to optimism', () {
-      expect(
-        EmotionLabels.nuancedToStandard['determined'],
-        equals('optimism'),
-      );
+      expect(EmotionLabels.nuancedToStandard['determined'], equals('optimism'));
     });
 
     test('maps vulnerable to fear', () {
@@ -87,24 +81,15 @@ test('all labels count is 30', () {
     });
 
     test('maps flirtatious to desire', () {
-      expect(
-        EmotionLabels.nuancedToStandard['flirtatious'],
-        equals('desire'),
-      );
+      expect(EmotionLabels.nuancedToStandard['flirtatious'], equals('desire'));
     });
 
     test('maps protective to caring', () {
-      expect(
-        EmotionLabels.nuancedToStandard['protective'],
-        equals('caring'),
-      );
+      expect(EmotionLabels.nuancedToStandard['protective'], equals('caring'));
     });
 
     test('maps bittersweet to sadness', () {
-      expect(
-        EmotionLabels.nuancedToStandard['bittersweet'],
-        equals('sadness'),
-      );
+      expect(EmotionLabels.nuancedToStandard['bittersweet'], equals('sadness'));
     });
 
     test('mapping has no duplicate keys', () {
@@ -140,8 +125,11 @@ test('all labels count is 30', () {
     test('prompt includes all standard labels', () {
       final prompt = EmotionLabels.buildReclassifyPrompt('unknown');
       for (final label in EmotionLabels.all) {
-        expect(prompt.contains(label), isTrue,
-            reason: 'Prompt should contain label "$label"');
+        expect(
+          prompt.contains(label),
+          isTrue,
+          reason: 'Prompt should contain label "$label"',
+        );
       }
     });
   });

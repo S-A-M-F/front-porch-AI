@@ -30,10 +30,14 @@ class DrawThingsGrpcService {
     this.port = 7859,
     String? pythonPath,
     String? pythonClientDir,
-  })  : pythonPath = pythonPath ?? _resolvePythonPath(),
-        pythonClientDir = pythonClientDir ?? _resolvePythonClientDir() {
-    debugPrint('DrawThingsGrpcService: Resolved pythonPath: ${this.pythonPath}');
-    debugPrint('DrawThingsGrpcService: Resolved pythonClientDir: ${this.pythonClientDir}');
+  }) : pythonPath = pythonPath ?? _resolvePythonPath(),
+       pythonClientDir = pythonClientDir ?? _resolvePythonClientDir() {
+    debugPrint(
+      'DrawThingsGrpcService: Resolved pythonPath: ${this.pythonPath}',
+    );
+    debugPrint(
+      'DrawThingsGrpcService: Resolved pythonClientDir: ${this.pythonClientDir}',
+    );
   }
 
   static String _resolvePythonPath() {
@@ -59,7 +63,11 @@ class DrawThingsGrpcService {
 
       // 1. Check for bundled Resources in macOS App Bundle
       // Structure: App.app/Contents/MacOS/Executable -> App.app/Contents/Resources/
-      final bundleResources = p.join(Directory(execDir).parent.path, 'Resources', 'dt-grpc-python');
+      final bundleResources = p.join(
+        Directory(execDir).parent.path,
+        'Resources',
+        'dt-grpc-python',
+      );
       if (Directory(bundleResources).existsSync()) {
         return bundleResources;
       }
@@ -68,7 +76,9 @@ class DrawThingsGrpcService {
       var dir = Directory(execDir);
       for (int i = 0; i < 10; i++) {
         // Priority 1: Vendored tools directory
-        final toolsCandidate = Directory(p.join(dir.path, 'tools', 'dt-grpc-python'));
+        final toolsCandidate = Directory(
+          p.join(dir.path, 'tools', 'dt-grpc-python'),
+        );
         if (toolsCandidate.existsSync()) {
           return toolsCandidate.path;
         }
@@ -87,7 +97,6 @@ class DrawThingsGrpcService {
     // 3. Final fallback to the original dev path
     return '/tmp/dt-grpc-python';
   }
-
 
   /// Tests connection to Draw Things via Python client
   Future<bool> testConnection() async {
@@ -113,12 +122,10 @@ finally:
 
       final scriptFile = await _writePythonScript(script);
       debugPrint('DrawThingsGrpcService: Script:\n$script');
-      
-      final result = await _runWithTimeout(
-        pythonPath,
-        [scriptFile.path],
-        const Duration(seconds: 30),
-      );
+
+      final result = await _runWithTimeout(pythonPath, [
+        scriptFile.path,
+      ], const Duration(seconds: 30));
       debugPrint('DrawThingsGrpcService: Exit code: ${result.exitCode}');
       debugPrint('DrawThingsGrpcService: Stdout: ${result.stdout}');
       debugPrint('DrawThingsGrpcService: Stderr: ${result.stderr}');
@@ -128,7 +135,9 @@ finally:
         debugPrint('DrawThingsGrpcService: Connection test passed');
         return true;
       } else {
-        debugPrint('DrawThingsGrpcService: Connection test failed: ${result.stdout}');
+        debugPrint(
+          'DrawThingsGrpcService: Connection test failed: ${result.stdout}',
+        );
         return false;
       }
     } catch (e) {
@@ -169,20 +178,22 @@ finally:
 
       final scriptFile = await _writePythonScript(script);
 
-      final result = await _runWithTimeout(
-        pythonPath,
-        [scriptFile.path],
-        const Duration(seconds: 30),
-      );
+      final result = await _runWithTimeout(pythonPath, [
+        scriptFile.path,
+      ], const Duration(seconds: 30));
       await scriptFile.delete();
 
       if (result.exitCode == 0) {
         final files = jsonDecode(result.stdout.toString()) as List;
         final checkpoints = files.cast<String>();
-        debugPrint('DrawThingsGrpcService: Fetched ${checkpoints.length} models');
+        debugPrint(
+          'DrawThingsGrpcService: Fetched ${checkpoints.length} models',
+        );
         return checkpoints;
       } else {
-        debugPrint('DrawThingsGrpcService: fetchModels failed: ${result.stdout}');
+        debugPrint(
+          'DrawThingsGrpcService: fetchModels failed: ${result.stdout}',
+        );
         return [];
       }
     } catch (e) {
@@ -205,7 +216,9 @@ finally:
   }) async {
     final tempRoot = await getTemporaryDirectory();
     final requestId = DateTime.now().millisecondsSinceEpoch;
-    final tempDir = await Directory(p.join(tempRoot.path, 'dt_gen_$requestId')).create(recursive: true);
+    final tempDir = await Directory(
+      p.join(tempRoot.path, 'dt_gen_$requestId'),
+    ).create(recursive: true);
     final outputPath = p.join(tempDir.path, 'output.png');
 
     debugPrint('DrawThingsGrpcService: Output path will be: $outputPath');
@@ -260,10 +273,15 @@ finally:
     client.close()
 ''';
 
-
     // Robust escaping for Python string literals
-    final escapedPrompt = prompt.replaceAll('\\', '\\\\').replaceAll("'", "\\'").replaceAll('\n', ' ');
-    final escapedNegative = negativePrompt.replaceAll('\\', '\\\\').replaceAll("'", "\\'").replaceAll('\n', ' ');
+    final escapedPrompt = prompt
+        .replaceAll('\\', '\\\\')
+        .replaceAll("'", "\\'")
+        .replaceAll('\n', ' ');
+    final escapedNegative = negativePrompt
+        .replaceAll('\\', '\\\\')
+        .replaceAll("'", "\\'")
+        .replaceAll('\n', ' ');
 
     final replacements = {
       'PYTHON_CLIENT_DIR': pythonClientDir,
@@ -289,11 +307,9 @@ finally:
     final scriptFile = await _writePythonScript(script);
 
     try {
-      final result = await _runWithTimeout(
-        pythonPath,
-        [scriptFile.path],
-        const Duration(seconds: 300),
-      );
+      final result = await _runWithTimeout(pythonPath, [
+        scriptFile.path,
+      ], const Duration(seconds: 300));
 
       debugPrint('DrawThingsGrpcService: Python exit code: ${result.exitCode}');
       debugPrint('DrawThingsGrpcService: Python stdout: ${result.stdout}');
@@ -310,7 +326,8 @@ finally:
         }
       } catch (_) {}
 
-      if (result.exitCode != 0 || !result.stdout.toString().contains('SUCCESS')) {
+      if (result.exitCode != 0 ||
+          !result.stdout.toString().contains('SUCCESS')) {
         throw Exception('Generation failed: ${result.stdout}');
       }
 
@@ -321,18 +338,23 @@ finally:
 
       final fileSize = await file.length();
       debugPrint('DrawThingsGrpcService: Output file size: $fileSize bytes');
-      
+
       if (fileSize == 0) {
         throw Exception('Output file is empty after Python generation');
       }
 
       // Read bytes
       final bytes = await file.readAsBytes();
-      debugPrint('DrawThingsGrpcService: Successfully read ${bytes.length} bytes');
+      debugPrint(
+        'DrawThingsGrpcService: Successfully read ${bytes.length} bytes',
+      );
 
       // Debug: Print first 16 bytes to check header
       if (bytes.length >= 16) {
-        final header = bytes.sublist(0, 16).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+        final header = bytes
+            .sublist(0, 16)
+            .map((b) => b.toRadixString(16).padLeft(2, '0'))
+            .join(' ');
         debugPrint('DrawThingsGrpcService: First 16 bytes: $header');
       }
 
@@ -356,7 +378,9 @@ finally:
   Future<File> _writePythonScript(String content) async {
     final tempRoot = await getTemporaryDirectory();
     final requestId = DateTime.now().millisecondsSinceEpoch;
-    final tempDir = await Directory(p.join(tempRoot.path, 'dt_script_$requestId')).create(recursive: true);
+    final tempDir = await Directory(
+      p.join(tempRoot.path, 'dt_script_$requestId'),
+    ).create(recursive: true);
     final scriptFile = File(p.join(tempDir.path, 'script.py'));
     await scriptFile.writeAsString(content);
     return scriptFile;
@@ -371,12 +395,11 @@ finally:
     final stdoutFuture = process.stdout.transform(utf8.decoder).join();
     final stderrFuture = process.stderr.transform(utf8.decoder).join();
     final exitCode = await process.exitCode.timeout(timeout);
-    
+
     // Await both streams before returning
     final stdout = await stdoutFuture;
     final stderr = await stderrFuture;
-    
+
     return ProcessResult(process.pid, exitCode, stdout, stderr);
   }
-
 }

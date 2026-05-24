@@ -31,7 +31,11 @@ class OpenAiTtsEngine implements TtsEngine {
   String model;
   String baseUrl;
 
-  OpenAiTtsEngine({this.apiKey = '', this.model = 'tts-1', this.baseUrl = 'https://api.openai.com/v1'});
+  OpenAiTtsEngine({
+    this.apiKey = '',
+    this.model = 'tts-1',
+    this.baseUrl = 'https://api.openai.com/v1',
+  });
   static int _fileCounter = 0;
 
   @override
@@ -44,7 +48,8 @@ class OpenAiTtsEngine implements TtsEngine {
   Future<bool> get isAvailable async => apiKey.isNotEmpty;
 
   @override
-  Future<bool> ensureModelReady({void Function(double)? onProgress}) async => true;
+  Future<bool> ensureModelReady({void Function(double)? onProgress}) async =>
+      true;
 
   @override
   Future<File?> generateAudio(
@@ -60,14 +65,17 @@ class OpenAiTtsEngine implements TtsEngine {
 
     try {
       // Strip trailing slash from baseUrl to avoid double-slash
-      final url = baseUrl.endsWith('/') ? '${baseUrl}audio/speech' : '$baseUrl/audio/speech';
+      final url = baseUrl.endsWith('/')
+          ? '${baseUrl}audio/speech'
+          : '$baseUrl/audio/speech';
       final response = await http.post(
         Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $apiKey',
           'Content-Type': 'application/json',
         },
-        body: '{"model":"$model","input":${_jsonEscape(text)},"voice":"$voice","response_format":"wav","speed":$speed}',
+        body:
+            '{"model":"$model","input":${_jsonEscape(text)},"voice":"$voice","response_format":"wav","speed":$speed}',
       );
 
       if (response.statusCode != 200) {
@@ -78,8 +86,12 @@ class OpenAiTtsEngine implements TtsEngine {
       // Write response body (WAV audio) to temp file
       final tempDir = Directory.systemTemp;
       _fileCounter++;
-      final outputFile = File(p.join(tempDir.path,
-          'openai_tts_${DateTime.now().millisecondsSinceEpoch}_$_fileCounter.wav'));
+      final outputFile = File(
+        p.join(
+          tempDir.path,
+          'openai_tts_${DateTime.now().millisecondsSinceEpoch}_$_fileCounter.wav',
+        ),
+      );
       await outputFile.writeAsBytes(response.bodyBytes);
 
       return outputFile;
@@ -98,15 +110,75 @@ class OpenAiTtsEngine implements TtsEngine {
   List<TtsVoiceInfo> get availableVoices => _voices;
 
   static const _voices = [
-    TtsVoiceInfo(id: 'alloy', name: 'Alloy', gender: 'Neutral', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'ash', name: 'Ash', gender: 'Male', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'ballad', name: 'Ballad', gender: 'Male', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'coral', name: 'Coral', gender: 'Female', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'echo', name: 'Echo', gender: 'Male', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'fable', name: 'Fable', gender: 'Male', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'onyx', name: 'Onyx', gender: 'Male', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'nova', name: 'Nova', gender: 'Female', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'sage', name: 'Sage', gender: 'Female', language: 'Multilingual', engine: 'openai'),
-    TtsVoiceInfo(id: 'shimmer', name: 'Shimmer', gender: 'Female', language: 'Multilingual', engine: 'openai'),
+    TtsVoiceInfo(
+      id: 'alloy',
+      name: 'Alloy',
+      gender: 'Neutral',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'ash',
+      name: 'Ash',
+      gender: 'Male',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'ballad',
+      name: 'Ballad',
+      gender: 'Male',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'coral',
+      name: 'Coral',
+      gender: 'Female',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'echo',
+      name: 'Echo',
+      gender: 'Male',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'fable',
+      name: 'Fable',
+      gender: 'Male',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'onyx',
+      name: 'Onyx',
+      gender: 'Male',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'nova',
+      name: 'Nova',
+      gender: 'Female',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'sage',
+      name: 'Sage',
+      gender: 'Female',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
+    TtsVoiceInfo(
+      id: 'shimmer',
+      name: 'Shimmer',
+      gender: 'Female',
+      language: 'Multilingual',
+      engine: 'openai',
+    ),
   ];
 }

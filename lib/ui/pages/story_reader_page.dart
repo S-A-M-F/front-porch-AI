@@ -48,12 +48,12 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
   BoxConstraints? _lastConstraints;
   bool _isFirstLoad = true;
   bool _lastIsTwoPageSpread = false;
-  
+
   late AudioPlayer _ambientPlayer;
   late AudioPlayer _sfxPlayer;
   bool _isAudioPlaying = true;
   bool _isAudioMuted = true; // explicitly muted by default per user request
-  
+
   bool _isReadingAlong = false;
   int _bufferedPageCount = 0;
 
@@ -103,7 +103,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     _isReadingAlong = false;
     // ensure TTS stops on exit
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      try { Provider.of<TtsService>(context, listen: false).stop(); } catch (_) {}
+      try {
+        Provider.of<TtsService>(context, listen: false).stop();
+      } catch (_) {}
     });
     _ambientPlayer.dispose();
     _sfxPlayer.dispose();
@@ -113,13 +115,13 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
 
   // Read-along audio player (separate from ambient)
   AudioPlayer? _readAlongPlayer;
-  
+
   /// Get the text content for a given flip-page index.
   String _getPageText(int flipPage) {
     if (_pages == null) return '';
     final width = MediaQuery.of(context).size.width;
     final isTwoPageSpread = width > 800;
-    
+
     if (isTwoPageSpread) {
       final leftIdx = flipPage * 2;
       final rightIdx = leftIdx + 1;
@@ -138,9 +140,12 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       return '';
     }
   }
-  
+
   /// Parse text into narration and dialogue segments, identifying speakers.
-  List<_VoiceSegment> _parseVoiceSegments(String text, List<StoryCastMember> cast) {
+  List<_VoiceSegment> _parseVoiceSegments(
+    String text,
+    List<StoryCastMember> cast,
+  ) {
     final segments = <_VoiceSegment>[];
     // Match quoted dialogue: "...", "...", or "..."
     final dialoguePattern = RegExp(r'["""]([^"""]+)["""]');
@@ -151,7 +156,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       if (match.start > lastEnd) {
         final narration = text.substring(lastEnd, match.start).trim();
         if (narration.isNotEmpty) {
-          segments.add(_VoiceSegment(text: narration, voiceKey: null, characterName: null));
+          segments.add(
+            _VoiceSegment(text: narration, voiceKey: null, characterName: null),
+          );
         }
       }
 
@@ -159,7 +166,7 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       final searchStart = (match.start - 100).clamp(0, text.length);
       final searchEnd = (match.end + 60).clamp(0, text.length);
       final context = text.substring(searchStart, searchEnd).toLowerCase();
-      
+
       String? matchedVoice;
       String? matchedName;
       for (final c in cast) {
@@ -174,11 +181,13 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         }
       }
 
-      segments.add(_VoiceSegment(
-        text: match.group(1) ?? '',
-        voiceKey: matchedVoice,
-        characterName: matchedName,
-      ));
+      segments.add(
+        _VoiceSegment(
+          text: match.group(1) ?? '',
+          voiceKey: matchedVoice,
+          characterName: matchedName,
+        ),
+      );
       lastEnd = match.end;
     }
 
@@ -186,13 +195,17 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     if (lastEnd < text.length) {
       final remaining = text.substring(lastEnd).trim();
       if (remaining.isNotEmpty) {
-        segments.add(_VoiceSegment(text: remaining, voiceKey: null, characterName: null));
+        segments.add(
+          _VoiceSegment(text: remaining, voiceKey: null, characterName: null),
+        );
       }
     }
 
     // If no dialogue found, return the whole text as one narration segment
     if (segments.isEmpty) {
-      segments.add(_VoiceSegment(text: text, voiceKey: null, characterName: null));
+      segments.add(
+        _VoiceSegment(text: text, voiceKey: null, characterName: null),
+      );
     }
 
     return segments;
@@ -200,9 +213,15 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
 
   /// Generate audio for a page, using per-character voices for dialogue segments.
   /// Returns a single WAV file with all segments stitched together in order.
-  Future<File?> _generatePageAudio(String pageText, TtsService tts, List<StoryCastMember> cast) async {
-    final hasVoicedCharacters = cast.any((c) => c.voiceModel != null && c.voiceModel!.isNotEmpty);
-    
+  Future<File?> _generatePageAudio(
+    String pageText,
+    TtsService tts,
+    List<StoryCastMember> cast,
+  ) async {
+    final hasVoicedCharacters = cast.any(
+      (c) => c.voiceModel != null && c.voiceModel!.isNotEmpty,
+    );
+
     // Fast path: no character voices configured, use single default voice
     if (!hasVoicedCharacters) {
       return tts.generateAudioFile(pageText);
@@ -211,10 +230,13 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     // Parse into voice segments and generate each sequentially
     final segments = _parseVoiceSegments(pageText, cast);
     final segmentFiles = <File>[];
-    
+
     for (final seg in segments) {
       if (!_isReadingAlong) break;
-      final file = await tts.generateAudioFile(seg.text, voiceKey: seg.voiceKey);
+      final file = await tts.generateAudioFile(
+        seg.text,
+        voiceKey: seg.voiceKey,
+      );
       if (file != null) segmentFiles.add(file);
     }
 
@@ -231,17 +253,19 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       for (final wavFile in segmentFiles) {
         final bytes = await wavFile.readAsBytes();
         if (bytes.length < 44) continue;
-        
+
         // Parse WAV header to find data chunk
         final bd = ByteData.sublistView(bytes);
         sampleRate = bd.getUint32(24, Endian.little);
         numChannels = bd.getUint16(22, Endian.little);
         bitsPerSample = bd.getUint16(34, Endian.little);
-        
+
         // Find the "data" chunk
         int dataOffset = 12;
         while (dataOffset + 8 < bytes.length) {
-          final chunkId = String.fromCharCodes(bytes.sublist(dataOffset, dataOffset + 4));
+          final chunkId = String.fromCharCodes(
+            bytes.sublist(dataOffset, dataOffset + 4),
+          );
           final chunkSize = bd.getUint32(dataOffset + 4, Endian.little);
           if (chunkId == 'data') {
             dataOffset += 8;
@@ -265,16 +289,22 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       final byteRate = sampleRate * numChannels * (bitsPerSample >> 3);
       final blockAlign = numChannels * (bitsPerSample >> 3);
       final header = ByteData(44);
-      
+
       // RIFF header
-      header.setUint8(0, 0x52); header.setUint8(1, 0x49);
-      header.setUint8(2, 0x46); header.setUint8(3, 0x46);
+      header.setUint8(0, 0x52);
+      header.setUint8(1, 0x49);
+      header.setUint8(2, 0x46);
+      header.setUint8(3, 0x46);
       header.setUint32(4, 36 + totalPcm, Endian.little);
-      header.setUint8(8, 0x57); header.setUint8(9, 0x41);
-      header.setUint8(10, 0x56); header.setUint8(11, 0x45);
+      header.setUint8(8, 0x57);
+      header.setUint8(9, 0x41);
+      header.setUint8(10, 0x56);
+      header.setUint8(11, 0x45);
       // fmt chunk
-      header.setUint8(12, 0x66); header.setUint8(13, 0x6d);
-      header.setUint8(14, 0x74); header.setUint8(15, 0x20);
+      header.setUint8(12, 0x66);
+      header.setUint8(13, 0x6d);
+      header.setUint8(14, 0x74);
+      header.setUint8(15, 0x20);
       header.setUint32(16, 16, Endian.little);
       header.setUint16(20, 1, Endian.little); // PCM
       header.setUint16(22, numChannels, Endian.little);
@@ -283,8 +313,10 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       header.setUint16(32, blockAlign, Endian.little);
       header.setUint16(34, bitsPerSample, Endian.little);
       // data chunk
-      header.setUint8(36, 0x64); header.setUint8(37, 0x61);
-      header.setUint8(38, 0x74); header.setUint8(39, 0x61);
+      header.setUint8(36, 0x64);
+      header.setUint8(37, 0x61);
+      header.setUint8(38, 0x74);
+      header.setUint8(39, 0x61);
       header.setUint32(40, totalPcm, Endian.little);
 
       // Write to temp file
@@ -296,7 +328,7 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         sink.add(chunk);
       }
       await sink.close();
-      
+
       return outFile;
     } catch (e) {
       debugPrint('[ReadAlong] WAV stitch error: $e');
@@ -337,19 +369,20 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         }
         final pageIdx = nextPageToBuffer;
         nextPageToBuffer++;
-        
+
         final text = _getPageText(pageIdx);
         if (text.trim().isEmpty) {
           audioBuffer[pageIdx] = null;
           continue;
         }
-        
+
         final file = await _generatePageAudio(text, tts, cast);
         if (!_isReadingAlong) break;
         audioBuffer[pageIdx] = file;
         if (mounted) {
           setState(() {
-            _bufferedPageCount = audioBuffer.length - 1; // -1 for the page currently playing
+            _bufferedPageCount =
+                audioBuffer.length - 1; // -1 for the page currently playing
           });
         }
       }
@@ -380,7 +413,7 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         final sub = segPlayer.onPlayerComplete.listen((_) {
           if (!completer.isCompleted) completer.complete();
         });
-        
+
         try {
           await segPlayer.play(DeviceFileSource(audioFile.path));
           await completer.future;
@@ -433,10 +466,10 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     if (_pages == null) return null;
     final width = MediaQuery.of(context).size.width;
     final isTwoPageSpread = width > 800;
-    
+
     final pageIdx = isTwoPageSpread ? _currentPage * 2 : _currentPage;
     if (pageIdx >= _pages!.length) return null;
-    
+
     final page = _pages![pageIdx];
     if (page.actIndex == null || page.sceneIndex == null) return null;
     return (actIndex: page.actIndex!, sceneIndex: page.sceneIndex!);
@@ -459,16 +492,25 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF3D2317),
-        title: const Text('Rewrite Scene?', style: TextStyle(color: Color(0xFFF5E6D3))),
+        title: const Text(
+          'Rewrite Scene?',
+          style: TextStyle(color: Color(0xFFF5E6D3)),
+        ),
         content: Text(
           'This will regenerate all prose for "${scene.title}". The page will update automatically when done.',
           style: const TextStyle(color: Color(0xFFD4C4B0)),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Rewrite', style: TextStyle(color: Colors.orange)),
+            child: const Text(
+              'Rewrite',
+              style: TextStyle(color: Colors.orange),
+            ),
           ),
         ],
       ),
@@ -486,7 +528,11 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     await repo.saveProject(project);
 
     try {
-      await pipeline.regenerateSceneProse(project, meta.actIndex, meta.sceneIndex);
+      await pipeline.regenerateSceneProse(
+        project,
+        meta.actIndex,
+        meta.sceneIndex,
+      );
       if (mounted) {
         // Force page rebuild
         _pages = null;
@@ -503,7 +549,10 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       if (mounted) {
         setState(() => _isRegenerating = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Rewrite failed: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Rewrite failed: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
@@ -547,7 +596,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
               decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Color(0xFF5A3A25), width: 1)),
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFF5A3A25), width: 1),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -582,8 +633,12 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                 children: [
                   // Title page
                   _tocEntry('Title Page', 0, isTwoPageSpread, isTitle: true),
-                  
-                  for (int actIdx = 0; actIdx < project.acts.length; actIdx++) ...[
+
+                  for (
+                    int actIdx = 0;
+                    actIdx < project.acts.length;
+                    actIdx++
+                  ) ...[
                     const SizedBox(height: 8),
                     // Act header
                     _tocEntry(
@@ -593,7 +648,11 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                       isAct: true,
                     ),
                     // Scenes
-                    for (int sceneIdx = 0; sceneIdx < (project.scenes[actIdx]?.length ?? 0); sceneIdx++)
+                    for (
+                      int sceneIdx = 0;
+                      sceneIdx < (project.scenes[actIdx]?.length ?? 0);
+                      sceneIdx++
+                    )
                       _tocEntry(
                         project.scenes[actIdx]![sceneIdx].title,
                         sceneToPage['$actIdx-$sceneIdx'] ?? 0,
@@ -609,7 +668,13 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     );
   }
 
-  Widget _tocEntry(String label, int pageIndex, bool isTwoPageSpread, {bool isTitle = false, bool isAct = false}) {
+  Widget _tocEntry(
+    String label,
+    int pageIndex,
+    bool isTwoPageSpread, {
+    bool isTitle = false,
+    bool isAct = false,
+  }) {
     final flipPage = isTwoPageSpread ? pageIndex ~/ 2 : pageIndex;
     final isCurrentPage = _currentPage == flipPage;
 
@@ -626,7 +691,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
           top: isAct ? 10 : 6,
           bottom: isAct ? 10 : 6,
         ),
-        color: isCurrentPage ? const Color(0xFF5A3A25).withValues(alpha: 0.3) : null,
+        color: isCurrentPage
+            ? const Color(0xFF5A3A25).withValues(alpha: 0.3)
+            : null,
         child: Row(
           children: [
             Expanded(
@@ -635,12 +702,14 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                 style: TextStyle(
                   fontFamily: 'Georgia',
                   fontSize: isAct ? 14 : 13,
-                  fontWeight: isAct || isTitle ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight: isAct || isTitle
+                      ? FontWeight.w600
+                      : FontWeight.normal,
                   color: isCurrentPage
                       ? Colors.amber
                       : isAct || isTitle
-                          ? const Color(0xFFF5E6D3)
-                          : const Color(0xFFD4C4B0),
+                      ? const Color(0xFFF5E6D3)
+                      : const Color(0xFFD4C4B0),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -661,41 +730,51 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
   }
 
   void _buildPages(BoxConstraints constraints, bool isTwoPageSpread) {
-    if (_pages != null && _lastConstraints == constraints) return; // Already built for this size
+    if (_pages != null && _lastConstraints == constraints)
+      return; // Already built for this size
     _lastConstraints = constraints;
-    
+
     final repo = Provider.of<StoryRepository>(context, listen: false);
     final project = repo.getById(widget.projectId);
     if (project == null) {
-      _pages = [_BookPage(type: _PageType.title, title: 'Story Not Found', body: '')];
+      _pages = [
+        _BookPage(type: _PageType.title, title: 'Story Not Found', body: ''),
+      ];
       return;
     }
 
     // Determine available height and width for text
     final mq = MediaQuery.of(context);
-    
-    double availableWidth = (isTwoPageSpread ? constraints.maxWidth / 2 : constraints.maxWidth) - 72;
+
+    double availableWidth =
+        (isTwoPageSpread ? constraints.maxWidth / 2 : constraints.maxWidth) -
+        72;
     if (availableWidth > (600 - 72)) availableWidth = 600 - 72;
-    
+
     // Subtract external elements from available height:
     // kToolbarHeight (56), SafeArea top/bottom padding, page margins (64), and page padding (96).
     // Adding a 20px extra buffer for text rendering strictness.
-    double availableHeight = constraints.maxHeight 
-                           - kToolbarHeight 
-                           - mq.padding.top 
-                           - mq.padding.bottom 
-                           - 96 // Page padding
-                           - 64 // Margin outside book
-                           - 24; // Extra safety buffer
+    double availableHeight =
+        constraints.maxHeight -
+        kToolbarHeight -
+        mq.padding.top -
+        mq.padding.bottom -
+        96 // Page padding
+        -
+        64 // Margin outside book
+        -
+        24; // Extra safety buffer
 
     final List<_BookPage> newPages = [];
 
     // Title page
-    newPages.add(_BookPage(
-      type: _PageType.title,
-      title: project.title,
-      body: project.concept,
-    ));
+    newPages.add(
+      _BookPage(
+        type: _PageType.title,
+        title: project.title,
+        body: project.concept,
+      ),
+    );
 
     final textStyle = const TextStyle(
       fontFamily: 'Georgia',
@@ -711,12 +790,14 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       final scenes = project.scenes[actIdx] ?? [];
 
       // Act title page
-      newPages.add(_BookPage(
-        type: _PageType.actTitle,
-        title: 'Act ${act.number}',
-        subtitle: act.title,
-        body: act.description,
-      ));
+      newPages.add(
+        _BookPage(
+          type: _PageType.actTitle,
+          title: 'Act ${act.number}',
+          subtitle: act.title,
+          body: act.description,
+        ),
+      );
 
       for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
         final scene = scenes[sceneIdx];
@@ -727,7 +808,8 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         final proseBuffer = StringBuffer();
         for (int beatIdx = 0; beatIdx < beats.length; beatIdx++) {
           final bId = '$sId-$beatIdx';
-          final prose = project.prose[bId]?.final_ ?? project.prose[bId]?.draft ?? '';
+          final prose =
+              project.prose[bId]?.final_ ?? project.prose[bId]?.draft ?? '';
           if (prose.isNotEmpty) {
             if (proseBuffer.isNotEmpty) proseBuffer.write('\n\n');
             proseBuffer.write(prose);
@@ -743,21 +825,25 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
 
         // Split text dynamically
         String remainingText = fullProse;
-        
+
         while (remainingText.isNotEmpty) {
-          final currentAvailableHeight = isFirstPage ? availableHeight - headerHeight : availableHeight;
-          
+          final currentAvailableHeight = isFirstPage
+              ? availableHeight - headerHeight
+              : availableHeight;
+
           // Find how much text fits
           int startLimit = 0;
           int endLimit = remainingText.length;
           int bestFitLength = endLimit;
-          
+
           while (startLimit <= endLimit) {
             final mid = (startLimit + endLimit) ~/ 2;
             String testChunk = remainingText.substring(0, mid);
-            
+
             // Avoid breaking words if possible
-            if (mid < remainingText.length && remainingText[mid] != ' ' && remainingText[mid] != '\n') {
+            if (mid < remainingText.length &&
+                remainingText[mid] != ' ' &&
+                remainingText[mid] != '\n') {
               final lastSpace = testChunk.lastIndexOf(RegExp(r'\s'));
               if (lastSpace != -1) {
                 testChunk = testChunk.substring(0, lastSpace);
@@ -778,26 +864,30 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             }
           }
 
-          if (bestFitLength == 0) bestFitLength = 1; // Prevent infinite loop on tiny screens
-          
+          if (bestFitLength == 0)
+            bestFitLength = 1; // Prevent infinite loop on tiny screens
+
           // Snap strictly to word boundary for aesthetic
           if (bestFitLength < remainingText.length) {
             final testSubstring = remainingText.substring(0, bestFitLength);
             final lastSpace = testSubstring.lastIndexOf(RegExp(r'\s'));
-            if (lastSpace > 0 && lastSpace > bestFitLength * 0.5) { // Only snap if space isn't too far back
+            if (lastSpace > 0 && lastSpace > bestFitLength * 0.5) {
+              // Only snap if space isn't too far back
               bestFitLength = lastSpace;
             }
           }
 
           final chunk = remainingText.substring(0, bestFitLength).trim();
-          newPages.add(_BookPage(
-            type: _PageType.prose,
-            title: isFirstPage ? scene.title : '',
-            subtitle: isFirstPage ? scene.location : '',
-            body: chunk,
-            actIndex: actIdx,
-            sceneIndex: sceneIdx,
-          ));
+          newPages.add(
+            _BookPage(
+              type: _PageType.prose,
+              title: isFirstPage ? scene.title : '',
+              subtitle: isFirstPage ? scene.location : '',
+              body: chunk,
+              actIndex: actIdx,
+              sceneIndex: sceneIdx,
+            ),
+          );
 
           remainingText = remainingText.substring(bestFitLength).trimLeft();
           isFirstPage = false;
@@ -806,12 +896,14 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     }
 
     // End page
-    newPages.add(_BookPage(
-      type: _PageType.end,
-      title: 'The End',
-      body: '— ${project.title} —',
-    ));
-    
+    newPages.add(
+      _BookPage(
+        type: _PageType.end,
+        title: 'The End',
+        body: '— ${project.title} —',
+      ),
+    );
+
     _pages = newPages;
   }
 
@@ -846,7 +938,8 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
 
         for (int beatIdx = 0; beatIdx < beats.length; beatIdx++) {
           final bId = '$sId-$beatIdx';
-          final prose = project.prose[bId]?.final_ ?? project.prose[bId]?.draft ?? '';
+          final prose =
+              project.prose[bId]?.final_ ?? project.prose[bId]?.draft ?? '';
           if (prose.isNotEmpty) {
             buffer.writeln(prose);
             buffer.writeln();
@@ -867,7 +960,8 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     if (project == null) return;
 
     final text = _assembleFullText(project);
-    final fileName = '${project.title.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_')}.txt';
+    final fileName =
+        '${project.title.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_')}.txt';
 
     try {
       final outputPath = await FilePicker.platform.saveFile(
@@ -880,16 +974,16 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
       if (outputPath != null) {
         await File(outputPath).writeAsString(text);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('📖 Exported to $outputPath')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('📖 Exported to $outputPath')));
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
       }
     }
   }
@@ -910,7 +1004,7 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final isTwoPageSpread = width > 800;
-    
+
     // We wrap everything in LayoutBuilder to measure the screen dynamically.
     // If the window is resized, we must re-calculate pagination.
     return LayoutBuilder(
@@ -920,22 +1014,28 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         _buildPages(constraints, isTwoPageSpread);
 
         final flipCount = _getFlipPageCount();
-        
+
         // Handle initial load and window resizing (layout change) seamlessly
         if (_isFirstLoad) {
           final repo = Provider.of<StoryRepository>(context, listen: false);
           final project = repo.getById(widget.projectId);
           if (project != null) {
-            _currentPage = isTwoPageSpread ? project.lastReadPageIndex ~/ 2 : project.lastReadPageIndex;
-            if (_currentPage >= flipCount) _currentPage = (flipCount - 1).clamp(0, flipCount);
+            _currentPage = isTwoPageSpread
+                ? project.lastReadPageIndex ~/ 2
+                : project.lastReadPageIndex;
+            if (_currentPage >= flipCount)
+              _currentPage = (flipCount - 1).clamp(0, flipCount);
           }
           _isFirstLoad = false;
           _lastIsTwoPageSpread = isTwoPageSpread;
         } else if (_lastIsTwoPageSpread != isTwoPageSpread) {
           // If window was resized and changed spread type, recalculate logical page
-          int oldLogicalPage = _lastIsTwoPageSpread ? _currentPage * 2 : _currentPage;
+          int oldLogicalPage = _lastIsTwoPageSpread
+              ? _currentPage * 2
+              : _currentPage;
           _currentPage = isTwoPageSpread ? oldLogicalPage ~/ 2 : oldLogicalPage;
-          if (_currentPage >= flipCount) _currentPage = (flipCount - 1).clamp(0, flipCount);
+          if (_currentPage >= flipCount)
+            _currentPage = (flipCount - 1).clamp(0, flipCount);
           _lastIsTwoPageSpread = isTwoPageSpread;
         }
 
@@ -947,8 +1047,12 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             final rightIndex = leftIndex + 1;
             flipPages.add(
               _buildSpreadView(
-                leftPage: leftIndex < _pages!.length ? _pages![leftIndex] : null,
-                rightPage: rightIndex < _pages!.length ? _pages![rightIndex] : null,
+                leftPage: leftIndex < _pages!.length
+                    ? _pages![leftIndex]
+                    : null,
+                rightPage: rightIndex < _pages!.length
+                    ? _pages![rightIndex]
+                    : null,
               ),
             );
           } else {
@@ -985,7 +1089,10 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                     return Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           margin: const EdgeInsets.only(right: 4),
                           decoration: BoxDecoration(
                             color: _bufferedPageCount > 0
@@ -1001,13 +1108,21 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.queue_music, size: 12, color: _bufferedPageCount > 0 ? Colors.greenAccent : Colors.orange),
+                              Icon(
+                                Icons.queue_music,
+                                size: 12,
+                                color: _bufferedPageCount > 0
+                                    ? Colors.greenAccent
+                                    : Colors.orange,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 '$_bufferedPageCount pg',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: _bufferedPageCount > 0 ? Colors.greenAccent : Colors.orange,
+                                  color: _bufferedPageCount > 0
+                                      ? Colors.greenAccent
+                                      : Colors.orange,
                                 ),
                               ),
                             ],
@@ -1017,29 +1132,49 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                           const Padding(
                             padding: EdgeInsets.only(right: 8),
                             child: SizedBox(
-                              width: 14, height: 14,
-                              child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2)
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                color: Colors.amber,
+                                strokeWidth: 2,
+                              ),
                             ),
                           ),
                         TextButton.icon(
                           onPressed: _stopReadAlong,
-                          icon: const Icon(Icons.stop_circle, color: Colors.amber, size: 20),
-                          label: const Text('Stop', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                          icon: const Icon(
+                            Icons.stop_circle,
+                            color: Colors.amber,
+                            size: 20,
+                          ),
+                          label: const Text(
+                            'Stop',
+                            style: TextStyle(color: Colors.amber, fontSize: 12),
+                          ),
                         ),
                       ],
                     );
                   }
                   return TextButton.icon(
                     onPressed: _startReadAlong,
-                    icon: const Icon(Icons.play_circle_fill, color: Colors.white70),
-                    label: const Text('Read to me', style: TextStyle(color: Colors.white70)),
+                    icon: const Icon(
+                      Icons.play_circle_fill,
+                      color: Colors.white70,
+                    ),
+                    label: const Text(
+                      'Read to me',
+                      style: TextStyle(color: Colors.white70),
+                    ),
                   );
                 },
               ),
               const SizedBox(width: 8),
               if (_getCurrentSceneMeta() != null)
                 IconButton(
-                  icon: Icon(Icons.refresh, color: Colors.orange.withValues(alpha: 0.8)),
+                  icon: Icon(
+                    Icons.refresh,
+                    color: Colors.orange.withValues(alpha: 0.8),
+                  ),
                   tooltip: 'Rewrite this scene',
                   onPressed: _isRegenerating ? null : _regenCurrentScene,
                 ),
@@ -1069,10 +1204,17 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                   child: Center(
                     // Leather backing
                     child: Container(
-                      constraints: BoxConstraints(maxWidth: isTwoPageSpread ? 1200 : 600),
-                      margin: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                      constraints: BoxConstraints(
+                        maxWidth: isTwoPageSpread ? 1200 : 600,
+                      ),
+                      margin: const EdgeInsets.symmetric(
+                        vertical: 24,
+                        horizontal: 16,
+                      ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF4A2F1D), // Dark leather binding color
+                        color: const Color(
+                          0xFF4A2F1D,
+                        ), // Dark leather binding color
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
                           BoxShadow(
@@ -1091,8 +1233,13 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
               SafeArea(
                 child: Center(
                   child: Container(
-                    constraints: BoxConstraints(maxWidth: isTwoPageSpread ? 1160 : 580),
-                    margin: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+                    constraints: BoxConstraints(
+                      maxWidth: isTwoPageSpread ? 1160 : 580,
+                    ),
+                    margin: const EdgeInsets.symmetric(
+                      vertical: 32,
+                      horizontal: 24,
+                    ),
                     child: CustomPageFlip(
                       key: _flipKey,
                       initialPage: _currentPage,
@@ -1102,12 +1249,17 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                         setState(() {
                           _currentPage = pageNumber;
                         });
-                        
+
                         // Save reading progress seamlessly
-                        final repo = Provider.of<StoryRepository>(context, listen: false);
+                        final repo = Provider.of<StoryRepository>(
+                          context,
+                          listen: false,
+                        );
                         final project = repo.getById(widget.projectId);
                         if (project != null) {
-                          project.lastReadPageIndex = isTwoPageSpread ? pageNumber * 2 : pageNumber;
+                          project.lastReadPageIndex = isTwoPageSpread
+                              ? pageNumber * 2
+                              : pageNumber;
                           repo.saveProject(project);
                         }
                       },
@@ -1119,16 +1271,24 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
 
               // Reading progress bar
               Positioned(
-                left: 0, right: 0, bottom: 56,
+                left: 0,
+                right: 0,
+                bottom: 56,
                 child: Center(
                   child: Container(
-                    constraints: BoxConstraints(maxWidth: isTwoPageSpread ? 1160 : 580),
+                    constraints: BoxConstraints(
+                      maxWidth: isTwoPageSpread ? 1160 : 580,
+                    ),
                     margin: const EdgeInsets.symmetric(horizontal: 40),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(2),
                       child: LinearProgressIndicator(
-                        value: flipCount > 1 ? _currentPage / (flipCount - 1) : 1.0,
-                        backgroundColor: const Color(0xFF5A3A25).withValues(alpha: 0.3),
+                        value: flipCount > 1
+                            ? _currentPage / (flipCount - 1)
+                            : 1.0,
+                        backgroundColor: const Color(
+                          0xFF5A3A25,
+                        ).withValues(alpha: 0.3),
                         valueColor: AlwaysStoppedAnimation<Color>(
                           Colors.amber.withValues(alpha: 0.5),
                         ),
@@ -1141,10 +1301,15 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
 
               // Bottom page indicator with navigation buttons
               Positioned(
-                left: 0, right: 0, bottom: 16,
+                left: 0,
+                right: 0,
+                bottom: 16,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF3D2317).withValues(alpha: 0.8),
                       borderRadius: BorderRadius.circular(20),
@@ -1156,8 +1321,15 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                           onTap: () => _flipKey.currentState?.previousPage(),
                           borderRadius: BorderRadius.circular(16),
                           child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            child: Icon(Icons.chevron_left, color: Color(0xFFF5E6D3), size: 28),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            child: Icon(
+                              Icons.chevron_left,
+                              color: Color(0xFFF5E6D3),
+                              size: 28,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -1174,8 +1346,15 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                           onTap: () => _flipKey.currentState?.nextPage(),
                           borderRadius: BorderRadius.circular(16),
                           child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            child: Icon(Icons.chevron_right, color: Color(0xFFF5E6D3), size: 28),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            child: Icon(
+                              Icons.chevron_right,
+                              color: Color(0xFFF5E6D3),
+                              size: 28,
+                            ),
                           ),
                         ),
                       ],
@@ -1213,13 +1392,21 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
   Widget _buildSpreadView({_BookPage? leftPage, _BookPage? rightPage}) {
     return Row(
       children: [
-        Expanded(child: _buildSinglePageContainer(leftPage, isLeftSpread: true)),
-        Expanded(child: _buildSinglePageContainer(rightPage, isRightSpread: true)),
+        Expanded(
+          child: _buildSinglePageContainer(leftPage, isLeftSpread: true),
+        ),
+        Expanded(
+          child: _buildSinglePageContainer(rightPage, isRightSpread: true),
+        ),
       ],
     );
   }
 
-  Widget _buildSinglePageContainer(_BookPage? page, {bool isLeftSpread = false, bool isRightSpread = false}) {
+  Widget _buildSinglePageContainer(
+    _BookPage? page, {
+    bool isLeftSpread = false,
+    bool isRightSpread = false,
+  }) {
     if (page == null) {
       // Empty blank page at end of a right-hand spread
       return Container(
@@ -1232,16 +1419,16 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         ),
       );
     }
-    
+
     return Container(
       decoration: BoxDecoration(
         // Paper texture effect
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: isLeftSpread 
-            ? const [Color(0xFFF0E5CC), Color(0xFFFAF3E8), Color(0xFFF5ECD7)]
-            : isRightSpread
+          colors: isLeftSpread
+              ? const [Color(0xFFF0E5CC), Color(0xFFFAF3E8), Color(0xFFF5ECD7)]
+              : isRightSpread
               ? const [Color(0xFFF5ECD7), Color(0xFFFAF3E8), Color(0xFFF0E5CC)]
               : const [Color(0xFFF0E5CC), Color(0xFFFAF3E8), Color(0xFFF0E5CC)],
           stops: const [0.0, 0.5, 1.0],
@@ -1261,7 +1448,10 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             // Center binding shadow
             if (isLeftSpread)
               Positioned(
-                right: 0, top: 0, bottom: 0, width: 40,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 40,
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -1277,7 +1467,10 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
               ),
             if (isRightSpread)
               Positioned(
-                left: 0, top: 0, bottom: 0, width: 40,
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 40,
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -1295,7 +1488,10 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             // Subtle page edge effect (left side "binding") for single page
             if (!isLeftSpread && !isRightSpread)
               Positioned(
-                left: 0, top: 0, bottom: 0, width: 24,
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 24,
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -1312,7 +1508,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
 
             // Content
             Container(
-              alignment: page.type == _PageType.prose ? Alignment.topLeft : Alignment.center,
+              alignment: page.type == _PageType.prose
+                  ? Alignment.topLeft
+                  : Alignment.center,
               padding: EdgeInsets.fromLTRB(
                 isRightSpread ? 40 : 32, // More padding near binding
                 48,
@@ -1371,7 +1569,8 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         ),
         const SizedBox(height: 16),
         Container(
-          width: 60, height: 1,
+          width: 60,
+          height: 1,
           color: const Color(0xFF8B7355).withValues(alpha: 0.4),
         ),
         const SizedBox(height: 16),
@@ -1425,7 +1624,8 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         ),
         const SizedBox(height: 16),
         Container(
-          width: 40, height: 1,
+          width: 40,
+          height: 1,
           color: const Color(0xFF8B7355).withValues(alpha: 0.4),
         ),
         const SizedBox(height: 16),
@@ -1490,7 +1690,8 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             ),
           const SizedBox(height: 4),
           Container(
-            width: 40, height: 1,
+            width: 40,
+            height: 1,
             color: const Color(0xFF8B7355).withValues(alpha: 0.3),
           ),
           const SizedBox(height: 16),
@@ -1585,7 +1786,7 @@ class _BookPage {
 /// A segment of text with an optional character voice for TTS narration.
 class _VoiceSegment {
   final String text;
-  final String? voiceKey;   // TTS voice model ID, null = default narrator
+  final String? voiceKey; // TTS voice model ID, null = default narrator
   final String? characterName;
 
   const _VoiceSegment({required this.text, this.voiceKey, this.characterName});

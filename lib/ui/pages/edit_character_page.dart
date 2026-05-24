@@ -468,7 +468,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         debugPrint(
           '[_saveCharacter] PNG saved successfully for ${widget.character.name} to $targetPngPath',
         );
-        
+
         // Verify PNG was written by reading it back immediately
         try {
           final reloaded = await V2CardService().readCard(targetPngPath);
@@ -482,7 +482,9 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             );
           }
         } catch (verifyError) {
-          debugPrint('[_saveCharacter] PNG verification read failed: $verifyError');
+          debugPrint(
+            '[_saveCharacter] PNG verification read failed: $verifyError',
+          );
         }
       } catch (e) {
         debugPrint('Failed to embed V2 card data: $e');
@@ -765,7 +767,9 @@ class _EditCharacterPageState extends State<EditCharacterPage>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported ${lorebook.entries.length} entries.')),
+          SnackBar(
+            content: Text('Imported ${lorebook.entries.length} entries.'),
+          ),
         );
       }
     } on FormatException catch (e) {
@@ -1150,12 +1154,12 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                   ),
                   const SizedBox(height: 16),
                   _styledField(
-                     controller: _scenarioController,
-                     label: 'Scenario',
-                     maxLines: 3,
-                     expandable: true,
-                     hint: 'The setting, situation, or context...',
-                   ),
+                    controller: _scenarioController,
+                    label: 'Scenario',
+                    maxLines: 3,
+                    expandable: true,
+                    hint: 'The setting, situation, or context...',
+                  ),
                 ],
               ),
               const SizedBox(height: 20),

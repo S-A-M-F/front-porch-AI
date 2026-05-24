@@ -54,7 +54,9 @@ class EmbeddingService extends ChangeNotifier {
       debugPrint('[RAG:Embed] Waiting for model to finish loading...');
       final ready = await _sidecar.waitForModelReady();
       if (!ready) {
-        debugPrint('[RAG:Embed] Sidecar running but model not ready: ${_sidecar.error}');
+        debugPrint(
+          '[RAG:Embed] Sidecar running but model not ready: ${_sidecar.error}',
+        );
         _available = false;
         notifyListeners();
         return;
@@ -67,7 +69,9 @@ class EmbeddingService extends ChangeNotifier {
       if (result != null && result.isNotEmpty) {
         _dimensions = result.length;
         _available = true;
-        debugPrint('[RAG:Embed] ✅ Local ONNX embeddings available (${_dimensions}d vectors)');
+        debugPrint(
+          '[RAG:Embed] ✅ Local ONNX embeddings available (${_dimensions}d vectors)',
+        );
         notifyListeners();
         return;
       }
@@ -76,7 +80,9 @@ class EmbeddingService extends ChangeNotifier {
     }
 
     _available = false;
-    debugPrint('[RAG:Embed] ⚠ Embedding sidecar not available — RAG retrieval will be inactive');
+    debugPrint(
+      '[RAG:Embed] ⚠ Embedding sidecar not available — RAG retrieval will be inactive',
+    );
     notifyListeners();
   }
 
@@ -91,14 +97,18 @@ class EmbeddingService extends ChangeNotifier {
       final result = await _embed(text);
       sw.stop();
       if (result != null) {
-        debugPrint('[RAG:Embed] ✅ ${result.length}d vector in ${sw.elapsedMilliseconds}ms ← "$preview"');
+        debugPrint(
+          '[RAG:Embed] ✅ ${result.length}d vector in ${sw.elapsedMilliseconds}ms ← "$preview"',
+        );
       } else {
         debugPrint('[RAG:Embed] ✗ Got null result for "$preview"');
       }
       return result;
     } catch (e) {
       sw.stop();
-      debugPrint('[RAG:Embed] ✗ Embedding failed (${sw.elapsedMilliseconds}ms): $e');
+      debugPrint(
+        '[RAG:Embed] ✗ Embedding failed (${sw.elapsedMilliseconds}ms): $e',
+      );
     }
     return null;
   }
@@ -124,14 +134,13 @@ class EmbeddingService extends ChangeNotifier {
     final uri = Uri.parse(url);
     final client = http.Client();
     try {
-      final response = await client.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'model': 'nomic-embed-text-v1.5',
-          'input': text,
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final response = await client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'model': 'nomic-embed-text-v1.5', 'input': text}),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

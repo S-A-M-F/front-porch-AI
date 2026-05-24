@@ -103,7 +103,9 @@ enum QuantType {
     // Integer types
     if (upper.contains('I2_S')) return i2S;
     if (upper.contains('I3_S')) return i3S;
-    if (upper.contains('I4_') || (upper.contains('I4') && !upper.contains('I4_'))) return i4;
+    if (upper.contains('I4_') ||
+        (upper.contains('I4') && !upper.contains('I4_')))
+      return i4;
     if (upper.contains('I8')) return i8;
 
     // Standard types (check these after variants)
@@ -126,12 +128,12 @@ enum QuantType {
   /// Returns a display-friendly color category for the quantization.
   /// Higher quality = warmer color, lower quality = cooler color.
   String get colorCategory {
-    if (bytesPerParam >= 1.5) return 'red';     // FP16/FP32
-    if (bytesPerParam >= 0.9) return 'orange';   // Q8
-    if (bytesPerParam >= 0.7) return 'yellow';   // Q6, Q5K
-    if (bytesPerParam >= 0.55) return 'green';   // Q5, Q4K
-    if (bytesPerParam >= 0.45) return 'blue';    // Q4, Q3K
-    return 'purple';                             // Q3, Q2, IQ variants
+    if (bytesPerParam >= 1.5) return 'red'; // FP16/FP32
+    if (bytesPerParam >= 0.9) return 'orange'; // Q8
+    if (bytesPerParam >= 0.7) return 'yellow'; // Q6, Q5K
+    if (bytesPerParam >= 0.55) return 'green'; // Q5, Q4K
+    if (bytesPerParam >= 0.45) return 'blue'; // Q4, Q3K
+    return 'purple'; // Q3, Q2, IQ variants
   }
 }
 

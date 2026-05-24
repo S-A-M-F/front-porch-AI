@@ -23,7 +23,11 @@ import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 
 class V2CardService {
-  Future<void> saveCardAsPng(CharacterCard card, String outputPath, String? sourceImagePath) async {
+  Future<void> saveCardAsPng(
+    CharacterCard card,
+    String outputPath,
+    String? sourceImagePath,
+  ) async {
     img.Image? avatar;
 
     try {
@@ -64,23 +68,24 @@ class V2CardService {
 
   Future<CharacterCard?> readCard(String path) async {
     final bytes = await File(path).readAsBytes();
-    
+
     // Manual PNG chunk parsing - the `image` package doesn't reliably
     // extract tEXt/iTXt chunks from externally-created character cards
     String? charaData = _extractCharaFromPng(bytes);
-    
+
     if (charaData == null) {
       // Fallback: try the image package approach
       try {
         final avatar = img.decodePng(bytes);
-        if (avatar?.textData != null && avatar!.textData!.containsKey('chara')) {
+        if (avatar?.textData != null &&
+            avatar!.textData!.containsKey('chara')) {
           charaData = avatar.textData!['chara']!;
         }
       } catch (e) {
         print('Image package fallback also failed: $e');
       }
     }
-    
+
     if (charaData == null) return null;
 
     try {
@@ -96,11 +101,15 @@ class V2CardService {
       Map<String, dynamic>? rawExtensions;
       final extensionsMap = data['extensions'] ?? jsonMap['extensions'];
       if (extensionsMap is Map<String, dynamic>) {
-        if (extensionsMap.containsKey('front_porch') && extensionsMap['front_porch'] is Map<String, dynamic>) {
-          fpExtensions = FrontPorchExtensions.fromJson(extensionsMap['front_porch']);
+        if (extensionsMap.containsKey('front_porch') &&
+            extensionsMap['front_porch'] is Map<String, dynamic>) {
+          fpExtensions = FrontPorchExtensions.fromJson(
+            extensionsMap['front_porch'],
+          );
         }
         // Preserve all non-front_porch keys for round-trip safety
-        final otherKeys = Map<String, dynamic>.from(extensionsMap)..remove('front_porch');
+        final otherKeys = Map<String, dynamic>.from(extensionsMap)
+          ..remove('front_porch');
         if (otherKeys.isNotEmpty) rawExtensions = otherKeys;
       }
 
@@ -112,19 +121,28 @@ class V2CardService {
         firstMessage: data['first_mes'] ?? jsonMap['first_mes'] ?? '',
         mesExample: data['mes_example'] ?? jsonMap['mes_example'] ?? '',
         systemPrompt: data['system_prompt'] ?? jsonMap['system_prompt'] ?? '',
-        postHistoryInstructions: data['post_history_instructions'] ?? jsonMap['post_history_instructions'] ?? '',
-        alternateGreetings: (data['alternate_greetings'] ?? jsonMap['alternate_greetings']) != null
-          ? List<String>.from(data['alternate_greetings'] ?? jsonMap['alternate_greetings'])
-          : const [],
+        postHistoryInstructions:
+            data['post_history_instructions'] ??
+            jsonMap['post_history_instructions'] ??
+            '',
+        alternateGreetings:
+            (data['alternate_greetings'] ?? jsonMap['alternate_greetings']) !=
+                null
+            ? List<String>.from(
+                data['alternate_greetings'] ?? jsonMap['alternate_greetings'],
+              )
+            : const [],
         tags: (data['tags'] ?? jsonMap['tags']) != null
-          ? List<String>.from(data['tags'] ?? jsonMap['tags'])
-          : const [],
-        lorebook: (data['character_book'] ?? jsonMap['character_book']) != null 
-          ? Lorebook.fromJson(data['character_book'] ?? jsonMap['character_book']) 
-          : null,
-        worldNames: (data['world_names'] ?? jsonMap['world_names']) != null 
-          ? List<String>.from(data['world_names'] ?? jsonMap['world_names']) 
-          : const [],
+            ? List<String>.from(data['tags'] ?? jsonMap['tags'])
+            : const [],
+        lorebook: (data['character_book'] ?? jsonMap['character_book']) != null
+            ? Lorebook.fromJson(
+                data['character_book'] ?? jsonMap['character_book'],
+              )
+            : null,
+        worldNames: (data['world_names'] ?? jsonMap['world_names']) != null
+            ? List<String>.from(data['world_names'] ?? jsonMap['world_names'])
+            : const [],
         ttsVoice: data['tts_voice'] ?? jsonMap['tts_voice'],
         imagePath: path,
         frontPorchExtensions: fpExtensions,
@@ -150,8 +168,11 @@ class V2CardService {
 
     while (offset + 12 <= bytes.length) {
       // Read chunk length (4 bytes, big-endian)
-      final length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) |
-                     (bytes[offset + 2] << 8) | bytes[offset + 3];
+      final length =
+          (bytes[offset] << 24) |
+          (bytes[offset + 1] << 16) |
+          (bytes[offset + 2] << 8) |
+          bytes[offset + 3];
       offset += 4;
 
       // Read chunk type (4 bytes ASCII)
@@ -189,7 +210,7 @@ class V2CardService {
                 pos++;
               }
               pos++; // Skip null
-              // Skip translated keyword (null-terminated)  
+              // Skip translated keyword (null-terminated)
               while (pos < data.length && data[pos] != 0) {
                 pos++;
               }

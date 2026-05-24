@@ -110,13 +110,17 @@ class PiperVoice {
 
   /// The .onnx file path relative to HuggingFace repo root.
   String? get onnxFilePath {
-    final entry = files.entries.where((e) => e.key.endsWith('.onnx')).firstOrNull;
+    final entry = files.entries
+        .where((e) => e.key.endsWith('.onnx'))
+        .firstOrNull;
     return entry?.key;
   }
 
   /// The .onnx.json config file path.
   String? get configFilePath {
-    final entry = files.entries.where((e) => e.key.endsWith('.onnx.json')).firstOrNull;
+    final entry = files.entries
+        .where((e) => e.key.endsWith('.onnx.json'))
+        .firstOrNull;
     return entry?.key;
   }
 }
@@ -147,12 +151,16 @@ class VoiceManager extends ChangeNotifier {
 
   // Download progress per voice key
   final Map<String, double> _downloadProgress = {};
-  double getDownloadProgress(String voiceKey) => _downloadProgress[voiceKey] ?? 0.0;
-  bool isDownloading(String voiceKey) => _downloadProgress.containsKey(voiceKey);
+  double getDownloadProgress(String voiceKey) =>
+      _downloadProgress[voiceKey] ?? 0.0;
+  bool isDownloading(String voiceKey) =>
+      _downloadProgress.containsKey(voiceKey);
 
   /// Get the directory where voice models are stored.
   Future<Directory> get voicesDir async {
-    final root = _storageService.rootPath ?? (await getApplicationDocumentsDirectory()).path;
+    final root =
+        _storageService.rootPath ??
+        (await getApplicationDocumentsDirectory()).path;
     final dir = Directory(p.join(root, 'system', 'piper_voices'));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
@@ -173,10 +181,15 @@ class VoiceManager extends ChangeNotifier {
           final data = e.value as Map<String, dynamic>;
           final lang = data['language'] as Map<String, dynamic>;
           final filesRaw = data['files'] as Map<String, dynamic>;
-          final files = filesRaw.map((k, v) => MapEntry(k, PiperVoiceFile(
-            sizeBytes: v['size_bytes'] ?? 0,
-            md5Digest: v['md5_digest'] ?? '',
-          )));
+          final files = filesRaw.map(
+            (k, v) => MapEntry(
+              k,
+              PiperVoiceFile(
+                sizeBytes: v['size_bytes'] ?? 0,
+                md5Digest: v['md5_digest'] ?? '',
+              ),
+            ),
+          );
 
           return PiperVoice(
             key: data['key'] ?? e.key,
@@ -271,7 +284,9 @@ class VoiceManager extends ChangeNotifier {
       final onnxFile = File(p.join(dir.path, '$voiceKey.onnx'));
       await _downloadFile(onnxUrl, onnxFile, (received) {
         downloadedBytes = received;
-        _downloadProgress[voiceKey] = totalBytes > 0 ? downloadedBytes / totalBytes : 0.0;
+        _downloadProgress[voiceKey] = totalBytes > 0
+            ? downloadedBytes / totalBytes
+            : 0.0;
         notifyListeners();
       });
 
@@ -280,7 +295,9 @@ class VoiceManager extends ChangeNotifier {
       final configFile = File(p.join(dir.path, '$voiceKey.onnx.json'));
       final onnxSize = voice.files[onnxPath]?.sizeBytes ?? 0;
       await _downloadFile(configUrl, configFile, (received) {
-        _downloadProgress[voiceKey] = totalBytes > 0 ? (onnxSize + received) / totalBytes : 0.0;
+        _downloadProgress[voiceKey] = totalBytes > 0
+            ? (onnxSize + received) / totalBytes
+            : 0.0;
         notifyListeners();
       });
 
@@ -307,7 +324,11 @@ class VoiceManager extends ChangeNotifier {
   }
 
   /// Download a file with progress callback.
-  Future<void> _downloadFile(String url, File destFile, Function(int received) onProgress) async {
+  Future<void> _downloadFile(
+    String url,
+    File destFile,
+    Function(int received) onProgress,
+  ) async {
     final request = http.Request('GET', Uri.parse(url));
     final response = await http.Client().send(request);
 

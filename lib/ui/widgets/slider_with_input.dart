@@ -145,7 +145,10 @@ class _SliderWithInputState extends State<SliderWithInput> {
                   fontWeight: FontWeight.bold,
                 ),
                 decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   isDense: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
@@ -157,7 +160,10 @@ class _SliderWithInputState extends State<SliderWithInput> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
-                    borderSide: BorderSide(color: Colors.blueAccent, width: 1.5),
+                    borderSide: BorderSide(
+                      color: Colors.blueAccent,
+                      width: 1.5,
+                    ),
                   ),
                   filled: true,
                   fillColor: Colors.white.withOpacity(0.05),

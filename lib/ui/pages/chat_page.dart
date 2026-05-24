@@ -1149,6 +1149,7 @@ class _ChatPageState extends State<ChatPage> {
     final arousalColor = _getGroupTierColor(arousalTier);
 
     final needs = chatService.getTopUrgentNeedsForGroupCharacter(character, count: 2);
+    final fixation = chatService.getFixationForGroupCharacter(character);
 
     return Opacity(
       opacity: opacity,

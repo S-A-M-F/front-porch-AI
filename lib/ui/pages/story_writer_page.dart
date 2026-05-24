@@ -78,7 +78,10 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
                 Text(scene.title, style: const TextStyle(fontSize: 16)),
                 Text(
                   'Act ${widget.actIndex + 1}, Scene ${widget.sceneIndex + 1} • ${scene.location}',
-                  style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.5)),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.white.withValues(alpha: 0.5),
+                  ),
                 ),
               ],
             ),
@@ -88,23 +91,61 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
             actions: [
               if (beats.isEmpty)
                 TextButton.icon(
-                  onPressed: pipeline.isRunning ? null : () => _generateBeats(project, pipeline),
-                  icon: const Icon(Icons.auto_fix_high, size: 16, color: Colors.amber),
-                  label: const Text('Generate Beats', style: TextStyle(color: Colors.amber)),
+                  onPressed: pipeline.isRunning
+                      ? null
+                      : () => _generateBeats(project, pipeline),
+                  icon: const Icon(
+                    Icons.auto_fix_high,
+                    size: 16,
+                    color: Colors.amber,
+                  ),
+                  label: const Text(
+                    'Generate Beats',
+                    style: TextStyle(color: Colors.amber),
+                  ),
                 ),
               if (beats.isNotEmpty)
                 TextButton.icon(
-                  onPressed: pipeline.isRunning ? null : () => _autoWriteScene(project, pipeline),
-                  icon: const Icon(Icons.play_arrow, size: 16, color: Colors.greenAccent),
-                  label: const Text('Auto-Write', style: TextStyle(color: Colors.greenAccent)),
+                  onPressed: pipeline.isRunning
+                      ? null
+                      : () => _autoWriteScene(project, pipeline),
+                  icon: const Icon(
+                    Icons.play_arrow,
+                    size: 16,
+                    color: Colors.greenAccent,
+                  ),
+                  label: const Text(
+                    'Auto-Write',
+                    style: TextStyle(color: Colors.greenAccent),
+                  ),
                 ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: Colors.white54),
                 color: const Color(0xFF1E293B),
                 onSelected: (v) => _handleMenuAction(v, project, pipeline),
                 itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy, size: 18), title: Text('Copy Scene Text', style: TextStyle(fontSize: 13)), dense: true)),
-                  const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.save_alt, size: 18), title: Text('Export Scene', style: TextStyle(fontSize: 13)), dense: true)),
+                  const PopupMenuItem(
+                    value: 'copy',
+                    child: ListTile(
+                      leading: Icon(Icons.copy, size: 18),
+                      title: Text(
+                        'Copy Scene Text',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      dense: true,
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'export',
+                    child: ListTile(
+                      leading: Icon(Icons.save_alt, size: 18),
+                      title: Text(
+                        'Export Scene',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      dense: true,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -122,27 +163,55 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(width: 48, height: 48, child: CircularProgressIndicator(strokeWidth: 3)),
+          const SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(strokeWidth: 3),
+          ),
           const SizedBox(height: 24),
-          Text(pipeline.currentStep, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+          Text(
+            pipeline.currentStep,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text(pipeline.statusMessage, style: const TextStyle(color: Colors.white54, fontSize: 14)),
+          Text(
+            pipeline.statusMessage,
+            style: const TextStyle(color: Colors.white54, fontSize: 14),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBeatList(StoryProject project, List<StoryBeat> beats, StoryPipelineService pipeline) {
+  Widget _buildBeatList(
+    StoryProject project,
+    List<StoryBeat> beats,
+    StoryPipelineService pipeline,
+  ) {
     if (beats.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.view_timeline, size: 64, color: Colors.white.withValues(alpha: 0.15)),
+            Icon(
+              Icons.view_timeline,
+              size: 64,
+              color: Colors.white.withValues(alpha: 0.15),
+            ),
             const SizedBox(height: 16),
-            const Text('No beats yet', style: TextStyle(color: Colors.white38, fontSize: 16)),
+            const Text(
+              'No beats yet',
+              style: TextStyle(color: Colors.white38, fontSize: 16),
+            ),
             const SizedBox(height: 8),
-            const Text('Generate beats to break this scene into narrative units', style: TextStyle(color: Colors.white24, fontSize: 13)),
+            const Text(
+              'Generate beats to break this scene into narrative units',
+              style: TextStyle(color: Colors.white24, fontSize: 13),
+            ),
           ],
         ),
       );
@@ -152,11 +221,17 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
       controller: _scrollController,
       padding: const EdgeInsets.all(16),
       itemCount: beats.length,
-      itemBuilder: (context, idx) => _buildBeatCard(project, beats[idx], idx, pipeline),
+      itemBuilder: (context, idx) =>
+          _buildBeatCard(project, beats[idx], idx, pipeline),
     );
   }
 
-  Widget _buildBeatCard(StoryProject project, StoryBeat beat, int idx, StoryPipelineService pipeline) {
+  Widget _buildBeatCard(
+    StoryProject project,
+    StoryBeat beat,
+    int idx,
+    StoryPipelineService pipeline,
+  ) {
     final bId = '$_sId-$idx';
     final prose = project.prose[bId];
     final hasProse = prose?.final_ != null;
@@ -167,7 +242,9 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: hasProse ? Colors.green.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+          color: hasProse
+              ? Colors.green.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.05),
         ),
       ),
       child: Column(
@@ -179,26 +256,39 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: _beatTypeColor(beat.type).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     beat.type,
-                    style: TextStyle(color: _beatTypeColor(beat.type), fontSize: 11, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: _beatTypeColor(beat.type),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Beat ${idx + 1}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
                 // Pacing indicator
                 Icon(
-                  beat.pacing == 0 ? Icons.speed : (beat.pacing == 2 ? Icons.flash_on : Icons.balance),
+                  beat.pacing == 0
+                      ? Icons.speed
+                      : (beat.pacing == 2 ? Icons.flash_on : Icons.balance),
                   size: 16,
                   color: Colors.white24,
                 ),
@@ -207,7 +297,9 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
                 Text(
                   beat.valence > 0 ? '+${beat.valence}' : '${beat.valence}',
                   style: TextStyle(
-                    color: beat.valence > 0 ? Colors.greenAccent.withValues(alpha: 0.6) : Colors.redAccent.withValues(alpha: 0.6),
+                    color: beat.valence > 0
+                        ? Colors.greenAccent.withValues(alpha: 0.6)
+                        : Colors.redAccent.withValues(alpha: 0.6),
                     fontSize: 12,
                   ),
                 ),
@@ -219,7 +311,11 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text(
               beat.description,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.4),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 12,
+                height: 1.4,
+              ),
             ),
           ),
 
@@ -254,28 +350,44 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
               children: [
                 if (!hasProse)
                   TextButton.icon(
-                    onPressed: pipeline.isRunning ? null : () => _writeBeat(project, idx, pipeline),
+                    onPressed: pipeline.isRunning
+                        ? null
+                        : () => _writeBeat(project, idx, pipeline),
                     icon: const Icon(Icons.edit, size: 14),
                     label: const Text('Write', style: TextStyle(fontSize: 12)),
-                    style: TextButton.styleFrom(foregroundColor: Colors.amber.shade600),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.amber.shade600,
+                    ),
                   ),
                 if (hasProse) ...[
                   TextButton.icon(
-                    onPressed: pipeline.isRunning ? null : () => _writeBeat(project, idx, pipeline),
+                    onPressed: pipeline.isRunning
+                        ? null
+                        : () => _writeBeat(project, idx, pipeline),
                     icon: const Icon(Icons.refresh, size: 14),
-                    label: const Text('Rewrite', style: TextStyle(fontSize: 12)),
-                    style: TextButton.styleFrom(foregroundColor: Colors.white38),
+                    label: const Text(
+                      'Rewrite',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white38,
+                    ),
                   ),
                   TextButton.icon(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: prose!.final_!));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Copied!'), duration: Duration(seconds: 1)),
+                        const SnackBar(
+                          content: Text('Copied!'),
+                          duration: Duration(seconds: 1),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.copy, size: 14),
                     label: const Text('Copy', style: TextStyle(fontSize: 12)),
-                    style: TextButton.styleFrom(foregroundColor: Colors.white38),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white38,
+                    ),
                   ),
                 ],
               ],
@@ -288,66 +400,114 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
 
   Color _beatTypeColor(String type) {
     switch (type.toLowerCase()) {
-      case 'action': return Colors.redAccent;
-      case 'reaction': return Colors.blueAccent;
-      case 'dialogue': return Colors.amberAccent;
-      case 'revelation': return Colors.purpleAccent;
-      case 'resolution': return Colors.greenAccent;
-      default: return Colors.white54;
+      case 'action':
+        return Colors.redAccent;
+      case 'reaction':
+        return Colors.blueAccent;
+      case 'dialogue':
+        return Colors.amberAccent;
+      case 'revelation':
+        return Colors.purpleAccent;
+      case 'resolution':
+        return Colors.greenAccent;
+      default:
+        return Colors.white54;
     }
   }
 
-  Future<void> _generateBeats(StoryProject project, StoryPipelineService pipeline) async {
+  Future<void> _generateBeats(
+    StoryProject project,
+    StoryPipelineService pipeline,
+  ) async {
     try {
-      await pipeline.runBeatDirector(project, widget.actIndex, widget.sceneIndex);
+      await pipeline.runBeatDirector(
+        project,
+        widget.actIndex,
+        widget.sceneIndex,
+      );
       if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
   }
 
-  Future<void> _writeBeat(StoryProject project, int beatIdx, StoryPipelineService pipeline) async {
+  Future<void> _writeBeat(
+    StoryProject project,
+    int beatIdx,
+    StoryPipelineService pipeline,
+  ) async {
     try {
-      await pipeline.runDraftAndEdit(project, widget.actIndex, widget.sceneIndex, beatIdx);
+      await pipeline.runDraftAndEdit(
+        project,
+        widget.actIndex,
+        widget.sceneIndex,
+        beatIdx,
+      );
       if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
   }
 
-  Future<void> _autoWriteScene(StoryProject project, StoryPipelineService pipeline) async {
+  Future<void> _autoWriteScene(
+    StoryProject project,
+    StoryPipelineService pipeline,
+  ) async {
     try {
-      await pipeline.autoWriteScene(project, widget.actIndex, widget.sceneIndex);
+      await pipeline.autoWriteScene(
+        project,
+        widget.actIndex,
+        widget.sceneIndex,
+      );
       if (mounted) {
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Scene complete!'), backgroundColor: Color(0xFF2A2A2A)),
+          const SnackBar(
+            content: Text('Scene complete!'),
+            backgroundColor: Color(0xFF2A2A2A),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
   }
 
-  void _handleMenuAction(String action, StoryProject project, StoryPipelineService pipeline) {
+  void _handleMenuAction(
+    String action,
+    StoryProject project,
+    StoryPipelineService pipeline,
+  ) {
     final sceneText = _getSceneText(project);
     switch (action) {
       case 'copy':
         Clipboard.setData(ClipboardData(text: sceneText));
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Scene text copied!'), duration: Duration(seconds: 1)),
+          const SnackBar(
+            content: Text('Scene text copied!'),
+            duration: Duration(seconds: 1),
+          ),
         );
         break;
       case 'export':
@@ -373,17 +533,28 @@ class _StoryWriterPageState extends State<StoryWriterPage> {
     try {
       final scene = project.scenes[widget.actIndex]![widget.sceneIndex];
       final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/${project.title}_${scene.title}.txt'.replaceAll(RegExp(r'[^\w\s.]'), '_'));
+      final file = File(
+        '${dir.path}/${project.title}_${scene.title}.txt'.replaceAll(
+          RegExp(r'[^\w\s.]'),
+          '_',
+        ),
+      );
       await file.writeAsString(text);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported to ${file.path}'), backgroundColor: const Color(0xFF2A2A2A)),
+          SnackBar(
+            content: Text('Exported to ${file.path}'),
+            backgroundColor: const Color(0xFF2A2A2A),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export error: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Export error: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }

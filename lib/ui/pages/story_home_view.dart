@@ -50,20 +50,24 @@ class _StoryHomeViewState extends State<StoryHomeView> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.auto_stories, size: 72, color: Colors.amber.withValues(alpha: 0.3)),
+                Icon(
+                  Icons.auto_stories,
+                  size: 72,
+                  color: Colors.amber.withValues(alpha: 0.3),
+                ),
                 const SizedBox(height: 24),
                 Text(
                   'No stories yet',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.white70,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.headlineSmall?.copyWith(color: Colors.white70),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Create your first AI-generated story!',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.white38,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(color: Colors.white38),
                 ),
                 const SizedBox(height: 24),
                 _buildCreateButton(context, repo),
@@ -76,10 +80,17 @@ class _StoryHomeViewState extends State<StoryHomeView> {
           children: [
             // Header
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24.0,
+                vertical: 16.0,
+              ),
               child: Row(
                 children: [
-                  Icon(Icons.auto_stories, color: Colors.amber.shade600, size: 28),
+                  Icon(
+                    Icons.auto_stories,
+                    color: Colors.amber.shade600,
+                    size: 28,
+                  ),
                   const SizedBox(width: 12),
                   Text(
                     'Porch Stories',
@@ -89,14 +100,20 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.amber.shade900.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       '${repo.projects.length}',
-                      style: TextStyle(color: Colors.amber.shade400, fontSize: 13),
+                      style: TextStyle(
+                        color: Colors.amber.shade400,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                   const Spacer(),
@@ -110,12 +127,17 @@ class _StoryHomeViewState extends State<StoryHomeView> {
               builder: (context, abService, _) {
                 if (!abService.isGenerating) return const SizedBox.shrink();
                 return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 8,
+                  ),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.amber.shade900.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: Colors.amber.shade700.withValues(alpha: 0.5),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,16 +145,32 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                       Row(
                         children: [
                           const SizedBox(
-                            width: 18, height: 18,
-                            child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2),
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.amber,
+                              strokeWidth: 2,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           const Expanded(
-                            child: Text('Generating Audiobook...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            child: Text(
+                              'Generating Audiobook...',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                           TextButton(
                             onPressed: abService.stop,
-                            child: const Text('Abort', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                            child: const Text(
+                              'Abort',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -140,12 +178,20 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                       LinearProgressIndicator(
                         value: abService.progress,
                         backgroundColor: Colors.white12,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade600),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.amber.shade600,
+                        ),
                         minHeight: 6,
                         borderRadius: BorderRadius.circular(3),
                       ),
                       const SizedBox(height: 6),
-                      Text(abService.status, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                      Text(
+                        abService.status,
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -191,10 +237,19 @@ class _StoryHomeViewState extends State<StoryHomeView> {
     );
   }
 
-  Widget _buildProjectCard(BuildContext context, StoryProject project, StoryRepository repo) {
+  Widget _buildProjectCard(
+    BuildContext context,
+    StoryProject project,
+    StoryRepository repo,
+  ) {
     final hasActs = project.acts.isNotEmpty;
-    final totalScenes = project.scenes.values.fold<int>(0, (sum, s) => sum + s.length);
-    final totalProse = project.prose.values.where((p) => p.final_ != null).length;
+    final totalScenes = project.scenes.values.fold<int>(
+      0,
+      (sum, s) => sum + s.length,
+    );
+    final totalProse = project.prose.values
+        .where((p) => p.final_ != null)
+        .length;
 
     String statusLabel;
     Color statusColor;
@@ -246,12 +301,17 @@ class _StoryHomeViewState extends State<StoryHomeView> {
             children: [
               // Story icon
               Container(
-                width: 56, height: 56,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
                   color: Colors.amber.shade900.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.auto_stories, color: Colors.amber.shade600, size: 28),
+                child: Icon(
+                  Icons.auto_stories,
+                  color: Colors.amber.shade600,
+                  size: 28,
+                ),
               ),
               const SizedBox(width: 16),
               // Info
@@ -271,14 +331,20 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                     if (project.style.genre.isNotEmpty)
                       Text(
                         '${project.style.genre} • ${project.style.mood}',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 13,
+                        ),
                       ),
                     const SizedBox(height: 6),
                     Row(
                       children: [
                         Icon(statusIcon, size: 14, color: statusColor),
                         const SizedBox(width: 6),
-                        Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 12)),
+                        Text(
+                          statusLabel,
+                          style: TextStyle(color: statusColor, fontSize: 12),
+                        ),
                       ],
                     ),
                   ],
@@ -293,23 +359,36 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                 ),
                 child: Text(
                   _tierLabel(project.promptTier),
-                  style: TextStyle(color: _tierColor(project.promptTier), fontSize: 11),
+                  style: TextStyle(
+                    color: _tierColor(project.promptTier),
+                    fontSize: 11,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               // Read Button
               if (hasActs)
                 IconButton(
-                  icon: const Icon(Icons.menu_book, color: Colors.amber, size: 20),
+                  icon: const Icon(
+                    Icons.menu_book,
+                    color: Colors.amber,
+                    size: 20,
+                  ),
                   tooltip: 'Read Story',
                   onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => StoryReaderPage(projectId: project.dbId!)),
+                    MaterialPageRoute(
+                      builder: (_) => StoryReaderPage(projectId: project.dbId!),
+                    ),
                   ),
                 ),
               // Export menu (only for stories with prose)
               if (totalProse > 0)
                 PopupMenuButton<String>(
-                  icon: Icon(Icons.download, color: Colors.white.withValues(alpha: 0.6), size: 20),
+                  icon: Icon(
+                    Icons.download,
+                    color: Colors.white.withValues(alpha: 0.6),
+                    size: 20,
+                  ),
                   tooltip: 'Export',
                   color: const Color(0xFF1E293B),
                   onSelected: (value) {
@@ -319,25 +398,39 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                   itemBuilder: (_) => [
                     const PopupMenuItem(
                       value: 'audiobook',
-                      child: Row(children: [
-                        Icon(Icons.headphones, color: Colors.amber, size: 18),
-                        SizedBox(width: 10),
-                        Text('Export Audiobook (.wav)', style: TextStyle(color: Colors.white)),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(Icons.headphones, color: Colors.amber, size: 18),
+                          SizedBox(width: 10),
+                          Text(
+                            'Export Audiobook (.wav)',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
                     ),
                     const PopupMenuItem(
                       value: 'epub',
-                      child: Row(children: [
-                        Icon(Icons.book, color: Colors.blue, size: 18),
-                        SizedBox(width: 10),
-                        Text('Export eBook (.epub)', style: TextStyle(color: Colors.white)),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(Icons.book, color: Colors.blue, size: 18),
+                          SizedBox(width: 10),
+                          Text(
+                            'Export eBook (.epub)',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               // Delete
               IconButton(
-                icon: Icon(Icons.delete_outline, color: Colors.red.withValues(alpha: 0.5), size: 20),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: Colors.red.withValues(alpha: 0.5),
+                  size: 20,
+                ),
                 tooltip: 'Delete story',
                 onPressed: () => _confirmDelete(context, project, repo),
               ),
@@ -349,7 +442,10 @@ class _StoryHomeViewState extends State<StoryHomeView> {
   }
 
   Future<void> _startAudiobookExport(StoryProject project) async {
-    final service = Provider.of<AudiobookGeneratorService>(context, listen: false);
+    final service = Provider.of<AudiobookGeneratorService>(
+      context,
+      listen: false,
+    );
     try {
       final audiobook = await service.generateAudiobook(project);
       if (audiobook != null && mounted) {
@@ -363,7 +459,10 @@ class _StoryHomeViewState extends State<StoryHomeView> {
           await audiobook.file.copy(outputFile);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Audiobook saved to $outputFile'), backgroundColor: Colors.green),
+              SnackBar(
+                content: Text('Audiobook saved to $outputFile'),
+                backgroundColor: Colors.green,
+              ),
             );
           }
         }
@@ -371,7 +470,10 @@ class _StoryHomeViewState extends State<StoryHomeView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Audiobook failed: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Audiobook failed: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
@@ -391,7 +493,10 @@ class _StoryHomeViewState extends State<StoryHomeView> {
           await File(outputFile).writeAsBytes(epub.bytes);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('eBook saved to $outputFile'), backgroundColor: Colors.green),
+              SnackBar(
+                content: Text('eBook saved to $outputFile'),
+                backgroundColor: Colors.green,
+              ),
             );
           }
         }
@@ -399,7 +504,10 @@ class _StoryHomeViewState extends State<StoryHomeView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('eBook export failed: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('eBook export failed: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
@@ -407,26 +515,39 @@ class _StoryHomeViewState extends State<StoryHomeView> {
 
   String _tierLabel(PromptTier tier) {
     switch (tier) {
-      case PromptTier.frontier: return 'Frontier';
-      case PromptTier.largLocal: return '70B+';
-      case PromptTier.smallLocal: return '7-34B';
+      case PromptTier.frontier:
+        return 'Frontier';
+      case PromptTier.largLocal:
+        return '70B+';
+      case PromptTier.smallLocal:
+        return '7-34B';
     }
   }
 
   Color _tierColor(PromptTier tier) {
     switch (tier) {
-      case PromptTier.frontier: return Colors.cyanAccent;
-      case PromptTier.largLocal: return Colors.greenAccent;
-      case PromptTier.smallLocal: return Colors.orangeAccent;
+      case PromptTier.frontier:
+        return Colors.cyanAccent;
+      case PromptTier.largLocal:
+        return Colors.greenAccent;
+      case PromptTier.smallLocal:
+        return Colors.orangeAccent;
     }
   }
 
-  void _confirmDelete(BuildContext context, StoryProject project, StoryRepository repo) {
+  void _confirmDelete(
+    BuildContext context,
+    StoryProject project,
+    StoryRepository repo,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Delete Story?', style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Delete Story?',
+          style: TextStyle(color: Colors.white),
+        ),
         content: Text(
           'Delete "${project.title}" and all its content? This cannot be undone.',
           style: const TextStyle(color: Colors.white70),
@@ -441,7 +562,10 @@ class _StoryHomeViewState extends State<StoryHomeView> {
               repo.deleteProject(project.dbId!);
               Navigator.pop(ctx);
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),

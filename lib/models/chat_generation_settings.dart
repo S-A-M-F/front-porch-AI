@@ -82,19 +82,29 @@ class ChatGenerationSettings {
 
   double resolveTemperature(StorageService s) => temperature ?? s.temperature;
   double resolveMinP(StorageService s) => minP ?? s.minP;
-  double resolveRepeatPenalty(StorageService s) => repeatPenalty ?? s.repeatPenalty;
-  int resolveRepeatPenaltyTokens(StorageService s) => repeatPenaltyTokens ?? s.repeatPenaltyTokens;
-  double resolveXtcThreshold(StorageService s) => xtcThreshold ?? s.xtcThreshold;
-  double resolveXtcProbability(StorageService s) => xtcProbability ?? s.xtcProbability;
-  bool resolveDynamicTempEnabled(StorageService s) => dynamicTempEnabled ?? s.dynamicTempEnabled;
-  double resolveDynamicTempRange(StorageService s) => dynamicTempRange ?? s.dynamicTempRange;
+  double resolveRepeatPenalty(StorageService s) =>
+      repeatPenalty ?? s.repeatPenalty;
+  int resolveRepeatPenaltyTokens(StorageService s) =>
+      repeatPenaltyTokens ?? s.repeatPenaltyTokens;
+  double resolveXtcThreshold(StorageService s) =>
+      xtcThreshold ?? s.xtcThreshold;
+  double resolveXtcProbability(StorageService s) =>
+      xtcProbability ?? s.xtcProbability;
+  bool resolveDynamicTempEnabled(StorageService s) =>
+      dynamicTempEnabled ?? s.dynamicTempEnabled;
+  double resolveDynamicTempRange(StorageService s) =>
+      dynamicTempRange ?? s.dynamicTempRange;
   int resolveMaxLength(StorageService s) => maxLength ?? s.maxLength;
   int resolveMinLength(StorageService s) => minLength ?? s.minLength;
   int resolveContextSize(StorageService s) => contextSize ?? s.contextSize;
-  List<String> resolveStopSequences(StorageService s) => stopSequences ?? s.stopSequences.toList();
-  List<String> resolveBannedPhrases(StorageService s) => bannedPhrases ?? s.bannedPhrases.toList();
-  bool resolveReasoningEnabled(StorageService s) => reasoningEnabled ?? s.reasoningEnabled;
-  String resolveReasoningEffort(StorageService s) => reasoningEffort ?? s.reasoningEffort;
+  List<String> resolveStopSequences(StorageService s) =>
+      stopSequences ?? s.stopSequences.toList();
+  List<String> resolveBannedPhrases(StorageService s) =>
+      bannedPhrases ?? s.bannedPhrases.toList();
+  bool resolveReasoningEnabled(StorageService s) =>
+      reasoningEnabled ?? s.reasoningEnabled;
+  String resolveReasoningEffort(StorageService s) =>
+      reasoningEffort ?? s.reasoningEffort;
 
   // ── JSON serialisation ──────────────────────────────────────────────────
 
@@ -104,10 +114,12 @@ class ChatGenerationSettings {
     if (temperature != null) map['temperature'] = temperature;
     if (minP != null) map['min_p'] = minP;
     if (repeatPenalty != null) map['repeat_penalty'] = repeatPenalty;
-    if (repeatPenaltyTokens != null) map['rep_pen_tokens'] = repeatPenaltyTokens;
+    if (repeatPenaltyTokens != null)
+      map['rep_pen_tokens'] = repeatPenaltyTokens;
     if (xtcThreshold != null) map['xtc_threshold'] = xtcThreshold;
     if (xtcProbability != null) map['xtc_probability'] = xtcProbability;
-    if (dynamicTempEnabled != null) map['dynatemp_enabled'] = dynamicTempEnabled;
+    if (dynamicTempEnabled != null)
+      map['dynatemp_enabled'] = dynamicTempEnabled;
     if (dynamicTempRange != null) map['dynatemp_range'] = dynamicTempRange;
     if (maxLength != null) map['max_length'] = maxLength;
     if (minLength != null) map['min_length'] = minLength;

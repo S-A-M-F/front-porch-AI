@@ -39,7 +39,7 @@ class _MainLayoutState extends State<MainLayout> {
   final List<Widget> _pages = [
     const HomePage(),
     const CreateCharacterPage(),
-    const ModelManagerPage(), 
+    const ModelManagerPage(),
     const SettingsPage(),
     const UserPersonaPage(),
     const WorldManagementPage(),
@@ -50,13 +50,16 @@ class _MainLayoutState extends State<MainLayout> {
   Widget build(BuildContext context) {
     // Watch AppState to rebuild on index change
     final appState = Provider.of<AppState>(context);
-    
+
     return Scaffold(
       body: Row(
         children: [
-          const Sidebar(), 
+          const Sidebar(),
           Expanded(
-            child: _pages[appState.selectedIndex < _pages.length ? appState.selectedIndex : 0],
+            child:
+                _pages[appState.selectedIndex < _pages.length
+                    ? appState.selectedIndex
+                    : 0],
           ),
         ],
       ),

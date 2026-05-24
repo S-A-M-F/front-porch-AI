@@ -20,9 +20,9 @@ void main() {
       final world = World(
         name: 'Fantasy Realm',
         description: 'A magical world',
-        lorebook: Lorebook(entries: [
-          LorebookEntry(key: 'magic', content: 'Magic exists here'),
-        ]),
+        lorebook: Lorebook(
+          entries: [LorebookEntry(key: 'magic', content: 'Magic exists here')],
+        ),
         linkedCharacterName: 'Wizard',
         avatarPath: '/path/to/avatar.png',
       );
@@ -84,10 +84,7 @@ void main() {
     });
 
     test('fromJson with null lorebook creates empty lorebook', () {
-      final json = {
-        'name': 'Null Lorebook World',
-        'lorebook': null,
-      };
+      final json = {'name': 'Null Lorebook World', 'lorebook': null};
       final world = World.fromJson(json);
       expect(world.name, 'Null Lorebook World');
       expect(world.lorebook.entries, isEmpty);
@@ -97,10 +94,17 @@ void main() {
       final original = World(
         name: 'Round Trip World',
         description: 'A world that survives serialization',
-        lorebook: Lorebook(entries: [
-          LorebookEntry(name: 'Entry 1', key: 'a', content: 'Content A'),
-          LorebookEntry(name: 'Entry 2', key: 'b', content: 'Content B', constant: true),
-        ]),
+        lorebook: Lorebook(
+          entries: [
+            LorebookEntry(name: 'Entry 1', key: 'a', content: 'Content A'),
+            LorebookEntry(
+              name: 'Entry 2',
+              key: 'b',
+              content: 'Content B',
+              constant: true,
+            ),
+          ],
+        ),
         linkedCharacterName: 'Hero',
         avatarPath: '/avatars/hero.png',
       );
@@ -113,56 +117,58 @@ void main() {
       expect(restored.avatarPath, original.avatarPath);
     });
 
-    test('fromJson handles SillyTavern format (entries at top level as Map)', () {
-      // SillyTavern format has no top-level name/description, entries as Map
-      final json = {
-        'entries': {
-          '0': {
-            'uid': 0,
-            'key': [],
-            'keysecondary': [],
-            'comment': 'Terran Empire History',
-            'content': 'The Terran Empire is a vast interstellar dominion...',
-            'constant': true,
-            'disable': false,
-            'depth': 4,
+    test(
+      'fromJson handles SillyTavern format (entries at top level as Map)',
+      () {
+        // SillyTavern format has no top-level name/description, entries as Map
+        final json = {
+          'entries': {
+            '0': {
+              'uid': 0,
+              'key': [],
+              'keysecondary': [],
+              'comment': 'Terran Empire History',
+              'content': 'The Terran Empire is a vast interstellar dominion...',
+              'constant': true,
+              'disable': false,
+              'depth': 4,
+            },
+            '1': {
+              'uid': 1,
+              'key': ['Terran', 'Empire'],
+              'keysecondary': ['blue eyes'],
+              'comment': 'Terran traits',
+              'content': 'All true-born Terrans possess striking blue eyes...',
+              'constant': false,
+              'disable': false,
+              'depth': 4,
+            },
           },
-          '1': {
-            'uid': 1,
-            'key': ['Terran', 'Empire'],
-            'keysecondary': ['blue eyes'],
-            'comment': 'Terran traits',
-            'content': 'All true-born Terrans possess striking blue eyes...',
-            'constant': false,
-            'disable': false,
-            'depth': 4,
-          },
-        },
-      };
-      final world = World.fromJson(json);
-      expect(world.name, 'Imported World');
-      expect(world.description, '');
-      expect(world.lorebook.entries.length, 2);
-      expect(world.lorebook.entries[0].name, 'Terran Empire History');
-      expect(world.lorebook.entries[0].constant, true);
-      expect(world.lorebook.entries[1].name, 'Terran traits');
-      expect(world.lorebook.entries[1].key.contains('Terran'), true);
-      expect(world.lorebook.entries[1].key.contains('blue eyes'), true);
-    });
+        };
+        final world = World.fromJson(json);
+        expect(world.name, 'Imported World');
+        expect(world.description, '');
+        expect(world.lorebook.entries.length, 2);
+        expect(world.lorebook.entries[0].name, 'Terran Empire History');
+        expect(world.lorebook.entries[0].constant, true);
+        expect(world.lorebook.entries[1].name, 'Terran traits');
+        expect(world.lorebook.entries[1].key.contains('Terran'), true);
+        expect(world.lorebook.entries[1].key.contains('blue eyes'), true);
+      },
+    );
 
     test('fromJson handles Chub.ai format with top-level metadata', () {
       // Chub format has name/description at top level, entries as Map
       final json = {
         'name': 'Genshin Impact all characters and locations',
-        'description': 'Contains every character and location from Genshin Impact',
+        'description':
+            'Contains every character and location from Genshin Impact',
         'is_creation': false,
         'scan_depth': 4,
         'token_budget': 530,
         'recursive_scanning': true,
         'extensions': {
-          'chub': {
-            'id': 2677342,
-          },
+          'chub': {'id': 2677342},
         },
         'entries': {
           '1': {
@@ -191,7 +197,10 @@ void main() {
       };
       final world = World.fromJson(json);
       expect(world.name, 'Genshin Impact all characters and locations');
-      expect(world.description, 'Contains every character and location from Genshin Impact');
+      expect(
+        world.description,
+        'Contains every character and location from Genshin Impact',
+      );
       expect(world.lorebook.entries.length, 2);
       expect(world.lorebook.entries[0].name, 'Teyvat');
       expect(world.lorebook.entries[0].key.contains('Continent'), true);
@@ -205,7 +214,11 @@ void main() {
         'name': 'Test World',
         'lorebook': {
           'entries': [
-            {'key': 'from-lorebook', 'content': 'From lorebook wrapper', 'name': 'Wrapper Entry'},
+            {
+              'key': 'from-lorebook',
+              'content': 'From lorebook wrapper',
+              'name': 'Wrapper Entry',
+            },
           ],
         },
         'entries': {
@@ -222,19 +235,22 @@ void main() {
       expect(world.lorebook.entries[0].name, 'Wrapper Entry');
     });
 
-    test('fromJson handles entries at top level without name (defaults to Imported World)', () {
-      final json = {
-        'entries': {
-          '1': {
-            'key': ['test'],
-            'name': 'Test Entry',
-            'content': 'Test content',
+    test(
+      'fromJson handles entries at top level without name (defaults to Imported World)',
+      () {
+        final json = {
+          'entries': {
+            '1': {
+              'key': ['test'],
+              'name': 'Test Entry',
+              'content': 'Test content',
+            },
           },
-        },
-      };
-      final world = World.fromJson(json);
-      expect(world.name, 'Imported World');
-      expect(world.lorebook.entries.length, 1);
-    });
+        };
+        final world = World.fromJson(json);
+        expect(world.name, 'Imported World');
+        expect(world.lorebook.entries.length, 1);
+      },
+    );
   });
 }

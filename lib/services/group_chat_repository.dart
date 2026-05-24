@@ -37,7 +37,9 @@ class GroupChatRepository extends ChangeNotifier {
   }
 
   /// Update the database reference (e.g. after cloud sync replaces the DB file).
-  void updateDatabase(AppDatabase db) { _db = db; }
+  void updateDatabase(AppDatabase db) {
+    _db = db;
+  }
 
   Future<void> _load() async {
     await _storageService.initialized;
@@ -47,22 +49,26 @@ class GroupChatRepository extends ChangeNotifier {
       final dbGroups = await _db.getAllGroups();
       for (final g in dbGroups) {
         List<String> charIds = [];
-        try { charIds = List<String>.from(jsonDecode(g.characterIds)); } catch (_) {}
+        try {
+          charIds = List<String>.from(jsonDecode(g.characterIds));
+        } catch (_) {}
 
-        _groups.add(GroupChat(
-          id: g.id,
-          name: g.name,
-          characterIds: charIds,
-          turnOrder: TurnOrder.values.firstWhere(
-            (e) => e.name == g.turnOrder,
-            orElse: () => TurnOrder.roundRobin,
+        _groups.add(
+          GroupChat(
+            id: g.id,
+            name: g.name,
+            characterIds: charIds,
+            turnOrder: TurnOrder.values.firstWhere(
+              (e) => e.name == g.turnOrder,
+              orElse: () => TurnOrder.roundRobin,
+            ),
+            autoAdvance: g.autoAdvance,
+            directorMode: g.directorMode,
+            firstMessage: g.firstMessage,
+            scenario: g.scenario,
+            systemPrompt: g.systemPrompt,
           ),
-          autoAdvance: g.autoAdvance,
-          directorMode: g.directorMode,
-          firstMessage: g.firstMessage,
-          scenario: g.scenario,
-          systemPrompt: g.systemPrompt,
-        ));
+        );
       }
     } catch (e) {
       debugPrint('Failed to load groups from DB: $e');
@@ -94,17 +100,19 @@ class GroupChatRepository extends ChangeNotifier {
     if (existing != null) {
       await _db.updateGroup(companion);
     } else {
-      await _db.insertGroup(GroupsCompanion.insert(
-        id: group.id,
-        name: group.name,
-        characterIds: Value(jsonEncode(group.characterIds)),
-        turnOrder: Value(group.turnOrder.name),
-        autoAdvance: Value(group.autoAdvance),
-        directorMode: Value(group.directorMode),
-        firstMessage: Value(group.firstMessage),
-        scenario: Value(group.scenario),
-        systemPrompt: Value(group.systemPrompt),
-      ));
+      await _db.insertGroup(
+        GroupsCompanion.insert(
+          id: group.id,
+          name: group.name,
+          characterIds: Value(jsonEncode(group.characterIds)),
+          turnOrder: Value(group.turnOrder.name),
+          autoAdvance: Value(group.autoAdvance),
+          directorMode: Value(group.directorMode),
+          firstMessage: Value(group.firstMessage),
+          scenario: Value(group.scenario),
+          systemPrompt: Value(group.systemPrompt),
+        ),
+      );
     }
 
     final idx = _groups.indexWhere((g) => g.id == group.id);
@@ -116,7 +124,10 @@ class GroupChatRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> delete(String groupId, {CloudSyncService? cloudSyncService}) async {
+  Future<void> delete(
+    String groupId, {
+    CloudSyncService? cloudSyncService,
+  }) async {
     // Delete from database
     await _db.deleteGroupById(groupId);
     _groups.removeWhere((g) => g.id == groupId);

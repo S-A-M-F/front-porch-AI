@@ -32,7 +32,10 @@ class TagDialog extends StatefulWidget {
   State<TagDialog> createState() => _TagDialogState();
 
   /// Shows the tag dialog and returns the updated tag list (or null if skipped)
-  static Future<List<String>?> show(BuildContext context, CharacterCard character) {
+  static Future<List<String>?> show(
+    BuildContext context,
+    CharacterCard character,
+  ) {
     return showDialog<List<String>>(
       context: context,
       builder: (_) => TagDialog(character: character),
@@ -83,7 +86,11 @@ class _TagDialogState extends State<TagDialog> {
     final allTags = repo.allTags;
     setState(() {
       _suggestions = allTags
-          .where((t) => t.toLowerCase().contains(query.toLowerCase()) && !_tags.contains(t))
+          .where(
+            (t) =>
+                t.toLowerCase().contains(query.toLowerCase()) &&
+                !_tags.contains(t),
+          )
           .take(8)
           .toList();
     });
@@ -109,7 +116,11 @@ class _TagDialogState extends State<TagDialog> {
                 Expanded(
                   child: Text(
                     'Tag "${widget.character.name}"',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -129,14 +140,30 @@ class _TagDialogState extends State<TagDialog> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _tags.map((tag) => Chip(
-                  label: Text(tag, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                  backgroundColor: const Color(0xFF374151),
-                  deleteIcon: const Icon(Icons.close, size: 16, color: Colors.white54),
-                  onDeleted: () => _removeTag(tag),
-                  side: BorderSide.none,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                )).toList(),
+                children: _tags
+                    .map(
+                      (tag) => Chip(
+                        label: Text(
+                          tag,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
+                        ),
+                        backgroundColor: const Color(0xFF374151),
+                        deleteIcon: const Icon(
+                          Icons.close,
+                          size: 16,
+                          color: Colors.white54,
+                        ),
+                        onDeleted: () => _removeTag(tag),
+                        side: BorderSide.none,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    )
+                    .toList(),
               ),
               const SizedBox(height: 16),
             ],
@@ -180,8 +207,18 @@ class _TagDialogState extends State<TagDialog> {
                   itemBuilder: (context, index) {
                     return ListTile(
                       dense: true,
-                      title: Text(_suggestions[index], style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      leading: const Icon(Icons.label, size: 16, color: Colors.white38),
+                      title: Text(
+                        _suggestions[index],
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
+                      leading: const Icon(
+                        Icons.label,
+                        size: 16,
+                        color: Colors.white38,
+                      ),
                       onTap: () => _addTag(_suggestions[index]),
                     );
                   },
@@ -197,7 +234,10 @@ class _TagDialogState extends State<TagDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, null), // Skip
-                  child: const Text('Skip', style: TextStyle(color: Colors.white54)),
+                  child: const Text(
+                    'Skip',
+                    style: TextStyle(color: Colors.white54),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton.icon(

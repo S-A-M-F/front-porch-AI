@@ -22,14 +22,16 @@ class _LorebookSimulator {
     bool constant = false,
     int stickyDepth = 1,
   }) {
-    _entries.add(LorebookEntry(
-      name: name,
-      key: key,
-      content: content,
-      enabled: enabled,
-      constant: constant,
-      stickyDepth: stickyDepth,
-    ));
+    _entries.add(
+      LorebookEntry(
+        name: name,
+        key: key,
+        content: content,
+        enabled: enabled,
+        constant: constant,
+        stickyDepth: stickyDepth,
+      ),
+    );
   }
 
   /// Mirrors ChatService._scanLorebook (lines 4121-4182).
@@ -73,7 +75,9 @@ class _LorebookSimulator {
 
   /// Get active (triggered and not expired) entries.
   List<LorebookEntry> getActiveEntries() {
-    return _entries.where((e) => e.isTriggered && e.remainingDepth > 0).toList();
+    return _entries
+        .where((e) => e.isTriggered && e.remainingDepth > 0)
+        .toList();
   }
 }
 
@@ -135,8 +139,11 @@ void main() {
 
       sim.scanLorebook('I see a horse');
 
-      expect(sim.getActiveEntries(), isEmpty,
-          reason: 'unrelated text should not trigger the entry');
+      expect(
+        sim.getActiveEntries(),
+        isEmpty,
+        reason: 'unrelated text should not trigger the entry',
+      );
     });
 
     test('multiple keywords in one entry — any match triggers', () {
@@ -195,15 +202,14 @@ void main() {
 
     test('keyword matching is substring-based', () {
       final sim = _LorebookSimulator();
-      sim.addEntry(
-        key: 'fire',
-        content: 'Fire is dangerous.',
-        constant: false,
-      );
+      sim.addEntry(key: 'fire', content: 'Fire is dangerous.', constant: false);
 
       sim.scanLorebook('The dragon breathes fireballs');
-      expect(sim.getActiveEntries(), hasLength(1),
-          reason: '"fire" should match inside "fireballs"');
+      expect(
+        sim.getActiveEntries(),
+        hasLength(1),
+        reason: '"fire" should match inside "fireballs"',
+      );
     });
 
     test('sticky depth extends on each match', () {
@@ -233,11 +239,7 @@ void main() {
         content: 'Dragons breathe fire.',
         stickyDepth: 3,
       );
-      sim.addEntry(
-        key: 'elf',
-        content: 'Elves are graceful.',
-        stickyDepth: 2,
-      );
+      sim.addEntry(key: 'elf', content: 'Elves are graceful.', stickyDepth: 2);
 
       sim.scanLorebook('An elf fights a dragon');
 
@@ -262,8 +264,11 @@ void main() {
       }
 
       // Constant entry should still be active
-      expect(sim.getActiveEntries(), hasLength(1),
-          reason: 'constant entries never expire');
+      expect(
+        sim.getActiveEntries(),
+        hasLength(1),
+        reason: 'constant entries never expire',
+      );
     });
 
     test('re-scanning after expiry re-triggers the entry', () {
@@ -283,16 +288,16 @@ void main() {
 
       // Re-scan with the same keyword
       sim.scanLorebook('The dragon returns');
-      expect(sim.getActiveEntries(), hasLength(1),
-          reason: 're-matching should re-trigger the entry');
+      expect(
+        sim.getActiveEntries(),
+        hasLength(1),
+        reason: 're-matching should re-trigger the entry',
+      );
     });
 
     test('empty key does not match', () {
       final sim = _LorebookSimulator();
-      sim.addEntry(
-        key: '',
-        content: 'This should never match.',
-      );
+      sim.addEntry(key: '', content: 'This should never match.');
 
       sim.scanLorebook('anything at all');
       expect(sim.getActiveEntries(), isEmpty);
@@ -300,10 +305,7 @@ void main() {
 
     test('whitespace in keys is trimmed', () {
       final sim = _LorebookSimulator();
-      sim.addEntry(
-        key: ' dragon , wyrm ',
-        content: 'Dragons are powerful.',
-      );
+      sim.addEntry(key: ' dragon , wyrm ', content: 'Dragons are powerful.');
 
       sim.scanLorebook('I see a dragon');
       expect(sim.getActiveEntries(), hasLength(1));

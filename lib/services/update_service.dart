@@ -38,7 +38,8 @@ class UpdateService extends ChangeNotifier {
   static const String _windowsAssetBeta = 'Front_Porch_AI_Beta_Setup.exe';
   static const String _windowsAssetNightly = 'Front_Porch_AI_Nightly_Setup.exe';
   static const String _linuxAsset = 'Front_Porch_AI-Linux.AppImage';
-  static const String _linuxAssetNightly = 'Front_Porch_AI_Nightly-Linux.AppImage';
+  static const String _linuxAssetNightly =
+      'Front_Porch_AI_Nightly-Linux.AppImage';
   static const String _macosAsset = 'Front_Porch_AI.dmg';
   static const String _macosAssetBeta = 'Front_Porch_AI_MacOS.dmg';
   static const String _macosAssetNightly = 'Front_Porch_AI_Nightly.dmg';
@@ -239,7 +240,9 @@ class UpdateService extends ChangeNotifier {
       }
 
       if (installerUrl == null) {
-        debugPrint('No update asset ($targetAsset) found in release $originalTag');
+        debugPrint(
+          'No update asset ($targetAsset) found in release $originalTag',
+        );
         return false;
       }
 

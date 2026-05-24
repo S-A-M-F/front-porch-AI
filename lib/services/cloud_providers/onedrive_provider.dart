@@ -31,7 +31,8 @@ class OneDriveProvider extends CloudStorageProvider {
   static const _clientId = 'YOUR_AZURE_CLIENT_ID';
   static const _redirectUri = 'http://localhost:8400/callback';
   static const _scopes = 'Files.ReadWrite.All offline_access';
-  static const _authority = 'https://login.microsoftonline.com/common/oauth2/v2.0';
+  static const _authority =
+      'https://login.microsoftonline.com/common/oauth2/v2.0';
   static const _graphBase = 'https://graph.microsoft.com/v1.0';
 
   String? _accessToken;
@@ -67,16 +68,18 @@ class OneDriveProvider extends CloudStorageProvider {
   }
 
   Future<void> _interactiveSignIn() async {
-    final authUrl = Uri.parse('$_authority/authorize?'
-        'client_id=$_clientId'
-        '&response_type=code'
-        '&redirect_uri=${Uri.encodeComponent(_redirectUri)}'
-        '&scope=${Uri.encodeComponent(_scopes)}'
-        '&response_mode=query');
+    final authUrl = Uri.parse(
+      '$_authority/authorize?'
+      'client_id=$_clientId'
+      '&response_type=code'
+      '&redirect_uri=${Uri.encodeComponent(_redirectUri)}'
+      '&scope=${Uri.encodeComponent(_scopes)}'
+      '&response_mode=query',
+    );
 
     // Start local HTTP server to catch the redirect
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8400);
-    
+
     // Open system browser
     if (await canLaunchUrl(authUrl)) {
       await launchUrl(authUrl, mode: LaunchMode.externalApplication);
@@ -86,12 +89,14 @@ class OneDriveProvider extends CloudStorageProvider {
       // Wait for the callback with a timeout
       final request = await server.first.timeout(const Duration(minutes: 2));
       final code = request.uri.queryParameters['code'];
-      
+
       // Send a response to the browser
       request.response
         ..statusCode = 200
         ..headers.contentType = ContentType.html
-        ..write('<html><body><h2>Sign-in successful!</h2><p>You can close this tab and return to Front Porch AI.</p></body></html>');
+        ..write(
+          '<html><body><h2>Sign-in successful!</h2><p>You can close this tab and return to Front Porch AI.</p></body></html>',
+        );
       await request.response.close();
       await server.close();
 
@@ -117,7 +122,9 @@ class OneDriveProvider extends CloudStorageProvider {
       final tokenData = jsonDecode(tokenResponse.body);
       _accessToken = tokenData['access_token'];
       _refreshToken = tokenData['refresh_token'];
-      _tokenExpiry = DateTime.now().add(Duration(seconds: tokenData['expires_in'] ?? 3600));
+      _tokenExpiry = DateTime.now().add(
+        Duration(seconds: tokenData['expires_in'] ?? 3600),
+      );
       _connected = true;
 
       // Save refresh token
@@ -146,12 +153,15 @@ class OneDriveProvider extends CloudStorageProvider {
       },
     );
 
-    if (response.statusCode != 200) throw Exception('Token refresh failed: ${response.body}');
+    if (response.statusCode != 200)
+      throw Exception('Token refresh failed: ${response.body}');
 
     final data = jsonDecode(response.body);
     _accessToken = data['access_token'];
     _refreshToken = data['refresh_token'] ?? _refreshToken;
-    _tokenExpiry = DateTime.now().add(Duration(seconds: data['expires_in'] ?? 3600));
+    _tokenExpiry = DateTime.now().add(
+      Duration(seconds: data['expires_in'] ?? 3600),
+    );
 
     final prefs = await SharedPreferences.getInstance();
     if (_refreshToken != null) {
@@ -161,7 +171,10 @@ class OneDriveProvider extends CloudStorageProvider {
 
   Future<Map<String, String>> _authHeaders() async {
     // Auto-refresh if token is expired or about to expire
-    if (_tokenExpiry != null && DateTime.now().isAfter(_tokenExpiry!.subtract(const Duration(minutes: 5)))) {
+    if (_tokenExpiry != null &&
+        DateTime.now().isAfter(
+          _tokenExpiry!.subtract(const Duration(minutes: 5)),
+        )) {
       await _refreshAccessToken();
     }
     return {'Authorization': 'Bearer $_accessToken'};
@@ -185,11 +198,13 @@ class OneDriveProvider extends CloudStorageProvider {
     final headers = await _authHeaders();
 
     // List children of the folder
-    final url = '$_graphBase/me/drive/root:$encodedPath:/children?\$select=name,lastModifiedDateTime,size,folder';
+    final url =
+        '$_graphBase/me/drive/root:$encodedPath:/children?\$select=name,lastModifiedDateTime,size,folder';
     final response = await http.get(Uri.parse(url), headers: headers);
 
     if (response.statusCode == 404) return result; // folder doesn't exist
-    if (response.statusCode != 200) throw Exception('OneDrive list error: ${response.body}');
+    if (response.statusCode != 200)
+      throw Exception('OneDrive list error: ${response.body}');
 
     final data = jsonDecode(response.body);
     final items = data['value'] as List? ?? [];
@@ -205,13 +220,15 @@ class OneDriveProvider extends CloudStorageProvider {
           result.addAll(subFiles);
         } catch (_) {}
       } else {
-        result.add(RemoteFileInfo(
-          remotePath: itemPath,
-          lastModified: item['lastModifiedDateTime'] != null
-              ? DateTime.parse(item['lastModifiedDateTime'])
-              : null,
-          size: item['size'] as int?,
-        ));
+        result.add(
+          RemoteFileInfo(
+            remotePath: itemPath,
+            lastModified: item['lastModifiedDateTime'] != null
+                ? DateTime.parse(item['lastModifiedDateTime'])
+                : null,
+            size: item['size'] as int?,
+          ),
+        );
       }
     }
 
@@ -229,10 +246,7 @@ class OneDriveProvider extends CloudStorageProvider {
     final url = '$_graphBase/me/drive/root:$encodedPath:/content';
     final response = await http.put(
       Uri.parse(url),
-      headers: {
-        ...headers,
-        'Content-Type': 'application/octet-stream',
-      },
+      headers: {...headers, 'Content-Type': 'application/octet-stream'},
       body: bytes,
     );
 
@@ -286,7 +300,7 @@ class OneDriveProvider extends CloudStorageProvider {
         final parentUrl = parentPath.isEmpty
             ? '$_graphBase/me/drive/root/children'
             : '$_graphBase/me/drive/root:${_encodePath(parentPath)}:/children';
-        
+
         final createResp = await http.post(
           Uri.parse(parentUrl),
           headers: {...headers, 'Content-Type': 'application/json'},

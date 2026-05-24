@@ -52,103 +52,137 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            // ── Header ──────────────────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  widget.character != null 
-                    ? '${widget.character!.name} - UI Settings'
-                    : 'UI Settings',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                IconButton(icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-            const SizedBox(height: 20),
+              // ── Header ──────────────────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.character != null
+                        ? '${widget.character!.name} - UI Settings'
+                        : 'UI Settings',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
 
-            // ── Appearance ──────────────────────────────────────────────
-            const Text('Appearance', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            const SizedBox(height: 12),
-            _buildSlider(
-              'Bubble Opacity',
-              storageService.bubbleOpacity,
-              0.1, 1.0,
-              (val) => storageService.setBubbleOpacity(val),
-              divisions: 18,
-            ),
-            const SizedBox(height: 4),
-            _buildSlider(
-              'Chat Text Size',
-              storageService.textScale,
-              0.5, 2.0,
-              (val) => storageService.setTextScale(val),
-              divisions: 30,
-            ),
-            const SizedBox(height: 20),
-
-            // ── Chat Colors ─────────────────────────────────────────────
-            const Text('Chat Colors', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            const SizedBox(height: 12),
-            _buildColorRow(
-              context,
-              'User Bubble',
-              widget.character?.frontPorchExtensions?.userBubbleColor ?? storageService.globalUserBubbleColor,
-              (color) => _updateUserBubbleColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'User Text',
-              widget.character?.frontPorchExtensions?.userTextColor ?? storageService.globalUserTextColor,
-              (color) => _updateUserTextColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'AI Bubble',
-              widget.character?.frontPorchExtensions?.aiBubbleColor ?? storageService.globalAiBubbleColor,
-              (color) => _updateAiBubbleColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'AI Text',
-              widget.character?.frontPorchExtensions?.aiTextColor ?? storageService.globalAiTextColor,
-              (color) => _updateAiTextColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'Dialogue (Quoted)',
-              widget.character?.frontPorchExtensions?.dialogueColor ?? storageService.globalDialogueColor,
-              (color) => _updateDialogueColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'Actions (*text*)',
-              widget.character?.frontPorchExtensions?.actionColor ?? storageService.globalActionColor,
-              (color) => _updateActionColor(context, color),
-            ),
-            const SizedBox(height: 20),
-
-            // ── Chat Background ─────────────────────────────────────────
-            const Text('Chat Background', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => showDialog(
-                  context: context,
-                  builder: (ctx) => const BackgroundSettingsDialog(),
+              // ── Appearance ──────────────────────────────────────────────
+              const Text(
+                'Appearance',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueAccent,
                 ),
-                icon: const Icon(Icons.image, size: 18),
-                label: const Text('Manage Chat Backgrounds'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white24),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              ),
+              const SizedBox(height: 12),
+              _buildSlider(
+                'Bubble Opacity',
+                storageService.bubbleOpacity,
+                0.1,
+                1.0,
+                (val) => storageService.setBubbleOpacity(val),
+                divisions: 18,
+              ),
+              const SizedBox(height: 4),
+              _buildSlider(
+                'Chat Text Size',
+                storageService.textScale,
+                0.5,
+                2.0,
+                (val) => storageService.setTextScale(val),
+                divisions: 30,
+              ),
+              const SizedBox(height: 20),
+
+              // ── Chat Colors ─────────────────────────────────────────────
+              const Text(
+                'Chat Colors',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueAccent,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildColorRow(
+                context,
+                'User Bubble',
+                widget.character?.frontPorchExtensions?.userBubbleColor ??
+                    storageService.globalUserBubbleColor,
+                (color) => _updateUserBubbleColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'User Text',
+                widget.character?.frontPorchExtensions?.userTextColor ??
+                    storageService.globalUserTextColor,
+                (color) => _updateUserTextColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'AI Bubble',
+                widget.character?.frontPorchExtensions?.aiBubbleColor ??
+                    storageService.globalAiBubbleColor,
+                (color) => _updateAiBubbleColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'AI Text',
+                widget.character?.frontPorchExtensions?.aiTextColor ??
+                    storageService.globalAiTextColor,
+                (color) => _updateAiTextColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'Dialogue (Quoted)',
+                widget.character?.frontPorchExtensions?.dialogueColor ??
+                    storageService.globalDialogueColor,
+                (color) => _updateDialogueColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'Actions (*text*)',
+                widget.character?.frontPorchExtensions?.actionColor ??
+                    storageService.globalActionColor,
+                (color) => _updateActionColor(context, color),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Chat Background ─────────────────────────────────────────
+              const Text(
+                'Chat Background',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueAccent,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (ctx) => const BackgroundSettingsDialog(),
+                  ),
+                  icon: const Icon(Icons.image, size: 18),
+                  label: const Text('Manage Chat Backgrounds'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white24),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),
-            ),
             ],
           ),
         ),
@@ -156,7 +190,14 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
     );
   }
 
-  Widget _buildSlider(String label, double value, double min, double max, ValueChanged<double> onChanged, {int? divisions}) {
+  Widget _buildSlider(
+    String label,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged, {
+    int? divisions,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -164,7 +205,13 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: const TextStyle(color: Colors.white70)),
-            Text(value.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            Text(
+              value.toStringAsFixed(2),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
           ],
         ),
         Slider(
@@ -190,7 +237,10 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
           const Spacer(),
           Container(
             width: 40,
@@ -263,30 +313,34 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: presetColors.map((color) => GestureDetector(
-                        onTap: () => Navigator.pop(context, color),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: color == selectedColor
-                                  ? Colors.blueAccent
-                                  : Colors.white24,
-                              width: 2,
+                      children: presetColors
+                          .map(
+                            (color) => GestureDetector(
+                              onTap: () => Navigator.pop(context, color),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: color == selectedColor
+                                        ? Colors.blueAccent
+                                        : Colors.white24,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: color == selectedColor
+                                    ? const Icon(
+                                        Icons.check,
+                                        size: 18,
+                                        color: Colors.white,
+                                      )
+                                    : null,
+                              ),
                             ),
-                          ),
-                          child: color == selectedColor
-                              ? const Icon(
-                                  Icons.check,
-                                  size: 18,
-                                  color: Colors.white,
-                                )
-                              : null,
-                        ),
-                      )).toList(),
+                          )
+                          .toList(),
                     ),
                     const SizedBox(height: 12),
                     // Color picker - use wheel picker for full color spectrum
@@ -344,7 +398,8 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
 
     if (character != null) {
       // Update per-character setting (create extensions if null)
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
         userBubbleColor: color,
       );
@@ -396,7 +451,8 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
     final character = widget.character;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
         userTextColor: color,
       );
@@ -444,7 +500,8 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
     final character = widget.character;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
         aiBubbleColor: color,
       );
@@ -492,10 +549,9 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
     final character = widget.character;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
-      final updatedExtensions = currentExtensions.copyWith(
-        aiTextColor: color,
-      );
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
+      final updatedExtensions = currentExtensions.copyWith(aiTextColor: color);
       final updatedCharacter = CharacterCard(
         name: character.name,
         description: character.description,
@@ -540,7 +596,8 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
     final character = widget.character;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
         dialogueColor: color,
       );
@@ -588,10 +645,9 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
     final character = widget.character;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
-      final updatedExtensions = currentExtensions.copyWith(
-        actionColor: color,
-      );
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
+      final updatedExtensions = currentExtensions.copyWith(actionColor: color);
       final updatedCharacter = CharacterCard(
         name: character.name,
         description: character.description,

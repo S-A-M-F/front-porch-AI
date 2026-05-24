@@ -13,13 +13,13 @@ void setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-    if (methodCall.method == 'getApplicationDocumentsDirectory') {
-      // Use a temp directory that exists and is writable.
-      final tmp = Directory.systemTemp.createTempSync('fpai_test_');
-      return tmp.path;
-    }
-    return null;
-  });
+        if (methodCall.method == 'getApplicationDocumentsDirectory') {
+          // Use a temp directory that exists and is writable.
+          final tmp = Directory.systemTemp.createTempSync('fpai_test_');
+          return tmp.path;
+        }
+        return null;
+      });
 }
 
 /// Helper: create a StorageService backed by an in-memory SharedPreferences
@@ -618,7 +618,10 @@ void main() {
       final svc = await createStorageService();
       await svc.setLocalImageGenUrl('http://192.168.1.100:7860');
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('local_image_gen_url'), 'http://192.168.1.100:7860');
+      expect(
+        prefs.getString('local_image_gen_url'),
+        'http://192.168.1.100:7860',
+      );
     });
 
     test('setImageGenModel persists to SharedPreferences', () async {
@@ -806,12 +809,15 @@ void main() {
   // ─── Character Evolution Settings ─────────────────────────────────
 
   group('Character evolution settings persistence', () {
-    test('setCharacterEvolutionEnabled persists to SharedPreferences', () async {
-      final svc = await createStorageService();
-      await svc.setCharacterEvolutionEnabled(true);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('character_evolution_enabled'), true);
-    });
+    test(
+      'setCharacterEvolutionEnabled persists to SharedPreferences',
+      () async {
+        final svc = await createStorageService();
+        await svc.setCharacterEvolutionEnabled(true);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getBool('character_evolution_enabled'), true);
+      },
+    );
 
     test('setEvolutionInterval clamps and persists', () async {
       final svc = await createStorageService();

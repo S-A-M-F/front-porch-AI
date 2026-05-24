@@ -135,11 +135,17 @@ class DbReunificationService {
     // Delete the beta DB so this can't re-trigger on subsequent launches.
     // The backup copy (front_porch_beta.db.pre-0.9.0-backup) is preserved.
     await betaFile.delete();
-    debugPrint('[Reunification] Promoted beta DB → front_porch.db (beta file removed)');
+    debugPrint(
+      '[Reunification] Promoted beta DB → front_porch.db (beta file removed)',
+    );
 
     // Also clean up any WAL/SHM files from the old stable DB
-    try { await File('$stablePath-wal').delete(); } catch (_) {}
-    try { await File('$stablePath-shm').delete(); } catch (_) {}
+    try {
+      await File('$stablePath-wal').delete();
+    } catch (_) {}
+    try {
+      await File('$stablePath-shm').delete();
+    } catch (_) {}
   }
 
   /// Step 3: Diff the old stable backup against the now-primary (beta) DB.
@@ -158,7 +164,11 @@ class DbReunificationService {
     if (!stableBackup.existsSync()) {
       debugPrint('[Reunification] No stable backup found — nothing to diff');
       return ReunificationDiff(
-          characters: [], groups: [], personas: [], worlds: []);
+        characters: [],
+        groups: [],
+        personas: [],
+        worlds: [],
+      );
     }
 
     // Copy to a temp file so Drift can migrate it without touching the backup
@@ -177,10 +187,12 @@ class DbReunificationService {
       await tempDb.customSelect('SELECT 1').get();
 
       // ── Diff Characters by imagePath ──
-      final primaryChars =
-          await primaryDb.customSelect('SELECT * FROM characters WHERE deleted_at IS NULL').get();
-      final stableChars =
-          await tempDb.customSelect('SELECT * FROM characters WHERE deleted_at IS NULL').get();
+      final primaryChars = await primaryDb
+          .customSelect('SELECT * FROM characters WHERE deleted_at IS NULL')
+          .get();
+      final stableChars = await tempDb
+          .customSelect('SELECT * FROM characters WHERE deleted_at IS NULL')
+          .get();
 
       final primaryImagePaths = <String>{};
       for (final row in primaryChars) {
@@ -195,7 +207,9 @@ class DbReunificationService {
           // Skip characters whose PNG file no longer exists on disk —
           // without an image file, the app can't display the character.
           if (!File(ip).existsSync()) {
-            debugPrint('[Reunification] Skipping ${row.read<String>('name')} — PNG missing: $ip');
+            debugPrint(
+              '[Reunification] Skipping ${row.read<String>('name')} — PNG missing: $ip',
+            );
             continue;
           }
 
@@ -203,55 +217,68 @@ class DbReunificationService {
           final charId = row.read<String>('id');
           final sessionRows = await tempDb
               .customSelect(
-                  'SELECT COUNT(*) AS cnt FROM sessions WHERE character_id = ? AND deleted_at IS NULL',
-                  variables: [Variable(charId)])
+                'SELECT COUNT(*) AS cnt FROM sessions WHERE character_id = ? AND deleted_at IS NULL',
+                variables: [Variable(charId)],
+              )
               .get();
-          final sessionCount =
-              sessionRows.isNotEmpty ? sessionRows.first.read<int>('cnt') : 0;
+          final sessionCount = sessionRows.isNotEmpty
+              ? sessionRows.first.read<int>('cnt')
+              : 0;
 
-          stableOnlyCharacters.add(StableOnlyCharacter(
-            id: charId,
-            name: row.read<String>('name'),
-            imagePath: ip,
-            sessionCount: sessionCount,
-          ));
+          stableOnlyCharacters.add(
+            StableOnlyCharacter(
+              id: charId,
+              name: row.read<String>('name'),
+              imagePath: ip,
+              sessionCount: sessionCount,
+            ),
+          );
         }
       }
 
       // ── Diff Groups by name ──
-      final primaryGroups =
-          await primaryDb.customSelect('SELECT name FROM groups WHERE deleted_at IS NULL').get();
-      final stableGroups =
-          await tempDb.customSelect('SELECT name FROM groups WHERE deleted_at IS NULL').get();
+      final primaryGroups = await primaryDb
+          .customSelect('SELECT name FROM groups WHERE deleted_at IS NULL')
+          .get();
+      final stableGroups = await tempDb
+          .customSelect('SELECT name FROM groups WHERE deleted_at IS NULL')
+          .get();
 
-      final primaryGroupNames =
-          primaryGroups.map((r) => r.read<String>('name')).toSet();
+      final primaryGroupNames = primaryGroups
+          .map((r) => r.read<String>('name'))
+          .toSet();
       final stableOnlyGroups = stableGroups
           .map((r) => r.read<String>('name'))
           .where((n) => !primaryGroupNames.contains(n))
           .toList();
 
       // ── Diff Personas by name ──
-      final primaryPersonas =
-          await primaryDb.customSelect('SELECT name FROM personas WHERE deleted_at IS NULL').get();
-      final stablePersonas =
-          await tempDb.customSelect('SELECT name FROM personas WHERE deleted_at IS NULL').get();
+      final primaryPersonas = await primaryDb
+          .customSelect('SELECT name FROM personas WHERE deleted_at IS NULL')
+          .get();
+      final stablePersonas = await tempDb
+          .customSelect('SELECT name FROM personas WHERE deleted_at IS NULL')
+          .get();
 
-      final primaryPersonaNames =
-          primaryPersonas.map((r) => r.read<String>('name')).toSet();
+      final primaryPersonaNames = primaryPersonas
+          .map((r) => r.read<String>('name'))
+          .toSet();
       final stableOnlyPersonas = stablePersonas
           .map((r) => r.read<String>('name'))
           .where((n) => !primaryPersonaNames.contains(n))
           .toList();
 
       // ── Diff Worlds by name ──
-      final primaryWorlds =
-          await primaryDb.customSelect('SELECT name FROM worlds WHERE deleted_at IS NULL').get();
-      final stableWorlds =
-          await tempDb.customSelect('SELECT name FROM worlds WHERE deleted_at IS NULL').get();
+      final primaryWorlds = await primaryDb
+          .customSelect('SELECT name FROM worlds WHERE deleted_at IS NULL')
+          .get();
+      final stableWorlds = await tempDb
+          .customSelect('SELECT name FROM worlds WHERE deleted_at IS NULL')
+          .get();
 
-      final primaryWorldNames =
-          primaryWorlds.map((r) => r.read<String>('name')).toSet();
+      final primaryWorldNames = primaryWorlds
+          .map((r) => r.read<String>('name'))
+          .toSet();
       final stableOnlyWorlds = stableWorlds
           .map((r) => r.read<String>('name'))
           .where((n) => !primaryWorldNames.contains(n))
@@ -271,11 +298,17 @@ class DbReunificationService {
         debugPrint('[Reunification] Diff results:');
       }
       debugPrint(
-          '  Characters: ${stableOnlyCharacters.length} (${stableOnlyCharacters.map((c) => c.name).join(', ')})');
-      debugPrint('  Groups: ${stableOnlyGroups.length} (${stableOnlyGroups.join(', ')})');
+        '  Characters: ${stableOnlyCharacters.length} (${stableOnlyCharacters.map((c) => c.name).join(', ')})',
+      );
       debugPrint(
-          '  Personas: ${stableOnlyPersonas.length} (${stableOnlyPersonas.join(', ')})');
-      debugPrint('  Worlds: ${stableOnlyWorlds.length} (${stableOnlyWorlds.join(', ')})');
+        '  Groups: ${stableOnlyGroups.length} (${stableOnlyGroups.join(', ')})',
+      );
+      debugPrint(
+        '  Personas: ${stableOnlyPersonas.length} (${stableOnlyPersonas.join(', ')})',
+      );
+      debugPrint(
+        '  Worlds: ${stableOnlyWorlds.length} (${stableOnlyWorlds.join(', ')})',
+      );
 
       return diff;
     } finally {
@@ -314,13 +347,17 @@ class DbReunificationService {
 
       // ── Import Characters + their Sessions + Messages ──
       for (final charInfo in diff.characters) {
-        debugPrint('[Reunification] Importing character: ${charInfo.name} (${charInfo.id})');
+        debugPrint(
+          '[Reunification] Importing character: ${charInfo.name} (${charInfo.id})',
+        );
 
         // Read full character row from stable
-        final charRows = await tempDb.customSelect(
-          'SELECT * FROM characters WHERE id = ?',
-          variables: [Variable(charInfo.id)],
-        ).get();
+        final charRows = await tempDb
+            .customSelect(
+              'SELECT * FROM characters WHERE id = ?',
+              variables: [Variable(charInfo.id)],
+            )
+            .get();
 
         if (charRows.isEmpty) continue;
         final charRow = charRows.first;
@@ -329,58 +366,70 @@ class DbReunificationService {
         await _insertRowFromQuery(primaryDb, 'characters', charRow);
 
         // Import all sessions for this character
-        final sessions = await tempDb.customSelect(
-          'SELECT * FROM sessions WHERE character_id = ? AND deleted_at IS NULL',
-          variables: [Variable(charInfo.id)],
-        ).get();
+        final sessions = await tempDb
+            .customSelect(
+              'SELECT * FROM sessions WHERE character_id = ? AND deleted_at IS NULL',
+              variables: [Variable(charInfo.id)],
+            )
+            .get();
 
         for (final session in sessions) {
           final sessionId = session.read<String>('id');
           await _insertRowFromQuery(primaryDb, 'sessions', session);
 
           // Import all messages for this session
-          final messages = await tempDb.customSelect(
-            'SELECT * FROM messages WHERE session_id = ? AND deleted_at IS NULL',
-            variables: [Variable(sessionId)],
-          ).get();
+          final messages = await tempDb
+              .customSelect(
+                'SELECT * FROM messages WHERE session_id = ? AND deleted_at IS NULL',
+                variables: [Variable(sessionId)],
+              )
+              .get();
 
           for (final message in messages) {
             await _insertRowFromQuery(primaryDb, 'messages', message);
           }
 
           debugPrint(
-              '[Reunification]   Session $sessionId: ${messages.length} messages');
+            '[Reunification]   Session $sessionId: ${messages.length} messages',
+          );
         }
 
         debugPrint(
-            '[Reunification]   Imported ${sessions.length} sessions for ${charInfo.name}');
+          '[Reunification]   Imported ${sessions.length} sessions for ${charInfo.name}',
+        );
       }
 
       // ── Import Groups ──
       for (final groupName in diff.groups) {
-        final rows = await tempDb.customSelect(
-          'SELECT * FROM groups WHERE name = ? AND deleted_at IS NULL',
-          variables: [Variable(groupName)],
-        ).get();
+        final rows = await tempDb
+            .customSelect(
+              'SELECT * FROM groups WHERE name = ? AND deleted_at IS NULL',
+              variables: [Variable(groupName)],
+            )
+            .get();
 
         for (final row in rows) {
           await _insertRowFromQuery(primaryDb, 'groups', row);
 
           // Import sessions for this group
           final groupId = row.read<String>('id');
-          final sessions = await tempDb.customSelect(
-            'SELECT * FROM sessions WHERE group_id = ? AND deleted_at IS NULL',
-            variables: [Variable(groupId)],
-          ).get();
+          final sessions = await tempDb
+              .customSelect(
+                'SELECT * FROM sessions WHERE group_id = ? AND deleted_at IS NULL',
+                variables: [Variable(groupId)],
+              )
+              .get();
 
           for (final session in sessions) {
             final sessionId = session.read<String>('id');
             await _insertRowFromQuery(primaryDb, 'sessions', session);
 
-            final messages = await tempDb.customSelect(
-              'SELECT * FROM messages WHERE session_id = ? AND deleted_at IS NULL',
-              variables: [Variable(sessionId)],
-            ).get();
+            final messages = await tempDb
+                .customSelect(
+                  'SELECT * FROM messages WHERE session_id = ? AND deleted_at IS NULL',
+                  variables: [Variable(sessionId)],
+                )
+                .get();
 
             for (final message in messages) {
               await _insertRowFromQuery(primaryDb, 'messages', message);
@@ -392,10 +441,12 @@ class DbReunificationService {
 
       // ── Import Personas ──
       for (final personaName in diff.personas) {
-        final rows = await tempDb.customSelect(
-          'SELECT * FROM personas WHERE name = ? AND deleted_at IS NULL',
-          variables: [Variable(personaName)],
-        ).get();
+        final rows = await tempDb
+            .customSelect(
+              'SELECT * FROM personas WHERE name = ? AND deleted_at IS NULL',
+              variables: [Variable(personaName)],
+            )
+            .get();
 
         for (final row in rows) {
           await _insertRowFromQuery(primaryDb, 'personas', row);
@@ -405,10 +456,12 @@ class DbReunificationService {
 
       // ── Import Worlds ──
       for (final worldName in diff.worlds) {
-        final rows = await tempDb.customSelect(
-          'SELECT * FROM worlds WHERE name = ? AND deleted_at IS NULL',
-          variables: [Variable(worldName)],
-        ).get();
+        final rows = await tempDb
+            .customSelect(
+              'SELECT * FROM worlds WHERE name = ? AND deleted_at IS NULL',
+              variables: [Variable(worldName)],
+            )
+            .get();
 
         for (final row in rows) {
           await _insertRowFromQuery(primaryDb, 'worlds', row);

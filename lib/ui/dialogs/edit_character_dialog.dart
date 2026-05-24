@@ -42,7 +42,8 @@ class EditCharacterDialog extends StatefulWidget {
   State<EditCharacterDialog> createState() => _EditCharacterDialogState();
 }
 
-class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTickerProviderStateMixin {
+class _EditCharacterDialogState extends State<EditCharacterDialog>
+    with SingleTickerProviderStateMixin {
   late TextEditingController _nameController;
   late TextEditingController _descriptionController;
   late TextEditingController _personalityController;
@@ -64,13 +65,27 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.character.name);
-    _descriptionController = TextEditingController(text: widget.character.description);
-    _personalityController = TextEditingController(text: widget.character.personality);
-    _scenarioController = TextEditingController(text: widget.character.scenario);
-  _firstMessageController = TextEditingController(text: widget.character.firstMessage);
-  _exampleDialoguesController = TextEditingController(text: widget.character.mesExample);
-  _systemPromptController = TextEditingController(text: widget.character.systemPrompt);
-  _postHistoryController = TextEditingController(text: widget.character.postHistoryInstructions);
+    _descriptionController = TextEditingController(
+      text: widget.character.description,
+    );
+    _personalityController = TextEditingController(
+      text: widget.character.personality,
+    );
+    _scenarioController = TextEditingController(
+      text: widget.character.scenario,
+    );
+    _firstMessageController = TextEditingController(
+      text: widget.character.firstMessage,
+    );
+    _exampleDialoguesController = TextEditingController(
+      text: widget.character.mesExample,
+    );
+    _systemPromptController = TextEditingController(
+      text: widget.character.systemPrompt,
+    );
+    _postHistoryController = TextEditingController(
+      text: widget.character.postHistoryInstructions,
+    );
 
     _altGreetingControllers = widget.character.alternateGreetings
         .map((g) => TextEditingController(text: g))
@@ -79,7 +94,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     if (widget.character.lorebook != null) {
       _loreEntries = List.from(widget.character.lorebook!.entries);
     } else {
-       _loreEntries = [];
+      _loreEntries = [];
     }
 
     _selectedWorldNames = List.from(widget.character.worldNames);
@@ -143,9 +158,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
       await charDir.create(recursive: true);
 
       final safeName = _nameController.text.trim().isNotEmpty
-          ? _nameController.text.trim()
-              .replaceAll(RegExp(r'[^\w\s-]'), '')
-              .replaceAll(RegExp(r'\s+'), '_')
+          ? _nameController.text
+                .trim()
+                .replaceAll(RegExp(r'[^\w\s-]'), '')
+                .replaceAll(RegExp(r'\s+'), '_')
           : 'avatar';
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final destFilename = '${safeName}_$timestamp.png';
@@ -169,7 +185,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     }
   }
 
-  void _openExpandedEditor(String title, TextEditingController controller, {String? hintText}) {
+  void _openExpandedEditor(
+    String title,
+    TextEditingController controller, {
+    String? hintText,
+  }) {
     final expandedController = TextEditingController(text: controller.text);
     showDialog(
       context: context,
@@ -189,13 +209,21 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
                   children: [
                     Icon(Icons.edit_note, color: Colors.white70, size: 22),
                     const SizedBox(width: 8),
-                    Text(title, style: const TextStyle(
-                      color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const Spacer(),
                     TextButton.icon(
                       icon: const Icon(Icons.check, size: 18),
                       label: const Text('Done'),
-                      style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.greenAccent,
+                      ),
                       onPressed: () {
                         controller.text = expandedController.text;
                         Navigator.pop(ctx);
@@ -213,10 +241,14 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
                     maxLines: null,
                     expands: true,
                     textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
                     decoration: InputDecoration(
                       hintText: hintText,
-          hintStyle: const TextStyle(color: Colors.white54),
+                      hintStyle: const TextStyle(color: Colors.white54),
                       filled: true,
                       fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
@@ -263,14 +295,22 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     // Always embed V2 card data into the PNG to preserve extensions
     final storage = Provider.of<StorageService>(context, listen: false);
     String? targetPngPath = _newAvatarPath;
-    if (targetPngPath == null && widget.character.imagePath != null && widget.character.imagePath!.isNotEmpty) {
+    if (targetPngPath == null &&
+        widget.character.imagePath != null &&
+        widget.character.imagePath!.isNotEmpty) {
       final img = widget.character.imagePath!;
-      targetPngPath = p.isAbsolute(img) ? img : p.join(storage.charactersDir.path, img);
+      targetPngPath = p.isAbsolute(img)
+          ? img
+          : p.join(storage.charactersDir.path, img);
     }
 
     if (targetPngPath != null) {
       try {
-        await V2CardService().saveCardAsPng(widget.character, targetPngPath, targetPngPath);
+        await V2CardService().saveCardAsPng(
+          widget.character,
+          targetPngPath,
+          targetPngPath,
+        );
       } catch (e) {
         debugPrint('Failed to embed V2 card data: $e');
       }
@@ -278,24 +318,28 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
 
     // Update Lorebook
     if (widget.character.lorebook == null) {
-       widget.character.lorebook = Lorebook(entries: _loreEntries);
+      widget.character.lorebook = Lorebook(entries: _loreEntries);
     } else {
-       widget.character.lorebook!.entries = _loreEntries;
+      widget.character.lorebook!.entries = _loreEntries;
     }
 
     try {
-      await Provider.of<CharacterRepository>(context, listen: false)
-          .updateCharacter(
-            widget.character,
-            worldRepo: Provider.of<WorldRepository>(context, listen: false),
-          );
+      await Provider.of<CharacterRepository>(
+        context,
+        listen: false,
+      ).updateCharacter(
+        widget.character,
+        worldRepo: Provider.of<WorldRepository>(context, listen: false),
+      );
       if (mounted) {
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save character. Please try again.')),
+          SnackBar(
+            content: Text('Failed to save character. Please try again.'),
+          ),
         );
       }
     }
@@ -323,12 +367,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     try {
       final content = await File(result.files.single.path!).readAsString();
       final dynamic jsonData = jsonDecode(content);
-      
+
       // Validate that we have a Map<String, dynamic>
       if (jsonData is! Map<String, dynamic>) {
         throw FormatException('Invalid JSON format: expected a JSON object');
       }
-      
+
       final Map<String, dynamic> json = jsonData;
 
       if (json['entries'] == null && json['lorebook'] == null) {
@@ -355,7 +399,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported ${lorebook.entries.length} entries.')),
+          SnackBar(
+            content: Text('Imported ${lorebook.entries.length} entries.'),
+          ),
         );
       }
     } on FormatException catch (e) {
@@ -367,213 +413,214 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> with SingleTi
     } on Exception {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: An unexpected error occurred')),
+          SnackBar(
+            content: Text('Import failed: An unexpected error occurred'),
+          ),
         );
       }
     }
   }
 
-void _editLoreEntry(int index) {
-  final entry = _loreEntries[index];
-  final keyController = TextEditingController(text: entry.key);
-  final contentController = TextEditingController(text: entry.content);
-  final nameController = TextEditingController(text: entry.name);
-  bool isConstant = entry.constant;
-  int stickyDepth = entry.stickyDepth;
+  void _editLoreEntry(int index) {
+    final entry = _loreEntries[index];
+    final keyController = TextEditingController(text: entry.key);
+    final contentController = TextEditingController(text: entry.content);
+    final nameController = TextEditingController(text: entry.name);
+    bool isConstant = entry.constant;
+    int stickyDepth = entry.stickyDepth;
 
-  showDialog(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setStateDialog) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.menu_book, color: Colors.blueAccent, size: 20),
-              const SizedBox(width: 8),
-              const Text(
-                'Edit Lorebook Entry',
-                style: TextStyle(color: Colors.white),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E293B),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isConstant
-                          ? Colors.amberAccent.withValues(alpha: 0.3)
-                          : Colors.white.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.push_pin,
-                        size: 16,
-                        color: isConstant
-                            ? Colors.amberAccent
-                            : Colors.white38,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Always Active',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
-                      ),
-                      const Spacer(),
-                      Switch(
-                        value: isConstant,
-                        onChanged: (val) =>
-                            setStateDialog(() => isConstant = val),
-                        activeTrackColor: Colors.amberAccent.withValues(
-                          alpha: 0.5,
-                        ),
-                        activeThumbColor: Colors.amberAccent,
-                      ),
-                    ],
-                  ),
-                ),
-                if (!isConstant) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.layers,
-                        size: 14,
-                        color: Colors.white38,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Trigger Depth: $stickyDepth ${stickyDepth == 1 ? "message" : "messages"}',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SliderTheme(
-                    data: SliderThemeData(
-                      activeTrackColor: Colors.blueAccent,
-                      inactiveTrackColor: Colors.white12,
-                      thumbColor: Colors.blueAccent,
-                      trackHeight: 3,
-                    ),
-                    child: Slider(
-                      value: stickyDepth.toDouble(),
-                      min: 1,
-                      max: 100,
-                      divisions: 99,
-                      label: stickyDepth.toString(),
-                      onChanged: (val) =>
-                          setStateDialog(() => stickyDepth = val.toInt()),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                TextField(
-                  controller: nameController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Name (optional)',
-                    filled: true,
-                    fillColor: const Color(0xFF0F172A),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: keyController,
-                  enabled: !isConstant,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: isConstant
-                        ? 'Keywords (Disabled — Always Active)'
-                        : 'Keywords (comma separated)',
-                    filled: true,
-                    fillColor: isConstant
-                        ? const Color(0xFF0F172A).withValues(alpha: 0.5)
-                        : const Color(0xFF0F172A),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: contentController,
-                  maxLines: 5,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Content',
-                    filled: true,
-                    fillColor: const Color(0xFF0F172A),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
+                const Icon(Icons.menu_book, color: Colors.blueAccent, size: 20),
+                const SizedBox(width: 8),
+                const Text(
+                  'Edit Lorebook Entry',
+                  style: TextStyle(color: Colors.white),
                 ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                keyController.dispose();
-                contentController.dispose();
-                nameController.dispose();
-                Navigator.pop(context);
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.white38),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  entry.name = nameController.text;
-                  entry.key = keyController.text;
-                  entry.content = contentController.text;
-                  entry.constant = isConstant;
-                  entry.stickyDepth = stickyDepth;
-                });
-                keyController.dispose();
-                contentController.dispose();
-                nameController.dispose();
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isConstant
+                            ? Colors.amberAccent.withValues(alpha: 0.3)
+                            : Colors.white.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.push_pin,
+                          size: 16,
+                          color: isConstant
+                              ? Colors.amberAccent
+                              : Colors.white38,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Always Active',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                        const Spacer(),
+                        Switch(
+                          value: isConstant,
+                          onChanged: (val) =>
+                              setStateDialog(() => isConstant = val),
+                          activeTrackColor: Colors.amberAccent.withValues(
+                            alpha: 0.5,
+                          ),
+                          activeThumbColor: Colors.amberAccent,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!isConstant) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.layers,
+                          size: 14,
+                          color: Colors.white38,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Trigger Depth: $stickyDepth ${stickyDepth == 1 ? "message" : "messages"}',
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SliderTheme(
+                      data: SliderThemeData(
+                        activeTrackColor: Colors.blueAccent,
+                        inactiveTrackColor: Colors.white12,
+                        thumbColor: Colors.blueAccent,
+                        trackHeight: 3,
+                      ),
+                      child: Slider(
+                        value: stickyDepth.toDouble(),
+                        min: 1,
+                        max: 100,
+                        divisions: 99,
+                        label: stickyDepth.toString(),
+                        onChanged: (val) =>
+                            setStateDialog(() => stickyDepth = val.toInt()),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Name (optional)',
+                      filled: true,
+                      fillColor: const Color(0xFF0F172A),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: keyController,
+                    enabled: !isConstant,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: isConstant
+                          ? 'Keywords (Disabled — Always Active)'
+                          : 'Keywords (comma separated)',
+                      filled: true,
+                      fillColor: isConstant
+                          ? const Color(0xFF0F172A).withValues(alpha: 0.5)
+                          : const Color(0xFF0F172A),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: contentController,
+                    maxLines: 5,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Content',
+                      filled: true,
+                      fillColor: const Color(0xFF0F172A),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              child: const Text('Save'),
             ),
-          ],
-        );
-      }
-    ),
-  );
-}
+            actions: [
+              TextButton(
+                onPressed: () {
+                  keyController.dispose();
+                  contentController.dispose();
+                  nameController.dispose();
+                  Navigator.pop(context);
+                },
+                style: TextButton.styleFrom(foregroundColor: Colors.white38),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    entry.name = nameController.text;
+                    entry.key = keyController.text;
+                    entry.content = contentController.text;
+                    entry.constant = isConstant;
+                    entry.stickyDepth = stickyDepth;
+                  });
+                  keyController.dispose();
+                  contentController.dispose();
+                  nameController.dispose();
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-
     return Dialog(
       backgroundColor: const Color(0xFF1F2937),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -583,82 +630,95 @@ void _editLoreEntry(int index) {
         padding: const EdgeInsets.all(0),
         child: Column(
           children: [
-             // Header
-             Container(
-               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-               decoration: const BoxDecoration(
-                 border: Border(bottom: BorderSide(color: Colors.white10)),
-               ),
-               child: Row(
-                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                 children: [
-                   Text('Edit ${widget.character.name}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                   IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                 ],
-               ),
-             ),
-             
-             // Tabs
-             Container(
-               color: const Color(0xFF111827),
-               child: TabBar(
-                 controller: _tabController,
-                 labelColor: Colors.blueAccent,
-                 unselectedLabelColor: Colors.white54,
-                 indicatorColor: Colors.blueAccent,
-                 tabs: const [
-                   Tab(text: 'Details'),
-                   Tab(text: 'Lorebook'),
-                   Tab(text: 'Worlds'),
-                 ],
-               ),
-             ),
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.white10)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Edit ${widget.character.name}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
 
-             // Content
-             Expanded(
-               child: TabBarView(
-                 controller: _tabController,
-                 children: [
-                   _buildDetailsTab(),
-                   _buildLorebookTab(),
-                   _buildWorldsTab(),
-                 ],
-               ),
-             ),
+            // Tabs
+            Container(
+              color: const Color(0xFF111827),
+              child: TabBar(
+                controller: _tabController,
+                labelColor: Colors.blueAccent,
+                unselectedLabelColor: Colors.white54,
+                indicatorColor: Colors.blueAccent,
+                tabs: const [
+                  Tab(text: 'Details'),
+                  Tab(text: 'Lorebook'),
+                  Tab(text: 'Worlds'),
+                ],
+              ),
+            ),
 
-             // Actions
-             Container(
-               padding: const EdgeInsets.all(16),
-               decoration: const BoxDecoration(
-                 border: Border(top: BorderSide(color: Colors.white10)),
-               ),
-               child: Row(
-                 mainAxisAlignment: MainAxisAlignment.end,
-                 children: [
-                   TextButton(
-                     onPressed: () => Navigator.pop(context),
-                     child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
-                   ),
-                   const SizedBox(width: 16),
-                   ElevatedButton.icon(
-                     onPressed: _saveCharacter,
-                     icon: const Icon(Icons.save),
-                     label: const Text('Save Changes'),
-                     style: ElevatedButton.styleFrom(
-                       backgroundColor: Colors.blueAccent,
-                       foregroundColor: Colors.white,
-                     ),
-                   ),
-                 ],
-               ),
-             ),
+            // Content
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildDetailsTab(),
+                  _buildLorebookTab(),
+                  _buildWorldsTab(),
+                ],
+              ),
+            ),
+
+            // Actions
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Colors.white10)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton.icon(
+                    onPressed: _saveCharacter,
+                    icon: const Icon(Icons.save),
+                    label: const Text('Save Changes'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-     Widget _buildDetailsTab() {
+  Widget _buildDetailsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -672,12 +732,17 @@ void _editLoreEntry(int index) {
                   CircleAvatar(
                     radius: 48,
                     backgroundColor: const Color(0xFF374151),
-                    backgroundImage: _avatarFile != null && _avatarFile!.existsSync()
+                    backgroundImage:
+                        _avatarFile != null && _avatarFile!.existsSync()
                         ? FileImage(_avatarFile!) as ImageProvider
                         : null,
-                     child: _avatarFile == null || !_avatarFile!.existsSync()
-                         ? const Icon(Icons.person, size: 48, color: Colors.white54)
-                         : null,
+                    child: _avatarFile == null || !_avatarFile!.existsSync()
+                        ? const Icon(
+                            Icons.person,
+                            size: 48,
+                            color: Colors.white54,
+                          )
+                        : null,
                   ),
                   Positioned(
                     bottom: 0,
@@ -687,9 +752,16 @@ void _editLoreEntry(int index) {
                       decoration: BoxDecoration(
                         color: Colors.blueAccent,
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF1F2937), width: 2),
+                        border: Border.all(
+                          color: const Color(0xFF1F2937),
+                          width: 2,
+                        ),
                       ),
-                      child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        size: 16,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ],
@@ -697,30 +769,59 @@ void _editLoreEntry(int index) {
             ),
           ),
           const SizedBox(height: 8),
-           Text(
-             'Tap to change avatar',
-             style: TextStyle(fontSize: 11, color: Colors.white54),
-           ),
+          Text(
+            'Tap to change avatar',
+            style: TextStyle(fontSize: 11, color: Colors.white54),
+          ),
           const SizedBox(height: 16),
           _buildTextField(controller: _nameController, label: 'Name'),
           const SizedBox(height: 16),
-          _buildTextField(controller: _descriptionController, label: 'Description', maxLines: 3, expandable: true),
+          _buildTextField(
+            controller: _descriptionController,
+            label: 'Description',
+            maxLines: 3,
+            expandable: true,
+          ),
           const SizedBox(height: 16),
-          _buildTextField(controller: _personalityController, label: 'Personality', maxLines: 3, expandable: true),
+          _buildTextField(
+            controller: _personalityController,
+            label: 'Personality',
+            maxLines: 3,
+            expandable: true,
+          ),
           const SizedBox(height: 16),
-          _buildTextField(controller: _scenarioController, label: 'Scenario', maxLines: 3, expandable: true),
+          _buildTextField(
+            controller: _scenarioController,
+            label: 'Scenario',
+            maxLines: 3,
+            expandable: true,
+          ),
           const SizedBox(height: 16),
-          _buildTextField(controller: _firstMessageController, label: 'First Message', maxLines: 5, expandable: true),
+          _buildTextField(
+            controller: _firstMessageController,
+            label: 'First Message',
+            maxLines: 5,
+            expandable: true,
+          ),
           const SizedBox(height: 24),
           // Alternate Greetings
           Row(
             children: [
-              const Text('Alternate Greetings',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white70)),
+              const Text(
+                'Alternate Greetings',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.white70,
+                ),
+              ),
               const Spacer(),
               TextButton.icon(
                 icon: const Icon(Icons.add, size: 16, color: Colors.white70),
-                label: const Text('Add', style: TextStyle(color: Colors.white70)),
+                label: const Text(
+                  'Add',
+                  style: TextStyle(color: Colors.white70),
+                ),
                 onPressed: () {
                   setState(() {
                     _altGreetingControllers.add(TextEditingController());
@@ -747,7 +848,11 @@ void _editLoreEntry(int index) {
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
+                    icon: const Icon(
+                      Icons.remove_circle_outline,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
                     tooltip: 'Remove',
                     padding: const EdgeInsets.only(top: 24),
                     onPressed: () {
@@ -762,14 +867,15 @@ void _editLoreEntry(int index) {
             );
           }),
           const SizedBox(height: 24),
-           // Example Dialogues
-           _buildTextField(
-             controller: _exampleDialoguesController,
-             label: 'Example Dialogues',
-             maxLines: 5,
-             expandable: true,
-             hintText: '(Examples of chat dialog. Begin each example with <START> on a new line.)',
-           ),
+          // Example Dialogues
+          _buildTextField(
+            controller: _exampleDialoguesController,
+            label: 'Example Dialogues',
+            maxLines: 5,
+            expandable: true,
+            hintText:
+                '(Examples of chat dialog. Begin each example with <START> on a new line.)',
+          ),
           const SizedBox(height: 24),
           // System Prompt
           _buildTextField(
@@ -777,7 +883,8 @@ void _editLoreEntry(int index) {
             label: 'System Prompt (optional)',
             maxLines: 4,
             expandable: true,
-            hintText: 'Custom system prompt for this character. If blank, the global system prompt is used.',
+            hintText:
+                'Custom system prompt for this character. If blank, the global system prompt is used.',
           ),
           const SizedBox(height: 16),
           _buildTextField(
@@ -785,24 +892,37 @@ void _editLoreEntry(int index) {
             label: 'Post-History Instructions (optional)',
             maxLines: 3,
             expandable: true,
-            hintText: 'Instructions injected after chat history (jailbreak/reminder).',
+            hintText:
+                'Instructions injected after chat history (jailbreak/reminder).',
           ),
           const SizedBox(height: 24),
           // Tags editor
-          const Text('Tags', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white54)),
+          const Text(
+            'Tags',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Colors.white54,
+            ),
+          ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
-              ..._tags.map((tag) => Chip(
-                label: Text(tag, style: const TextStyle(fontSize: 12, color: Colors.white)),
-                backgroundColor: Colors.blueAccent.withValues(alpha: 0.25),
-                deleteIconColor: Colors.white54,
-                onDeleted: () => setState(() => _tags.remove(tag)),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              )),
+              ..._tags.map(
+                (tag) => Chip(
+                  label: Text(
+                    tag,
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                  ),
+                  backgroundColor: Colors.blueAccent.withValues(alpha: 0.25),
+                  deleteIconColor: Colors.white54,
+                  onDeleted: () => setState(() => _tags.remove(tag)),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -814,14 +934,20 @@ void _editLoreEntry(int index) {
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   decoration: InputDecoration(
                     hintText: 'Add a tag...',
-                    hintStyle: const TextStyle(color: Colors.white54, fontSize: 13),
+                    hintStyle: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
+                    ),
                     filled: true,
                     fillColor: Colors.black26,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     isDense: true,
                   ),
                   onSubmitted: (val) {
@@ -835,7 +961,11 @@ void _editLoreEntry(int index) {
               ),
               const SizedBox(width: 8),
               IconButton(
-                icon: const Icon(Icons.add_circle, color: Colors.blueAccent, size: 22),
+                icon: const Icon(
+                  Icons.add_circle,
+                  color: Colors.blueAccent,
+                  size: 22,
+                ),
                 tooltip: 'Add tag',
                 onPressed: () {
                   final tag = _tagInputController.text.trim();
@@ -849,36 +979,67 @@ void _editLoreEntry(int index) {
           ),
           const SizedBox(height: 24),
           // Chat Colors
-          const Text('Chat Colors', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white54)),
+          const Text(
+            'Chat Colors',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Colors.white54,
+            ),
+          ),
           const SizedBox(height: 8),
           _buildColorRow(
             'User Bubble',
-            widget.character.frontPorchExtensions?.userBubbleColor ?? Provider.of<StorageService>(context, listen: false).globalUserBubbleColor,
+            widget.character.frontPorchExtensions?.userBubbleColor ??
+                Provider.of<StorageService>(
+                  context,
+                  listen: false,
+                ).globalUserBubbleColor,
             (color) => _updateColor('userBubbleColor', color),
           ),
           _buildColorRow(
             'User Text',
-            widget.character.frontPorchExtensions?.userTextColor ?? Provider.of<StorageService>(context, listen: false).globalUserTextColor,
+            widget.character.frontPorchExtensions?.userTextColor ??
+                Provider.of<StorageService>(
+                  context,
+                  listen: false,
+                ).globalUserTextColor,
             (color) => _updateColor('userTextColor', color),
           ),
           _buildColorRow(
             'AI Bubble',
-            widget.character.frontPorchExtensions?.aiBubbleColor ?? Provider.of<StorageService>(context, listen: false).globalAiBubbleColor,
+            widget.character.frontPorchExtensions?.aiBubbleColor ??
+                Provider.of<StorageService>(
+                  context,
+                  listen: false,
+                ).globalAiBubbleColor,
             (color) => _updateColor('aiBubbleColor', color),
           ),
           _buildColorRow(
             'AI Text',
-            widget.character.frontPorchExtensions?.aiTextColor ?? Provider.of<StorageService>(context, listen: false).globalAiTextColor,
+            widget.character.frontPorchExtensions?.aiTextColor ??
+                Provider.of<StorageService>(
+                  context,
+                  listen: false,
+                ).globalAiTextColor,
             (color) => _updateColor('aiTextColor', color),
           ),
           _buildColorRow(
             'Dialogue (Quoted)',
-            widget.character.frontPorchExtensions?.dialogueColor ?? Provider.of<StorageService>(context, listen: false).globalDialogueColor,
+            widget.character.frontPorchExtensions?.dialogueColor ??
+                Provider.of<StorageService>(
+                  context,
+                  listen: false,
+                ).globalDialogueColor,
             (color) => _updateColor('dialogueColor', color),
           ),
           _buildColorRow(
             'Actions (*text*)',
-            widget.character.frontPorchExtensions?.actionColor ?? Provider.of<StorageService>(context, listen: false).globalActionColor,
+            widget.character.frontPorchExtensions?.actionColor ??
+                Provider.of<StorageService>(
+                  context,
+                  listen: false,
+                ).globalActionColor,
             (color) => _updateColor('actionColor', color),
           ),
         ],
@@ -886,12 +1047,19 @@ void _editLoreEntry(int index) {
     );
   }
 
-  Widget _buildColorRow(String label, Color color, void Function(Color) onChanged) {
+  Widget _buildColorRow(
+    String label,
+    Color color,
+    void Function(Color) onChanged,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
           const Spacer(),
           Container(
             width: 40,
@@ -946,7 +1114,10 @@ void _editLoreEntry(int index) {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   textStyle: const TextStyle(fontSize: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -954,19 +1125,22 @@ void _editLoreEntry(int index) {
                 ),
               ),
               const SizedBox(width: 8),
-            ElevatedButton.icon(
-              onPressed: _importLorebookJson,
-              icon: const Icon(Icons.cloud_upload, size: 16),
-              label: const Text('Import'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+              ElevatedButton.icon(
+                onPressed: _importLorebookJson,
+                icon: const Icon(Icons.cloud_upload, size: 16),
+                label: const Text('Import'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
-            ),
             ],
           ),
           const SizedBox(height: 12),
@@ -1025,8 +1199,8 @@ void _editLoreEntry(int index) {
           color: entry.constant
               ? Colors.amberAccent.withValues(alpha: 0.3)
               : entry.enabled
-                  ? Colors.blueAccent.withValues(alpha: 0.15)
-                  : Colors.white.withValues(alpha: 0.06),
+              ? Colors.blueAccent.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.06),
         ),
       ),
       child: Column(
@@ -1040,19 +1214,19 @@ void _editLoreEntry(int index) {
                 color: entry.constant
                     ? Colors.amberAccent
                     : entry.enabled
-                        ? Colors.blueAccent
-                        : Colors.white38,
+                    ? Colors.blueAccent
+                    : Colors.white38,
               ),
               const SizedBox(width: 6),
               Expanded(
-            child: Text(
-              entry.displayName,
-              style: TextStyle(
-                color: entry.enabled ? Colors.white : Colors.white70,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
+                child: Text(
+                  entry.displayName,
+                  style: TextStyle(
+                    color: entry.enabled ? Colors.white : Colors.white70,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
               ),
               if (entry.constant)
                 Container(
@@ -1073,25 +1247,25 @@ void _editLoreEntry(int index) {
                     ),
                   ),
                 ),
-            if (!entry.constant)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 2,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.blueAccent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'Trigger Depth ${entry.stickyDepth}',
-                  style: const TextStyle(
-                    color: Colors.blueAccent,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
+              if (!entry.constant)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Trigger Depth ${entry.stickyDepth}',
+                    style: const TextStyle(
+                      color: Colors.blueAccent,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
               const SizedBox(width: 4),
               Switch(
                 value: entry.enabled,
@@ -1160,26 +1334,27 @@ void _editLoreEntry(int index) {
             ),
           ],
           const SizedBox(height: 6),
-            Text(
-              entry.content,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 11,
-                height: 1.4,
-              ),
-            ),
+          Text(
+            entry.content,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
+          ),
         ],
       ),
     );
   }
 
-   Widget _buildWorldsTab() {
+  Widget _buildWorldsTab() {
     return Consumer<WorldRepository>(
       builder: (context, repo, child) {
         if (repo.worlds.isEmpty) {
-          return const Center(child: Text('No worlds found. Create them in the Worlds section.', style: TextStyle(color: Colors.white54)));
+          return const Center(
+            child: Text(
+              'No worlds found. Create them in the Worlds section.',
+              style: TextStyle(color: Colors.white54),
+            ),
+          );
         }
         return ListView.builder(
           padding: const EdgeInsets.all(24),
@@ -1188,8 +1363,16 @@ void _editLoreEntry(int index) {
             final world = repo.worlds[index];
             final isSelected = _selectedWorldNames.contains(world.name);
             return CheckboxListTile(
-              title: Text(world.name, style: const TextStyle(color: Colors.white)),
-              subtitle: Text(world.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54)),
+              title: Text(
+                world.name,
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                world.description,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white54),
+              ),
               value: isSelected,
               checkColor: Colors.black,
               activeColor: Colors.blueAccent,
@@ -1231,14 +1414,19 @@ void _editLoreEntry(int index) {
             ),
             if (expandable) ...[
               const SizedBox(width: 6),
-            InkWell(
-              onTap: () => _openExpandedEditor(label, controller, hintText: hintText),
-              borderRadius: BorderRadius.circular(4),
-              child: const Padding(
-                padding: EdgeInsets.all(2),
-                child: Icon(Icons.open_in_full, size: 14, color: Colors.white54),
+              InkWell(
+                onTap: () =>
+                    _openExpandedEditor(label, controller, hintText: hintText),
+                borderRadius: BorderRadius.circular(4),
+                child: const Padding(
+                  padding: EdgeInsets.all(2),
+                  child: Icon(
+                    Icons.open_in_full,
+                    size: 14,
+                    color: Colors.white54,
+                  ),
+                ),
               ),
-            ),
             ],
           ],
         ),
@@ -1296,7 +1484,9 @@ void _editLoreEntry(int index) {
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(widget.character);
       // Reload from PNG to ensure extensions are persisted
-      final reloaded = await V2CardService().readCard(widget.character.imagePath!);
+      final reloaded = await V2CardService().readCard(
+        widget.character.imagePath!,
+      );
       // Update ChatService with reloaded character
       final chatService = Provider.of<ChatService>(context, listen: false);
       await chatService.setActiveCharacter(reloaded ?? widget.character);

@@ -70,14 +70,10 @@ class _RealismStateStub {
   };
 
   // Morning-specific overrides (hunger drains faster after sleep / breakfast window).
-  static const Map<String, int> _needDecayMorning = {
-    'hunger': 12,
-  };
+  static const Map<String, int> _needDecayMorning = {'hunger': 12};
 
   // Night-specific overrides (energy drains faster at night).
-  static const Map<String, int> _needDecayNight = {
-    'energy': 10,
-  };
+  static const Map<String, int> _needDecayNight = {'energy': 10};
 
   static const Map<String, int> _needRestore = {
     'hunger': 50,
@@ -274,9 +270,7 @@ class _RealismStateStub {
   Map<String, dynamic> captureRealismState() {
     final state = <String, dynamic>{};
     if (_needsSimEnabled && _needsVector.isNotEmpty) {
-      state['needs'] = {
-        'vector': Map<String, int>.from(_needsVector),
-      };
+      state['needs'] = {'vector': Map<String, int>.from(_needsVector)};
     }
     return state;
   }
@@ -370,7 +364,10 @@ void main() {
     test('seeds character emotion', () {
       final stub = _RealismStateStub();
       stub.seedFromExtensions(
-        FrontPorchExtensions(characterEmotion: 'happy', emotionIntensity: 'strong'),
+        FrontPorchExtensions(
+          characterEmotion: 'happy',
+          emotionIntensity: 'strong',
+        ),
       );
       expect(stub.characterEmotion, 'happy');
       expect(stub.emotionIntensity, 'strong');
@@ -392,8 +389,11 @@ void main() {
       final stub = _RealismStateStub();
       stub.passageOfTimeDefault = false;
       stub.seedFromExtensions(FrontPorchExtensions(passageOfTimeEnabled: true));
-      expect(stub.passageOfTimeEnabled, isFalse,
-          reason: 'global setting overrides card setting');
+      expect(
+        stub.passageOfTimeEnabled,
+        isFalse,
+        reason: 'global setting overrides card setting',
+      );
     });
 
     test('clamps short-term bond to -300..300', () {
@@ -432,22 +432,32 @@ void main() {
     test('calculates relationship tier from bonded score', () {
       final stub = _RealismStateStub();
       stub.seedFromExtensions(FrontPorchExtensions(shortTermBond: 30));
-      expect(stub.relationshipTier, 3,
-          reason: 'score 30 => tier 3 (Amiable) since 30 >= 30 threshold');
+      expect(
+        stub.relationshipTier,
+        3,
+        reason: 'score 30 => tier 3 (Amiable) since 30 >= 30 threshold',
+      );
     });
 
     test('calculates long-term tier from bonded score', () {
       final stub = _RealismStateStub();
       stub.seedFromExtensions(FrontPorchExtensions(longTermBond: 50));
-      expect(stub.longTermTier, 4,
-          reason: 'score 50 => tier 4 (Friendly) since 50 >= 50 threshold');
+      expect(
+        stub.longTermTier,
+        4,
+        reason: 'score 50 => tier 4 (Friendly) since 50 >= 50 threshold',
+      );
     });
 
     test('negative bond produces negative tier', () {
       final stub = _RealismStateStub();
       stub.seedFromExtensions(FrontPorchExtensions(shortTermBond: -30));
-      expect(stub.relationshipTier, -3,
-          reason: 'negative bond => negative tier (Unimpressed) since -30 >= -30 threshold');
+      expect(
+        stub.relationshipTier,
+        -3,
+        reason:
+            'negative bond => negative tier (Unimpressed) since -30 >= -30 threshold',
+      );
     });
 
     test('null extension does nothing', () {
@@ -484,8 +494,11 @@ void main() {
 
       stub.resetRealismState();
 
-      expect(stub.affectionScore, bond,
-          reason: 'reset should not affect bond/trust/emotion');
+      expect(
+        stub.affectionScore,
+        bond,
+        reason: 'reset should not affect bond/trust/emotion',
+      );
     });
   });
 
@@ -529,10 +542,16 @@ void main() {
 
       stub.seedForNewChat(char);
 
-      expect(stub.arousalLevel, 5,
-          reason: 'arousal must be preserved for characters with extensions');
-      expect(stub.activeFixation, 'curiosity',
-          reason: 'fixation must be preserved for characters with extensions');
+      expect(
+        stub.arousalLevel,
+        5,
+        reason: 'arousal must be preserved for characters with extensions',
+      );
+      expect(
+        stub.activeFixation,
+        'curiosity',
+        reason: 'fixation must be preserved for characters with extensions',
+      );
     });
 
     test('resets arousal/fixation when character has no extensions', () {
@@ -549,10 +568,16 @@ void main() {
 
       stub.seedForNewChat(char);
 
-      expect(stub.arousalLevel, 0,
-          reason: 'arousal must reset for characters without extensions');
-      expect(stub.activeFixation, '',
-          reason: 'fixation must reset for characters without extensions');
+      expect(
+        stub.arousalLevel,
+        0,
+        reason: 'arousal must reset for characters without extensions',
+      );
+      expect(
+        stub.activeFixation,
+        '',
+        reason: 'fixation must reset for characters without extensions',
+      );
     });
 
     test('uses default FrontPorchExtensions when null', () {
@@ -586,8 +611,11 @@ void main() {
       stub._relationshipTier = 99; // set a non-zero value
       stub.seedForNewChat(char);
 
-      expect(stub.relationshipTier, 99,
-          reason: 'tiers should not be recalculated when realism is disabled');
+      expect(
+        stub.relationshipTier,
+        99,
+        reason: 'tiers should not be recalculated when realism is disabled',
+      );
     });
 
     test('calculates tiers when realism enabled', () {
@@ -629,10 +657,7 @@ void main() {
       expect(stub.arousalLevel, 5);
 
       // Second: character without extensions — arousal resets
-      final charNoExt = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Hi',
-      );
+      final charNoExt = CharacterCard(name: 'Luna', firstMessage: 'Hi');
 
       stub.seedForNewChat(charNoExt);
       expect(stub.arousalLevel, 0);
@@ -662,8 +687,11 @@ void main() {
 
       // New chat should re-seed from extensions (not current runtime state)
       stub.seedForNewChat(char);
-      expect(stub.affectionScore, 40,
-          reason: 'new chat re-seeds from extensions, not runtime state');
+      expect(
+        stub.affectionScore,
+        40,
+        reason: 'new chat re-seeds from extensions, not runtime state',
+      );
       expect(stub.trustLevel, 20);
     });
   });
@@ -677,14 +705,17 @@ void main() {
   // _needsSimEnabled guard).
 
   group('needs simulation', () {
-    test('initialization seeds defaults when enabled via setNeedsSimEnabled', () {
-      final stub = _RealismStateStub();
-      expect(stub.needsVector, isEmpty);
+    test(
+      'initialization seeds defaults when enabled via setNeedsSimEnabled',
+      () {
+        final stub = _RealismStateStub();
+        expect(stub.needsVector, isEmpty);
 
-      stub.setNeedsSimEnabled(true);
-      expect(stub.needsSimEnabled, isTrue);
-      expect(stub.needsVector, _RealismStateStub._needDefaults);
-    });
+        stub.setNeedsSimEnabled(true);
+        expect(stub.needsSimEnabled, isTrue);
+        expect(stub.needsVector, _RealismStateStub._needDefaults);
+      },
+    );
 
     test('initialization and clear on disable', () {
       final stub = _RealismStateStub();
@@ -696,35 +727,54 @@ void main() {
       expect(stub.needsVector, isEmpty);
     });
 
-    test('tickNeedsDecay applies correct decay math, time-of-day variants, and clamps', () {
-      final stub = _RealismStateStub();
-      stub.setNeedsSimEnabled(true);
-      stub._realismEnabled = true; // enable realism guard
+    test(
+      'tickNeedsDecay applies correct decay math, time-of-day variants, and clamps',
+      () {
+        final stub = _RealismStateStub();
+        stub.setNeedsSimEnabled(true);
+        stub._realismEnabled = true; // enable realism guard
 
-      // Default morning
-      stub._timeOfDay = 'morning';
-      // Manually set a starting vector for determinism
-      stub._needsVector = {'hunger': 80, 'energy': 90, 'bladder': 70};
+        // Default morning
+        stub._timeOfDay = 'morning';
+        // Manually set a starting vector for determinism
+        stub._needsVector = {'hunger': 80, 'energy': 90, 'bladder': 70};
 
-      stub.tickNeedsDecay();
+        stub.tickNeedsDecay();
 
-      // hunger uses morning override: 12 instead of 8
-      expect(stub.needsVector['hunger'], 80 - 12, reason: 'morning hunger decay=12');
-      expect(stub.needsVector['energy'], 90 - 5, reason: 'base energy decay=5');
-      expect(stub.needsVector['bladder'], 70 - 12, reason: 'base bladder decay=12');
+        // hunger uses morning override: 12 instead of 8
+        expect(
+          stub.needsVector['hunger'],
+          80 - 12,
+          reason: 'morning hunger decay=12',
+        );
+        expect(
+          stub.needsVector['energy'],
+          90 - 5,
+          reason: 'base energy decay=5',
+        );
+        expect(
+          stub.needsVector['bladder'],
+          70 - 12,
+          reason: 'base bladder decay=12',
+        );
 
-      // Night variant
-      stub._timeOfDay = 'night';
-      stub._needsVector = {'energy': 50};
-      stub.tickNeedsDecay();
-      expect(stub.needsVector['energy'], 50 - 10, reason: 'night energy decay=10');
+        // Night variant
+        stub._timeOfDay = 'night';
+        stub._needsVector = {'energy': 50};
+        stub.tickNeedsDecay();
+        expect(
+          stub.needsVector['energy'],
+          50 - 10,
+          reason: 'night energy decay=10',
+        );
 
-      // Clamp at 0
-      stub._needsVector = {'hunger': 5};
-      stub._timeOfDay = 'morning';
-      stub.tickNeedsDecay();
-      expect(stub.needsVector['hunger'], 0);
-    });
+        // Clamp at 0
+        stub._needsVector = {'hunger': 5};
+        stub._timeOfDay = 'morning';
+        stub.tickNeedsDecay();
+        expect(stub.needsVector['hunger'], 0);
+      },
+    );
 
     test('snapshot round-trip preserves vector when enabled', () {
       final stub = _RealismStateStub();
@@ -748,45 +798,69 @@ void main() {
       expect(stub.needsVector, {'hunger': 42, 'fun': 55});
     });
 
-    test('snapshot restore is a no-op and does not resurrect when disabled (catches write-only / stale resurrection)', () {
-      final stub = _RealismStateStub();
-      stub.setNeedsSimEnabled(true);
-      stub._needsVector = {'social': 30};
-      final snap = stub.captureRealismState();
-      expect(snap['needs']['vector'], isNotEmpty);
+    test(
+      'snapshot restore is a no-op and does not resurrect when disabled (catches write-only / stale resurrection)',
+      () {
+        final stub = _RealismStateStub();
+        stub.setNeedsSimEnabled(true);
+        stub._needsVector = {'social': 30};
+        final snap = stub.captureRealismState();
+        expect(snap['needs']['vector'], isNotEmpty);
 
-      // Toggle off (production path: clears vector, disables)
-      stub.setNeedsSimEnabled(false);
-      expect(stub.needsSimEnabled, isFalse);
-      expect(stub.needsVector, isEmpty);
+        // Toggle off (production path: clears vector, disables)
+        stub.setNeedsSimEnabled(false);
+        expect(stub.needsSimEnabled, isFalse);
+        expect(stub.needsVector, isEmpty);
 
-      // Historical snapshot must NOT flip it back on or repopulate
-      stub.restoreRealismStateFromMessage(snap);
-      expect(stub.needsSimEnabled, isFalse, reason: 'guard prevents resurrection from snapshot');
-      expect(stub.needsVector, isEmpty, reason: 'vector remains empty when disabled');
-    });
+        // Historical snapshot must NOT flip it back on or repopulate
+        stub.restoreRealismStateFromMessage(snap);
+        expect(
+          stub.needsSimEnabled,
+          isFalse,
+          reason: 'guard prevents resurrection from snapshot',
+        );
+        expect(
+          stub.needsVector,
+          isEmpty,
+          reason: 'vector remains empty when disabled',
+        );
+      },
+    );
 
-    test('verifyNeedFulfillmentCall does nothing (no state change) when disabled', () async {
-      final stub = _RealismStateStub();
-      // disabled by default
-      await stub.verifyNeedFulfillmentCall();
-      expect(stub.needsVector, isEmpty);
+    test(
+      'verifyNeedFulfillmentCall does nothing (no state change) when disabled',
+      () async {
+        final stub = _RealismStateStub();
+        // disabled by default
+        await stub.verifyNeedFulfillmentCall();
+        expect(stub.needsVector, isEmpty);
 
-      // Even if we manually populate, disabled guard prevents any action
-      stub._needsVector = {'hunger': 20};
-      await stub.verifyNeedFulfillmentCall();
-      expect(stub.needsVector['hunger'], 20, reason: 'no restore applied when disabled');
+        // Even if we manually populate, disabled guard prevents any action
+        stub._needsVector = {'hunger': 20};
+        await stub.verifyNeedFulfillmentCall();
+        expect(
+          stub.needsVector['hunger'],
+          20,
+          reason: 'no restore applied when disabled',
+        );
 
-      // When enabled, the stub method still guards (no LLM) but we can test manual restore path
-      stub.setNeedsSimEnabled(true);
-      stub._realismEnabled = true;
-      stub._needsVector = {'hunger': 20};
-      await stub.verifyNeedFulfillmentCall(); // still no-op in stub
-      expect(stub.needsVector['hunger'], 20); // unchanged (no auto-restore here)
+        // When enabled, the stub method still guards (no LLM) but we can test manual restore path
+        stub.setNeedsSimEnabled(true);
+        stub._realismEnabled = true;
+        stub._needsVector = {'hunger': 20};
+        await stub.verifyNeedFulfillmentCall(); // still no-op in stub
+        expect(
+          stub.needsVector['hunger'],
+          20,
+        ); // unchanged (no auto-restore here)
 
-      // Demonstrate restore helper works when we simulate fulfillment
-      stub._applyNeedRestore('hunger');
-      expect(stub.needsVector['hunger'], 20 + 50); // _needRestore['hunger']=50
-    });
+        // Demonstrate restore helper works when we simulate fulfillment
+        stub._applyNeedRestore('hunger');
+        expect(
+          stub.needsVector['hunger'],
+          20 + 50,
+        ); // _needRestore['hunger']=50
+      },
+    );
   });
 }

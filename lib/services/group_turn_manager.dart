@@ -33,8 +33,9 @@ class GroupTurnManager extends ChangeNotifier {
 
   /// Current membership IDs from the underlying GroupChat (for add/remove flows).
   /// Callers should prefer going through the manager for membership changes.
-  List<String> get characterIds =>
-      _group != null ? List.unmodifiable(_group!.characterIds) : const <String>[];
+  List<String> get characterIds => _group != null
+      ? List.unmodifiable(_group!.characterIds)
+      : const <String>[];
 
   bool get observerMode => _observerMode;
   bool get autoPlayActive => _autoPlayActive;

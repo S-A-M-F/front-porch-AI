@@ -190,7 +190,8 @@ class WorldRepository extends ChangeNotifier {
   Future<void> importWorld(File file) async {
     try {
       final content = await file.readAsString();
-      final Map<String, dynamic> json = jsonDecode(content) as Map<String, dynamic>;
+      final Map<String, dynamic> json =
+          jsonDecode(content) as Map<String, dynamic>;
 
       // Validate basic structure
       if (json['entries'] == null && json['lorebook'] == null) {

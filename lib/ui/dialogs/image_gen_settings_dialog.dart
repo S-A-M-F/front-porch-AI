@@ -38,10 +38,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   final _localUrlController = TextEditingController();
   List<String> _localModels = [];
   bool _loadingLocalModels = false;
-  bool? _connectionOk;      // null = untested, true = ok, false = failed
+  bool? _connectionOk; // null = untested, true = ok, false = failed
   bool _testingConnection = false;
-  bool _unloadingModel    = false;
-  bool _switchingModel    = false;
+  bool _unloadingModel = false;
+  bool _switchingModel = false;
   String _modelActionStatus = ''; // feedback message for unload/switch
 
   // LoRA state (A1111/Forge/SDNext only)
@@ -167,7 +167,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   Future<void> _unloadModel() async {
     final url = _localUrlController.text.trim();
     if (url.isEmpty) return;
-    setState(() { _unloadingModel = true; _modelActionStatus = ''; });
+    setState(() {
+      _unloadingModel = true;
+      _modelActionStatus = '';
+    });
     final service = Provider.of<ImageGenService>(context, listen: false);
     final ok = await service.unloadLocalModel(url);
     if (mounted) {
@@ -185,7 +188,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
     final storage = Provider.of<StorageService>(context, listen: false);
     final model = storage.imageGenModel;
     if (url.isEmpty || model.isEmpty) return;
-    setState(() { _switchingModel = true; _modelActionStatus = 'Unloading current model…'; });
+    setState(() {
+      _switchingModel = true;
+      _modelActionStatus = 'Unloading current model…';
+    });
     final service = Provider.of<ImageGenService>(context, listen: false);
     final isDrawThings = storage.imageGenBackend == 'drawthings';
     late bool ok;
@@ -201,7 +207,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       setState(() {
         _switchingModel = false;
         _modelActionStatus = ok
-            ? (isDrawThings ? '✓ Model will be loaded during generation' : '✓ Switched to: $model')
+            ? (isDrawThings
+                  ? '✓ Model will be loaded during generation'
+                  : '✓ Switched to: $model')
             : '✗ Failed to switch — check the server logs';
       });
     }
@@ -213,8 +221,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       builder: (context, storage, _) {
         return Dialog(
           backgroundColor: const Color(0xFF1F2937),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Container(
             width: 540,
             constraints: const BoxConstraints(maxHeight: 640),
@@ -223,20 +232,28 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               children: [
                 // Header
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
                   decoration: const BoxDecoration(
                     border: Border(bottom: BorderSide(color: Colors.white10)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.auto_awesome, color: Colors.purpleAccent),
+                      const Icon(
+                        Icons.auto_awesome,
+                        color: Colors.purpleAccent,
+                      ),
                       const SizedBox(width: 12),
-                      const Text('Image Generation Settings',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white)),
+                      const Text(
+                        'Image Generation Settings',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                       const Spacer(),
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white54),
@@ -254,12 +271,17 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                       children: [
                         // ── Enable toggle ─────────────────────────────
                         SwitchListTile(
-                          title: const Text('Enable Image Generation',
-                              style: TextStyle(color: Colors.white)),
+                          title: const Text(
+                            'Enable Image Generation',
+                            style: TextStyle(color: Colors.white),
+                          ),
                           subtitle: const Text(
-                              'Add image generation button to chat toolbar',
-                              style: TextStyle(
-                                  color: Colors.white54, fontSize: 12)),
+                            'Add image generation button to chat toolbar',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
                           value: storage.imageGenEnabled,
                           activeTrackColor: Colors.purpleAccent,
                           contentPadding: EdgeInsets.zero,
@@ -269,11 +291,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                         const SizedBox(height: 16),
 
                         // ── Backend selector ──────────────────────────
-                        const Text('Image Source',
-                            style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
+                        const Text(
+                          'Image Source',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         _buildBackendSelector(storage),
 
@@ -305,8 +330,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         final isSelected = storage.imageGenBackend == b.key;
         return Expanded(
           child: Padding(
-            padding: EdgeInsets.only(
-                right: b == backends.last ? 0 : 8),
+            padding: EdgeInsets.only(right: b == backends.last ? 0 : 8),
             child: GestureDetector(
               onTap: () {
                 storage.setImageGenBackend(b.key);
@@ -324,9 +348,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                       : Colors.black26,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isSelected
-                        ? Colors.purpleAccent
-                        : Colors.white10,
+                    color: isSelected ? Colors.purpleAccent : Colors.white10,
                     width: isSelected ? 1.5 : 1,
                   ),
                 ),
@@ -336,12 +358,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                       b == ImageGenBackend.remote
                           ? Icons.cloud_outlined
                           : b == ImageGenBackend.drawThings
-                              ? Icons.apple
-                              : Icons.computer_outlined,
+                          ? Icons.apple
+                          : Icons.computer_outlined,
                       size: 18,
-                      color: isSelected
-                          ? Colors.purpleAccent
-                          : Colors.white38,
+                      color: isSelected ? Colors.purpleAccent : Colors.white38,
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -412,18 +432,20 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         const SizedBox(height: 20),
 
         // Image Model selector
-        const Text('Image Model',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Image Model',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
-                initialValue: _models
-                        .any((m) => m.id == storage.imageGenModel)
+                initialValue: _models.any((m) => m.id == storage.imageGenModel)
                     ? storage.imageGenModel
                     : null,
                 dropdownColor: const Color(0xFF374151),
@@ -434,8 +456,8 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                   hintText: _loadingModels
                       ? 'Loading models...'
                       : _models.isEmpty
-                          ? 'No image models found'
-                          : 'Select a model',
+                      ? 'No image models found'
+                      : 'Select a model',
                   hintStyle: const TextStyle(color: Colors.white30),
                   filled: true,
                   fillColor: Colors.black26,
@@ -444,7 +466,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                     borderSide: BorderSide.none,
                   ),
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                 ),
                 items: _buildGroupedModelItems(),
                 onChanged: (val) {
@@ -459,8 +483,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.purpleAccent))
+                        strokeWidth: 2,
+                        color: Colors.purpleAccent,
+                      ),
+                    )
                   : const Icon(Icons.refresh, color: Colors.white54),
               tooltip: 'Refresh models',
               onPressed: _loadingModels ? null : _fetchModels,
@@ -482,7 +508,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               borderSide: BorderSide.none,
             ),
             contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
+              horizontal: 12,
+              vertical: 10,
+            ),
             isDense: true,
           ),
           controller: TextEditingController(text: storage.imageGenModel),
@@ -532,12 +560,12 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                 child: Text(
                   isDrawThings
                       ? 'Open Draw Things → Settings → Advanced → enable HTTP API Server. '
-                        'If models load below, selecting one will switch Draw Things to it '
-                        'before each generation — a fresh "project" every time. '
-                        'If no models appear, select your model in Draw Things directly.'
+                            'If models load below, selecting one will switch Draw Things to it '
+                            'before each generation — a fresh "project" every time. '
+                            'If no models appear, select your model in Draw Things directly.'
                       : 'Start AUTOMATIC1111 with the --api flag (e.g. python launch.py --api). '
-                        'Selecting a checkpoint below will switch models before each generation '
-                        'via POST /sdapi/v1/options.',
+                            'Selecting a checkpoint below will switch models before each generation '
+                            'via POST /sdapi/v1/options.',
                   style: TextStyle(
                     color: isDrawThings ? Colors.white54 : Colors.white54,
                     fontSize: 11,
@@ -551,11 +579,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         const SizedBox(height: 16),
 
         // Server URL + test button
-        const Text('Server URL',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Server URL',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -575,14 +606,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                     borderSide: BorderSide.none,
                   ),
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   isDense: true,
                   suffixIcon: _connectionOk == null
                       ? null
                       : Icon(
-                          _connectionOk!
-                              ? Icons.check_circle
-                              : Icons.cancel,
+                          _connectionOk! ? Icons.check_circle : Icons.cancel,
                           color: _connectionOk!
                               ? Colors.green
                               : Colors.redAccent,
@@ -604,14 +635,19 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                 backgroundColor: Colors.white10,
                 foregroundColor: Colors.white70,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 12),
+                  horizontal: 14,
+                  vertical: 12,
+                ),
               ),
               child: _testingConnection
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Text('Test', style: TextStyle(fontSize: 12)),
             ),
           ],
@@ -620,11 +656,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         const SizedBox(height: 16),
 
         // Checkpoint / model selector
-        const Text('Checkpoint Model',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Checkpoint Model',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 4),
         const Text(
           'Fetched from the local server after pressing Test.',
@@ -637,7 +676,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               width: 20,
               height: 20,
               child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.purpleAccent),
+                strokeWidth: 2,
+                color: Colors.purpleAccent,
+              ),
             ),
           )
         else if (_localModels.isEmpty)
@@ -666,14 +707,21 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 10),
+                horizontal: 12,
+                vertical: 10,
+              ),
             ),
             items: _localModels
-                .map((m) => DropdownMenuItem(
+                .map(
+                  (m) => DropdownMenuItem(
                     value: m,
-                    child: Text(m,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white))))
+                    child: Text(
+                      m,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                )
                 .toList(),
             onChanged: (val) {
               if (val != null) storage.setImageGenModel(val);
@@ -692,11 +740,19 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             width: double.infinity,
             child: ElevatedButton.icon(
               icon: _switchingModel
-                  ? const SizedBox(width: 14, height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.swap_horiz, size: 16),
-              label: const Text('Load Selected Model in Draw Things',
-                  style: TextStyle(fontSize: 12)),
+              label: const Text(
+                'Load Selected Model in Draw Things',
+                style: TextStyle(fontSize: 12),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
                 foregroundColor: Colors.white,
@@ -720,34 +776,61 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               Expanded(
                 child: OutlinedButton.icon(
                   icon: _unloadingModel
-                      ? const SizedBox(width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
-                      : const Icon(Icons.memory, size: 16, color: Colors.redAccent),
-                  label: const Text('Unload Model',
-                      style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.redAccent,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.memory,
+                          size: 16,
+                          color: Colors.redAccent,
+                        ),
+                  label: const Text(
+                    'Unload Model',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 12),
+                  ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.redAccent),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  onPressed: (_unloadingModel || _switchingModel) ? null : _unloadModel,
+                  onPressed: (_unloadingModel || _switchingModel)
+                      ? null
+                      : _unloadModel,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: ElevatedButton.icon(
                   icon: _switchingModel
-                      ? const SizedBox(width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
                       : const Icon(Icons.swap_horiz, size: 16),
-                  label: const Text('Switch to Selected',
-                      style: TextStyle(fontSize: 12)),
+                  label: const Text(
+                    'Switch to Selected',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
+                    backgroundColor: Colors.purpleAccent.withValues(
+                      alpha: 0.25,
+                    ),
                     foregroundColor: Colors.white,
                     side: const BorderSide(color: Colors.purpleAccent),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  onPressed: (_unloadingModel || _switchingModel || storage.imageGenModel.isEmpty)
+                  onPressed:
+                      (_unloadingModel ||
+                          _switchingModel ||
+                          storage.imageGenModel.isEmpty)
                       ? null
                       : _switchModel,
                 ),
@@ -765,8 +848,8 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               color: _modelActionStatus.startsWith('✓')
                   ? Colors.greenAccent
                   : _modelActionStatus.startsWith('⚠')
-                      ? Colors.amber
-                      : Colors.redAccent,
+                  ? Colors.amber
+                  : Colors.redAccent,
             ),
           ),
         ],
@@ -777,11 +860,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         if (!isDrawThings) ...[
           const Divider(color: Colors.white12),
           const SizedBox(height: 8),
-          const Text('LoRA',
-              style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600)),
+          const Text(
+            'LoRA',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
           const Text(
             'Applied to every generation via <lora:name:weight> in the prompt.',
@@ -790,8 +876,12 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           const SizedBox(height: 8),
           if (_loadingLoras)
             const SizedBox(
-              height: 20, width: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purpleAccent),
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.purpleAccent,
+              ),
             )
           else
             DropdownButtonFormField<String>(
@@ -814,16 +904,28 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10),
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
               items: [
-                const DropdownMenuItem(value: '', child: Text('\u2014 None \u2014',
-                    style: TextStyle(color: Colors.white54))),
-                ..._localLoras.map((l) => DropdownMenuItem(
+                const DropdownMenuItem(
+                  value: '',
+                  child: Text(
+                    '\u2014 None \u2014',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ),
+                ..._localLoras.map(
+                  (l) => DropdownMenuItem(
                     value: l,
-                    child: Text(l,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white)))),
+                    child: Text(
+                      l,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
               ],
               onChanged: (val) {
                 if (val != null) storage.setImageGenLora(val);
@@ -835,7 +937,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             const SizedBox(height: 12),
             Row(
               children: [
-                const Text('Weight', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                const Text(
+                  'Weight',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Slider(
@@ -863,8 +968,6 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         ],
 
         _buildSharedFields(storage),
-
-
       ],
     );
   }
@@ -876,28 +979,34 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Image Size
-        const Text('Image Size',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Image Size',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         _buildSizeSelector(storage),
 
         const SizedBox(height: 20),
 
         // Default Style
-        const Text('Default Style',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Default Style',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue:
               ImageGenService.styleLabels.containsKey(storage.imageGenStyle)
-                  ? storage.imageGenStyle
-                  : 'photorealistic',
+              ? storage.imageGenStyle
+              : 'photorealistic',
           dropdownColor: const Color(0xFF374151),
           style: const TextStyle(color: Colors.white),
           isExpanded: true,
@@ -909,13 +1018,12 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               borderSide: BorderSide.none,
             ),
             contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
+              horizontal: 12,
+              vertical: 10,
+            ),
           ),
           items: ImageGenService.styleLabels.entries.map((e) {
-            return DropdownMenuItem(
-              value: e.key,
-              child: Text(e.value),
-            );
+            return DropdownMenuItem(value: e.key, child: Text(e.value));
           }).toList(),
           onChanged: (val) {
             if (val != null) storage.setImageGenStyle(val);
@@ -931,11 +1039,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         ),
 
         const SizedBox(height: 20),
-        const Text('Prompt Format',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Prompt Format',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: storage.imageGenPromptParadigm,
@@ -950,7 +1061,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               borderSide: BorderSide.none,
             ),
             contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
+              horizontal: 12,
+              vertical: 10,
+            ),
           ),
           items: const [
             DropdownMenuItem(
@@ -976,11 +1089,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         ),
 
         const SizedBox(height: 20),
-        const Text('Default Negative Prompt',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Default Negative Prompt',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _negativePromptController,
@@ -996,7 +1112,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               borderSide: BorderSide.none,
             ),
             contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
+              horizontal: 12,
+              vertical: 10,
+            ),
           ),
           onChanged: (val) => storage.setImageGenNegativePrompt(val),
         ),
@@ -1016,19 +1134,33 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           builder: (context, storage, _) {
             final isLocal = storage.imageGenBackend != 'remote';
             return ExpansionTile(
-              title: const Text('Advanced Generation Settings',
-                  style: TextStyle(color: Colors.white54, fontSize: 13)),
-              subtitle: Text(isLocal ? 'Applied to local A1111/Draw Things generations' : 'Configure your local server first',
-                  style: TextStyle(color: Colors.white24, fontSize: 10)),
+              title: const Text(
+                'Advanced Generation Settings',
+                style: TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              subtitle: Text(
+                isLocal
+                    ? 'Applied to local A1111/Draw Things generations'
+                    : 'Configure your local server first',
+                style: TextStyle(color: Colors.white24, fontSize: 10),
+              ),
               tilePadding: EdgeInsets.zero,
-              childrenPadding: const EdgeInsets.only(left: 8, top: 8, bottom: 8),
-              children: isLocal ? _buildAdvancedFields(storage) : [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('Select a local backend (A1111 or Draw Things) above to configure generation parameters.',
-                      style: TextStyle(color: Colors.white24, fontSize: 11)),
-                ),
-              ],
+              childrenPadding: const EdgeInsets.only(
+                left: 8,
+                top: 8,
+                bottom: 8,
+              ),
+              children: isLocal
+                  ? _buildAdvancedFields(storage)
+                  : [
+                      const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text(
+                          'Select a local backend (A1111 or Draw Things) above to configure generation parameters.',
+                          style: TextStyle(color: Colors.white24, fontSize: 11),
+                        ),
+                      ),
+                    ],
             );
           },
         ),
@@ -1046,65 +1178,89 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
     // ── Free models section ──
     if (freeModels.isNotEmpty) {
-      items.add(DropdownMenuItem<String>(
-        enabled: false,
-        value: '__header_free__',
-        child: Text('── Included with Pro Subscription ──',
+      items.add(
+        DropdownMenuItem<String>(
+          enabled: false,
+          value: '__header_free__',
+          child: Text(
+            '── Included with Pro Subscription ──',
             style: TextStyle(
-                color: Colors.green.shade300,
-                fontSize: 11,
-                fontWeight: FontWeight.bold)),
-      ));
-      for (final m in freeModels) {
-        items.add(DropdownMenuItem(
-          value: m.id,
-          child: Row(
-            children: [
-              const Icon(Icons.check_circle, size: 14, color: Colors.green),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  m.pricingInfo != null ? '${m.displayName} — ${m.pricingInfo}' : m.displayName,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ),
-              Text('Free', style: TextStyle(color: Colors.green.shade300, fontSize: 10)),
-            ],
+              color: Colors.green.shade300,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ));
+        ),
+      );
+      for (final m in freeModels) {
+        items.add(
+          DropdownMenuItem(
+            value: m.id,
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle, size: 14, color: Colors.green),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    m.pricingInfo != null
+                        ? '${m.displayName} — ${m.pricingInfo}'
+                        : m.displayName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+                Text(
+                  'Free',
+                  style: TextStyle(color: Colors.green.shade300, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        );
       }
     }
 
     // ── Paid models section ──
     if (paidModels.isNotEmpty) {
-      items.add(DropdownMenuItem<String>(
-        enabled: false,
-        value: '__header_paid__',
-        child: Text('── Pay Per Prompt (Check OpenRouter for Credit Requirements) ──',
+      items.add(
+        DropdownMenuItem<String>(
+          enabled: false,
+          value: '__header_paid__',
+          child: Text(
+            '── Pay Per Prompt (Check OpenRouter for Credit Requirements) ──',
             style: TextStyle(
-                color: Colors.amber.shade300,
-                fontSize: 11,
-                fontWeight: FontWeight.bold)),
-      ));
-      for (final m in paidModels) {
-        items.add(DropdownMenuItem(
-          value: m.id,
-          child: Row(
-            children: [
-              const Icon(Icons.attach_money, size: 14, color: Colors.amber),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  m.pricingInfo != null ? '${m.displayName} — ${m.pricingInfo}' : m.displayName,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ),
-              Text('Paid', style: TextStyle(color: Colors.amber.shade300, fontSize: 10)),
-            ],
+              color: Colors.amber.shade300,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ));
+        ),
+      );
+      for (final m in paidModels) {
+        items.add(
+          DropdownMenuItem(
+            value: m.id,
+            child: Row(
+              children: [
+                const Icon(Icons.attach_money, size: 14, color: Colors.amber),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    m.pricingInfo != null
+                        ? '${m.displayName} — ${m.pricingInfo}'
+                        : m.displayName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+                Text(
+                  'Paid',
+                  style: TextStyle(color: Colors.amber.shade300, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        );
       }
     }
 
@@ -1113,9 +1269,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
   /// Size selector — chip-style buttons.
   Widget _buildSizeSelector(StorageService storage) {
-    const sizes        = ['512x512', '768x768', '1024x1024', '1536x1024', '1024x1536'];
-    const labels       = ['512²',   '768²',    '1024²',     '1536×1024', '1024×1536'];
-    const descriptions = ['Small',  'Medium',  'Square',    'Landscape', 'Portrait'];
+    const sizes = ['512x512', '768x768', '1024x1024', '1536x1024', '1024x1536'];
+    const labels = ['512²', '768²', '1024²', '1536×1024', '1024×1536'];
+    const descriptions = ['Small', 'Medium', 'Square', 'Landscape', 'Portrait'];
 
     return Wrap(
       spacing: 8,
@@ -1125,8 +1281,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         return GestureDetector(
           onTap: () => storage.setImageGenSize(sizes[i]),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: selected
                   ? Colors.purpleAccent.withValues(alpha: 0.3)
@@ -1138,19 +1293,22 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             ),
             child: Column(
               children: [
-                Text(labels[i],
-                    style: TextStyle(
-                      color: selected ? Colors.purpleAccent : Colors.white54,
-                      fontSize: 12,
-                      fontWeight:
-                          selected ? FontWeight.bold : FontWeight.normal,
-                    )),
+                Text(
+                  labels[i],
+                  style: TextStyle(
+                    color: selected ? Colors.purpleAccent : Colors.white54,
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(descriptions[i],
-                    style: TextStyle(
-                      color: selected ? Colors.white38 : Colors.white24,
-                      fontSize: 9,
-                    )),
+                Text(
+                  descriptions[i],
+                  style: TextStyle(
+                    color: selected ? Colors.white38 : Colors.white24,
+                    fontSize: 9,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1167,7 +1325,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       const SizedBox(height: 8),
       Row(
         children: [
-          const Text('Steps', style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const Text(
+            'Steps',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Slider(
@@ -1182,9 +1343,11 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           ),
           SizedBox(
             width: 32,
-            child: Text(storage.imageGenSteps.toString(),
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-                textAlign: TextAlign.end),
+            child: Text(
+              storage.imageGenSteps.toString(),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              textAlign: TextAlign.end,
+            ),
           ),
         ],
       ),
@@ -1192,7 +1355,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       // CFG Scale slider
       Row(
         children: [
-          const Text('CFG Scale', style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const Text(
+            'CFG Scale',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Slider(
@@ -1207,9 +1373,11 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           ),
           SizedBox(
             width: 36,
-            child: Text(storage.imageGenCfgScale.toStringAsFixed(1),
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-                textAlign: TextAlign.end),
+            child: Text(
+              storage.imageGenCfgScale.toStringAsFixed(1),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              textAlign: TextAlign.end,
+            ),
           ),
         ],
       ),
@@ -1220,7 +1388,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         children: [
           const Expanded(
             flex: 2,
-            child: Text('Sampler', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            child: Text(
+              'Sampler',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1241,13 +1412,20 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 isDense: true,
               ),
-              items: _localSamplers.map((s) => DropdownMenuItem(
-                value: s,
-                child: Text(s, overflow: TextOverflow.ellipsis),
-              )).toList(),
+              items: _localSamplers
+                  .map(
+                    (s) => DropdownMenuItem(
+                      value: s,
+                      child: Text(s, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
               onChanged: (val) {
                 if (val != null) storage.setImageGenSampler(val);
               },
@@ -1262,7 +1440,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         children: [
           const Expanded(
             flex: 2,
-            child: Text('Seed', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            child: Text(
+              'Seed',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1276,14 +1457,20 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
                       hintText: '-1 = random',
-                      hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+                      hintStyle: const TextStyle(
+                        color: Colors.white24,
+                        fontSize: 10,
+                      ),
                       filled: true,
                       fillColor: Colors.black26,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       isDense: true,
                     ),
                     onChanged: (val) {
@@ -1294,7 +1481,11 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: const Icon(Icons.casino_outlined, size: 18, color: Colors.purpleAccent),
+                  icon: const Icon(
+                    Icons.casino_outlined,
+                    size: 18,
+                    color: Colors.purpleAccent,
+                  ),
                   tooltip: 'Randomize seed',
                   onPressed: _randomizeSeed,
                 ),

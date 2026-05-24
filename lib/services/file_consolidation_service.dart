@@ -10,7 +10,7 @@ class FileConsolidationService {
   /// Also dynamically retrieves support files and moves them to "system".
   static Future<void> consolidate() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Existing root path (which might just be the raw Documents folder).
     final docsDir = await getApplicationDocumentsDirectory();
     final currentRootPath = prefs.getString('root_path') ?? docsDir.path;
@@ -18,7 +18,8 @@ class FileConsolidationService {
     // Determine target consolidated path.
     // Ensure we don't nest if the basename is already FrontPorchAI or something similar.
     final basename = p.basename(currentRootPath);
-    if (basename.toLowerCase() == 'frontporchai' || basename.toLowerCase() == 'frontporch') {
+    if (basename.toLowerCase() == 'frontporchai' ||
+        basename.toLowerCase() == 'frontporch') {
       // It's already cleanly nested. We just need to ensure the system files are moved there.
       await _migrateSystemDependencies(currentRootPath);
       return;
@@ -34,7 +35,7 @@ class FileConsolidationService {
       'chats',
       'worlds',
       'models',
-      'koboldcpp_bin'
+      'koboldcpp_bin',
     ];
 
     bool needsMigration = false;
@@ -55,7 +56,9 @@ class FileConsolidationService {
       await _migrateSystemDependencies(targetRootPath);
       return;
     } else if (needsMigration) {
-      debugPrint('[Consolidator] Scattered files detected. Aggregating into ${targetRoot.path}...');
+      debugPrint(
+        '[Consolidator] Scattered files detected. Aggregating into ${targetRoot.path}...',
+      );
       if (!await targetRoot.exists()) {
         await targetRoot.create(recursive: true);
       }
@@ -104,19 +107,26 @@ class FileConsolidationService {
       final newDir = Directory(p.join(systemDir.path, entry.value));
 
       if (await oldDir.exists()) {
-        debugPrint('[Consolidator] Moving hidden system files: ${entry.key} -> ${newDir.path}');
+        debugPrint(
+          '[Consolidator] Moving hidden system files: ${entry.key} -> ${newDir.path}',
+        );
         try {
           await _moveDirectory(oldDir, newDir);
           await oldDir.delete(recursive: true);
         } catch (e) {
-          debugPrint('[Consolidator] Failed to move system folder ${entry.key}: $e');
+          debugPrint(
+            '[Consolidator] Failed to move system folder ${entry.key}: $e',
+          );
         }
       }
     }
   }
 
   /// Helper to recursively move a directory (cross-volume compatible).
-  static Future<void> _moveDirectory(Directory source, Directory destination) async {
+  static Future<void> _moveDirectory(
+    Directory source,
+    Directory destination,
+  ) async {
     if (!await destination.exists()) {
       await destination.create(recursive: true);
     }

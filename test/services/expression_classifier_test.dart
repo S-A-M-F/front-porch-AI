@@ -18,12 +18,12 @@ void setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-    if (methodCall.method == 'getApplicationDocumentsDirectory') {
-      final tmp = Directory.systemTemp.createTempSync('fpai_expr_test_');
-      return tmp.path;
-    }
-    return null;
-  });
+        if (methodCall.method == 'getApplicationDocumentsDirectory') {
+          final tmp = Directory.systemTemp.createTempSync('fpai_expr_test_');
+          return tmp.path;
+        }
+        return null;
+      });
 }
 
 /// Helper: create a StorageService backed by in-memory SharedPreferences.
@@ -99,10 +99,7 @@ void main() {
     });
 
     test('fromJson handles missing top_3', () {
-      final json = {
-        'emotion': 'sadness',
-        'confidence': 0.85,
-      };
+      final json = {'emotion': 'sadness', 'confidence': 0.85};
       final result = EmotionResult.fromJson(json);
 
       expect(result.emotion, equals('sadness'));
@@ -201,15 +198,18 @@ void main() {
       expect(result.confidence, equals(0.5));
     });
 
-    test('falls back to neutral when reclassify returns invalid label', () async {
-      final classifier = LLMExpressionClassifier(
-        getCurrentEmotion: () => 'blorp',
-        reclassify: (e) async => 'not_a_valid_label',
-      );
-      final result = await classifier.classify('test');
-      expect(result.emotion, equals('neutral'));
-      expect(result.confidence, equals(0.8));
-    });
+    test(
+      'falls back to neutral when reclassify returns invalid label',
+      () async {
+        final classifier = LLMExpressionClassifier(
+          getCurrentEmotion: () => 'blorp',
+          reclassify: (e) async => 'not_a_valid_label',
+        );
+        final result = await classifier.classify('test');
+        expect(result.emotion, equals('neutral'));
+        expect(result.confidence, equals(0.8));
+      },
+    );
 
     test('isAvailable always returns true', () async {
       final classifier = LLMExpressionClassifier(

@@ -107,7 +107,8 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
     });
   }
 
-  bool get hasDownloads => widget.activeDownloads.isNotEmpty || widget.pendingDownloads.isNotEmpty;
+  bool get hasDownloads =>
+      widget.activeDownloads.isNotEmpty || widget.pendingDownloads.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -134,7 +135,10 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
               InkWell(
                 onTap: _toggleExpanded,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   child: Row(
                     children: [
                       // Download icon with animation
@@ -181,7 +185,11 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
                       // Global controls
                       if (widget.activeDownloads.isNotEmpty) ...[
                         IconButton(
-                          icon: const Icon(Icons.pause_circle_rounded, color: Colors.white70, size: 20),
+                          icon: const Icon(
+                            Icons.pause_circle_rounded,
+                            color: Colors.white70,
+                            size: 20,
+                          ),
                           onPressed: widget.onPauseAll,
                           tooltip: 'Pause all',
                           constraints: const BoxConstraints(),
@@ -210,7 +218,9 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
                 value: widget.overallProgress,
                 minHeight: 3,
                 backgroundColor: Colors.white.withValues(alpha: 0.05),
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF40C4FF)),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  Color(0xFF40C4FF),
+                ),
               ),
 
               // Expanded content
@@ -222,12 +232,15 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
                   padding: const EdgeInsets.all(12),
                   child: ListView.separated(
                     shrinkWrap: true,
-                    itemCount: widget.activeDownloads.length + widget.pendingDownloads.length,
+                    itemCount:
+                        widget.activeDownloads.length +
+                        widget.pendingDownloads.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final task = index < widget.activeDownloads.length
                           ? widget.activeDownloads[index]
-                          : widget.pendingDownloads[index - widget.activeDownloads.length];
+                          : widget.pendingDownloads[index -
+                                widget.activeDownloads.length];
                       return _buildTaskRow(task);
                     },
                   ),
@@ -246,9 +259,7 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.05),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -282,7 +293,9 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
                     Text(
                       task.statusString,
                       style: TextStyle(
-                        color: _getStatusColor(task.state).withValues(alpha: 0.7),
+                        color: _getStatusColor(
+                          task.state,
+                        ).withValues(alpha: 0.7),
                         fontSize: 10,
                       ),
                     ),
@@ -296,13 +309,16 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
           ),
 
           // Progress bar for active tasks
-          if (task.state.isActive || task.state == DownloadTaskState.paused) ...[
+          if (task.state.isActive ||
+              task.state == DownloadTaskState.paused) ...[
             const SizedBox(height: 6),
             LinearProgressIndicator(
               value: task.progress,
               minHeight: 3,
               backgroundColor: Colors.white.withValues(alpha: 0.1),
-              valueColor: AlwaysStoppedAnimation<Color>(_getStatusColor(task.state)),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                _getStatusColor(task.state),
+              ),
             ),
           ],
         ],
@@ -317,13 +333,21 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: const Icon(Icons.pause_rounded, color: Colors.white70, size: 16),
+              icon: const Icon(
+                Icons.pause_rounded,
+                color: Colors.white70,
+                size: 16,
+              ),
               onPressed: () => widget.onPause(task.id),
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,
             ),
             IconButton(
-              icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 16),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: Colors.white54,
+                size: 16,
+              ),
               onPressed: () => widget.onCancel(task.id),
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,
@@ -335,13 +359,21 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: const Icon(Icons.play_arrow_rounded, color: Colors.white70, size: 16),
+              icon: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white70,
+                size: 16,
+              ),
               onPressed: () => widget.onResume(task.id),
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,
             ),
             IconButton(
-              icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 16),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: Colors.white54,
+                size: 16,
+              ),
               onPressed: () => widget.onCancel(task.id),
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,
@@ -350,7 +382,11 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
         );
       case DownloadTaskState.pending:
         return IconButton(
-          icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 16),
+          icon: const Icon(
+            Icons.close_rounded,
+            color: Colors.white54,
+            size: 16,
+          ),
           onPressed: () => widget.onCancel(task.id),
           constraints: const BoxConstraints(),
           padding: EdgeInsets.zero,
@@ -360,14 +396,22 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: const Icon(Icons.replay_rounded, color: Colors.white70, size: 16),
+              icon: const Icon(
+                Icons.replay_rounded,
+                color: Colors.white70,
+                size: 16,
+              ),
               onPressed: () => widget.onResume(task.id),
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,
               tooltip: 'Retry',
             ),
             IconButton(
-              icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 16),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: Colors.white54,
+                size: 16,
+              ),
               onPressed: () => widget.onCancel(task.id),
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,

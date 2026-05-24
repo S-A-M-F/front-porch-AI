@@ -83,11 +83,13 @@ class WebDavProvider extends CloudStorageProvider {
             result.addAll(subFiles);
           } catch (_) {}
         } else {
-          result.add(RemoteFileInfo(
-            remotePath: file.path ?? '$remotePath/${file.name}',
-            lastModified: file.mTime,
-            size: file.size,
-          ));
+          result.add(
+            RemoteFileInfo(
+              remotePath: file.path ?? '$remotePath/${file.name}',
+              lastModified: file.mTime,
+              size: file.size,
+            ),
+          );
         }
       }
     } catch (e) {

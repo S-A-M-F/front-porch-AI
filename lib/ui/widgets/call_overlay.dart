@@ -45,7 +45,8 @@ class CallOverlay extends StatefulWidget {
   State<CallOverlay> createState() => _CallOverlayState();
 }
 
-class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin {
+class _CallOverlayState extends State<CallOverlay>
+    with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late AnimationController _waveController;
 
@@ -87,7 +88,8 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
       final sub = chatService.sentenceStream.listen((sentence) {
         sentenceController.add(sentence);
         // First sentence arriving means LLM is generating — switch to speaking
-        if (sentence != '__DONE__' && sttService.callStatus == CallStatus.thinking) {
+        if (sentence != '__DONE__' &&
+            sttService.callStatus == CallStatus.thinking) {
           sttService.notifySpeaking();
         }
         if (sentence == '__DONE__') {
@@ -100,18 +102,17 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
       chatService.sendMessage(text);
 
       // Start streaming TTS — plays each sentence as it arrives
-      ttsService.speakStreaming(
-        sentenceController.stream,
-        voiceKey: voiceKey,
-      ).then((_) {
-        sub.cancel();
-        if (!sentenceController.isClosed) sentenceController.close();
-        // TTS finished all sentences — resume listening
-        if (sttService.isInCall) {
-          sttService.notifyTtsDone();
-          sttService.onReadyToListen?.call();
-        }
-      });
+      ttsService
+          .speakStreaming(sentenceController.stream, voiceKey: voiceKey)
+          .then((_) {
+            sub.cancel();
+            if (!sentenceController.isClosed) sentenceController.close();
+            // TTS finished all sentences — resume listening
+            if (sttService.isInCall) {
+              sttService.notifyTtsDone();
+              sttService.onReadyToListen?.call();
+            }
+          });
     };
 
     // Enable call mode (disables reasoning for lower latency)
@@ -264,11 +265,16 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 40),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.08),
+                          ),
                         ),
                         child: Text(
                           '"$lastText"',
@@ -300,7 +306,8 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
   }
 
   Widget _buildAvatar(CallStatus status, double amplitude) {
-    final isActive = status == CallStatus.listening || status == CallStatus.speaking;
+    final isActive =
+        status == CallStatus.listening || status == CallStatus.speaking;
     final ringColor = _statusColor(status);
 
     return AnimatedBuilder(
@@ -380,11 +387,7 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              _statusIcon(status),
-              size: 16,
-              color: _statusColor(status),
-            ),
+            Icon(_statusIcon(status), size: 16, color: _statusColor(status)),
             const SizedBox(width: 8),
             Text(
               _statusText(status),
@@ -413,12 +416,13 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(barCount, (i) {
               // Create wave-like pattern
-              final phase = (i / barCount * 2 * pi) + (_waveController.value * 2 * pi);
+              final phase =
+                  (i / barCount * 2 * pi) + (_waveController.value * 2 * pi);
               final waveHeight = isListening
                   ? 0.3 + (sin(phase) * 0.3 + 0.3) * amplitude
                   : (status == CallStatus.speaking)
-                      ? 0.2 + sin(phase) * 0.3
-                      : 0.15;
+                  ? 0.2 + sin(phase) * 0.3
+                  : 0.15;
 
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -463,7 +467,8 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
         const SizedBox(width: 32),
 
         // ── Stop recording / send button (only when listening) ──
-        if (sttService.callStatus == CallStatus.listening && sttService.isRecording)
+        if (sttService.callStatus == CallStatus.listening &&
+            sttService.isRecording)
           _buildControlButton(
             icon: Icons.send,
             label: 'Send',
@@ -472,7 +477,8 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
             size: 64,
             onTap: () => sttService.stopAndSendCallTranscription(),
           ),
-        if (sttService.callStatus == CallStatus.listening && sttService.isRecording)
+        if (sttService.callStatus == CallStatus.listening &&
+            sttService.isRecording)
           const SizedBox(width: 32),
 
         // ── End call button ──
@@ -482,7 +488,10 @@ class _CallOverlayState extends State<CallOverlay> with TickerProviderStateMixin
           color: Colors.redAccent,
           backgroundColor: Colors.redAccent.withValues(alpha: 0.15),
           onTap: () async {
-            final chatService = Provider.of<ChatService>(context, listen: false);
+            final chatService = Provider.of<ChatService>(
+              context,
+              listen: false,
+            );
             final ttsService = Provider.of<TtsService>(context, listen: false);
             await ttsService.stop(); // immediately stop any ongoing playback
             await sttService.endCall();

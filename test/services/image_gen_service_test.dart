@@ -102,11 +102,7 @@ void main() {
     });
 
     test('creates with empty pricingInfo', () {
-      const info = ImageModelInfo(
-        id: 'model',
-        name: 'Model',
-        pricingInfo: '',
-      );
+      const info = ImageModelInfo(id: 'model', name: 'Model', pricingInfo: '');
       expect(info.pricingInfo, '');
     });
 
@@ -135,7 +131,11 @@ void main() {
     });
 
     test('description omits pricing when empty', () {
-      const info = ImageModelInfo(id: 'model', name: 'Basic Model', pricingInfo: '');
+      const info = ImageModelInfo(
+        id: 'model',
+        name: 'Basic Model',
+        pricingInfo: '',
+      );
       expect(info.description, 'Basic Model');
     });
   });

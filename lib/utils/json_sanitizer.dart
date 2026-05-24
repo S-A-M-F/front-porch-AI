@@ -5,24 +5,27 @@ class JsonSanitizer {
   /// Cleans markdown boundaries, trailing commas, and inline unescaped newlines.
   static String sanitize(String input) {
     if (input.isEmpty) return input;
-    
+
     var cleaned = input;
-    
+
     // 1. Strip markdown fences and thought blocks
     // Fuzzy matching: models misspell <think> at high temp (e.g. <ink>, <hink>)
     final _tOpen = r'<(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
     final _tClose = r'</(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
     cleaned = cleaned
-        .replaceAll(RegExp(_tOpen + r'[\s\S]*?' + _tClose, caseSensitive: false), '')
+        .replaceAll(
+          RegExp(_tOpen + r'[\s\S]*?' + _tClose, caseSensitive: false),
+          '',
+        )
         .replaceAll(RegExp(_tOpen + r'[\s\S]*', caseSensitive: false), '')
         .replaceAll(RegExp(r'^```json\s*', multiLine: true), '')
         .replaceAll(RegExp(r'^```\s*$', multiLine: true), '');
-        
+
     final jsonMarker = RegExp(r'JSON:\s*').firstMatch(cleaned);
     if (jsonMarker != null) {
       cleaned = cleaned.substring(jsonMarker.end).trim();
     }
-    
+
     // Attempt to extract the JSON object bounding box
     final jsonStart = cleaned.indexOf('{');
     final jsonEnd = cleaned.lastIndexOf('}');
@@ -44,19 +47,26 @@ class JsonSanitizer {
         buf.write(ch);
       } else if (inString) {
         switch (ch) {
-          case '\n': buf.write('\\n'); break;
-          case '\r': buf.write('\\r'); break;
-          case '\t': buf.write('\\t'); break;
-          default: buf.write(ch);
+          case '\n':
+            buf.write('\\n');
+            break;
+          case '\r':
+            buf.write('\\r');
+            break;
+          case '\t':
+            buf.write('\\t');
+            break;
+          default:
+            buf.write(ch);
         }
       } else {
         buf.write(ch);
       }
     }
-    
+
     return buf.toString().trim();
   }
-  
+
   /// Attempts to parse JSON, returning null if it utterly fails.
   /// Automatically runs the sanitizer before parsing.
   static Map<String, dynamic>? tryParse(String input) {

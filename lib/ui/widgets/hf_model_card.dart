@@ -195,9 +195,15 @@ class _HFModelCardState extends State<HFModelCard>
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _statChip(Icons.download_rounded, widget.model.downloadsDisplay),
+                            _statChip(
+                              Icons.download_rounded,
+                              widget.model.downloadsDisplay,
+                            ),
                             const SizedBox(width: 8),
-                            _statChip(Icons.favorite_rounded, widget.model.likesDisplay),
+                            _statChip(
+                              Icons.favorite_rounded,
+                              widget.model.likesDisplay,
+                            ),
                             const SizedBox(width: 12),
 
                             // Expand arrow
@@ -229,7 +235,10 @@ class _HFModelCardState extends State<HFModelCard>
                         bottomRight: Radius.circular(12),
                       ),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: _buildQuantList(),
                   ),
                 ),
@@ -274,7 +283,8 @@ class _HFModelCardState extends State<HFModelCard>
     }
 
     // Sort by size (smallest first)
-    final sorted = List<HFModelFile>.from(files)..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+    final sorted = List<HFModelFile>.from(files)
+      ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -301,9 +311,7 @@ class _HFModelCardState extends State<HFModelCard>
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.05),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: [
@@ -311,10 +319,14 @@ class _HFModelCardState extends State<HFModelCard>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: _getQuantColor(file.quantType.colorCategory).withValues(alpha: 0.15),
+              color: _getQuantColor(
+                file.quantType.colorCategory,
+              ).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: _getQuantColor(file.quantType.colorCategory).withValues(alpha: 0.3),
+                color: _getQuantColor(
+                  file.quantType.colorCategory,
+                ).withValues(alpha: 0.3),
               ),
             ),
             child: Text(
@@ -358,7 +370,9 @@ class _HFModelCardState extends State<HFModelCard>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: _getFitStatusColor(fitStatus).withValues(alpha: 0.4),
+                            color: _getFitStatusColor(
+                              fitStatus,
+                            ).withValues(alpha: 0.4),
                             blurRadius: 4,
                           ),
                         ],
@@ -371,7 +385,9 @@ class _HFModelCardState extends State<HFModelCard>
                       child: Text(
                         '${file.sizeDisplay} | VRAM: ${VramEstimator.formatVramEstimate(vramNeeded)} | ${fitStatus.description(vramNeeded, widget.availableVramMb)}',
                         style: TextStyle(
-                          color: _getFitStatusColor(fitStatus).withValues(alpha: 0.8),
+                          color: _getFitStatusColor(
+                            fitStatus,
+                          ).withValues(alpha: 0.8),
                           fontSize: 11,
                         ),
                         maxLines: 1,
@@ -395,10 +411,7 @@ class _HFModelCardState extends State<HFModelCard>
                   const SizedBox(height: 2),
                   Text(
                     downloadTask.statusString,
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 10,
-                    ),
+                    style: const TextStyle(color: Colors.white54, fontSize: 10),
                   ),
                 ],
               ],
@@ -431,7 +444,11 @@ class _HFModelCardState extends State<HFModelCard>
       final task = widget.downloadingFiles[file.filename];
       if (task?.state == DownloadTaskState.downloading) {
         return IconButton(
-          icon: const Icon(Icons.pause_circle_rounded, color: Colors.white70, size: 22),
+          icon: const Icon(
+            Icons.pause_circle_rounded,
+            color: Colors.white70,
+            size: 22,
+          ),
           onPressed: () {
             // Pause handled by parent via task ID
           },
@@ -447,7 +464,9 @@ class _HFModelCardState extends State<HFModelCard>
     }
 
     return ElevatedButton(
-      onPressed: fitStatus == VramFitStatus.exceeds ? null : () => widget.onDownload(file),
+      onPressed: fitStatus == VramFitStatus.exceeds
+          ? null
+          : () => widget.onDownload(file),
       style: ElevatedButton.styleFrom(
         backgroundColor: fitStatus == VramFitStatus.exceeds
             ? Colors.red.withValues(alpha: 0.2)
@@ -456,9 +475,7 @@ class _HFModelCardState extends State<HFModelCard>
             ? Colors.red.withValues(alpha: 0.6)
             : Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         minimumSize: const Size(0, 0),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),

@@ -34,8 +34,10 @@ class GroupChat {
   bool autoAdvance; // auto-trigger next character after one responds
   bool directorMode; // start in director mode when entering this group
   String firstMessage; // custom group greeting (empty = use first character's)
-  String scenario; // group-level scenario override (empty = use first character's)
-  String systemPrompt; // group-level system prompt override (empty = use global)
+  String
+  scenario; // group-level scenario override (empty = use first character's)
+  String
+  systemPrompt; // group-level system prompt override (empty = use global)
 
   GroupChat({
     required this.id,
@@ -67,7 +69,8 @@ class GroupChat {
     return GroupChat(
       id: json['id'] ?? '',
       name: json['name'] ?? 'Group Chat',
-      characterIds: (json['character_ids'] as List<dynamic>?)
+      characterIds:
+          (json['character_ids'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],

@@ -51,7 +51,9 @@ Uint8List _uint64(int value) {
 void main() {
   group('GGUFParser', () {
     test('returns null for non-existent file', () async {
-      final result = await GGUFParser.getKvCacheBytesPerToken('/nonexistent/path/model.gguf');
+      final result = await GGUFParser.getKvCacheBytesPerToken(
+        '/nonexistent/path/model.gguf',
+      );
       expect(result, isNull);
     });
 
@@ -72,7 +74,9 @@ void main() {
     });
 
     test('returns null for truncated GGUF header', () async {
-      final file = File('${Directory.systemTemp.path}/gguf_truncated_test.gguf');
+      final file = File(
+        '${Directory.systemTemp.path}/gguf_truncated_test.gguf',
+      );
       await file.writeAsBytes(Uint8List(2));
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
       expect(result, isNull);
@@ -150,7 +154,9 @@ void main() {
         'llama.embedding_length': '4096',
       });
 
-      final file = File('${Directory.systemTemp.path}/gguf_zero_heads_test.gguf');
+      final file = File(
+        '${Directory.systemTemp.path}/gguf_zero_heads_test.gguf',
+      );
       await file.writeAsBytes(data);
 
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
@@ -159,32 +165,33 @@ void main() {
       await file.delete();
     });
 
-    test('defaults to llama architecture when general.architecture is missing', () async {
-      // The parser defaults to 'llama' when general.architecture is not present,
-      // so it still computes a result using llama.* keys
-      final data = _buildGgufV3({
-        'llama.block_count': '32',
-        'llama.attention.head_count': '32',
-        'llama.embedding_length': '4096',
-      });
+    test(
+      'defaults to llama architecture when general.architecture is missing',
+      () async {
+        // The parser defaults to 'llama' when general.architecture is not present,
+        // so it still computes a result using llama.* keys
+        final data = _buildGgufV3({
+          'llama.block_count': '32',
+          'llama.attention.head_count': '32',
+          'llama.embedding_length': '4096',
+        });
 
-      final file = File('${Directory.systemTemp.path}/gguf_noarch_test.gguf');
-      await file.writeAsBytes(data);
+        final file = File('${Directory.systemTemp.path}/gguf_noarch_test.gguf');
+        await file.writeAsBytes(data);
 
-      final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
+        final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
 
-      // head_count_kv defaults to head_count = 32
-      // head_dim = 4096/32 = 128
-      // bytesPerToken = 4 * 32 * 32 * 128 = 524288
-      expect(result, equals(524288));
+        // head_count_kv defaults to head_count = 32
+        // head_dim = 4096/32 = 128
+        // bytesPerToken = 4 * 32 * 32 * 128 = 524288
+        expect(result, equals(524288));
 
-      await file.delete();
-    });
+        await file.delete();
+      },
+    );
 
     test('returns null for truncated KV data', () async {
-      final data = _buildGgufV3({
-        'general.architecture': 'llama',
-      });
+      final data = _buildGgufV3({'general.architecture': 'llama'});
 
       // Truncate the data mid-stream
       final truncated = Uint8List(data.length ~/ 2);
@@ -244,7 +251,9 @@ void main() {
         'llama.embedding_length': '4096',
       });
 
-      final file = File('${Directory.systemTemp.path}/gguf_no_kvheads_test.gguf');
+      final file = File(
+        '${Directory.systemTemp.path}/gguf_no_kvheads_test.gguf',
+      );
       await file.writeAsBytes(data);
 
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);

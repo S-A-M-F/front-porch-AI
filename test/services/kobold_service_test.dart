@@ -16,11 +16,11 @@ void setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-    if (methodCall.method == 'getApplicationDocumentsDirectory') {
-      return tmp.path;
-    }
-    return null;
-  });
+        if (methodCall.method == 'getApplicationDocumentsDirectory') {
+          return tmp.path;
+        }
+        return null;
+      });
 }
 
 /// Create a real StorageService backed by in-memory SharedPreferences.
@@ -85,10 +85,7 @@ void main() {
       r'(mapping model|ggml_backend|allocat)',
       caseSensitive: false,
     );
-    final warmupPattern = RegExp(
-      r'warm(ing)? up',
-      caseSensitive: false,
-    );
+    final warmupPattern = RegExp(r'warm(ing)? up', caseSensitive: false);
 
     // ── readyPattern ──
 
@@ -100,38 +97,23 @@ void main() {
     });
 
     test('matches "server listening on port 5001"', () {
-      expect(
-        readyPattern.hasMatch('server listening on port 5001'),
-        isTrue,
-      );
+      expect(readyPattern.hasMatch('server listening on port 5001'), isTrue);
     });
 
     test('matches "Server Listening on 0.0.0.0:5001" (mixed case)', () {
-      expect(
-        readyPattern.hasMatch('Server Listening on 0.0.0.0:5001'),
-        isTrue,
-      );
+      expect(readyPattern.hasMatch('Server Listening on 0.0.0.0:5001'), isTrue);
     });
 
     test('matches "starting server on port 5001"', () {
-      expect(
-        readyPattern.hasMatch('starting server on port 5001'),
-        isTrue,
-      );
+      expect(readyPattern.hasMatch('starting server on port 5001'), isTrue);
     });
 
     test('matches "ready to accept connections"', () {
-      expect(
-        readyPattern.hasMatch('ready to accept connections'),
-        isTrue,
-      );
+      expect(readyPattern.hasMatch('ready to accept connections'), isTrue);
     });
 
     test('does not match random text', () {
-      expect(
-        readyPattern.hasMatch('model loaded successfully'),
-        isFalse,
-      );
+      expect(readyPattern.hasMatch('model loaded successfully'), isFalse);
     });
 
     // ── loadModelPattern ──
@@ -159,10 +141,7 @@ void main() {
     });
 
     test('matches "Loading safetensors weights"', () {
-      expect(
-        loadFilePattern.hasMatch('Loading safetensors weights'),
-        isTrue,
-      );
+      expect(loadFilePattern.hasMatch('Loading safetensors weights'), isTrue);
     });
 
     test('matches "loading model file"', () {
@@ -179,10 +158,7 @@ void main() {
     });
 
     test('matches "ggml_backend_cuda_buffer_type"', () {
-      expect(
-        mappingPattern.hasMatch('ggml_backend_cuda_buffer_type'),
-        isTrue,
-      );
+      expect(mappingPattern.hasMatch('ggml_backend_cuda_buffer_type'), isTrue);
     });
 
     test('matches "allocating 4096 MB"', () {
@@ -280,10 +256,7 @@ void main() {
 
     // KoboldCPP v1.76
     test('v1.76: "Server listening on port..."', () {
-      expect(
-        readyPattern.hasMatch('Server listening on port 5001'),
-        isTrue,
-      );
+      expect(readyPattern.hasMatch('Server listening on port 5001'), isTrue);
     });
 
     // Hypothetical future version

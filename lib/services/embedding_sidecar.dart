@@ -63,7 +63,12 @@ class EmbeddingSidecar extends ChangeNotifier {
     // macOS app bundle
     if (Platform.isMacOS) {
       final contentsDir = File(Platform.resolvedExecutable).parent.parent.path;
-      final bundled = p.join(contentsDir, 'Resources', 'embed_server', 'embed_server');
+      final bundled = p.join(
+        contentsDir,
+        'Resources',
+        'embed_server',
+        'embed_server',
+      );
       if (File(bundled).existsSync()) return bundled;
     }
 
@@ -80,7 +85,16 @@ class EmbeddingSidecar extends ChangeNotifier {
     final execDir = File(Platform.resolvedExecutable).parent.path;
     var dir = Directory(execDir);
     for (int i = 0; i < 10; i++) {
-      final candidate = File(p.join(dir.path, 'tools', 'embed_server', 'target', 'release', 'embed_server'));
+      final candidate = File(
+        p.join(
+          dir.path,
+          'tools',
+          'embed_server',
+          'target',
+          'release',
+          'embed_server',
+        ),
+      );
       if (candidate.existsSync()) return candidate.path;
       final parent = dir.parent;
       if (parent.path == dir.path) break;
@@ -108,7 +122,9 @@ class EmbeddingSidecar extends ChangeNotifier {
           .get(Uri.parse('$_baseUrl/health'))
           .timeout(const Duration(seconds: 1));
       if (response.statusCode == 200) {
-        debugPrint('[EmbedSidecar] Found existing server on port $port — adopting');
+        debugPrint(
+          '[EmbedSidecar] Found existing server on port $port — adopting',
+        );
         _isRunning = true;
         _statusMessage = 'Adopted existing server';
         _modelReady = false; // Will be updated by waitForModelReady
@@ -149,8 +165,8 @@ class EmbeddingSidecar extends ChangeNotifier {
           .transform(const SystemEncoding().decoder)
           .transform(const LineSplitter())
           .listen((line) {
-        debugPrint('[EmbedSidecar:stderr] $line');
-      });
+            debugPrint('[EmbedSidecar:stderr] $line');
+          });
 
       // Monitor process exit
       _process!.exitCode.then((code) {
@@ -169,7 +185,6 @@ class EmbeddingSidecar extends ChangeNotifier {
 
       // Wait for the server to start listening (poll /health)
       await _waitForListening();
-
     } catch (e) {
       _error = 'Failed to start embedding server: $e';
       _statusMessage = 'Error';
@@ -211,7 +226,8 @@ class EmbeddingSidecar extends ChangeNotifier {
           final mb = data['downloaded_mb'] as num?;
           final total = data['total_mb'] as num?;
           if (mb != null && total != null) {
-            _statusMessage = 'Downloading model (${mb.toStringAsFixed(0)}/${total.toStringAsFixed(0)} MB)...';
+            _statusMessage =
+                'Downloading model (${mb.toStringAsFixed(0)}/${total.toStringAsFixed(0)} MB)...';
           }
           notifyListeners();
           break;

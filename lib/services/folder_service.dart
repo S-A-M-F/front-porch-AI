@@ -24,7 +24,8 @@ class CharacterFolder {
   final String id;
   String name;
   final String? parentId; // null = top-level folder
-  final List<String> characterPaths; // filename-only references (e.g. "Miku_123.png")
+  final List<String>
+  characterPaths; // filename-only references (e.g. "Miku_123.png")
 
   CharacterFolder({
     required this.id,
@@ -52,7 +53,9 @@ class FolderService extends ChangeNotifier {
   }
 
   /// Update the database reference (e.g. after cloud sync replaces the DB file).
-  void updateDatabase(AppDatabase db) { _db = db; }
+  void updateDatabase(AppDatabase db) {
+    _db = db;
+  }
 
   /// Normalize a character path to just its filename for portable storage.
   static String _normalize(String characterPath) {
@@ -82,12 +85,14 @@ class FolderService extends ChangeNotifier {
             .map((c) => _normalize(c.imagePath!))
             .toList();
 
-        _folders.add(CharacterFolder(
-          id: f.id,
-          name: f.name,
-          parentId: f.parentId,
-          characterPaths: charPaths,
-        ));
+        _folders.add(
+          CharacterFolder(
+            id: f.id,
+            name: f.name,
+            parentId: f.parentId,
+            characterPaths: charPaths,
+          ),
+        );
       }
       notifyListeners();
     } catch (e) {
@@ -100,16 +105,11 @@ class FolderService extends ChangeNotifier {
   String? get storagePath => null;
 
   Future<CharacterFolder> createFolder(String name, {String? parentId}) async {
-    final newId = await _db.insertFolder(FoldersCompanion(
-      name: Value(name),
-      parentId: Value(parentId),
-    ));
-    
-    final folder = CharacterFolder(
-      id: newId,
-      name: name,
-      parentId: parentId,
+    final newId = await _db.insertFolder(
+      FoldersCompanion(name: Value(name), parentId: Value(parentId)),
     );
+
+    final folder = CharacterFolder(id: newId, name: name, parentId: parentId);
     _folders.add(folder);
     notifyListeners();
     return folder;
@@ -118,31 +118,38 @@ class FolderService extends ChangeNotifier {
   Future<void> renameFolder(String folderId, String newName) async {
     final folder = _folders.firstWhere((f) => f.id == folderId);
     folder.name = newName;
-    
-    await _db.updateFolder(FoldersCompanion(
-      id: Value(folderId),
-      name: Value(newName),
-      updatedAt: Value(DateTime.now()),
-    ));
+
+    await _db.updateFolder(
+      FoldersCompanion(
+        id: Value(folderId),
+        name: Value(newName),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
     notifyListeners();
   }
 
   Future<void> deleteFolder(String folderId) async {
     // Also delete child folders recursively
-    final childIds = _folders.where((f) => f.parentId == folderId).map((f) => f.id).toList();
+    final childIds = _folders
+        .where((f) => f.parentId == folderId)
+        .map((f) => f.id)
+        .toList();
     for (final childId in childIds) {
       await deleteFolder(childId);
     }
-    
+
     // Unassign characters from this folder
     final chars = await _db.getAllCharacters();
     for (final c in chars) {
       if (c.folderId == folderId) {
-        await _db.updateCharacter(CharactersCompanion(
-          id: Value(c.id),
-          name: Value(c.name),
-          folderId: const Value(null),
-        ));
+        await _db.updateCharacter(
+          CharactersCompanion(
+            id: Value(c.id),
+            name: Value(c.name),
+            folderId: const Value(null),
+          ),
+        );
       }
     }
 
@@ -153,17 +160,19 @@ class FolderService extends ChangeNotifier {
 
   Future<void> addToFolder(String folderId, String characterPath) async {
     final filename = _normalize(characterPath);
-    
+
     // Find the character in the DB by matching imagePath
     final chars = await _db.getAllCharacters();
     for (final c in chars) {
       if (c.imagePath != null && _normalize(c.imagePath!) == filename) {
-        await _db.updateCharacter(CharactersCompanion(
-          id: Value(c.id),
-          name: Value(c.name),
-          folderId: Value(folderId),
-          updatedAt: Value(DateTime.now()),
-        ));
+        await _db.updateCharacter(
+          CharactersCompanion(
+            id: Value(c.id),
+            name: Value(c.name),
+            folderId: Value(folderId),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
         break;
       }
     }
@@ -174,17 +183,21 @@ class FolderService extends ChangeNotifier {
 
   Future<void> removeFromFolder(String folderId, String characterPath) async {
     final filename = _normalize(characterPath);
-    
+
     // Find the character and clear its folderId
     final chars = await _db.getAllCharacters();
     for (final c in chars) {
-      if (c.imagePath != null && _normalize(c.imagePath!) == filename && c.folderId == folderId) {
-        await _db.updateCharacter(CharactersCompanion(
-          id: Value(c.id),
-          name: Value(c.name),
-          folderId: const Value(null),
-          updatedAt: Value(DateTime.now()),
-        ));
+      if (c.imagePath != null &&
+          _normalize(c.imagePath!) == filename &&
+          c.folderId == folderId) {
+        await _db.updateCharacter(
+          CharactersCompanion(
+            id: Value(c.id),
+            name: Value(c.name),
+            folderId: const Value(null),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
         break;
       }
     }
@@ -231,7 +244,10 @@ class FolderService extends ChangeNotifier {
 
   /// Get the full path of a folder (e.g. "Parent / Child")
   String getFolderPath(String folderId) {
-    final folder = _folders.firstWhere((f) => f.id == folderId, orElse: () => CharacterFolder(id: '', name: ''));
+    final folder = _folders.firstWhere(
+      (f) => f.id == folderId,
+      orElse: () => CharacterFolder(id: '', name: ''),
+    );
     if (folder.id.isEmpty) return 'Unknown';
     if (folder.parentId == null) return folder.name;
     return '${getFolderPath(folder.parentId!)} / ${folder.name}';

@@ -35,12 +35,14 @@ class KoboldLogDialog extends StatefulWidget {
 }
 
 class _KoboldLogDialogState extends State<KoboldLogDialog> {
-
   @override
   Widget build(BuildContext context) {
     return Consumer2<LLMProvider, KoboldService>(
       builder: (context, llmProvider, kobold, _) {
-        final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+        final pseudoRemote = Provider.of<PseudoRemoteService>(
+          context,
+          listen: false,
+        );
         final isPseudo = llmProvider.activeBackend == BackendType.pseudoRemote;
         final logs = isPseudo ? pseudoRemote.logs : kobold.logs;
         final isRunning = isPseudo ? pseudoRemote.isRunning : kobold.isRunning;
@@ -53,7 +55,9 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
 
         return Dialog(
           backgroundColor: AppColors.backgroundOf(context),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               maxWidth: 720,
@@ -64,7 +68,10 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 14,
+                  ),
                   decoration: const BoxDecoration(
                     border: Border(bottom: BorderSide(color: Colors.white12)),
                   ),
@@ -174,10 +181,7 @@ class _KoboldLogDialogState extends State<KoboldLogDialog> {
                         const SizedBox(width: 8),
                         const Text(
                           '· Text is selectable and copyable',
-                          style: TextStyle(
-                            color: Colors.white12,
-                            fontSize: 11,
-                          ),
+                          style: TextStyle(color: Colors.white12, fontSize: 11),
                         ),
                       ],
                     ),

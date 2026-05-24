@@ -110,7 +110,9 @@ class LLMProvider extends ChangeNotifier {
       apiKey: _storageService.remoteApiKey,
       modelName: _storageService.remoteModelName,
     );
-    debugPrint('[LLMProvider] Synced from storage: backend=$typeStr, URL=${_storageService.remoteApiUrl}');
+    debugPrint(
+      '[LLMProvider] Synced from storage: backend=$typeStr, URL=${_storageService.remoteApiUrl}',
+    );
 
     if (newType != _activeBackend) {
       _activeBackend = newType;

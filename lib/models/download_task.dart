@@ -46,7 +46,8 @@ enum DownloadTaskState {
   bool get isActive => this == downloading || this == verifying;
 
   /// Whether this state is terminal (cannot be resumed).
-  bool get isTerminal => this == completed || this == failed || this == cancelled;
+  bool get isTerminal =>
+      this == completed || this == failed || this == cancelled;
 
   /// Whether the task can be resumed from this state.
   bool get canResume => this == paused || this == failed;
@@ -126,16 +127,16 @@ class DownloadTask {
     this.repoId,
     this.expectedSha256,
     this.maxRetries = 3,
-  })  : id = id ?? const Uuid().v4(),
-        state = DownloadTaskState.pending,
-        progress = 0.0,
-        bytesDownloaded = 0,
-        totalBytes = 0,
-        speedBytesPerSec = 0,
-        etaSeconds = 0,
-        retryCount = 0,
-        _resumeOffset = 0,
-        _previousBytes = 0;
+  }) : id = id ?? const Uuid().v4(),
+       state = DownloadTaskState.pending,
+       progress = 0.0,
+       bytesDownloaded = 0,
+       totalBytes = 0,
+       speedBytesPerSec = 0,
+       etaSeconds = 0,
+       retryCount = 0,
+       _resumeOffset = 0,
+       _previousBytes = 0;
 
   /// Creates a DownloadTask from an existing partial download.
   /// Used when restoring paused downloads on app restart.

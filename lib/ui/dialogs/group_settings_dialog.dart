@@ -96,10 +96,22 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _PromptEngineeringTab(chatService: widget.chatService, groupRepo: widget.groupRepo),
-                  _MemoryRAGTab(chatService: widget.chatService, groupRepo: widget.groupRepo),
-                  _RealismNeedsTab(chatService: widget.chatService, groupRepo: widget.groupRepo),
-                  _GeneralTab(chatService: widget.chatService, groupRepo: widget.groupRepo),
+                  _PromptEngineeringTab(
+                    chatService: widget.chatService,
+                    groupRepo: widget.groupRepo,
+                  ),
+                  _MemoryRAGTab(
+                    chatService: widget.chatService,
+                    groupRepo: widget.groupRepo,
+                  ),
+                  _RealismNeedsTab(
+                    chatService: widget.chatService,
+                    groupRepo: widget.groupRepo,
+                  ),
+                  _GeneralTab(
+                    chatService: widget.chatService,
+                    groupRepo: widget.groupRepo,
+                  ),
                 ],
               ),
             ),
@@ -109,7 +121,9 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
               padding: const EdgeInsets.all(12),
               decoration: const BoxDecoration(
                 color: Color(0xFF111827),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(12),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -126,7 +140,9 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
                         if (g != null) {
                           widget.groupRepo!.save(g);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('All group changes saved.')),
+                            const SnackBar(
+                              content: Text('All group changes saved.'),
+                            ),
                           );
                         }
                       },
@@ -171,10 +187,6 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
   final Map<CharacterCard, TextEditingController> _perCharNoteControllers = {};
   final Map<CharacterCard, int> _perCharStrengths = {};
 
-  // Per-character group-scoped system prompts (completely separate from each
-  // character's normal card-level systemPrompt).
-  final Map<CharacterCard, TextEditingController> _perCharSystemPromptControllers = {};
-
   bool _changesSaved = false;
 
   // Per-character accent colors (matches chat sidebar palette)
@@ -209,9 +221,7 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     _groupSystemController = TextEditingController(
       text: group?.systemPrompt ?? '',
     );
-    _groupAuthorNoteController = TextEditingController(
-      text: cs.authorNote,
-    );
+    _groupAuthorNoteController = TextEditingController(text: cs.authorNote);
     _groupAuthorNoteStrength = cs.authorNoteStrength;
 
     // Pre-create controllers for current characters using live getters
@@ -219,7 +229,6 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     for (final c in cs.groupCharacters) {
       _getOrCreateNoteController(c); // creates + populates from service
       _perCharStrengths[c] ??= cs.getAuthorNoteStrengthForGroupCharacter(c);
-      _getOrCreateSystemPromptController(c); // per-char group system prompts
     }
 
     _changesSaved = false;
@@ -228,13 +237,6 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
   TextEditingController _getOrCreateNoteController(CharacterCard c) {
     return _perCharNoteControllers.putIfAbsent(c, () {
       final initial = widget.chatService.getAuthorNoteForGroupCharacter(c);
-      return TextEditingController(text: initial);
-    });
-  }
-
-  TextEditingController _getOrCreateSystemPromptController(CharacterCard c) {
-    return _perCharSystemPromptControllers.putIfAbsent(c, () {
-      final initial = widget.chatService.getSystemPromptForGroupCharacter(c);
       return TextEditingController(text: initial);
     });
   }
@@ -251,11 +253,6 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     }
     _perCharNoteControllers.clear();
     _perCharStrengths.clear();
-
-    for (final ctrl in _perCharSystemPromptControllers.values) {
-      ctrl.dispose();
-    }
-    _perCharSystemPromptControllers.clear();
 
     super.dispose();
   }
@@ -282,18 +279,12 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     for (final c in cs.groupCharacters) {
       final noteCtrl = _perCharNoteControllers[c];
       final note = noteCtrl?.text.trim() ?? '';
-      final strength = _perCharStrengths[c] ?? cs.getAuthorNoteStrengthForGroupCharacter(c);
+      final strength =
+          _perCharStrengths[c] ?? cs.getAuthorNoteStrengthForGroupCharacter(c);
       cs.setAuthorNoteForGroupCharacter(c, note, strength: strength);
     }
 
-    // 4. Per-character group-scoped system prompts (persist via public API)
-    for (final c in cs.groupCharacters) {
-      final promptCtrl = _perCharSystemPromptControllers[c];
-      final prompt = promptCtrl?.text.trim() ?? '';
-      cs.setSystemPromptForGroupCharacter(c, prompt);
-    }
-
-    // 5. Persist the GroupChat model (name, scenario, systemPrompt, directorMode, etc.)
+    // 4. Persist the GroupChat model (name, scenario, systemPrompt, directorMode, etc.)
     if (widget.groupRepo != null && group != null) {
       widget.groupRepo!.save(group); // fire-and-forget is acceptable here
     }
@@ -323,7 +314,11 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.group_off_outlined, size: 48, color: Colors.white24),
+            const Icon(
+              Icons.group_off_outlined,
+              size: 48,
+              color: Colors.white24,
+            ),
             const SizedBox(height: 12),
             const Text(
               'No active group chat',
@@ -364,18 +359,9 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Tooltip(
-                  message:
-                      'Use this for group-wide instructions about how the AI should behave '
-                      '(e.g. response style, turn rules, formatting, or custom meta-instructions).\n\n'
-                      'This affects the entire group. For character-specific instructions, '
-                      'use the Per-Character System Prompts below instead.\n\n'
-                      'Leave empty to use the built-in group behavior rules.',
-                  child: const Text(
-                    'Overrides the built-in group behavior rules when filled. '
-                    'Use for global style, formatting, or AI behavior changes.',
-                    style: TextStyle(color: Colors.white24, fontSize: 11),
-                  ),
+                Text(
+                  'Overrides the default group system prompt when non-empty.',
+                  style: TextStyle(color: Colors.white24, fontSize: 11),
                 ),
                 const SizedBox(height: 8),
                 AppTextField(
@@ -385,7 +371,10 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                   decoration: InputDecoration(
                     hintText: 'Custom system prompt for the entire group...',
-                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    hintStyle: const TextStyle(
+                      color: Colors.white24,
+                      fontSize: 12,
+                    ),
                     filled: true,
                     fillColor: const Color(0xFF111827),
                     border: OutlineInputBorder(
@@ -409,38 +398,14 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
 
                 const SizedBox(height: 20),
 
-                // ── Per-Character System Prompts (group-scoped) ─────────────
-                const Row(
-                  children: [
-                    Icon(Icons.code, size: 16, color: Colors.cyanAccent),
-                    SizedBox(width: 6),
-                    Text(
-                      'Per-Character System Prompts',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.cyanAccent,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'These apply only inside this group chat. They completely override each character\'s normal system prompt when they speak here. Leave empty to use the character\'s regular prompt.',
-                  style: TextStyle(color: Colors.white24, fontSize: 11),
-                ),
-                const SizedBox(height: 12),
-
-                // Character editors for per-char group system prompts
-                for (int i = 0; i < chars.length; i++)
-                  _buildCharacterSystemPromptEditor(chars[i], i),
-
-                const SizedBox(height: 20),
-
                 // ── Per-Character Author's Notes ────────────────────────────
                 const Row(
                   children: [
-                    Icon(Icons.person_outline, size: 16, color: Colors.purpleAccent),
+                    Icon(
+                      Icons.person_outline,
+                      size: 16,
+                      color: Colors.purpleAccent,
+                    ),
                     SizedBox(width: 6),
                     Text(
                       "Per-Character Author's Notes",
@@ -483,11 +448,18 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                   padding: EdgeInsets.only(right: 12),
                   child: Row(
                     children: [
-                      Icon(Icons.check_circle, size: 16, color: Color(0xFF10B981)),
+                      Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: Color(0xFF10B981),
+                      ),
                       SizedBox(width: 4),
                       Text(
                         'Saved',
-                        style: TextStyle(color: Color(0xFF10B981), fontSize: 12),
+                        style: TextStyle(
+                          color: Color(0xFF10B981),
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
@@ -500,7 +472,10 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
                 ),
               ),
             ],
@@ -587,7 +562,10 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                 borderRadius: BorderRadius.circular(6),
                 borderSide: const BorderSide(color: Colors.purpleAccent),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 8,
+              ),
             ),
             onChanged: (_) {
               if (_changesSaved) setState(() => _changesSaved = false);
@@ -650,90 +628,99 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     );
   }
 
-  Widget _buildCharacterSystemPromptEditor(CharacterCard c, int index) {
-    final promptCtrl = _getOrCreateSystemPromptController(c);
+  /// Builds the group-level strength control with tier labels (matches sidebar styling).
+  Widget _buildStrengthSlider({
+    required int strength,
+    required ValueChanged<int> onChanged,
+  }) {
+    Color sliderColor;
+    String tierLabel;
+    if (strength <= 3) {
+      sliderColor = Colors.blueAccent;
+      tierLabel = 'Subtle';
+    } else if (strength <= 7) {
+      sliderColor = Colors.amberAccent;
+      tierLabel = 'Moderate';
+    } else {
+      sliderColor = Colors.redAccent;
+      tierLabel = 'Strong';
+    }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: avatar + name
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: _charColor(index),
-                backgroundImage: c.imagePath != null
-                    ? FileImage(File(c.imagePath!))
-                    : null,
-                child: c.imagePath == null
-                    ? Text(
-                        c.name.isNotEmpty ? c.name[0].toUpperCase() : '?',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      )
-                    : null,
+    return Column(
+      children: [
+        Row(
+          children: [
+            const Tooltip(
+              message:
+                  'Controls how forcefully the author\'s note is applied.\n'
+                  'Subtle: a gentle suggestion the AI may follow.\n'
+                  'Moderate: standard injection into context.\n'
+                  'Strong: an urgent directive the AI should apply immediately.',
+              child: Text(
+                'Strength: ',
+                style: TextStyle(color: Colors.white54, fontSize: 11),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  c.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+            ),
+            Expanded(
+              child: SliderTheme(
+                data: SliderThemeData(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
                   ),
-                  overflow: TextOverflow.ellipsis,
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 12,
+                  ),
+                  activeTrackColor: sliderColor,
+                  inactiveTrackColor: Colors.white12,
+                  thumbColor: sliderColor,
+                ),
+                child: Slider(
+                  value: strength.toDouble(),
+                  min: 1,
+                  max: 10,
+                  divisions: 9,
+                  label: '$strength — $tierLabel',
+                  onChanged: (val) => onChanged(val.round()),
+                ),
+              ),
+            ),
+            Text(
+              '$strength',
+              style: TextStyle(
+                color: sliderColor,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 2),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: sliderColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: sliderColor.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  tierLabel,
+                  style: TextStyle(
+                    color: sliderColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-
-          // Prompt field (no strength — pure override)
-          AppTextField(
-            controller: promptCtrl,
-            maxLines: 4,
-            minLines: 2,
-            style: const TextStyle(color: Colors.white, fontSize: 12),
-            decoration: InputDecoration(
-              hintText: 'System prompt override for ${c.name} in this group only...',
-              hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
-              filled: true,
-              fillColor: const Color(0xFF1F2937),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: Colors.white10),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: Colors.white10),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: Colors.cyanAccent),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            ),
-            onChanged: (_) {
-              if (_changesSaved) setState(() => _changesSaved = false);
-            },
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
-
 }
 
 class _MemoryRAGTab extends StatefulWidget {
@@ -778,8 +765,7 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
 
     final savedPriorities = widget.chatService.currentGroupRAGPriorities;
     _charPriorities = {
-      for (final c in _chars)
-        c.name: savedPriorities[c.name] ?? 1.0,
+      for (final c in _chars) c.name: savedPriorities[c.name] ?? 1.0,
     };
 
     _hasUnsavedChanges = false;
@@ -823,9 +809,7 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
       _groupRagEnabled = true;
       _retrievalCount = 8;
       _memoryBudgetPercent = 10.0;
-      _charPriorities = {
-        for (final c in _chars) c.name: 1.0,
-      };
+      _charPriorities = {for (final c in _chars) c.name: 1.0};
       _hasUnsavedChanges = true;
       _statusMessage = 'Reset to defaults (unsaved)';
     });
@@ -847,7 +831,9 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
       widget.chatService.setCharacterRAGPriority(entry.key, entry.value);
     }
 
-    debugPrint('[GroupSettings:MemoryRAG] Saved RAG config for group ${group.name}');
+    debugPrint(
+      '[GroupSettings:MemoryRAG] Saved RAG config for group ${group.name}',
+    );
 
     setState(() {
       _hasUnsavedChanges = false;
@@ -877,7 +863,11 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
             // Header
             Row(
               children: [
-                const Icon(Icons.psychology, color: Colors.purpleAccent, size: 20),
+                const Icon(
+                  Icons.psychology,
+                  color: Colors.purpleAccent,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -890,7 +880,10 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                 ),
                 if (_hasUnsavedChanges)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.amber.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
@@ -926,11 +919,18 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.toggle_on, size: 18, color: Colors.purpleAccent),
+                      const Icon(
+                        Icons.toggle_on,
+                        size: 18,
+                        color: Colors.purpleAccent,
+                      ),
                       const SizedBox(width: 8),
                       const Text(
                         'Enable RAG for this group',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                       const Spacer(),
                       Switch(
@@ -971,7 +971,9 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       trackHeight: 3,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 6,
+                      ),
                     ),
                     child: Slider(
                       value: _retrievalCount.toDouble(),
@@ -1007,7 +1009,9 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       trackHeight: 3,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 6,
+                      ),
                     ),
                     child: Slider(
                       value: _memoryBudgetPercent,
@@ -1023,7 +1027,11 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                   const SizedBox(height: 4),
                   const Text(
                     'Note: Global embedding window size (messages per chunk) lives in main Settings → Memory (RAG). Per-group override would be a future extension.',
-                    style: TextStyle(fontSize: 10, color: Colors.white30, fontStyle: FontStyle.italic),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white30,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ],
               ),
@@ -1034,7 +1042,11 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
             // Per-character priorities
             Row(
               children: [
-                const Icon(Icons.people_alt, size: 18, color: Colors.purpleAccent),
+                const Icon(
+                  Icons.people_alt,
+                  size: 18,
+                  color: Colors.purpleAccent,
+                ),
                 const SizedBox(width: 8),
                 const Text(
                   'Per-Character Memory Importance',
@@ -1044,7 +1056,10 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                 TextButton(
                   onPressed: _resetToDefaults,
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -1079,10 +1094,17 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                     children: [
                       CircleAvatar(
                         radius: 11,
-                        backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
+                        backgroundColor: Colors.purpleAccent.withValues(
+                          alpha: 0.25,
+                        ),
                         child: Text(
-                          char.name.isNotEmpty ? char.name[0].toUpperCase() : '?',
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                          char.name.isNotEmpty
+                              ? char.name[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1099,7 +1121,9 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             trackHeight: 2.5,
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 5,
+                            ),
                           ),
                           child: Slider(
                             value: priority,
@@ -1141,7 +1165,10 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.purpleAccent,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1336,7 +1363,11 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
             // Header
             Row(
               children: [
-                const Icon(Icons.theater_comedy, color: Colors.tealAccent, size: 20),
+                const Icon(
+                  Icons.theater_comedy,
+                  color: Colors.tealAccent,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1349,7 +1380,10 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                 ),
                 if (_hasUnsavedChanges)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.amber.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
@@ -1380,16 +1414,26 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF1F2937),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: Colors.amber.withValues(alpha: 0.4),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber_rounded, size: 18, color: Colors.amber),
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: Colors.amber,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Director Mode is active. Realism Engine, Needs Simulation, and related tracking are suspended for this group (narrative control only). Exit Director Mode to re-enable.',
-                        style: const TextStyle(fontSize: 12, color: Colors.amber, height: 1.3),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.amber,
+                          height: 1.3,
+                        ),
                       ),
                     ),
                   ],
@@ -1409,17 +1453,24 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.auto_awesome, size: 18, color: Colors.tealAccent),
+                      const Icon(
+                        Icons.auto_awesome,
+                        size: 18,
+                        color: Colors.tealAccent,
+                      ),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
                           'Realism Engine for this group',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                       Switch(
                         value: _realismEnabled,
-                        activeThumbColor: Colors.tealAccent,
+                        activeColor: Colors.tealAccent,
                         onChanged: _updateRealism,
                       ),
                     ],
@@ -1434,7 +1485,11 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       padding: EdgeInsets.only(top: 6),
                       child: Text(
                         'Sub-features (Needs, etc.) have no effect while the master toggle is off.',
-                        style: TextStyle(fontSize: 10, color: Colors.white38, fontStyle: FontStyle.italic),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.white38,
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                     ),
                 ],
@@ -1456,17 +1511,24 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.battery_std, size: 18, color: Colors.tealAccent),
+                      const Icon(
+                        Icons.battery_std,
+                        size: 18,
+                        color: Colors.tealAccent,
+                      ),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
                           'Needs Simulation',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                       Switch(
                         value: _needsSimEnabled,
-                        activeThumbColor: Colors.tealAccent,
+                        activeColor: Colors.tealAccent,
                         onChanged: _updateNeedsSim,
                       ),
                     ],
@@ -1496,17 +1558,24 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                   // Passage of Time
                   Row(
                     children: [
-                      const Icon(Icons.access_time, size: 18, color: Colors.tealAccent),
+                      const Icon(
+                        Icons.access_time,
+                        size: 18,
+                        color: Colors.tealAccent,
+                      ),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
                           'Passage of Time',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                       Switch(
                         value: _passageOfTimeEnabled,
-                        activeThumbColor: Colors.tealAccent,
+                        activeColor: Colors.tealAccent,
                         onChanged: _updatePassageOfTime,
                       ),
                     ],
@@ -1529,12 +1598,15 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       const Expanded(
                         child: Text(
                           'Chaos Mode (Chance Time)',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                       Switch(
                         value: _chaosModeEnabled,
-                        activeThumbColor: const Color(0xFFFFD166),
+                        activeColor: const Color(0xFFFFD166),
                         onChanged: _updateChaosMode,
                       ),
                     ],
@@ -1577,14 +1649,17 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                         const Expanded(
                           child: Text(
                             'Include spicy/NSFW events',
-                            style: TextStyle(fontSize: 12, color: Colors.white70),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white70,
+                            ),
                           ),
                         ),
                         SizedBox(
                           height: 24,
                           child: Switch(
                             value: _chaosNsfwEnabled,
-                            activeThumbColor: const Color(0xFFFF6B9D),
+                            activeColor: const Color(0xFFFF6B9D),
                             onChanged: _updateChaosNsfw,
                           ),
                         ),
@@ -1600,7 +1675,11 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
             // Per-character baselines / reset section
             Row(
               children: [
-                const Icon(Icons.people_alt, size: 18, color: Colors.tealAccent),
+                const Icon(
+                  Icons.people_alt,
+                  size: 18,
+                  color: Colors.tealAccent,
+                ),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
@@ -1611,7 +1690,10 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                 TextButton(
                   onPressed: _resetAllRealismStates,
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -1668,7 +1750,9 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                             : null,
                         child: char.imagePath == null
                             ? Text(
-                                char.name.isNotEmpty ? char.name[0].toUpperCase() : '?',
+                                char.name.isNotEmpty
+                                    ? char.name[0].toUpperCase()
+                                    : '?',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -1695,8 +1779,8 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                             Text(
                               isRealismActive
                                   ? (emo != null
-                                      ? 'Emotion: $emo • Bond: $bond'
-                                      : 'No realism data yet (will seed on next turn)')
+                                        ? 'Emotion: $emo • Bond: $bond'
+                                        : 'No realism data yet (will seed on next turn)')
                                   : 'Realism inactive (Director Mode or master off)',
                               style: const TextStyle(
                                 fontSize: 11,
@@ -1710,13 +1794,19 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       TextButton(
                         onPressed: () => _resetCharacterRealism(char),
                         style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           minimumSize: const Size(0, 32),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         child: const Text(
                           'Reset',
-                          style: TextStyle(fontSize: 12, color: Colors.tealAccent),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.tealAccent,
+                          ),
                         ),
                       ),
                     ],
@@ -1736,7 +1826,10 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.tealAccent,
                     foregroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1773,11 +1866,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
   // Helper for chaos pressure color (matches _ChaosModeSection in chat_page)
   Color _pressureColorFor(int pressure) {
     final t = (pressure / 100).clamp(0.0, 1.0);
-    return Color.lerp(
-      const Color(0xFF2EC4B6),
-      const Color(0xFFE63946),
-      t,
-    )!;
+    return Color.lerp(const Color(0xFF2EC4B6), const Color(0xFFE63946), t)!;
   }
 
   // Simple accent palette for per-char avatars (subset of Prompt tab palette)
@@ -1791,6 +1880,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
   Color _charAccentColor(int index) => _charColors[index % _charColors.length];
 }
+
 class _GeneralTab extends StatefulWidget {
   final ChatService chatService;
   final GroupChatRepository? groupRepo;
@@ -1982,7 +2072,10 @@ class _GeneralTabState extends State<_GeneralTab> {
                     ),
                     if (_hasUnsavedChanges)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.amber.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
@@ -2006,13 +2099,21 @@ class _GeneralTabState extends State<_GeneralTab> {
                 const SizedBox(height: 16),
 
                 // ── Identity ───────────────────────────────────────────────
-                _buildSectionHeader('Identity', Icons.label_outline, Colors.tealAccent),
+                _buildSectionHeader(
+                  'Identity',
+                  Icons.label_outline,
+                  Colors.tealAccent,
+                ),
                 const SizedBox(height: 8),
 
                 // Group Name
                 const Text(
                   'Group Name',
-                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 AppTextField(
@@ -2020,7 +2121,10 @@ class _GeneralTabState extends State<_GeneralTab> {
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: InputDecoration(
                     hintText: 'e.g. The Fellowship',
-                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+                    hintStyle: const TextStyle(
+                      color: Colors.white24,
+                      fontSize: 13,
+                    ),
                     filled: true,
                     fillColor: const Color(0xFF111827),
                     border: OutlineInputBorder(
@@ -2035,7 +2139,10 @@ class _GeneralTabState extends State<_GeneralTab> {
                       borderRadius: BorderRadius.circular(8),
                       borderSide: const BorderSide(color: Colors.tealAccent),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
                   onChanged: (_) => _markDirty(),
                 ),
@@ -2044,7 +2151,11 @@ class _GeneralTabState extends State<_GeneralTab> {
                 // Scenario
                 const Text(
                   'Scenario',
-                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 const Text(
@@ -2058,8 +2169,12 @@ class _GeneralTabState extends State<_GeneralTab> {
                   minLines: 2,
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                   decoration: InputDecoration(
-                    hintText: 'The scene, time period, and situation for this group conversation...',
-                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    hintText:
+                        'The scene, time period, and situation for this group conversation...',
+                    hintStyle: const TextStyle(
+                      color: Colors.white24,
+                      fontSize: 12,
+                    ),
                     filled: true,
                     fillColor: const Color(0xFF111827),
                     border: OutlineInputBorder(
@@ -2083,7 +2198,11 @@ class _GeneralTabState extends State<_GeneralTab> {
                 // First Message
                 const Text(
                   'First Message / Greeting',
-                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 const Text(
@@ -2098,7 +2217,10 @@ class _GeneralTabState extends State<_GeneralTab> {
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                   decoration: InputDecoration(
                     hintText: 'The group\'s initial greeting or narration...',
-                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    hintStyle: const TextStyle(
+                      color: Colors.white24,
+                      fontSize: 12,
+                    ),
                     filled: true,
                     fillColor: const Color(0xFF111827),
                     border: OutlineInputBorder(
@@ -2120,12 +2242,20 @@ class _GeneralTabState extends State<_GeneralTab> {
                 const SizedBox(height: 20),
 
                 // ── Turn Management ────────────────────────────────────────
-                _buildSectionHeader('Turn Management', Icons.swap_horiz, Colors.purpleAccent),
+                _buildSectionHeader(
+                  'Turn Management',
+                  Icons.swap_horiz,
+                  Colors.purpleAccent,
+                ),
                 const SizedBox(height: 8),
 
                 const Text(
                   'Turn Order Strategy',
-                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 8),
 
@@ -2165,11 +2295,18 @@ class _GeneralTabState extends State<_GeneralTab> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.play_circle_outline, size: 18, color: Colors.white54),
+                          const Icon(
+                            Icons.play_circle_outline,
+                            size: 18,
+                            color: Colors.white54,
+                          ),
                           const SizedBox(width: 8),
                           const Text(
                             'Auto-advance',
-                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
                           ),
                           const Spacer(),
                           Switch(
@@ -2184,7 +2321,11 @@ class _GeneralTabState extends State<_GeneralTab> {
                         padding: EdgeInsets.only(left: 26),
                         child: Text(
                           'After a character finishes responding, automatically prompt the next speaker. Works with both turn orders and Director Mode.',
-                          style: TextStyle(fontSize: 11, color: Colors.white38, height: 1.3),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            height: 1.3,
+                          ),
                         ),
                       ),
                     ],
@@ -2193,7 +2334,11 @@ class _GeneralTabState extends State<_GeneralTab> {
                 const SizedBox(height: 20),
 
                 // ── Director Mode ──────────────────────────────────────────
-                _buildSectionHeader('Director Mode Defaults', Icons.movie_creation_outlined, Colors.amberAccent),
+                _buildSectionHeader(
+                  'Director Mode Defaults',
+                  Icons.movie_creation_outlined,
+                  Colors.amberAccent,
+                ),
                 const SizedBox(height: 8),
 
                 Container(
@@ -2208,12 +2353,19 @@ class _GeneralTabState extends State<_GeneralTab> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.visibility, size: 18, color: Colors.white54),
+                          const Icon(
+                            Icons.visibility,
+                            size: 18,
+                            color: Colors.white54,
+                          ),
                           const SizedBox(width: 8),
                           const Expanded(
                             child: Text(
                               'Start this group in Director Mode',
-                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                           Switch(
@@ -2228,7 +2380,11 @@ class _GeneralTabState extends State<_GeneralTab> {
                         padding: EdgeInsets.only(left: 26),
                         child: Text(
                           'When enabled, entering the group begins in observer/director mode. You steer via the input box while characters respond autonomously. The live toggle is also available in the group sidebar.',
-                          style: TextStyle(fontSize: 11, color: Colors.white38, height: 1.3),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            height: 1.3,
+                          ),
                         ),
                       ),
                     ],
@@ -2252,7 +2408,11 @@ class _GeneralTabState extends State<_GeneralTab> {
                       Expanded(
                         child: Text(
                           'These settings are stored with the group definition. Saving here updates the live session immediately. The values are persisted to the database automatically on membership changes (add/remove character) and on session checkpoints.',
-                          style: TextStyle(fontSize: 10, color: Colors.white38, height: 1.25),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.white38,
+                            height: 1.25,
+                          ),
                         ),
                       ),
                     ],
@@ -2274,7 +2434,10 @@ class _GeneralTabState extends State<_GeneralTab> {
             children: [
               if (_hasUnsavedChanges)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.amber.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
@@ -2291,11 +2454,18 @@ class _GeneralTabState extends State<_GeneralTab> {
               else if (_statusMessage.isNotEmpty)
                 Row(
                   children: [
-                    const Icon(Icons.check_circle, size: 14, color: Color(0xFF10B981)),
+                    const Icon(
+                      Icons.check_circle,
+                      size: 14,
+                      color: Color(0xFF10B981),
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       _statusMessage,
-                      style: const TextStyle(color: Color(0xFF10B981), fontSize: 12),
+                      style: const TextStyle(
+                        color: Color(0xFF10B981),
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
@@ -2313,7 +2483,10 @@ class _GeneralTabState extends State<_GeneralTab> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.tealAccent,
                   foregroundColor: Colors.black87,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
                   disabledBackgroundColor: Colors.white12,
                   disabledForegroundColor: Colors.white38,
                 ),
@@ -2350,7 +2523,9 @@ class _GeneralTabState extends State<_GeneralTab> {
   ) {
     final isSelected = _turnOrder == order;
     final borderColor = isSelected ? Colors.purpleAccent : Colors.white12;
-    final bgColor = isSelected ? const Color(0xFF1F2937) : const Color(0xFF111827);
+    final bgColor = isSelected
+        ? const Color(0xFF1F2937)
+        : const Color(0xFF111827);
     final iconColor = isSelected ? Colors.purpleAccent : Colors.white54;
     final textColor = isSelected ? Colors.purpleAccent : Colors.white;
 
@@ -2385,7 +2560,11 @@ class _GeneralTabState extends State<_GeneralTab> {
             const SizedBox(height: 6),
             Text(
               description,
-              style: const TextStyle(fontSize: 11, color: Colors.white54, height: 1.3),
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.white54,
+                height: 1.3,
+              ),
             ),
           ],
         ),

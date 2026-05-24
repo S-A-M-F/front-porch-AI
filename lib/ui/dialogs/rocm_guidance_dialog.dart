@@ -22,7 +22,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Shows a dialog with distro-specific ROCm installation instructions.
 /// Returns true if the dialog was shown, false if suppressed by user preference.
-Future<bool> showRocmGuidanceDialog(BuildContext context, String linuxDistro) async {
+Future<bool> showRocmGuidanceDialog(
+  BuildContext context,
+  String linuxDistro,
+) async {
   final prefs = await SharedPreferences.getInstance();
   if (prefs.getBool('dismiss_rocm_guidance') == true) return false;
 
@@ -32,10 +35,8 @@ Future<bool> showRocmGuidanceDialog(BuildContext context, String linuxDistro) as
 
   await showDialog(
     context: context,
-    builder: (context) => _RocmGuidanceDialog(
-      distro: linuxDistro,
-      instructions: instructions,
-    ),
+    builder: (context) =>
+        _RocmGuidanceDialog(distro: linuxDistro, instructions: instructions),
   );
   return true;
 }
@@ -44,10 +45,7 @@ class _RocmGuidanceDialog extends StatefulWidget {
   final String distro;
   final _RocmInstructions instructions;
 
-  const _RocmGuidanceDialog({
-    required this.distro,
-    required this.instructions,
-  });
+  const _RocmGuidanceDialog({required this.distro, required this.instructions});
 
   @override
   State<_RocmGuidanceDialog> createState() => _RocmGuidanceDialogState();
@@ -92,7 +90,9 @@ class _RocmGuidanceDialogState extends State<_RocmGuidanceDialog> {
                 decoration: BoxDecoration(
                   color: Colors.amber.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: Colors.amber.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: const Row(
                   children: [
@@ -118,24 +118,32 @@ class _RocmGuidanceDialogState extends State<_RocmGuidanceDialog> {
               ),
               const SizedBox(height: 8),
               // Steps
-              ...widget.instructions.steps.map((step) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${widget.instructions.steps.indexOf(step) + 1}. ',
-                      style: const TextStyle(color: Colors.white54, fontSize: 13),
-                    ),
-                    Expanded(
-                      child: Text(
-                        step,
-                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ...widget.instructions.steps.map(
+                (step) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${widget.instructions.steps.indexOf(step) + 1}. ',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 13,
+                        ),
                       ),
-                    ),
-                  ],
+                      Expanded(
+                        child: Text(
+                          step,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              )),
+              ),
               const SizedBox(height: 8),
               // Commands box
               Container(
@@ -170,7 +178,11 @@ class _RocmGuidanceDialogState extends State<_RocmGuidanceDialog> {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.check_circle_outline, color: Colors.blue, size: 18),
+                    Icon(
+                      Icons.check_circle_outline,
+                      color: Colors.blue,
+                      size: 18,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -189,13 +201,15 @@ class _RocmGuidanceDialogState extends State<_RocmGuidanceDialog> {
                     height: 20,
                     child: Checkbox(
                       value: _dontShowAgain,
-                      onChanged: (val) => setState(() => _dontShowAgain = val ?? false),
+                      onChanged: (val) =>
+                          setState(() => _dontShowAgain = val ?? false),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: () => setState(() => _dontShowAgain = !_dontShowAgain),
+                    onTap: () =>
+                        setState(() => _dontShowAgain = !_dontShowAgain),
                     child: const Text(
                       'Don\'t show this again',
                       style: TextStyle(color: Colors.white38, fontSize: 12),
@@ -210,7 +224,9 @@ class _RocmGuidanceDialogState extends State<_RocmGuidanceDialog> {
       actions: [
         TextButton.icon(
           onPressed: () {
-            Clipboard.setData(ClipboardData(text: widget.instructions.commands));
+            Clipboard.setData(
+              ClipboardData(text: widget.instructions.commands),
+            );
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Commands copied to clipboard!')),
             );
@@ -258,7 +274,8 @@ _RocmInstructions _getDistroInstructions(String distro) {
           'Verify with: rocminfo',
         ],
         commands: 'sudo pacman -S rocm-hip-sdk rocm-opencl-sdk',
-        note: 'Manjaro/EndeavourOS users: packages are the same. AUR packages like rocm-hip-runtime may also work.',
+        note:
+            'Manjaro/EndeavourOS users: packages are the same. AUR packages like rocm-hip-runtime may also work.',
       );
     case 'ubuntu':
       return _RocmInstructions(
@@ -281,7 +298,8 @@ _RocmInstructions _getDistroInstructions(String distro) {
             'sudo apt install rocm\n\n'
             '# Add user to GPU groups\n'
             'sudo usermod -aG render,video \$USER',
-        note: 'Replace "jammy" with your Ubuntu codename if needed (e.g. "noble" for 24.04). See: https://rocm.docs.amd.com',
+        note:
+            'Replace "jammy" with your Ubuntu codename if needed (e.g. "noble" for 24.04). See: https://rocm.docs.amd.com',
       );
     case 'debian':
       return _RocmInstructions(
@@ -304,7 +322,8 @@ _RocmInstructions _getDistroInstructions(String distro) {
             'sudo apt install rocm\n\n'
             '# Add user to GPU groups\n'
             'sudo usermod -aG render,video \$USER',
-        note: 'Replace "bullseye" with your Debian version codename. See: https://rocm.docs.amd.com',
+        note:
+            'Replace "bullseye" with your Debian version codename. See: https://rocm.docs.amd.com',
       );
     case 'fedora':
       return _RocmInstructions(
@@ -329,7 +348,8 @@ _RocmInstructions _getDistroInstructions(String distro) {
             'sudo dnf install rocm\n\n'
             '# Add user to GPU groups\n'
             'sudo usermod -aG render,video \$USER',
-        note: 'For Fedora 39+ you may need to adjust the baseurl. See: https://rocm.docs.amd.com',
+        note:
+            'For Fedora 39+ you may need to adjust the baseurl. See: https://rocm.docs.amd.com',
       );
     case 'rhel':
       return _RocmInstructions(
@@ -354,7 +374,8 @@ _RocmInstructions _getDistroInstructions(String distro) {
             'sudo dnf install rocm\n\n'
             '# Add user to GPU groups\n'
             'sudo usermod -aG render,video \$USER',
-        note: 'Use "rhel8" in the baseurl for RHEL 8.x. See: https://rocm.docs.amd.com',
+        note:
+            'Use "rhel8" in the baseurl for RHEL 8.x. See: https://rocm.docs.amd.com',
       );
     case 'opensuse':
       return _RocmInstructions(
@@ -385,8 +406,10 @@ _RocmInstructions _getDistroInstructions(String distro) {
           'Follow the instructions for your specific distribution.',
           'After installing, reboot and verify with: rocminfo',
         ],
-        commands: '# Visit: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/',
-        note: 'Your distro was detected as "$distro". If this seems wrong, please file a bug report.',
+        commands:
+            '# Visit: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/',
+        note:
+            'Your distro was detected as "$distro". If this seems wrong, please file a bug report.',
       );
   }
 }

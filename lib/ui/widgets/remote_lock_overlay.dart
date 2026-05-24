@@ -94,7 +94,8 @@ class RemoteLockOverlay extends StatelessWidget {
                           _InfoRow(
                             icon: Icons.language,
                             label: 'Server Address',
-                            value: 'http://${webServer.lanIp ?? "..."}:${webServer.port}',
+                            value:
+                                'http://${webServer.lanIp ?? "..."}:${webServer.port}',
                           ),
                         ],
                       ),
@@ -195,9 +196,10 @@ class _PulsingIconState extends State<_PulsingIcon>
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.6, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.6,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -216,17 +218,16 @@ class _PulsingIconState extends State<_PulsingIcon>
           height: 80,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                Colors.blueAccent.shade700,
-                Colors.cyanAccent.shade400,
-              ],
+              colors: [Colors.blueAccent.shade700, Colors.cyanAccent.shade400],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.blueAccent.withValues(alpha: 0.3 * _animation.value),
+                color: Colors.blueAccent.withValues(
+                  alpha: 0.3 * _animation.value,
+                ),
                 blurRadius: 24 * _animation.value,
                 spreadRadius: 4 * _animation.value,
               ),

@@ -57,15 +57,24 @@ class CharacterGenService {
 
   /// Per-category descriptions for lorebook generation prompts.
   static const _loreCategoryDescriptions = {
-    'Locations': 'Notable places in the world: cities, provinces, landmarks, dungeons, taverns, wilderness areas. Describe geography, atmosphere, reputation, and who frequents them',
-    'NPCs/Allies': 'Supporting characters who exist in the world: shopkeepers, rulers, rivals, mysterious figures, recurring contacts. Name, role, personality, and relationship to the setting',
-    'Factions/Organizations': 'Guilds, governments, criminal syndicates, cults, religious orders, military groups. Structure, goals, reputation, territory, and influence',
-    'Culture/Customs': 'Social norms, traditions, holidays, taboos, greetings, food, clothing, entertainment, laws. How people in this world live day-to-day',
-    'Abilities/Magic': 'Magic systems, combat arts, supernatural phenomena, technology rules. How powers work, costs, limitations, who can use them, societal attitudes toward them',
-    'Flora/Fauna': 'Creatures, monsters, beasts, plants, and materials unique to this world. Appearance, behavior, ecological role, uses, and dangers',
-    'History/Events': 'World-level historical events: wars, cataclysms, discoveries, founding of nations, political upheavals. NOT the character\'s personal biography',
-    'Items/Equipment': 'Notable weapons, artifacts, potions, tools, currencies, trade goods. Origin, properties, rarity, cultural significance',
-    'Secrets/Hidden Lore': 'Forbidden knowledge, hidden locations, conspiracies, prophecies, sealed powers, forgotten truths that most people in the world don\'t know about',
+    'Locations':
+        'Notable places in the world: cities, provinces, landmarks, dungeons, taverns, wilderness areas. Describe geography, atmosphere, reputation, and who frequents them',
+    'NPCs/Allies':
+        'Supporting characters who exist in the world: shopkeepers, rulers, rivals, mysterious figures, recurring contacts. Name, role, personality, and relationship to the setting',
+    'Factions/Organizations':
+        'Guilds, governments, criminal syndicates, cults, religious orders, military groups. Structure, goals, reputation, territory, and influence',
+    'Culture/Customs':
+        'Social norms, traditions, holidays, taboos, greetings, food, clothing, entertainment, laws. How people in this world live day-to-day',
+    'Abilities/Magic':
+        'Magic systems, combat arts, supernatural phenomena, technology rules. How powers work, costs, limitations, who can use them, societal attitudes toward them',
+    'Flora/Fauna':
+        'Creatures, monsters, beasts, plants, and materials unique to this world. Appearance, behavior, ecological role, uses, and dangers',
+    'History/Events':
+        'World-level historical events: wars, cataclysms, discoveries, founding of nations, political upheavals. NOT the character\'s personal biography',
+    'Items/Equipment':
+        'Notable weapons, artifacts, potions, tools, currencies, trade goods. Origin, properties, rarity, cultural significance',
+    'Secrets/Hidden Lore':
+        'Forbidden knowledge, hidden locations, conspiracies, prophecies, sealed powers, forgotten truths that most people in the world don\'t know about',
   };
 
   CharacterGenService(this._llmService);
@@ -121,7 +130,9 @@ class CharacterGenService {
       worldLore: worldLore,
     );
 
-    debugPrint('CharacterGen: Starting generation for "$name" (reasoning: $reasoningEnabled)');
+    debugPrint(
+      'CharacterGen: Starting generation for "$name" (reasoning: $reasoningEnabled)',
+    );
     _generationEpoch++;
     final int currentEpoch = _generationEpoch;
     _aborted = false;
@@ -135,12 +146,18 @@ class CharacterGenService {
       if (_aborted || _generationEpoch != currentEpoch) return null;
       if (attempts > 0) {
         onStatus?.call('JSON Parse failed. Retrying generation...');
-        debugPrint('CharacterGen: Retrying generation (Attempt ${attempts + 1})');
+        debugPrint(
+          'CharacterGen: Retrying generation (Attempt ${attempts + 1})',
+        );
       }
 
-      final baseOutput = await _callLLM(basePrompt, isJsonMode: true, onProgress: attempts == 0 ? onProgress : null);
+      final baseOutput = await _callLLM(
+        basePrompt,
+        isJsonMode: true,
+        onProgress: attempts == 0 ? onProgress : null,
+      );
       lastRawOutput = baseOutput; // Store for image prompt extraction
-      
+
       if (baseOutput == null) {
         attempts++;
         continue;
@@ -148,9 +165,13 @@ class CharacterGenService {
 
       // Reject suspiciously short output (model warm-up / placeholder)
       final strippedLen = baseOutput
-          .replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '').trim().length;
+          .replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '')
+          .trim()
+          .length;
       if (strippedLen < 100) {
-        debugPrint('CharacterGen: Output too short ($strippedLen chars) — likely placeholder, retrying');
+        debugPrint(
+          'CharacterGen: Output too short ($strippedLen chars) — likely placeholder, retrying',
+        );
         attempts++;
         continue;
       }
@@ -160,7 +181,9 @@ class CharacterGenService {
 
       // Detect literal "..." placeholder values (some models output skeleton JSON)
       if (cleaned.contains('"..."') || cleaned.contains('"…"')) {
-        debugPrint('CharacterGen: Detected placeholder "..." values — retrying');
+        debugPrint(
+          'CharacterGen: Detected placeholder "..." values — retrying',
+        );
         attempts++;
         continue;
       }
@@ -170,7 +193,9 @@ class CharacterGenService {
     }
 
     if (card == null) {
-      onError?.call('Failed to parse base card JSON after multiple attempts. Try a different model or prompt.');
+      onError?.call(
+        'Failed to parse base card JSON after multiple attempts. Try a different model or prompt.',
+      );
       return null;
     }
 
@@ -193,7 +218,9 @@ class CharacterGenService {
     if (card.scenario.trim().isEmpty) missingFields.add('scenario');
 
     if (missingFields.isNotEmpty) {
-      debugPrint('CharacterGen: Truncation detected — missing: ${missingFields.join(", ")}');
+      debugPrint(
+        'CharacterGen: Truncation detected — missing: ${missingFields.join(", ")}',
+      );
       onStatus?.call('Recovering truncated fields...');
       onProgress?.call('');
 
@@ -211,16 +238,17 @@ class CharacterGenService {
       );
 
       if (recoveryCard != null) {
-        if (card.personality.trim().isEmpty && recoveryCard.personality.trim().isNotEmpty) {
+        if (card.personality.trim().isEmpty &&
+            recoveryCard.personality.trim().isNotEmpty) {
           card.personality = recoveryCard.personality;
         }
-        if (card.scenario.trim().isEmpty && recoveryCard.scenario.trim().isNotEmpty) {
+        if (card.scenario.trim().isEmpty &&
+            recoveryCard.scenario.trim().isNotEmpty) {
           card.scenario = recoveryCard.scenario;
         }
-        debugPrint('CharacterGen: Recovery filled ${missingFields.length - [
-          if (card.personality.trim().isEmpty) 'personality',
-          if (card.scenario.trim().isEmpty) 'scenario',
-        ].length} fields');
+        debugPrint(
+          'CharacterGen: Recovery filled ${missingFields.length - [if (card.personality.trim().isEmpty) 'personality', if (card.scenario.trim().isEmpty) 'scenario'].length} fields',
+        );
       }
     }
     if (_aborted || _generationEpoch != currentEpoch) return null;
@@ -271,7 +299,8 @@ class CharacterGenService {
     // ── Step 2b: Lorebook generation (after interview) ────────────
     // Runs after interview so transcript context makes entries richer.
     // Only fires if lorebook was requested and not yet generated inline.
-    if (generateLorebook && (card.lorebook == null || card.lorebook!.entries.isEmpty)) {
+    if (generateLorebook &&
+        (card.lorebook == null || card.lorebook!.entries.isEmpty)) {
       debugPrint('CharacterGen: Generating lorebook after interview...');
       onStatus?.call('Generating world lore...');
       onProgress?.call('');
@@ -305,8 +334,12 @@ class CharacterGenService {
       worldLore: worldLore,
     );
 
-    final firstMsgOutput = await _callLLM(firstMsgPrompt,
-        maxLen: 4096, minLen: 512, onProgress: onProgress);
+    final firstMsgOutput = await _callLLM(
+      firstMsgPrompt,
+      maxLen: 4096,
+      minLen: 512,
+      onProgress: onProgress,
+    );
     if (firstMsgOutput != null && firstMsgOutput.trim().isNotEmpty) {
       card.firstMessage = _cleanGreeting(firstMsgOutput);
     }
@@ -332,11 +365,14 @@ class CharacterGenService {
 
       final alts = <String>[];
       for (int i = 0; i < altGreetingCount; i++) {
-        onStatus?.call('Writing alternate greeting ${i + 1} of $altGreetingCount...');
+        onStatus?.call(
+          'Writing alternate greeting ${i + 1} of $altGreetingCount...',
+        );
         onProgress?.call(''); // Clear preview
 
         // Use the unique scenario for this alt; fall back to default if generation failed.
-        final altScenario = (i < altScenarios.length && altScenarios[i].isNotEmpty)
+        final altScenario =
+            (i < altScenarios.length && altScenarios[i].isNotEmpty)
             ? altScenarios[i]
             : card.scenario;
 
@@ -346,7 +382,9 @@ class CharacterGenService {
           personality: card.personality,
           scenario: altScenario,
           length: greetingLength,
-          tone: greetingTones.isNotEmpty ? greetingTones[(i + 1) % greetingTones.length] : 'Neutral',
+          tone: greetingTones.isNotEmpty
+              ? greetingTones[(i + 1) % greetingTones.length]
+              : 'Neutral',
           previousGreetings: [card.firstMessage, ...alts],
           characterContext: characterContext,
           userPersonaContext: userPersonaContext,
@@ -354,8 +392,12 @@ class CharacterGenService {
           worldLore: worldLore,
         );
 
-        final altOutput = await _callLLM(altPrompt,
-            maxLen: 4096, minLen: 512, onProgress: onProgress);
+        final altOutput = await _callLLM(
+          altPrompt,
+          maxLen: 4096,
+          minLen: 512,
+          onProgress: onProgress,
+        );
         if (altOutput != null && altOutput.trim().isNotEmpty) {
           alts.add(_cleanGreeting(altOutput));
         }
@@ -400,7 +442,8 @@ class CharacterGenService {
         ? '\n[ESTABLISHED WORLD LORE]:\n$worldLore\n\n(Use locations, situations, and systems specific to this world.)\n'
         : '';
 
-    final prompt = '''Generate exactly $count completely different meeting scenarios for a roleplay character. Each scenario is where {{user}} and $name first encounter each other — or meet again in an unexpected context.
+    final prompt =
+        '''Generate exactly $count completely different meeting scenarios for a roleplay character. Each scenario is where {{user}} and $name first encounter each other — or meet again in an unexpected context.
 
 CHARACTER:
 Name: $name
@@ -424,9 +467,17 @@ Example format: {"scenarios": ["Scenario one text.", "Scenario two text."]}
 
 Respond with ONLY the JSON:''';
 
-    final output = await _callLLM(prompt, maxLen: 1024, minLen: 100, isJsonMode: true, onProgress: onProgress);
+    final output = await _callLLM(
+      prompt,
+      maxLen: 1024,
+      minLen: 100,
+      isJsonMode: true,
+      onProgress: onProgress,
+    );
     if (output == null) {
-      debugPrint('CharacterGen: Alt scenario generation failed — using default scenario for all alts');
+      debugPrint(
+        'CharacterGen: Alt scenario generation failed — using default scenario for all alts',
+      );
       return [];
     }
 
@@ -443,7 +494,9 @@ Respond with ONLY the JSON:''';
         return scenarios;
       }
     } catch (e) {
-      debugPrint('CharacterGen: Alt scenario parse failed: $e — using default for all alts');
+      debugPrint(
+        'CharacterGen: Alt scenario parse failed: $e — using default for all alts',
+      );
     }
     return [];
   }
@@ -481,7 +534,8 @@ Respond with ONLY the JSON:''';
   }) async {
     final transcript = StringBuffer();
     // Seed the LLM with who this character is so the first answer is grounded
-    final seed = 'You are $name.\n'
+    final seed =
+        'You are $name.\n'
         'Your personality: ${card.personality.length > 400 ? card.personality.substring(0, 400) : card.personality}\n'
         'Your scenario: ${card.scenario.length > 200 ? card.scenario.substring(0, 200) : card.scenario}\n\n'
         '${worldLore != null && worldLore.trim().isNotEmpty ? "You exist in the following established world. Use its terminology, locations, and facts:\n$worldLore\n\n" : ""}'
@@ -499,27 +553,40 @@ Respond with ONLY the JSON:''';
       onStatus?.call('Character interview (${i + 1}/${questions.length})...');
       onProgress?.call('');
 
-      final prompt = '$seed\n\n'
+      final prompt =
+          '$seed\n\n'
           '${transcript.isNotEmpty ? 'Previous answers:\n$transcript\n\n' : ''}'
           'Question: $q\n\n'
           '$name: ';
 
-      final answer = await _callLLM(prompt, maxLen: 1200, minLen: 80, onProgress: onProgress);
+      final answer = await _callLLM(
+        prompt,
+        maxLen: 1200,
+        minLen: 80,
+        onProgress: onProgress,
+      );
       if (answer == null || answer.trim().isEmpty) {
-        debugPrint('CharacterGen: Interview Q${i + 1} got empty answer — skipping');
+        debugPrint(
+          'CharacterGen: Interview Q${i + 1} got empty answer — skipping',
+        );
         continue;
       }
 
       // Strip any think blocks from the answer before adding to transcript
       final cleanAnswer = answer
-          .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+          .replaceAll(
+            RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+            '',
+          )
           .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
           .trim();
 
       transcript.writeln('Q: $q');
       transcript.writeln('A: $cleanAnswer');
       transcript.writeln();
-      debugPrint('CharacterGen: Interview Q${i + 1} answered (${cleanAnswer.length} chars)');
+      debugPrint(
+        'CharacterGen: Interview Q${i + 1} answered (${cleanAnswer.length} chars)',
+      );
     }
 
     return transcript.toString().trim();
@@ -534,7 +601,8 @@ Respond with ONLY the JSON:''';
     required String interviewTranscript,
     void Function(String)? onProgress,
   }) async {
-    final prompt = '''
+    final prompt =
+        '''
 You have just completed an in-character interview with $name.
 Using the interview answers below as your source of truth, rewrite these two fields
 for this character card. Output ONLY a JSON object with exactly two keys.
@@ -565,31 +633,47 @@ Use {{char}} for the character name and {{user}} for the user throughout.
 
 Respond with ONLY the JSON:''';
 
-    final output = await _callLLM(prompt, maxLen: 4096, minLen: 200, isJsonMode: true, onProgress: onProgress);
+    final output = await _callLLM(
+      prompt,
+      maxLen: 4096,
+      minLen: 200,
+      isJsonMode: true,
+      onProgress: onProgress,
+    );
     if (output == null) {
-      debugPrint('CharacterGen: Interview enrichment got no response — keeping original fields');
+      debugPrint(
+        'CharacterGen: Interview enrichment got no response — keeping original fields',
+      );
       return;
     }
 
     final cleaned = _stripContent(output);
-    debugPrint('CharacterGen: Enrichment output cleaned (${cleaned.length} chars)');
+    debugPrint(
+      'CharacterGen: Enrichment output cleaned (${cleaned.length} chars)',
+    );
 
     // Use regex extraction instead of json.decode — models routinely output
     // unescaped quotes (5'9", etc.) that break strict JSON parsing. The regex
     // extractor finds values by key boundaries, handling all malformed output.
     final data = _regexExtract(cleaned);
-    debugPrint('CharacterGen: Enrichment extracted keys: ${data.keys.toList()}');
+    debugPrint(
+      'CharacterGen: Enrichment extracted keys: ${data.keys.toList()}',
+    );
 
     final newDesc = (data['description']?.toString() ?? '').trim();
     final newPers = (data['personality']?.toString() ?? '').trim();
 
     if (newDesc.isNotEmpty && newDesc.length >= card.description.length * 0.5) {
       card.description = newDesc;
-      debugPrint('CharacterGen: Description enriched (${newDesc.length} chars)');
+      debugPrint(
+        'CharacterGen: Description enriched (${newDesc.length} chars)',
+      );
     }
     if (newPers.isNotEmpty && newPers.length >= card.personality.length * 0.5) {
       card.personality = newPers;
-      debugPrint('CharacterGen: Personality enriched (${newPers.length} chars)');
+      debugPrint(
+        'CharacterGen: Personality enriched (${newPers.length} chars)',
+      );
     }
   }
 
@@ -602,7 +686,8 @@ Respond with ONLY the JSON:''';
     required String interviewTranscript,
     void Function(String)? onProgress,
   }) async {
-    final prompt = '''Write example dialogue exchanges for a roleplay character named $name.
+    final prompt =
+        '''Write example dialogue exchanges for a roleplay character named $name.
 These examples teach the AI how $name speaks — their vocabulary, sentence structure, emotional reactions, and mannerisms.
 
 SOURCE MATERIAL — $name's own words from an in-character interview:
@@ -635,7 +720,12 @@ RULES:
 
 Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start directly with <START>:''';
 
-    final output = await _callLLM(prompt, maxLen: 3072, minLen: 200, onProgress: onProgress);
+    final output = await _callLLM(
+      prompt,
+      maxLen: 3072,
+      minLen: 200,
+      onProgress: onProgress,
+    );
     if (output == null || output.trim().isEmpty) {
       debugPrint('CharacterGen: Example dialogue generation got no response');
       return;
@@ -643,7 +733,10 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
 
     // Clean the output — strip think tags and any preamble before first <START>
     String cleaned = output
-        .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+        .replaceAll(
+          RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+          '',
+        )
         .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
         .trim();
 
@@ -662,9 +755,13 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
     // Validate: must contain at least one <START> and one {{char}}: response
     if (cleaned.contains('<START>') && cleaned.contains('{{char}}')) {
       card.mesExample = cleaned.trim();
-      debugPrint('CharacterGen: Example dialogue generated (${cleaned.length} chars)');
+      debugPrint(
+        'CharacterGen: Example dialogue generated (${cleaned.length} chars)',
+      );
     } else {
-      debugPrint('CharacterGen: Example dialogue output invalid — missing <START> or {{char}} markers');
+      debugPrint(
+        'CharacterGen: Example dialogue output invalid — missing <START> or {{char}} markers',
+      );
     }
   }
 
@@ -680,7 +777,8 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
   /// freely, then produce the JSON, then hit `}\n` and stop).
   /// [grammar] — Optional GBNF grammar string for KoboldCPP local + non-thinking
   /// backends. Pass null to skip (all API backends ignore this).
-  Future<String?> _callLLM(String prompt, {
+  Future<String?> _callLLM(
+    String prompt, {
     int maxLen = 8192,
     int minLen = 64,
     int maxRetries = 3,
@@ -689,7 +787,9 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
   }) async {
     final int myEpoch = _generationEpoch;
     final promptEstTokens = (prompt.length / 4).ceil();
-    debugPrint('CharacterGen: Prompt size: ${prompt.length} chars (~$promptEstTokens tokens), maxLen: $maxLen');
+    debugPrint(
+      'CharacterGen: Prompt size: ${prompt.length} chars (~$promptEstTokens tokens), maxLen: $maxLen',
+    );
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       if (_aborted || _generationEpoch != myEpoch) {
         debugPrint('CharacterGen: Aborting before attempt $attempt');
@@ -711,17 +811,19 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
         // markers — the API matches }\n inside }}\n and truncates the
         // output. JSON completion is handled by the balanced brace checker.
 
-        await for (final token in _llmService.generateStream(GenerationParams(
-          prompt: prompt,
-          maxLength: maxLen,
-          minLength: minLen,
-          temperature: isJsonMode ? 0.7 : 0.85,
-          repeatPenalty: 1.15,
-          minP: 0.05,
-          topP: isJsonMode ? 0.90 : 0.95,
-          reasoningEnabled: _reasoningEnabled,
-          stopSequences: stops,
-        ))) {
+        await for (final token in _llmService.generateStream(
+          GenerationParams(
+            prompt: prompt,
+            maxLength: maxLen,
+            minLength: minLen,
+            temperature: isJsonMode ? 0.7 : 0.85,
+            repeatPenalty: 1.15,
+            minP: 0.05,
+            topP: isJsonMode ? 0.90 : 0.95,
+            reasoningEnabled: _reasoningEnabled,
+            stopSequences: stops,
+          ),
+        )) {
           if (_aborted || _generationEpoch != myEpoch) {
             _llmService.abortGeneration();
             break;
@@ -733,12 +835,16 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
           // Two strategies:
           //   1. Substring repeat: a 300-char tail appears earlier in the text
           //   2. Word-salad: low unique-word ratio (model spewing random words)
-          if (tokenCount > 100 && tokenCount % 50 == 0 && accumulated.length > 400) {
+          if (tokenCount > 100 &&
+              tokenCount % 50 == 0 &&
+              accumulated.length > 400) {
             // Strategy 1: exact substring repeat
             final tail = accumulated.substring(accumulated.length - 300);
             final earlier = accumulated.substring(0, accumulated.length - 300);
             if (earlier.contains(tail)) {
-              debugPrint('CharacterGen: Repetition loop detected at token $tokenCount — aborting');
+              debugPrint(
+                'CharacterGen: Repetition loop detected at token $tokenCount — aborting',
+              );
               repetitionDetected = true;
               break;
             }
@@ -751,8 +857,10 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
             if (words.length > 20) {
               final uniqueRatio = words.toSet().length / words.length;
               if (uniqueRatio < 0.30) {
-                debugPrint('CharacterGen: Word-salad detected at token $tokenCount '
-                    '(unique ratio: ${(uniqueRatio * 100).toStringAsFixed(1)}%) — aborting');
+                debugPrint(
+                  'CharacterGen: Word-salad detected at token $tokenCount '
+                  '(unique ratio: ${(uniqueRatio * 100).toStringAsFixed(1)}%) — aborting',
+                );
                 repetitionDetected = true;
                 break;
               }
@@ -762,10 +870,17 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
           if (isJsonMode) {
             // Strip think blocks (fuzzy — models misspell <think> at high temp)
             final tOpen = r'<(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
-            final tClose = r'</(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
+            final tClose =
+                r'</(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
             final stripped = accumulated
-                .replaceAll(RegExp(tOpen + r'[\s\S]*?' + tClose, caseSensitive: false), '')
-                .replaceAll(RegExp(tOpen + r'[\s\S]*$', caseSensitive: false), '')
+                .replaceAll(
+                  RegExp(tOpen + r'[\s\S]*?' + tClose, caseSensitive: false),
+                  '',
+                )
+                .replaceAll(
+                  RegExp(tOpen + r'[\s\S]*$', caseSensitive: false),
+                  '',
+                )
                 .trim();
             if (stripped.startsWith('{')) {
               int depth = 0;
@@ -790,7 +905,10 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
                       continue;
                     }
                     depth--;
-                    if (depth == 0) { complete = true; break; }
+                    if (depth == 0) {
+                      complete = true;
+                      break;
+                    }
                   }
                 }
               }
@@ -811,25 +929,33 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
 
         if (_aborted || _generationEpoch != myEpoch) return null;
 
-        debugPrint('CharacterGen: Stream done. Tokens: $tokenCount, '
-            'Raw: ${accumulated.length} chars${repetitionDetected ? ' (truncated due to repetition)' : ''}');
+        debugPrint(
+          'CharacterGen: Stream done. Tokens: $tokenCount, '
+          'Raw: ${accumulated.length} chars${repetitionDetected ? ' (truncated due to repetition)' : ''}',
+        );
 
         if (accumulated.isNotEmpty) return accumulated;
 
         // Empty response — retry with diagnostics
-        debugPrint('CharacterGen: Empty response on attempt $attempt/$maxRetries. '
-            'Prompt ~$promptEstTokens tokens. If this exceeds your model\'s context window, '
-            'try a shorter concept or reduce lore depth.');
+        debugPrint(
+          'CharacterGen: Empty response on attempt $attempt/$maxRetries. '
+          'Prompt ~$promptEstTokens tokens. If this exceeds your model\'s context window, '
+          'try a shorter concept or reduce lore depth.',
+        );
       } catch (e) {
         if (_aborted || _generationEpoch != myEpoch) return null;
-        debugPrint('CharacterGen: LLM error on attempt $attempt/$maxRetries: $e');
+        debugPrint(
+          'CharacterGen: LLM error on attempt $attempt/$maxRetries: $e',
+        );
       }
 
       // Wait before retrying (exponential backoff: 2s, 4s, 8s)
       if (attempt < maxRetries) {
         final delay = Duration(seconds: 2 * (1 << (attempt - 1)));
         debugPrint('CharacterGen: Retrying in ${delay.inSeconds}s...');
-        onProgress?.call('[Retrying in ${delay.inSeconds}s... (attempt ${attempt + 1}/$maxRetries)]');
+        onProgress?.call(
+          '[Retrying in ${delay.inSeconds}s... (attempt ${attempt + 1}/$maxRetries)]',
+        );
         final deadline = DateTime.now().add(delay);
         while (DateTime.now().isBefore(deadline)) {
           if (_aborted || _generationEpoch != myEpoch) return null;
@@ -869,24 +995,27 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
     final relationshipLine = relationship.isNotEmpty
         ? 'Relationship to {{user}}: $relationship\n'
         : '';
-    final backstoryLine = backstory.isNotEmpty
-        ? 'Backstory: $backstory\n'
-        : '';
+    final backstoryLine = backstory.isNotEmpty ? 'Backstory: $backstory\n' : '';
 
     // Build spec only for the missing keys
     final fieldSpecs = <String>[];
     for (final field in missingFields) {
       switch (field) {
         case 'personality':
-          fieldSpecs.add('- "personality": (string) 1-2 paragraphs, third person, core traits + motivations + quirks');
+          fieldSpecs.add(
+            '- "personality": (string) 1-2 paragraphs, third person, core traits + motivations + quirks',
+          );
           break;
         case 'scenario':
-          fieldSpecs.add('- "scenario": (string) 1 paragraph, the default conversation setting');
+          fieldSpecs.add(
+            '- "scenario": (string) 1 paragraph, the default conversation setting',
+          );
           break;
       }
     }
 
-    final prompt = '''Generate ONLY the following fields for a roleplay character as a JSON object. Output ONLY the JSON, no markdown, no explanation.
+    final prompt =
+        '''Generate ONLY the following fields for a roleplay character as a JSON object. Output ONLY the JSON, no markdown, no explanation.
 
 Character name: $name
 Concept: $concept
@@ -896,9 +1025,16 @@ ${fieldSpecs.join('\n')}
 
 Use {{char}} for character name and {{user}} for user name. Respond with ONLY the JSON:''';
 
-    debugPrint('CharacterGen: Recovery prompt for ${missingFields.length} fields');
+    debugPrint(
+      'CharacterGen: Recovery prompt for ${missingFields.length} fields',
+    );
 
-    final output = await _callLLM(prompt, maxLen: 4096, isJsonMode: true, onProgress: onProgress);
+    final output = await _callLLM(
+      prompt,
+      maxLen: 4096,
+      isJsonMode: true,
+      onProgress: onProgress,
+    );
     if (output == null) return null;
 
     final cleaned = _stripContent(output);
@@ -941,7 +1077,8 @@ Use {{char}} for character name and {{user}} for user name. Respond with ONLY th
         if (desc != null) guides.add('- $cat: $desc');
       }
       if (guides.isNotEmpty) {
-        categoryGuidance = '\n\nCATEGORY GUIDE (generate entries matching these types):\n${guides.join('\n')}';
+        categoryGuidance =
+            '\n\nCATEGORY GUIDE (generate entries matching these types):\n${guides.join('\n')}';
       }
     }
 
@@ -949,15 +1086,16 @@ Use {{char}} for character name and {{user}} for user name. Respond with ONLY th
     // the character described so entries feel grounded in this specific world.
     final interviewSection = interviewTranscript.isNotEmpty
         ? '\nWORLD VOICE — The character described their world in their own words. '
-          'Let these details inform the texture and specificity of lorebook entries:\n'
-          '${interviewTranscript.length > 1200 ? interviewTranscript.substring(0, 1200) + "..." : interviewTranscript}\n'
+              'Let these details inform the texture and specificity of lorebook entries:\n'
+              '${interviewTranscript.length > 1200 ? interviewTranscript.substring(0, 1200) + "..." : interviewTranscript}\n'
         : '';
-        
+
     final loreSection = (worldLore != null && worldLore.trim().isNotEmpty)
         ? '\n[ESTABLISHED WORLD LORE]:\n$worldLore\n\n(IMPORTANT: Prioritize writing entries for specific factions, locations, names, and magic systems mentioned in the established lore text over inventing new ones.)\n'
         : '';
 
-    final prompt = '''Generate WORLD-BUILDING lorebook entries for a roleplay setting. Output ONLY a JSON object with a single key "lorebook" containing an array of $countRange entry objects.$categoryHint
+    final prompt =
+        '''Generate WORLD-BUILDING lorebook entries for a roleplay setting. Output ONLY a JSON object with a single key "lorebook" containing an array of $countRange entry objects.$categoryHint
 
 The character who lives in this world:
 Name: $name
@@ -988,9 +1126,9 @@ Output ONLY the JSON:''';
         data = json.decode(cleaned) as Map<String, dynamic>;
       } catch (_) {
         // Try newline fix
-        final fixed = _fixJsonNewlines(cleaned)
-            .replaceAll(RegExp(r',\s*}'), '}')
-            .replaceAll(RegExp(r',\s*]'), ']');
+        final fixed = _fixJsonNewlines(
+          cleaned,
+        ).replaceAll(RegExp(r',\s*}'), '}').replaceAll(RegExp(r',\s*]'), ']');
         data = json.decode(fixed) as Map<String, dynamic>;
       }
 
@@ -999,17 +1137,21 @@ Output ONLY the JSON:''';
         final entries = <LorebookEntry>[];
         for (final entry in lorebookData) {
           if (entry is Map<String, dynamic>) {
-            entries.add(LorebookEntry(
-              name: entry['name']?.toString() ?? '',
-              key: entry['key']?.toString() ?? '',
-              content: entry['content']?.toString() ?? '',
-              enabled: true,
-            ));
+            entries.add(
+              LorebookEntry(
+                name: entry['name']?.toString() ?? '',
+                key: entry['key']?.toString() ?? '',
+                content: entry['content']?.toString() ?? '',
+                enabled: true,
+              ),
+            );
           }
         }
         if (entries.isNotEmpty) {
           card.lorebook = Lorebook(entries: entries);
-          debugPrint('CharacterGen: Separate lorebook generated ${entries.length} entries');
+          debugPrint(
+            'CharacterGen: Separate lorebook generated ${entries.length} entries',
+          );
         }
       }
     } catch (e) {
@@ -1047,9 +1189,7 @@ Output ONLY the JSON:''';
     final relationshipLine = relationship.isNotEmpty
         ? 'Relationship to {{user}}: $relationship\n'
         : '';
-    final backstoryLine = backstory.isNotEmpty
-        ? 'Backstory: $backstory\n'
-        : '';
+    final backstoryLine = backstory.isNotEmpty ? 'Backstory: $backstory\n' : '';
     final scenarioLine = scenario.isNotEmpty
         ? 'Scenario/Setting: $scenario\n'
         : '';
@@ -1074,7 +1214,8 @@ Output ONLY the JSON:''';
       final categoryHint = loreCategories.isNotEmpty
           ? ' focusing on: ${loreCategories.join(", ")}'
           : '';
-      lorebookSpec = '- "lorebook": (array of $countRange objects) WORLD-BUILDING entries$categoryHint. Each entry describes the WORLD (places, factions, customs, magic, creatures, events) — NOT the character\'s personal history or biography. Each: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of world lore"}\n';
+      lorebookSpec =
+          '- "lorebook": (array of $countRange objects) WORLD-BUILDING entries$categoryHint. Each entry describes the WORLD (places, factions, customs, magic, creatures, events) — NOT the character\'s personal history or biography. Each: {"name": "title", "key": "trigger,keywords", "content": "1-2 paragraphs of world lore"}\n';
     }
 
     // System prompt is intentionally left blank — not generated by AI.
@@ -1137,52 +1278,67 @@ Respond with ONLY the JSON:''';
     String lengthEnforcement;
     switch (length) {
       case 'Short (1-2 paragraphs)':
-        lengthEnforcement = 'Write at least 150 words. MINIMUM 2 paragraphs, each 3-5 sentences. Do NOT write a single paragraph.';
+        lengthEnforcement =
+            'Write at least 150 words. MINIMUM 2 paragraphs, each 3-5 sentences. Do NOT write a single paragraph.';
         break;
       case 'Long (4-6 paragraphs)':
-        lengthEnforcement = 'Write at least 600 words across 5-6 full paragraphs. Each paragraph MUST be 4-6 sentences. Include detailed scene-setting, inner monologue, environmental descriptions, and character mannerisms. DO NOT stop early or summarize. Fill the space with vivid, immersive prose.';
+        lengthEnforcement =
+            'Write at least 600 words across 5-6 full paragraphs. Each paragraph MUST be 4-6 sentences. Include detailed scene-setting, inner monologue, environmental descriptions, and character mannerisms. DO NOT stop early or summarize. Fill the space with vivid, immersive prose.';
         break;
       default:
-        lengthEnforcement = 'Write at least 350 words across 3-4 paragraphs. MINIMUM 3 paragraphs, each 4+ sentences. Do NOT compress into fewer paragraphs.';
+        lengthEnforcement =
+            'Write at least 350 words across 3-4 paragraphs. MINIMUM 3 paragraphs, each 4+ sentences. Do NOT compress into fewer paragraphs.';
     }
 
     String toneSpec = '';
     switch (tone) {
       case 'Romantic':
-        toneSpec = '\nTone: Romantic — Warm intimacy, emotional vulnerability, longing glances, and heartfelt connection. Focus on the emotional bond between {{char}} and {{user}}. Include tender physical awareness (proximity, warmth, touch) without being explicit.';
+        toneSpec =
+            '\nTone: Romantic — Warm intimacy, emotional vulnerability, longing glances, and heartfelt connection. Focus on the emotional bond between {{char}} and {{user}}. Include tender physical awareness (proximity, warmth, touch) without being explicit.';
         break;
       case 'Spicy/NSFW':
-        toneSpec = '\nTone: Spicy/NSFW — Sensual tension, physical chemistry, and charged atmosphere. Include suggestive descriptions, body language, and desire. Be bold with attraction and intimacy. Push boundaries while keeping literary quality.';
+        toneSpec =
+            '\nTone: Spicy/NSFW — Sensual tension, physical chemistry, and charged atmosphere. Include suggestive descriptions, body language, and desire. Be bold with attraction and intimacy. Push boundaries while keeping literary quality.';
         break;
       case 'Flirty/Playful':
-        toneSpec = '\nTone: Flirty/Playful — Light teasing, witty banter, confident energy, and playful tension. {{char}} should be charming and a little daring. Include smirks, raised eyebrows, and double meanings. Keep it fun, not heavy.';
+        toneSpec =
+            '\nTone: Flirty/Playful — Light teasing, witty banter, confident energy, and playful tension. {{char}} should be charming and a little daring. Include smirks, raised eyebrows, and double meanings. Keep it fun, not heavy.';
         break;
       case 'Wholesome':
-        toneSpec = '\nTone: Wholesome — Warm, cozy, and comforting. Focus on kindness, gentle humor, and genuine care. Think shared meals, soft laughter, safe spaces. The greeting should feel like a warm blanket — inviting and safe.';
+        toneSpec =
+            '\nTone: Wholesome — Warm, cozy, and comforting. Focus on kindness, gentle humor, and genuine care. Think shared meals, soft laughter, safe spaces. The greeting should feel like a warm blanket — inviting and safe.';
         break;
       case 'Slice of Life':
-        toneSpec = '\nTone: Slice of Life — Everyday mundane moments made interesting. Casual, grounded, realistic. Focus on small details: morning routines, grocery shopping, waiting for the bus. Beauty in the ordinary.';
+        toneSpec =
+            '\nTone: Slice of Life — Everyday mundane moments made interesting. Casual, grounded, realistic. Focus on small details: morning routines, grocery shopping, waiting for the bus. Beauty in the ordinary.';
         break;
       case 'Story/Narrative':
-        toneSpec = '\nTone: Story/Narrative — Rich literary prose with strong scene-setting. Open like a novel chapter with atmospheric description, inner monologue, and world-building. Prioritize immersion and vivid imagery over action.';
+        toneSpec =
+            '\nTone: Story/Narrative — Rich literary prose with strong scene-setting. Open like a novel chapter with atmospheric description, inner monologue, and world-building. Prioritize immersion and vivid imagery over action.';
         break;
       case 'Adventure':
-        toneSpec = '\nTone: Adventure — Excitement, exploration, and the thrill of the unknown. {{char}} is in motion — discovering something, embarking on a journey, or inviting {{user}} along for the ride. High energy, forward momentum, wonder.';
+        toneSpec =
+            '\nTone: Adventure — Excitement, exploration, and the thrill of the unknown. {{char}} is in motion — discovering something, embarking on a journey, or inviting {{user}} along for the ride. High energy, forward momentum, wonder.';
         break;
       case 'Combat/Action':
-        toneSpec = '\nTone: Combat/Action — Adrenaline, danger, and physical intensity. Open mid-fight, mid-chase, or in the aftermath of violence. Sharp pacing, visceral descriptions, and tactical awareness. {{char}} is in their element.';
+        toneSpec =
+            '\nTone: Combat/Action — Adrenaline, danger, and physical intensity. Open mid-fight, mid-chase, or in the aftermath of violence. Sharp pacing, visceral descriptions, and tactical awareness. {{char}} is in their element.';
         break;
       case 'Comedy/Humor':
-        toneSpec = '\nTone: Comedy/Humor — Genuinely funny. Include witty observations, absurd situations, comic timing, or self-deprecating humor. {{char}} should make {{user}} want to laugh. Avoid being cringey — aim for clever over random.';
+        toneSpec =
+            '\nTone: Comedy/Humor — Genuinely funny. Include witty observations, absurd situations, comic timing, or self-deprecating humor. {{char}} should make {{user}} want to laugh. Avoid being cringey — aim for clever over random.';
         break;
       case 'Suspense/Thriller':
-        toneSpec = '\nTone: Suspense/Thriller — Tension, urgency, and unease. Something is wrong or about to go wrong. Use short sentences for pacing, environmental unease, and a sense that time is running out. End with a hook that demands a response.';
+        toneSpec =
+            '\nTone: Suspense/Thriller — Tension, urgency, and unease. Something is wrong or about to go wrong. Use short sentences for pacing, environmental unease, and a sense that time is running out. End with a hook that demands a response.';
         break;
       case 'Dark/Mystery':
-        toneSpec = '\nTone: Dark/Mystery — Brooding atmosphere, secrets, and moral ambiguity. Shadows, whispered conversations, hidden motives. {{char}} knows something {{user}} doesn\'t — or vice versa. Atmospheric and ominous.';
+        toneSpec =
+            '\nTone: Dark/Mystery — Brooding atmosphere, secrets, and moral ambiguity. Shadows, whispered conversations, hidden motives. {{char}} knows something {{user}} doesn\'t — or vice versa. Atmospheric and ominous.';
         break;
       case 'Melancholy':
-        toneSpec = '\nTone: Melancholy — Bittersweet, introspective, and emotionally heavy. Focus on loss, nostalgia, quiet pain, or fading hope. Beautiful sadness. The greeting should ache a little — poetic but not melodramatic.';
+        toneSpec =
+            '\nTone: Melancholy — Bittersweet, introspective, and emotionally heavy. Focus on loss, nostalgia, quiet pain, or fading hope. Beautiful sadness. The greeting should ache a little — poetic but not melodramatic.';
         break;
       default: // 'Neutral'
         toneSpec = '';
@@ -1220,16 +1376,18 @@ $characterContext''';
       final excerpt = interviewTranscript.length > 1000
           ? interviewTranscript.substring(0, 1000) + '...'
           : interviewTranscript;
-      voiceSection = '''
+      voiceSection =
+          '''
 
 == ESTABLISHED VOICE ==
 The following are $name's own words from an in-character interview. Match this exact voice, vocabulary, cadence, and emotional register when writing the greeting — do NOT invent a different tone:
 $excerpt''';
     }
-    
+
     String loreSection = '';
     if (worldLore != null && worldLore.trim().isNotEmpty) {
-      loreSection = '\n\n== ESTABLISHED WORLD LORE ==\nThe scene is taking place in this world. Strictly follow its rules, terminology, magic, and locations:\n$worldLore';
+      loreSection =
+          '\n\n== ESTABLISHED WORLD LORE ==\nThe scene is taking place in this world. Strictly follow its rules, terminology, magic, and locations:\n$worldLore';
     }
 
     return '''Write an opening roleplay message as $name (first person: "I", "my", "me"). This is the very first moment of the story — set the scene and introduce who $name is through vivid prose. Output ONLY the message text.
@@ -1263,48 +1421,58 @@ Begin:''';
   }
 
   /// Clean raw greeting output — remove quotes, labels, fix truncation.
-String _cleanGreeting(String raw) {
-  String cleaned = raw.trim();
+  String _cleanGreeting(String raw) {
+    String cleaned = raw.trim();
 
-  // Remove wrapping quotes if present
-  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
-    cleaned = cleaned.substring(1, cleaned.length - 1);
+    // Remove wrapping quotes if present
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+      cleaned = cleaned.substring(1, cleaned.length - 1);
+    }
+
+    // Remove common leading labels
+    cleaned = cleaned
+        .replaceAll(
+          RegExp(
+            r'^(First message|Opening message|Greeting):?\s*',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+
+    return cleaned;
   }
 
-  // Remove common leading labels
-  cleaned = cleaned
-      .replaceAll(RegExp(r'^(First message|Opening message|Greeting):?\s*', caseSensitive: false), '')
-      .trim();
+  /// Check if a greeting was truncated (cut off mid-sentence).
+  bool _isGreetingTruncated(String text) {
+    if (text.isEmpty) return true;
+    final trimmed = text.trimRight();
+    if (trimmed.isEmpty) return true;
 
-  return cleaned;
-}
+    // Check for unclosed formatting
+    final asteriskCount = '*'.allMatches(trimmed).length;
+    if (asteriskCount % 2 != 0) return true; // Unclosed *asterisk*
+    final quoteCount = '"'.allMatches(trimmed).length;
+    if (quoteCount % 2 != 0) return true; // Unclosed "quote"
 
-/// Check if a greeting was truncated (cut off mid-sentence).
-bool _isGreetingTruncated(String text) {
-  if (text.isEmpty) return true;
-  final trimmed = text.trimRight();
-  if (trimmed.isEmpty) return true;
+    // Check if it ends with proper sentence-ending punctuation
+    final lastChar = trimmed[trimmed.length - 1];
+    final endsWithPunctuation = '.!?*"\u201D'.contains(lastChar);
+    if (!endsWithPunctuation) return true;
 
-  // Check for unclosed formatting
-  final asteriskCount = '*'.allMatches(trimmed).length;
-  if (asteriskCount % 2 != 0) return true; // Unclosed *asterisk*
-  final quoteCount = '"'.allMatches(trimmed).length;
-  if (quoteCount % 2 != 0) return true; // Unclosed "quote"
+    return false;
+  }
 
-  // Check if it ends with proper sentence-ending punctuation
-  final lastChar = trimmed[trimmed.length - 1];
-  final endsWithPunctuation = '.!?*"\u201D'.contains(lastChar);
-  if (!endsWithPunctuation) return true;
+  /// Editor pass: complete a truncated greeting.
+  Future<String?> editorCompletionPass(
+    String greeting, {
+    void Function(String)? onProgress,
+  }) async {
+    if (greeting.trim().isEmpty) return null;
+    if (!_isGreetingTruncated(greeting)) return null; // Not truncated
 
-  return false;
-}
-
-/// Editor pass: complete a truncated greeting.
-Future<String?> editorCompletionPass(String greeting, {void Function(String)? onProgress}) async {
-  if (greeting.trim().isEmpty) return null;
-  if (!_isGreetingTruncated(greeting)) return null; // Not truncated
-
-  final prompt = '''OUTPUT FORMAT: Respond with ONLY the complete greeting text. Your entire response must be the greeting and nothing else. Do NOT include analysis, reasoning, or commentary.
+    final prompt =
+        '''OUTPUT FORMAT: Respond with ONLY the complete greeting text. Your entire response must be the greeting and nothing else. Do NOT include analysis, reasoning, or commentary.
 
 TASK: This greeting was cut off mid-sentence. Complete it naturally. Write the ENTIRE greeting from the beginning (copy the existing text) and add just enough to finish the final thought properly. Do NOT add significant new content — just complete the sentence/paragraph that was cut off.
 
@@ -1317,25 +1485,34 @@ FORMATTING:
 TRUNCATED GREETING:
 $greeting''';
 
-  final result = await _callLLM(prompt, maxLen: 4096, minLen: 128, onProgress: onProgress);
-  if (result != null && result.trim().isNotEmpty) {
-    final cleaned = _cleanEditorOutput(result);
-    // Only accept if it's at least as long as original (completion, not replacement)
-    if (cleaned.length >= greeting.length * 0.9) {
-      return cleaned;
+    final result = await _callLLM(
+      prompt,
+      maxLen: 4096,
+      minLen: 128,
+      onProgress: onProgress,
+    );
+    if (result != null && result.trim().isNotEmpty) {
+      final cleaned = _cleanEditorOutput(result);
+      // Only accept if it's at least as long as original (completion, not replacement)
+      if (cleaned.length >= greeting.length * 0.9) {
+        return cleaned;
+      }
     }
+    return null;
   }
-  return null;
-}
   // ═════════════════════════════════════════════════════════════
   //  Editor Passes
   // ═════════════════════════════════════════════════════════════
 
   /// Anti-puppet check: find and fix lines that describe {{user}}.
-  Future<String?> editorAntiPuppetCheck(String greeting, {void Function(String)? onProgress}) async {
+  Future<String?> editorAntiPuppetCheck(
+    String greeting, {
+    void Function(String)? onProgress,
+  }) async {
     if (greeting.trim().isEmpty) return null;
 
-    final prompt = '''OUTPUT FORMAT: Respond with ONLY the corrected greeting text. Start immediately with the first word of the greeting (usually *). Do NOT include analysis, reasoning, line-by-line breakdown, numbered lists, explanations of changes, or any other commentary. Your entire response must be the greeting and nothing else.
+    final prompt =
+        '''OUTPUT FORMAT: Respond with ONLY the corrected greeting text. Start immediately with the first word of the greeting (usually *). Do NOT include analysis, reasoning, line-by-line breakdown, numbered lists, explanations of changes, or any other commentary. Your entire response must be the greeting and nothing else.
 
 TASK: Fix "puppeting" in this greeting. Puppeting = describing {{user}}'s actions, thoughts, feelings, appearance, body, or dialogue.
 
@@ -1355,7 +1532,12 @@ FORMATTING — PRESERVE EXACTLY:
 
 $greeting''';
 
-    final result = await _callLLM(prompt, maxLen: 4096, minLen: 128, onProgress: onProgress);
+    final result = await _callLLM(
+      prompt,
+      maxLen: 4096,
+      minLen: 128,
+      onProgress: onProgress,
+    );
     if (result != null && result.trim().isNotEmpty) {
       final cleaned = _cleanEditorOutput(result);
       if (cleaned.length > greeting.length * 0.4) {
@@ -1375,7 +1557,8 @@ $greeting''';
   }) async {
     if (greeting.trim().isEmpty) return null;
 
-    final prompt = '''OUTPUT FORMAT: Respond with ONLY the corrected greeting text. Start immediately with the first word of the greeting (usually *). Do NOT include analysis, reasoning, or any commentary. Your entire response must be the greeting and nothing else.
+    final prompt =
+        '''OUTPUT FORMAT: Respond with ONLY the corrected greeting text. Start immediately with the first word of the greeting (usually *). Do NOT include analysis, reasoning, or any commentary. Your entire response must be the greeting and nothing else.
 
 TASK: Check this greeting for consistency with the character profile. Fix contradictions in personality, appearance, setting, or tone. If consistent, return UNCHANGED.
 
@@ -1388,7 +1571,12 @@ CHARACTER: $description | $personality | $scenario
 
 $greeting''';
 
-    final result = await _callLLM(prompt, maxLen: 4096, minLen: 128, onProgress: onProgress);
+    final result = await _callLLM(
+      prompt,
+      maxLen: 4096,
+      minLen: 128,
+      onProgress: onProgress,
+    );
     if (result != null && result.trim().isNotEmpty) {
       final cleaned = _cleanEditorOutput(result);
       if (cleaned.length > greeting.length * 0.4) {
@@ -1399,10 +1587,14 @@ $greeting''';
   }
 
   /// Quality polish: improve prose quality and immersiveness.
-  Future<String?> editorQualityPolish(String greeting, {void Function(String)? onProgress}) async {
+  Future<String?> editorQualityPolish(
+    String greeting, {
+    void Function(String)? onProgress,
+  }) async {
     if (greeting.trim().isEmpty) return null;
 
-    final prompt = '''OUTPUT FORMAT: Respond with ONLY the polished greeting text. Start immediately with the first word of the greeting (usually *). Do NOT include analysis, reasoning, or any commentary. Your entire response must be the greeting and nothing else.
+    final prompt =
+        '''OUTPUT FORMAT: Respond with ONLY the polished greeting text. Start immediately with the first word of the greeting (usually *). Do NOT include analysis, reasoning, or any commentary. Your entire response must be the greeting and nothing else.
 
 TASK: Polish this greeting's prose. Improve vivid descriptions, sensory details, sentence rhythm, immersiveness. Keep same meaning, length, voice, and {{user}}/{{char}} placeholders. NEVER add puppeting of {{user}}.
 
@@ -1414,7 +1606,12 @@ FORMATTING — ENFORCE STRICTLY:
 
 $greeting''';
 
-    final result = await _callLLM(prompt, maxLen: 4096, minLen: 128, onProgress: onProgress);
+    final result = await _callLLM(
+      prompt,
+      maxLen: 4096,
+      minLen: 128,
+      onProgress: onProgress,
+    );
     if (result != null && result.trim().isNotEmpty) {
       final cleaned = _cleanEditorOutput(result);
       if (cleaned.length > greeting.length * 0.4) {
@@ -1467,7 +1664,7 @@ $greeting''';
       List<String> currentBlock = [];
 
       for (final line in lines) {
-        if (analysisLinePattern.hasMatch(line.trim()) || 
+        if (analysisLinePattern.hasMatch(line.trim()) ||
             (line.trim().isEmpty && currentBlock.isEmpty)) {
           // Analysis line or leading blank — save best block and reset
           if (currentBlock.length > bestBlock.length) {
@@ -1541,7 +1738,9 @@ $greeting''';
     try {
       final data = _regexExtract(jsonStr);
       if (data.isNotEmpty) {
-        debugPrint('CharacterGen: Regex extraction succeeded (${data.length} keys)');
+        debugPrint(
+          'CharacterGen: Regex extraction succeeded (${data.length} keys)',
+        );
         return _buildCard(data, fallbackName);
       }
     } catch (e) {
@@ -1560,9 +1759,16 @@ $greeting''';
   Map<String, dynamic> _regexExtract(String raw) {
     final result = <String, dynamic>{};
     final knownKeys = [
-      'description', 'personality', 'scenario', 'first_message',
-      'alternate_greetings', 'example_dialogue', 'system_prompt',
-      'tags', 'image_prompt', 'lorebook',
+      'description',
+      'personality',
+      'scenario',
+      'first_message',
+      'alternate_greetings',
+      'example_dialogue',
+      'system_prompt',
+      'tags',
+      'image_prompt',
+      'lorebook',
     ];
 
     for (int i = 0; i < knownKeys.length; i++) {
@@ -1584,8 +1790,9 @@ $greeting''';
           final arrStr = raw.substring(arrStart, arrEnd + 1);
           try {
             // Fix newlines and attempt parse
-            final fixed = _fixJsonNewlines(arrStr)
-                .replaceAll(RegExp(r',\s*]'), ']');
+            final fixed = _fixJsonNewlines(
+              arrStr,
+            ).replaceAll(RegExp(r',\s*]'), ']');
             result[key] = json.decode(fixed);
           } catch (_) {
             // Fall back to splitting on simple patterns
@@ -1607,7 +1814,12 @@ $greeting''';
 
   /// Extract a string value starting at [start] (the opening quote).
   /// Looks for the next known key as the boundary.
-  String? _extractStringValue(String raw, int start, List<String> keys, int currentIdx) {
+  String? _extractStringValue(
+    String raw,
+    int start,
+    List<String> keys,
+    int currentIdx,
+  ) {
     if (start < 0 || start >= raw.length) return null;
 
     // Look past the opening quote
@@ -1704,12 +1916,14 @@ $greeting''';
       final entries = <LorebookEntry>[];
       for (final entry in lorebookData) {
         if (entry is Map<String, dynamic>) {
-          entries.add(LorebookEntry(
-            name: entry['name']?.toString() ?? '',
-            key: entry['key']?.toString() ?? '',
-            content: entry['content']?.toString() ?? '',
-            enabled: true,
-          ));
+          entries.add(
+            LorebookEntry(
+              name: entry['name']?.toString() ?? '',
+              key: entry['key']?.toString() ?? '',
+              content: entry['content']?.toString() ?? '',
+              enabled: true,
+            ),
+          );
         }
       }
       if (entries.isNotEmpty) {
@@ -1787,7 +2001,8 @@ $greeting''';
         ? 'Output ONLY flat comma-separated visual tags. NO prose, NO sentences, NO names. ONLY tags in this format: "skin tone, gender, hair color + style, eye color, body type, outfit pieces, pose, setting, expression, lighting, camera angle, $artStyle style". Keep under 60 words.'
         : 'Output A rich, natural language descriptive paragraph detailing the character\'s physical appearance in the scene. Do NOT use comma-separated tags. Do NOT use names. Keep under 100 words. Describe the scene as a $artStyle style illustration.';
 
-    final prompt = '''Write an image generation prompt for an illustration of this character.
+    final prompt =
+        '''Write an image generation prompt for an illustration of this character.
 You MUST follow the requested format perfectly. Do NOT include introductory text, markdown, or JSON. Just the raw prompt string.
 
 == CONTEXT ==
@@ -1801,9 +2016,14 @@ $formatInstruction
 
 Begin:''';
 
-    final output = await _callLLM(prompt, maxLen: 1024, minLen: 20, onProgress: onProgress);
+    final output = await _callLLM(
+      prompt,
+      maxLen: 1024,
+      minLen: 20,
+      onProgress: onProgress,
+    );
     if (output == null) return null;
-    
+
     // Clean string just in case
     return output.trim().replaceAll(RegExp(r'^"|"$'), '').trim();
   }

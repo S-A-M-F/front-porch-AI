@@ -68,8 +68,11 @@ void main() {
 
       stub.resetOnCharacterSwitch();
 
-      expect(stub.authorNote, '',
-          reason: 'author note must be cleared when switching characters');
+      expect(
+        stub.authorNote,
+        '',
+        reason: 'author note must be cleared when switching characters',
+      );
     });
 
     test('resets author note strength to default (4)', () {
@@ -79,8 +82,11 @@ void main() {
 
       stub.resetOnCharacterSwitch();
 
-      expect(stub.authorNoteStrength, 4,
-          reason: 'strength must reset to default when switching characters');
+      expect(
+        stub.authorNoteStrength,
+        4,
+        reason: 'strength must reset to default when switching characters',
+      );
     });
 
     test('clears note even when it was empty', () {
@@ -102,8 +108,11 @@ void main() {
 
       stub.resetOnGroupSwitch();
 
-      expect(stub.authorNote, '',
-          reason: 'author note must be cleared when switching to group mode');
+      expect(
+        stub.authorNote,
+        '',
+        reason: 'author note must be cleared when switching to group mode',
+      );
     });
 
     test('resets strength to 4 in group mode', () {
@@ -170,10 +179,7 @@ void main() {
     test('default strength (4) produces standard wrapper', () {
       final stub = _AuthorNoteStub();
       stub.setAuthorNote('Default note');
-      expect(
-        stub.buildAuthorNoteBlock(),
-        "[Author's Note: Default note]\n",
-      );
+      expect(stub.buildAuthorNoteBlock(), "[Author's Note: Default note]\n");
     });
   });
 
@@ -196,8 +202,11 @@ void main() {
       );
 
       expect(stub.authorNote, 'The character should be suspicious');
-      expect(stub.authorNoteStrength, 6,
-          reason: 'strength must be restored from session data');
+      expect(
+        stub.authorNoteStrength,
+        6,
+        reason: 'strength must be restored from session data',
+      );
     });
 
     test('empty persisted note loads as empty', () {
@@ -231,8 +240,11 @@ void main() {
 
       // Switch to character B
       stub.resetOnCharacterSwitch();
-      expect(stub.authorNote, '',
-          reason: 'note must not leak between characters');
+      expect(
+        stub.authorNote,
+        '',
+        reason: 'note must not leak between characters',
+      );
 
       // Set note for character B
       stub.setAuthorNote('Character B note', strength: 7);
@@ -240,12 +252,12 @@ void main() {
 
       // Switch back to character A (simulates loading A's session)
       stub.resetOnCharacterSwitch();
-      stub.loadFromSession(
-        savedNote: 'Character A note',
-        savedStrength: 5,
+      stub.loadFromSession(savedNote: 'Character A note', savedStrength: 5);
+      expect(
+        stub.authorNote,
+        'Character A note',
+        reason: 'A note must be restored, not contaminated by B',
       );
-      expect(stub.authorNote, 'Character A note',
-          reason: 'A note must be restored, not contaminated by B');
     });
 
     test('group note does not leak back to 1:1 session', () {
@@ -263,8 +275,11 @@ void main() {
 
       // Switch back to 1:1 (resets note)
       stub.resetOnCharacterSwitch();
-      expect(stub.authorNote, '',
-          reason: 'group note must not leak back to 1:1 session');
+      expect(
+        stub.authorNote,
+        '',
+        reason: 'group note must not leak back to 1:1 session',
+      );
     });
   });
 }

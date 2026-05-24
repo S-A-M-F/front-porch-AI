@@ -238,7 +238,9 @@ class AppTextField extends StatelessWidget {
         spellCheckService: DesktopSpellCheckService(),
         misspelledTextStyle: TextStyle(
           decoration: TextDecoration.underline,
-          decorationColor: Colors.redAccent.withOpacity(0.6), // Softer underline
+          decorationColor: Colors.redAccent.withOpacity(
+            0.6,
+          ), // Softer underline
           decorationStyle: TextDecorationStyle.wavy,
         ),
       );
@@ -305,10 +307,7 @@ class AppTextField extends StatelessWidget {
 
     return AdaptiveTextSelectionToolbar.buttonItems(
       anchors: editableTextState.contextMenuAnchors,
-      buttonItems: <ContextMenuButtonItem>[
-        ...suggestionItems,
-        ...baseItems,
-      ],
+      buttonItems: <ContextMenuButtonItem>[...suggestionItems, ...baseItems],
     );
   }
 
@@ -389,7 +388,8 @@ class AppTextField extends StatelessWidget {
       restorationId: restorationId,
       stylusHandwritingEnabled: stylusHandwritingEnabled,
       enableIMEPersonalizedLearning: enableIMEPersonalizedLearning,
-      contextMenuBuilder: contextMenuBuilder ?? AppTextField.spellCheckContextMenuBuilder,
+      contextMenuBuilder:
+          contextMenuBuilder ?? AppTextField.spellCheckContextMenuBuilder,
       spellCheckConfiguration: _resolvedSpellCheck,
       magnifierConfiguration: magnifierConfiguration,
       onTapUpOutside: onTapUpOutside,

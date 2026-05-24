@@ -84,13 +84,14 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
   }
 
   int get _maxAvatars => 30;
-  String get _avatarDirPath => widget.storage
-      .characterAvatarDir(widget.character.name)
-      .path;
+  String get _avatarDirPath =>
+      widget.storage.characterAvatarDir(widget.character.name).path;
 
   /// Pick a file, then show the inline emotion picker.
   Future<void> _addAvatar() async {
-    debugPrint('[AvatarsDialog] _addAvatar: called, count=${_avatars.length}, max=$_maxAvatars');
+    debugPrint(
+      '[AvatarsDialog] _addAvatar: called, count=${_avatars.length}, max=$_maxAvatars',
+    );
     if (_avatars.length >= _maxAvatars) {
       debugPrint('[AvatarsDialog] _addAvatar: ABORT - at max');
       return;
@@ -105,7 +106,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
       debugPrint('[AvatarsDialog] _addAvatar: file picker returned null');
       return;
     }
-    debugPrint('[AvatarsDialog] _addAvatar: file picker returned ${result.files.length} files');
+    debugPrint(
+      '[AvatarsDialog] _addAvatar: file picker returned ${result.files.length} files',
+    );
     if (result.files.isEmpty) {
       debugPrint('[AvatarsDialog] _addAvatar: ABORT - no files');
       return;
@@ -116,13 +119,19 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
     if (result.files.first.bytes != null) {
       bytes = result.files.first.bytes!;
     } else if (result.files.first.path != null) {
-      debugPrint('[AvatarsDialog] _addAvatar: bytes null, reading from path=${result.files.first.path}');
+      debugPrint(
+        '[AvatarsDialog] _addAvatar: bytes null, reading from path=${result.files.first.path}',
+      );
       bytes = await File(result.files.first.path!).readAsBytes();
     } else {
-      debugPrint('[AvatarsDialog] _addAvatar: ABORT - both bytes and path are null');
+      debugPrint(
+        '[AvatarsDialog] _addAvatar: ABORT - both bytes and path are null',
+      );
       return;
     }
-    debugPrint('[AvatarsDialog] _addAvatar: got ${bytes.length} bytes, showing emotion picker');
+    debugPrint(
+      '[AvatarsDialog] _addAvatar: got ${bytes.length} bytes, showing emotion picker',
+    );
 
     if (!mounted) {
       debugPrint('[AvatarsDialog] _addAvatar: ABORT - widget not mounted');
@@ -134,7 +143,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
       _pendingImageBytes = bytes;
       _showingEmotionPicker = true;
     });
-    debugPrint('[AvatarsDialog] _addAvatar: setState done, _showingEmotionPicker=true');
+    debugPrint(
+      '[AvatarsDialog] _addAvatar: setState done, _showingEmotionPicker=true',
+    );
   }
 
   /// Called when user selects an emotion from the inline picker.
@@ -142,7 +153,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
     debugPrint('[AvatarsDialog] _confirmEmotionPick: emotion=$emotion');
     final bytes = _pendingImageBytes;
     if (bytes == null) {
-      debugPrint('[AvatarsDialog] _confirmEmotionPick: ABORT - no pending bytes');
+      debugPrint(
+        '[AvatarsDialog] _confirmEmotionPick: ABORT - no pending bytes',
+      );
       return;
     }
 
@@ -150,7 +163,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
       _pendingImageBytes = null;
       _showingEmotionPicker = false;
     });
-    debugPrint('[AvatarsDialog] _confirmEmotionPick: calling _saveAvatarToDisk');
+    debugPrint(
+      '[AvatarsDialog] _confirmEmotionPick: calling _saveAvatarToDisk',
+    );
 
     await _saveAvatarToDisk(bytes, emotion);
   }
@@ -187,7 +202,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
 
     setState(() => _saving = true);
     try {
-      final avatarDir = widget.storage.characterAvatarDir(widget.character.name);
+      final avatarDir = widget.storage.characterAvatarDir(
+        widget.character.name,
+      );
       if (!await avatarDir.exists()) {
         await avatarDir.create(recursive: true);
       }
@@ -261,21 +278,30 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to import ZIP: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to import ZIP: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  Future<void> _saveAvatarToDisk(Uint8List bytes, [String? emotionLabel]) async {
-    debugPrint('[AvatarsDialog] _saveAvatarToDisk: started, bytes=${bytes.length}, emotion=$emotionLabel');
+  Future<void> _saveAvatarToDisk(
+    Uint8List bytes, [
+    String? emotionLabel,
+  ]) async {
+    debugPrint(
+      '[AvatarsDialog] _saveAvatarToDisk: started, bytes=${bytes.length}, emotion=$emotionLabel',
+    );
     setState(() => _saving = true);
     try {
-      final avatarDir = widget.storage.characterAvatarDir(widget.character.name);
-      debugPrint('[AvatarsDialog] _saveAvatarToDisk: avatarDir=${avatarDir.path}');
+      final avatarDir = widget.storage.characterAvatarDir(
+        widget.character.name,
+      );
+      debugPrint(
+        '[AvatarsDialog] _saveAvatarToDisk: avatarDir=${avatarDir.path}',
+      );
       if (!await avatarDir.exists()) {
         debugPrint('[AvatarsDialog] _saveAvatarToDisk: creating directory');
         await avatarDir.create(recursive: true);
@@ -284,11 +310,14 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
       final labelSuffix = emotionLabel != null && emotionLabel.isNotEmpty
           ? '_$emotionLabel'
           : '';
-      final filename = 'avatar_${DateTime.now().millisecondsSinceEpoch}$labelSuffix.png';
+      final filename =
+          'avatar_${DateTime.now().millisecondsSinceEpoch}$labelSuffix.png';
       final filePath = '${avatarDir.path}/$filename';
       debugPrint('[AvatarsDialog] _saveAvatarToDisk: writing file=$filePath');
       await File(filePath).writeAsBytes(bytes);
-      debugPrint('[AvatarsDialog] _saveAvatarToDisk: file written, calling repository.addAvatar');
+      debugPrint(
+        '[AvatarsDialog] _saveAvatarToDisk: file written, calling repository.addAvatar',
+      );
 
       await widget.repository.addAvatar(
         widget.character.dbId!,
@@ -296,12 +325,16 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
         bytes,
         emotionLabel,
       );
-      debugPrint('[AvatarsDialog] _saveAvatarToDisk: addAvatar done, reloading');
+      debugPrint(
+        '[AvatarsDialog] _saveAvatarToDisk: addAvatar done, reloading',
+      );
 
       _avatars = await widget.repository.getAvatarImages(
         widget.character.dbId!,
       );
-      debugPrint('[AvatarsDialog] _saveAvatarToDisk: reloaded ${_avatars.length} avatars');
+      debugPrint(
+        '[AvatarsDialog] _saveAvatarToDisk: reloaded ${_avatars.length} avatars',
+      );
 
       if (mounted) {
         setState(() {
@@ -317,9 +350,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
     } catch (e, stack) {
       debugPrint('[AvatarsDialog] _saveAvatarToDisk: ERROR: $e\n$stack');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add avatar: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to add avatar: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -342,10 +375,7 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
     if (confirmed != true) return;
 
     try {
-      await widget.repository.removeAvatar(
-        widget.character.dbId!,
-        avatarId,
-      );
+      await widget.repository.removeAvatar(widget.character.dbId!, avatarId);
 
       _avatars = await widget.repository.getAvatarImages(
         widget.character.dbId!,
@@ -359,9 +389,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
       if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to remove avatar: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to remove avatar: $e')));
       }
     }
   }
@@ -377,9 +407,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
       widget.character.primeAvatarIndex = _primeIndex;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to set prime: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to set prime: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -410,9 +440,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -421,7 +451,9 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('[AvatarsDialog] build: _showingEmotionPicker=$_showingEmotionPicker, _pendingImageBytes=${_pendingImageBytes != null ? "${_pendingImageBytes!.length} bytes" : "null"}, _avatars.length=${_avatars.length}');
+    debugPrint(
+      '[AvatarsDialog] build: _showingEmotionPicker=$_showingEmotionPicker, _pendingImageBytes=${_pendingImageBytes != null ? "${_pendingImageBytes!.length} bytes" : "null"}, _avatars.length=${_avatars.length}',
+    );
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       backgroundColor: Colors.transparent,
@@ -471,8 +503,8 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
                     child: _showingEmotionPicker
                         ? _buildInlineEmotionPicker()
                         : (_avatars.isEmpty
-                            ? _buildEmptyState()
-                            : _buildAvatarGrid()),
+                              ? _buildEmptyState()
+                              : _buildAvatarGrid()),
                   ),
                 ),
 
@@ -510,11 +542,7 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
               ),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(
-              Icons.mood,
-              color: Colors.white,
-              size: 22,
-            ),
+            child: const Icon(Icons.mood, color: Colors.white, size: 22),
           ),
           const SizedBox(width: 14),
           const Text(
@@ -532,9 +560,7 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-              ),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Text(
               '${_avatars.length}/$_maxAvatars',
@@ -578,11 +604,7 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
                 width: 1,
               ),
             ),
-            child: const Icon(
-              Icons.image,
-              size: 48,
-              color: Color(0xFF6366f1),
-            ),
+            child: const Icon(Icons.image, size: 48, color: Color(0xFF6366f1)),
           ),
           const SizedBox(height: 20),
           const Text(
@@ -655,10 +677,7 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(11),
-                child: Image.memory(
-                  _pendingImageBytes!,
-                  fit: BoxFit.cover,
-                ),
+                child: Image.memory(_pendingImageBytes!, fit: BoxFit.cover),
               ),
             ),
           ),
@@ -734,7 +753,12 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
             gradient: const LinearGradient(
               colors: [Color(0xFF6366f1), Color(0xFF818cf8)],
             ),
-            onPressed: _saving || _showingEmotionPicker || _avatars.length >= _maxAvatars ? null : _addAvatar,
+            onPressed:
+                _saving ||
+                    _showingEmotionPicker ||
+                    _avatars.length >= _maxAvatars
+                ? null
+                : _addAvatar,
           ),
           const SizedBox(width: 10),
 
@@ -745,7 +769,12 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
             gradient: const LinearGradient(
               colors: [Color(0xFFa855f7), Color(0xFFc084fc)],
             ),
-            onPressed: _saving || _showingEmotionPicker || _avatars.length >= _maxAvatars ? null : _importSpritePack,
+            onPressed:
+                _saving ||
+                    _showingEmotionPicker ||
+                    _avatars.length >= _maxAvatars
+                ? null
+                : _importSpritePack,
           ),
           const SizedBox(width: 10),
 
@@ -780,7 +809,10 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
               onPressed: _saving ? null : _saveAll,
               style: TextButton.styleFrom(
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 12,
+                ),
               ),
               child: const Text(
                 'Done',
@@ -833,10 +865,7 @@ class _EmotionChip extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                emoji,
-                style: const TextStyle(fontSize: 14),
-              ),
+              Text(emoji, style: const TextStyle(fontSize: 14)),
               const SizedBox(width: 5),
               Text(
                 emotion,
@@ -992,7 +1021,10 @@ class _GlassmorphicAvatarCard extends StatelessWidget {
                 left: 0,
                 right: 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 4,
+                  ),
                   child: _buildEmotionLabel(),
                 ),
               ),
@@ -1088,7 +1120,9 @@ class _GlassButton extends StatelessWidget {
         boxShadow: enabled
             ? [
                 BoxShadow(
-                  color: (gradient as LinearGradient).colors.first.withValues(alpha: 0.25),
+                  color: (gradient as LinearGradient).colors.first.withValues(
+                    alpha: 0.25,
+                  ),
                   blurRadius: 10,
                   spreadRadius: 1,
                 ),
@@ -1147,9 +1181,7 @@ class _GlassmorphicAlertDialog extends StatelessWidget {
               ],
             ),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.1),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.5),

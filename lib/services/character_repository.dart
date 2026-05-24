@@ -391,7 +391,9 @@ class CharacterRepository extends ChangeNotifier {
 
       final destFile = File(destPath);
       if (!destFile.existsSync() || destFile.lengthSync() == 0) {
-        debugPrint('[Import] Copied file missing or empty: $destPath (source: ${file.path})');
+        debugPrint(
+          '[Import] Copied file missing or empty: $destPath (source: ${file.path})',
+        );
       }
 
       // Update the imagePath to point to the local copy
@@ -558,8 +560,9 @@ class CharacterRepository extends ChangeNotifier {
             .where((w) => w.linkedCharacterName == card.name)
             .firstOrNull;
         if (linkedWorld != null) {
-          linkedWorld.lorebook =
-              Lorebook(entries: List.from(card.lorebook!.entries));
+          linkedWorld.lorebook = Lorebook(
+            entries: List.from(card.lorebook!.entries),
+          );
           await worldRepo.saveWorld(linkedWorld);
         }
       }
@@ -629,12 +632,12 @@ class CharacterRepository extends ChangeNotifier {
           await originalFile.copy(destPath);
           clonedCard.imagePath = destPath;
 
-           // Now write the V2 card data to the *new* PNG
-           final v2Service = V2CardService();
-           debugPrint(
-             '[Duplicate] Saving PNG with extensions: ${clonedCard.frontPorchExtensions != null ? 'realism=${clonedCard.frontPorchExtensions!.realismEnabled}, bond=${clonedCard.frontPorchExtensions!.shortTermBond}' : 'none'}',
-           );
-           await v2Service.saveCardAsPng(clonedCard, destPath, destPath);
+          // Now write the V2 card data to the *new* PNG
+          final v2Service = V2CardService();
+          debugPrint(
+            '[Duplicate] Saving PNG with extensions: ${clonedCard.frontPorchExtensions != null ? 'realism=${clonedCard.frontPorchExtensions!.realismEnabled}, bond=${clonedCard.frontPorchExtensions!.shortTermBond}' : 'none'}',
+          );
+          await v2Service.saveCardAsPng(clonedCard, destPath, destPath);
         }
       }
 
@@ -695,7 +698,9 @@ class CharacterRepository extends ChangeNotifier {
     String? label,
   ) async {
     try {
-      debugPrint('[CharacterRepository] addAvatar: started, characterId=$characterId, label=$label');
+      debugPrint(
+        '[CharacterRepository] addAvatar: started, characterId=$characterId, label=$label',
+      );
       final safeName = characterName
           .replaceAll(RegExp(r'[^\w\s\-]'), '')
           .replaceAll(' ', '_');
@@ -713,7 +718,9 @@ class CharacterRepository extends ChangeNotifier {
 
       final displayOrder = await _db.countAvatarsForCharacter(characterId);
       final avatarId = const Uuid().v4();
-      debugPrint('[CharacterRepository] addAvatar: inserting DB record, filename=$filename, displayOrder=$displayOrder');
+      debugPrint(
+        '[CharacterRepository] addAvatar: inserting DB record, filename=$filename, displayOrder=$displayOrder',
+      );
       await _db.insertAvatar(
         AvatarImagesCompanion(
           id: Value(avatarId),
@@ -735,7 +742,9 @@ class CharacterRepository extends ChangeNotifier {
     try {
       final avatar = await _db.getAvatarById(avatarId);
       if (avatar != null) {
-        final char = _characters.where((c) => c.dbId == characterId).firstOrNull;
+        final char = _characters
+            .where((c) => c.dbId == characterId)
+            .firstOrNull;
         if (char != null && char.name.isNotEmpty) {
           final safeName = char.name
               .replaceAll(RegExp(r'[^\w\s\-]'), '')

@@ -26,10 +26,7 @@ import 'package:front_porch_ai/services/expression_classifier.dart';
 class OnnxDownloadOverlay extends StatefulWidget {
   final ExpressionClassifierService classifierService;
 
-  const OnnxDownloadOverlay({
-    super.key,
-    required this.classifierService,
-  });
+  const OnnxDownloadOverlay({super.key, required this.classifierService});
 
   @override
   State<OnnxDownloadOverlay> createState() => _OnnxDownloadOverlayState();

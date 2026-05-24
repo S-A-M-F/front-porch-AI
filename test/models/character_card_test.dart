@@ -257,7 +257,10 @@ void main() {
     });
 
     test('replaces {{char}} with name', () {
-      final card = CharacterCard(name: 'Luna', description: '{{char}} is a cat');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{char}} is a cat',
+      );
       expect(card.replacePlaceholders(card.description), 'Luna is a cat');
     });
 
@@ -267,22 +270,43 @@ void main() {
     });
 
     test('replaces {{user}} with userName', () {
-      final card = CharacterCard(name: 'Luna', description: '{{user}} pet the cat');
-      expect(card.replacePlaceholders('{{user}} pet the cat', userName: 'Alex'), 'Alex pet the cat');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{user}} pet the cat',
+      );
+      expect(
+        card.replacePlaceholders('{{user}} pet the cat', userName: 'Alex'),
+        'Alex pet the cat',
+      );
     });
 
     test('replacements are case-insensitive', () {
-      final card = CharacterCard(name: 'Luna', description: '{{CHAR}} and {{User}}');
-      expect(card.replacePlaceholders('{{CHAR}} and {{User}}', userName: 'Alex'), 'Luna and Alex');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{CHAR}} and {{User}}',
+      );
+      expect(
+        card.replacePlaceholders('{{CHAR}} and {{User}}', userName: 'Alex'),
+        'Luna and Alex',
+      );
     });
 
     test('multiple replacements in one string', () {
-      final card = CharacterCard(name: 'Luna', description: '{{char}} greets {{user}}');
-      expect(card.replacePlaceholders('{{char}} greets {{user}}', userName: 'Alex'), 'Luna greets Alex');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{char}} greets {{user}}',
+      );
+      expect(
+        card.replacePlaceholders('{{char}} greets {{user}}', userName: 'Alex'),
+        'Luna greets Alex',
+      );
     });
 
     test('formattedDescription replaces placeholders', () {
-      final card = CharacterCard(name: 'Luna', description: '{{char}} is a cat');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{char}} is a cat',
+      );
       expect(card.formattedDescription, 'Luna is a cat');
     });
 
@@ -360,7 +384,10 @@ void main() {
       );
       final json = card.toJson();
       expect(json['extensions']['third_party'], 'data');
-      expect(json['extensions']['front_porch']['realism_engine']['enabled'], true);
+      expect(
+        json['extensions']['front_porch']['realism_engine']['enabled'],
+        true,
+      );
     });
 
     test('toJson with empty character', () {

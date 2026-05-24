@@ -161,7 +161,9 @@ class RealismFormSection extends StatelessWidget {
             color: const Color(0xFF1E293B),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: enabled ? Colors.blueAccent.withValues(alpha: 0.4) : Colors.white12,
+              color: enabled
+                  ? Colors.blueAccent.withValues(alpha: 0.4)
+                  : Colors.white12,
             ),
           ),
           child: Row(
@@ -249,12 +251,21 @@ class RealismFormSection extends StatelessWidget {
                           isExpanded: true,
                           dropdownColor: const Color(0xFF1E293B),
                           underline: const SizedBox(),
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          items: _timeOptions.map((t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(_formatTimeLabel(t)),
-                          )).toList(),
-                          onChanged: (v) { if (v != null) onTimeOfDayChanged(v); },
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                          items: _timeOptions
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t,
+                                  child: Text(_formatTimeLabel(t)),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            if (v != null) onTimeOfDayChanged(v);
+                          },
                         ),
                       ),
                     ],
@@ -275,20 +286,31 @@ class RealismFormSection extends StatelessWidget {
                           border: Border.all(color: Colors.white12),
                         ),
                         child: TextField(
-                          controller: TextEditingController(text: dayCount.toString())
-                            ..selection = TextSelection.fromPosition(
-                              TextPosition(offset: dayCount.toString().length),
-                            ),
+                          controller:
+                              TextEditingController(text: dayCount.toString())
+                                ..selection = TextSelection.fromPosition(
+                                  TextPosition(
+                                    offset: dayCount.toString().length,
+                                  ),
+                                ),
                           keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
                           onChanged: (v) {
                             final n = int.tryParse(v);
                             if (n != null && n >= 1) onDayCountChanged(n);
                           },
                           decoration: const InputDecoration(
                             border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                         ),
                       ),
@@ -372,13 +394,22 @@ class RealismFormSection extends StatelessWidget {
                             ..selection = TextSelection.fromPosition(
                               TextPosition(offset: emotion.length),
                             ),
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
                           onChanged: onEmotionChanged,
                           decoration: InputDecoration(
                             hintText: 'e.g. curious, guarded, amused',
-                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 13),
+                            hintStyle: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              fontSize: 13,
+                            ),
                             border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                         ),
                       ),
@@ -405,12 +436,23 @@ class RealismFormSection extends StatelessWidget {
                           isExpanded: true,
                           dropdownColor: const Color(0xFF1E293B),
                           underline: const SizedBox(),
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          items: _intensityOptions.map((i) => DropdownMenuItem(
-                            value: i,
-                            child: Text(i[0].toUpperCase() + i.substring(1)),
-                          )).toList(),
-                          onChanged: (v) { if (v != null) onEmotionIntensityChanged(v); },
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                          items: _intensityOptions
+                              .map(
+                                (i) => DropdownMenuItem(
+                                  value: i,
+                                  child: Text(
+                                    i[0].toUpperCase() + i.substring(1),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            if (v != null) onEmotionIntensityChanged(v);
+                          },
                         ),
                       ),
                     ],
@@ -448,7 +490,8 @@ class RealismFormSection extends StatelessWidget {
                 _toggleRow(
                   icon: Icons.battery_std,
                   label: 'Needs Simulation',
-                  subtitle: 'Hunger, bladder, energy, social, fun, hygiene, comfort — influences prompts & behavior',
+                  subtitle:
+                      'Hunger, bladder, energy, social, fun, hygiene, comfort — influences prompts & behavior',
                   value: needsSimEnabled,
                   onChanged: onNeedsSimChanged,
                 ),
@@ -457,7 +500,8 @@ class RealismFormSection extends StatelessWidget {
                   _toggleRow(
                     icon: Icons.water_drop_outlined,
                     label: 'Enjoys low hygiene',
-                    subtitle: 'Character prefers being sweaty, musky, or filthy (inverts hygiene behavior)',
+                    subtitle:
+                        'Character prefers being sweaty, musky, or filthy (inverts hygiene behavior)',
                     value: enjoysLowHygiene,
                     onChanged: onEnjoysLowHygieneChanged,
                   ),
@@ -468,7 +512,11 @@ class RealismFormSection extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Task / Quest Section
-          _sectionHeader(Icons.flag, 'Current Task / Quest', Colors.orangeAccent),
+          _sectionHeader(
+            Icons.flag,
+            'Current Task / Quest',
+            Colors.orangeAccent,
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
@@ -494,17 +542,27 @@ class RealismFormSection extends StatelessWidget {
                     minLines: 1,
                     onChanged: onCurrentTaskChanged,
                     decoration: InputDecoration(
-                      hintText: 'e.g. Find the missing artifact, Survive the first day at school',
-                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 13),
+                      hintText:
+                          'e.g. Find the missing artifact, Survive the first day at school',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        fontSize: 13,
+                      ),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Sets the initial quest or objective when a new conversation starts.',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
@@ -570,7 +628,11 @@ class RealismFormSection extends StatelessWidget {
               ),
               child: Text(
                 '$tierName ($value)',
-                style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -611,12 +673,18 @@ class RealismFormSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(
-                color: value ? Colors.white : Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              )),
-              Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: value ? Colors.white : Colors.white70,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
+              ),
             ],
           ),
         ),

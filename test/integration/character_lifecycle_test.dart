@@ -109,7 +109,8 @@ class _CharacterLifecycleSimulator {
       description: description ?? _currentCharacter!.description,
       firstMessage: firstMessage ?? _currentCharacter!.firstMessage,
       imagePath: _currentCharacter!.imagePath,
-      frontPorchExtensions: extensions ?? _currentCharacter!.frontPorchExtensions,
+      frontPorchExtensions:
+          extensions ?? _currentCharacter!.frontPorchExtensions,
     )..dbId = _currentCharacter!.dbId;
   }
 
@@ -176,8 +177,7 @@ class _CharacterLifecycleSimulator {
         dayCount: original.frontPorchExtensions?.dayCount ?? 1,
         timeOfDay: original.frontPorchExtensions?.timeOfDay ?? 'morning',
         characterEmotion: original.frontPorchExtensions?.characterEmotion ?? '',
-        emotionIntensity:
-            original.frontPorchExtensions?.emotionIntensity ?? '',
+        emotionIntensity: original.frontPorchExtensions?.emotionIntensity ?? '',
         nsfwCooldownEnabled:
             original.frontPorchExtensions?.nsfwCooldownEnabled ?? false,
         passageOfTimeEnabled:
@@ -196,8 +196,8 @@ class _CharacterLifecycleSimulator {
       _currentCharacter?.frontPorchExtensions?.realismEnabled ?? false;
   void toggleRealism(bool enabled) {
     if (_currentCharacter == null) return;
-    final existing = _currentCharacter!.frontPorchExtensions ??
-        FrontPorchExtensions();
+    final existing =
+        _currentCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
     _currentCharacter!.frontPorchExtensions = FrontPorchExtensions(
       realismEnabled: enabled,
       shortTermBond: existing.shortTermBond,
@@ -240,14 +240,13 @@ class _CharacterLifecycleSimulator {
     final personality = state['characterPersonality'] ?? '';
     final dbId = state['characterDbId'] ?? '';
 
-    _currentCharacter = CharacterCard(
-      name: name,
-      personality: personality,
-    )..dbId = dbId;
+    _currentCharacter = CharacterCard(name: name, personality: personality)
+      ..dbId = dbId;
 
     if (state['extensions'] != null) {
-      _currentCharacter!.frontPorchExtensions =
-          FrontPorchExtensions.fromJson(state['extensions']);
+      _currentCharacter!.frontPorchExtensions = FrontPorchExtensions.fromJson(
+        state['extensions'],
+      );
     }
   }
 }
@@ -303,12 +302,18 @@ void main() {
       expect(sim.messageHistory, isNotEmpty);
 
       // 6. Verify personality is updated (refreshed from "repository")
-      expect(sim.currentCharacter!.personality, 'Bold and confident',
-          reason: 'new chat must pick up personality edits');
+      expect(
+        sim.currentCharacter!.personality,
+        'Bold and confident',
+        reason: 'new chat must pick up personality edits',
+      );
 
       // 7. Verify bond is preserved (from extensions)
-      expect(sim.affectionScore, 5,
-          reason: 'bond must be preserved across chat sessions');
+      expect(
+        sim.affectionScore,
+        5,
+        reason: 'bond must be preserved across chat sessions',
+      );
     });
 
     test('duplicate → chat preserves realism settings', () {
@@ -357,12 +362,21 @@ void main() {
       );
       sim.startChat();
 
-      expect(sim.affectionScore, 25,
-          reason: 'duplicated character must preserve bond score');
-      expect(sim.trustLevel, 15,
-          reason: 'duplicated character must preserve trust level');
-      expect(sim.characterEmotion, '',
-          reason: 'emotion should be empty for new chat with duplicate');
+      expect(
+        sim.affectionScore,
+        25,
+        reason: 'duplicated character must preserve bond score',
+      );
+      expect(
+        sim.trustLevel,
+        15,
+        reason: 'duplicated character must preserve trust level',
+      );
+      expect(
+        sim.characterEmotion,
+        '',
+        reason: 'emotion should be empty for new chat with duplicate',
+      );
     });
 
     test('toggle realism off → on preserves state', () {
@@ -397,20 +411,32 @@ void main() {
       expect(sim.realismEnabled, isFalse);
 
       // State should still be accessible
-      expect(sim.affectionScore, savedAffection,
-          reason: 'affection must be preserved when realism is disabled');
-      expect(sim.trustLevel, savedTrust,
-          reason: 'trust must be preserved when realism is disabled');
-      expect(sim.characterEmotion, savedEmotion,
-          reason: 'emotion must be preserved when realism is disabled');
+      expect(
+        sim.affectionScore,
+        savedAffection,
+        reason: 'affection must be preserved when realism is disabled',
+      );
+      expect(
+        sim.trustLevel,
+        savedTrust,
+        reason: 'trust must be preserved when realism is disabled',
+      );
+      expect(
+        sim.characterEmotion,
+        savedEmotion,
+        reason: 'emotion must be preserved when realism is disabled',
+      );
 
       // Toggle realism back on
       sim.toggleRealism(true);
       expect(sim.realismEnabled, isTrue);
 
       // All state must be restored
-      expect(sim.affectionScore, savedAffection,
-          reason: 'state must be restored when realism is re-enabled');
+      expect(
+        sim.affectionScore,
+        savedAffection,
+        reason: 'state must be restored when realism is re-enabled',
+      );
       expect(sim.trustLevel, savedTrust);
       expect(sim.characterEmotion, savedEmotion);
     });
@@ -449,7 +475,10 @@ void main() {
       expect(state['affectionScore'], 40);
       expect(state['trustLevel'], 25);
       expect(state['characterEmotion'], 'nostalgic');
-      expect(state['messageCount'], 3); // greeting + user msg + character response
+      expect(
+        state['messageCount'],
+        3,
+      ); // greeting + user msg + character response
       expect(state['extensions'], isNotNull);
 
       // Deserialize into a fresh simulator
@@ -484,8 +513,11 @@ void main() {
       // Start new chat without extensions → bond resets
       sim.startNewChat();
 
-      expect(sim.affectionScore, 0,
-          reason: 'bond must reset when character has no extensions');
+      expect(
+        sim.affectionScore,
+        0,
+        reason: 'bond must reset when character has no extensions',
+      );
     });
   });
 }

@@ -21,7 +21,7 @@ import 'package:front_porch_ai/services/tts_voice_info.dart';
 
 /// Abstract interface that all TTS engines implement.
 ///
-/// Each engine generates a WAV file from text — the TtsService handles 
+/// Each engine generates a WAV file from text — the TtsService handles
 /// playback, buffering, progress, and lifecycle.
 abstract class TtsEngine {
   /// Human-readable engine name, e.g. 'Kokoro', 'OpenAI TTS', 'Piper'.
@@ -51,5 +51,6 @@ abstract class TtsEngine {
   /// Optional: download required model files (e.g. Kokoro first-run).
   /// Returns true if ready, false if download failed.
   /// [onProgress] reports 0.0–1.0 download progress.
-  Future<bool> ensureModelReady({void Function(double)? onProgress}) async => true;
+  Future<bool> ensureModelReady({void Function(double)? onProgress}) async =>
+      true;
 }

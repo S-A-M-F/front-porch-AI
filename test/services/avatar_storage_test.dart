@@ -11,12 +11,12 @@ void setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-    if (methodCall.method == 'getApplicationDocumentsDirectory') {
-      final tmp = Directory.systemTemp.createTempSync('fpai_storage_');
-      return tmp.path;
-    }
-    return null;
-  });
+        if (methodCall.method == 'getApplicationDocumentsDirectory') {
+          final tmp = Directory.systemTemp.createTempSync('fpai_storage_');
+          return tmp.path;
+        }
+        return null;
+      });
 }
 
 Future<StorageService> createStorageService([

@@ -59,12 +59,18 @@ class _GroupRealismStub {
     return const {};
   }
 
-  void updateInterCharacterRelationship(String fromCharId, String toCharId, int delta) {
+  void updateInterCharacterRelationship(
+    String fromCharId,
+    String toCharId,
+    int delta,
+  ) {
     if (_groupCharacterIds.isEmpty) return;
     if (_observerMode) return;
     if (!_shouldTrackInterCharacterRelationships) return; // Phase 3 hard cap
 
-    final currentMap = Map<String, int>.from(getInterCharacterRelationships(fromCharId));
+    final currentMap = Map<String, int>.from(
+      getInterCharacterRelationships(fromCharId),
+    );
     final currentValue = currentMap[toCharId] ?? 0;
     final newValue = (currentValue + delta).clamp(-300, 300);
 
@@ -81,12 +87,16 @@ class _GroupRealismStub {
     if (_groupCharacterIds.isEmpty || _observerMode) return;
     if (_groupCharacterIds.length < 2) return;
 
-    final currentRels = Map<String, int>.from(getInterCharacterRelationships(charId));
+    final currentRels = Map<String, int>.from(
+      getInterCharacterRelationships(charId),
+    );
     bool changed = false;
 
     // Prune stale members (membership change handling)
     final currentMemberIds = _groupCharacterIds.toSet();
-    final stale = currentRels.keys.where((id) => !currentMemberIds.contains(id)).toList();
+    final stale = currentRels.keys
+        .where((id) => !currentMemberIds.contains(id))
+        .toList();
     for (final staleId in stale) {
       currentRels.remove(staleId);
       changed = true;
@@ -134,30 +144,40 @@ class _GroupRealismStub {
 
 void main() {
   group('Group Inter-Character Realism - Basic Helpers', () {
-    test('getInterCharacterRelationships returns empty when no group or realism disabled', () {
-      final stub = _GroupRealismStub();
-      stub.setGroupMembers(['alice', 'bob']);
+    test(
+      'getInterCharacterRelationships returns empty when no group or realism disabled',
+      () {
+        final stub = _GroupRealismStub();
+        stub.setGroupMembers(['alice', 'bob']);
 
-      expect(stub.getInterCharacterRelationships('alice'), isEmpty);
+        expect(stub.getInterCharacterRelationships('alice'), isEmpty);
 
-      stub.setRealismEnabled(false);
-      stub.ensureInterCharacterRelationshipsSeeded('alice');
-      expect(stub.getInterCharacterRelationships('alice'), isEmpty);
-    });
+        stub.setRealismEnabled(false);
+        stub.ensureInterCharacterRelationshipsSeeded('alice');
+        expect(stub.getInterCharacterRelationships('alice'), isEmpty);
+      },
+    );
 
-    test('updateInterCharacterRelationship creates and updates values with clamping', () {
-      final stub = _GroupRealismStub();
-      stub.setGroupMembers(['alice', 'bob', 'charlie']);
+    test(
+      'updateInterCharacterRelationship creates and updates values with clamping',
+      () {
+        final stub = _GroupRealismStub();
+        stub.setGroupMembers(['alice', 'bob', 'charlie']);
 
-      stub.updateInterCharacterRelationship('alice', 'bob', 50);
-      expect(stub.getInterCharacterRelationships('alice')['bob'], 50);
+        stub.updateInterCharacterRelationship('alice', 'bob', 50);
+        expect(stub.getInterCharacterRelationships('alice')['bob'], 50);
 
-      stub.updateInterCharacterRelationship('alice', 'bob', 300); // should clamp
-      expect(stub.getInterCharacterRelationships('alice')['bob'], 300);
+        stub.updateInterCharacterRelationship(
+          'alice',
+          'bob',
+          300,
+        ); // should clamp
+        expect(stub.getInterCharacterRelationships('alice')['bob'], 300);
 
-      stub.updateInterCharacterRelationship('alice', 'bob', -700);
-      expect(stub.getInterCharacterRelationships('alice')['bob'], -300);
-    });
+        stub.updateInterCharacterRelationship('alice', 'bob', -700);
+        expect(stub.getInterCharacterRelationships('alice')['bob'], -300);
+      },
+    );
   });
 
   group('Group Inter-Character Realism - Seeding (Neutral 0)', () {
@@ -191,8 +211,11 @@ void main() {
       stub.setGroupMembers(['a', 'b', 'c', 'd', 'e']); // 5 members
 
       stub.ensureInterCharacterRelationshipsSeeded('a');
-      expect(stub.getInterCharacterRelationships('a'), isEmpty,
-          reason: 'inter-char tracking must be disabled at 5+ members');
+      expect(
+        stub.getInterCharacterRelationships('a'),
+        isEmpty,
+        reason: 'inter-char tracking must be disabled at 5+ members',
+      );
 
       stub.updateInterCharacterRelationship('a', 'b', 30);
       expect(stub.getInterCharacterRelationships('a'), isEmpty);
@@ -208,14 +231,17 @@ void main() {
       expect(rels.values.every((v) => v == 0), isTrue);
     });
 
-    test('user-directed realism still conceptually works above cap (via other paths)', () {
-      final stub = _GroupRealismStub();
-      stub.setGroupMembers(['a', 'b', 'c', 'd', 'e', 'f']);
-      // The cap only affects inter-char. User-directed state (affection etc.)
-      // continues independently. We simulate that here by ensuring the cap
-      // doesn't affect the overall group realism flag concept.
-      expect(stub._shouldTrackInterCharacterRelationships, isFalse);
-    });
+    test(
+      'user-directed realism still conceptually works above cap (via other paths)',
+      () {
+        final stub = _GroupRealismStub();
+        stub.setGroupMembers(['a', 'b', 'c', 'd', 'e', 'f']);
+        // The cap only affects inter-char. User-directed state (affection etc.)
+        // continues independently. We simulate that here by ensuring the cap
+        // doesn't affect the overall group realism flag concept.
+        expect(stub._shouldTrackInterCharacterRelationships, isFalse);
+      },
+    );
   });
 
   group('Group Inter-Character Realism - Membership Pruning', () {
@@ -275,11 +301,8 @@ void main() {
       final oldCheckpoint = {
         'version': 1,
         'perChar': {
-          'alice': {
-            'affection': 30,
-            'trust': 10,
-          }
-        }
+          'alice': {'affection': 30, 'trust': 10},
+        },
       };
 
       final stub = _GroupRealismStub();
@@ -291,14 +314,17 @@ void main() {
   });
 
   group('Group Inter-Character Realism - Reset', () {
-    test('resetRealismForGroupCharacter clears relationships for that character', () {
-      final stub = _GroupRealismStub();
-      stub.setGroupMembers(['alice', 'bob']);
+    test(
+      'resetRealismForGroupCharacter clears relationships for that character',
+      () {
+        final stub = _GroupRealismStub();
+        stub.setGroupMembers(['alice', 'bob']);
 
-      stub.updateInterCharacterRelationship('alice', 'bob', 55);
-      stub.resetRealismForGroupCharacter('alice');
+        stub.updateInterCharacterRelationship('alice', 'bob', 55);
+        stub.resetRealismForGroupCharacter('alice');
 
-      expect(stub.getInterCharacterRelationships('alice'), isEmpty);
-    });
+        expect(stub.getInterCharacterRelationships('alice'), isEmpty);
+      },
+    );
   });
 }

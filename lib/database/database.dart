@@ -129,8 +129,9 @@ class Sessions extends Table {
       text().withDefault(const Constant('morning'))(); // dawn/morning/etc
   IntColumn get dayCount =>
       integer().withDefault(const Constant(1))(); // starts at Day 1
-  IntColumn get startDayOfWeek =>
-      integer().withDefault(const Constant(0))(); // 1=Mon..7=Sun anchor for narrativeWeekday; 0=legacy/unset (compute on first load)
+  IntColumn get startDayOfWeek => integer().withDefault(
+    const Constant(0),
+  )(); // 1=Mon..7=Sun anchor for narrativeWeekday; 0=legacy/unset (compute on first load)
   BoolColumn get nsfwCooldownEnabled =>
       boolean().withDefault(const Constant(false))(); // sub-toggle
   BoolColumn get passageOfTimeEnabled => boolean().withDefault(
@@ -293,8 +294,7 @@ class MessageEmbeddings extends Table {
 
   /// 'message' for normal RAG windows (default), 'needs_event' for long-term
   /// salient Needs simulation events (high-magnitude pleasure/embarrassment etc.).
-  TextColumn get memoryType =>
-      text().withDefault(const Constant('message'))();
+  TextColumn get memoryType => text().withDefault(const Constant('message'))();
 
   /// Optional JSON blob for event details (e.g. {"category":"pleasure","magnitude":8,"..."}).
   /// Null for ordinary message embeddings.
@@ -408,10 +408,12 @@ class AppDatabase extends _$AppDatabase {
     final rootPathKey = isPreRelease ? 'root_path_beta' : 'root_path';
     final rootPath = prefs.getString(rootPathKey);
     final defaultRootName = isPreRelease ? 'FrontPorchAI-Beta' : 'FrontPorchAI';
-    final basePath = rootPath ?? p.join(
-      (await getApplicationDocumentsDirectory()).path,
-      defaultRootName,
-    );
+    final basePath =
+        rootPath ??
+        p.join(
+          (await getApplicationDocumentsDirectory()).path,
+          defaultRootName,
+        );
     final dbDir = p.join(basePath, 'KoboldManager');
     _dbDir = dbDir;
 
@@ -434,14 +436,18 @@ class AppDatabase extends _$AppDatabase {
         if (!skipped) {
           final prodFile = File(p.join(dbDir, 'front_porch.db'));
           if (prodFile.existsSync()) {
-            debugPrint('[DB] Pre-release build — copying production DB to beta DB');
+            debugPrint(
+              '[DB] Pre-release build — copying production DB to beta DB',
+            );
             await prodFile.copy(file.path);
           }
         }
       } else {
         // Dialog not yet shown — defer to the import dialog which will
         // show after the first frame and trigger the copy manually.
-        debugPrint('[DB] Pre-release build — import dialog pending, skipping copy');
+        debugPrint(
+          '[DB] Pre-release build — import dialog pending, skipping copy',
+        );
       }
     }
 
@@ -978,25 +984,6 @@ class AppDatabase extends _$AppDatabase {
           );
         } catch (_) {}
       }
-      if (from < 29) {
-        // v28->v29: extend message_embeddings with memory_type + metadata for long-term
-        // salient Needs events (RAG-stored high-impact pleasure/embarrassment etc.).
-        // Existing rows default to 'message'; new needs_event rows set explicit type + JSON details.
-        try {
-          await customStatement(
-            "ALTER TABLE message_embeddings ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'message'",
-          );
-        } catch (_) {
-          // Column may already exist (e.g. dev reinstalls)
-        }
-        try {
-          await customStatement(
-            'ALTER TABLE message_embeddings ADD COLUMN metadata TEXT',
-          );
-        } catch (_) {
-          // Column may already exist
-        }
-      }
       // Note: RAG settings for groups are now stored in the hidden __group_state__ checkpoint
       // (no schema change on the groups table).
     },
@@ -1353,14 +1340,16 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get a single avatar by ID.
   Future<AvatarImage?> getAvatarById(String id) async {
-    return (select(avatarImages)..where((a) => a.id.equals(id))).getSingleOrNull();
+    return (select(
+      avatarImages,
+    )..where((a) => a.id.equals(id))).getSingleOrNull();
   }
 
   /// Count avatars for a character (to determine next display order).
   Future<int> countAvatarsForCharacter(String characterId) async {
-    final result = await (select(avatarImages)
-          ..where((a) => a.characterId.equals(characterId)))
-        .get();
+    final result = await (select(
+      avatarImages,
+    )..where((a) => a.characterId.equals(characterId))).get();
     return result.length;
   }
 
@@ -1372,13 +1361,18 @@ class AppDatabase extends _$AppDatabase {
 
   /// Delete an avatar image record.
   Future<int> deleteAvatar(String id) async {
-    final count = await (delete(avatarImages)..where((a) => a.id.equals(id))).go();
+    final count = await (delete(
+      avatarImages,
+    )..where((a) => a.id.equals(id))).go();
     await bumpSyncVersion();
     return count;
   }
 
   /// Update the prime avatar index for a character.
-  Future<void> updatePrimeAvatarIndex(String characterId, int primeIndex) async {
+  Future<void> updatePrimeAvatarIndex(
+    String characterId,
+    int primeIndex,
+  ) async {
     await (update(characters)..where((c) => c.id.equals(characterId))).write(
       CharactersCompanion(primeAvatarIndex: Value(primeIndex)),
     );

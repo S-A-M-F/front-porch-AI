@@ -43,25 +43,34 @@ enum ImageGenBackend {
 
   static ImageGenBackend fromKey(String key) {
     switch (key) {
-      case 'a1111':      return ImageGenBackend.a1111;
-      case 'drawthings': return ImageGenBackend.drawThings;
-      default:           return ImageGenBackend.remote;
+      case 'a1111':
+        return ImageGenBackend.a1111;
+      case 'drawthings':
+        return ImageGenBackend.drawThings;
+      default:
+        return ImageGenBackend.remote;
     }
   }
 
   String get key {
     switch (this) {
-      case ImageGenBackend.a1111:      return 'a1111';
-      case ImageGenBackend.drawThings: return 'drawthings';
-      case ImageGenBackend.remote:     return 'remote';
+      case ImageGenBackend.a1111:
+        return 'a1111';
+      case ImageGenBackend.drawThings:
+        return 'drawthings';
+      case ImageGenBackend.remote:
+        return 'remote';
     }
   }
 
   String get label {
     switch (this) {
-      case ImageGenBackend.a1111:      return 'AUTOMATIC1111';
-      case ImageGenBackend.drawThings: return 'Draw Things';
-      case ImageGenBackend.remote:     return 'Remote API';
+      case ImageGenBackend.a1111:
+        return 'AUTOMATIC1111';
+      case ImageGenBackend.drawThings:
+        return 'Draw Things';
+      case ImageGenBackend.remote:
+        return 'Remote API';
     }
   }
 }
@@ -70,9 +79,11 @@ enum ImageGenBackend {
 class ImageModelInfo {
   final String id;
   final String name;
+
   /// Whether this model costs extra per-prompt (true) or is included
   /// with a Nano-GPT Pro subscription (false).
   final bool isPaid;
+
   /// Pricing information from OpenRouter (if available).
   /// Format: "prompt_cost / completion_cost per token" or raw JSON string.
   final String? pricingInfo;
@@ -123,7 +134,8 @@ class ImageGenService extends ChangeNotifier {
     final backend = ImageGenBackend.fromKey(_storage.imageGenBackend);
     switch (backend) {
       case ImageGenBackend.remote:
-        return _storage.remoteApiKey.isNotEmpty && _storage.imageGenModel.isNotEmpty;
+        return _storage.remoteApiKey.isNotEmpty &&
+            _storage.imageGenModel.isNotEmpty;
       case ImageGenBackend.a1111:
       case ImageGenBackend.drawThings:
         return _storage.localImageGenUrl.isNotEmpty;
@@ -140,8 +152,8 @@ class ImageGenService extends ChangeNotifier {
   ImageGenService(this._storage);
 
   /// Build the images directory path.
-  Directory get _imagesDir => Directory(
-      path.join(_storage.rootPath ?? '', 'KoboldManager', 'images'));
+  Directory get _imagesDir =>
+      Directory(path.join(_storage.rootPath ?? '', 'KoboldManager', 'images'));
 
   /// Generate an image from a prompt.
   ///
@@ -166,22 +178,25 @@ class ImageGenService extends ChangeNotifier {
 
       final backend = ImageGenBackend.fromKey(_storage.imageGenBackend);
 
-      if (backend == ImageGenBackend.a1111 || backend == ImageGenBackend.drawThings) {
+      if (backend == ImageGenBackend.a1111 ||
+          backend == ImageGenBackend.drawThings) {
         final isDrawThings = _storage.imageGenBackend == 'drawthings';
-        
+
         if (isDrawThings) {
           // Use gRPC for Draw Things (Python client bridge)
           _statusMessage = 'Connecting to Draw Things...';
           notifyListeners();
-          
+
           final modelCheckpoint = model ?? _storage.imageGenModel;
-          if (modelCheckpoint.isNotEmpty && !modelCheckpoint.toLowerCase().endsWith('.ckpt')) {
-            _statusMessage = 'Invalid model name for Draw Things: must end with .ckpt (got: $modelCheckpoint)';
+          if (modelCheckpoint.isNotEmpty &&
+              !modelCheckpoint.toLowerCase().endsWith('.ckpt')) {
+            _statusMessage =
+                'Invalid model name for Draw Things: must end with .ckpt (got: $modelCheckpoint)';
             _isGenerating = false;
             notifyListeners();
             return null;
           }
-          
+
           try {
             final grpcService = _ensureDrawThingsGrpc;
             final imageSize = size ?? _storage.imageGenSize;
@@ -189,7 +204,7 @@ class ImageGenService extends ChangeNotifier {
             final steps = _storage.imageGenSteps;
             final cfgScale = _storage.imageGenCfgScale;
             final seed = _storage.imageGenSeed;
-            
+
             imageBytes = await _generateViaDrawThingsGrpc(
               grpcService: grpcService,
               prompt: prompt,
@@ -233,7 +248,6 @@ class ImageGenService extends ChangeNotifier {
             seed: _storage.imageGenSeed,
           );
         }
-
       } else {
         // ── Remote API ─────────────────────────────────────────────────
         if (_storage.remoteApiKey.isEmpty) {
@@ -290,7 +304,6 @@ class ImageGenService extends ChangeNotifier {
     }
   }
 
-
   /// Save the last generated image to disk.
   ///
   /// Returns the saved file path, or null on failure.
@@ -321,7 +334,10 @@ class ImageGenService extends ChangeNotifier {
   /// Unlike [saveImageToDisk], this saves to the characters directory
   /// (`KoboldManager/Characters/`) so cloud sync picks it up.
   /// Returns the saved file path, or null on failure.
-  Future<String?> saveAvatarToDisk(Uint8List? imageBytes, {String? characterName}) async {
+  Future<String?> saveAvatarToDisk(
+    Uint8List? imageBytes, {
+    String? characterName,
+  }) async {
     final bytes = imageBytes ?? _lastGeneratedImage;
     if (bytes == null) return null;
 
@@ -370,8 +386,14 @@ class ImageGenService extends ChangeNotifier {
     // ── Pay-per-prompt: Ideogram ──
     ImageModelInfo(id: 'ideogram-v3-default', name: 'Ideogram V3'),
     ImageModelInfo(id: 'ideogram-v3-turbo', name: 'Ideogram V3 Turbo'),
-    ImageModelInfo(id: 'ideogram-v3-generate-transparent', name: 'Ideogram V3 Transparent'),
-    ImageModelInfo(id: 'ideogram-v3-remove-text', name: 'Ideogram V3 Remove Text'),
+    ImageModelInfo(
+      id: 'ideogram-v3-generate-transparent',
+      name: 'Ideogram V3 Transparent',
+    ),
+    ImageModelInfo(
+      id: 'ideogram-v3-remove-text',
+      name: 'Ideogram V3 Remove Text',
+    ),
     // ── Pay-per-prompt: Alibaba (WAN / Qwen) ──
     ImageModelInfo(id: 'wan2.7-image', name: 'WAN 2.7 Image'),
     ImageModelInfo(id: 'wan2.7-image-pro', name: 'WAN 2.7 Image Pro'),
@@ -384,14 +406,20 @@ class ImageGenService extends ChangeNotifier {
     ImageModelInfo(id: 'nano-banana-2-fast', name: 'Nano Banana 2 Fast'),
     // ── Pay-per-prompt: ByteDance (Seedream) ──
     ImageModelInfo(id: 'seedream-v5.0-lite', name: 'Seedream 5.0 Lite'),
-    ImageModelInfo(id: 'seedream-v5.0-lite-sequential', name: 'Seedream 5.0 Lite Sequential'),
+    ImageModelInfo(
+      id: 'seedream-v5.0-lite-sequential',
+      name: 'Seedream 5.0 Lite Sequential',
+    ),
     // ── Pay-per-prompt: Z.AI (GLM / CogView) ──
     ImageModelInfo(id: 'cogview-4', name: 'Z.AI CogView-4'),
     ImageModelInfo(id: 'z-image-base', name: 'Z Image Base'),
     ImageModelInfo(id: 'glm-image', name: 'Z.AI GLM Image'),
     ImageModelInfo(id: 'glm-image-edit', name: 'GLM Image Edit'),
     // ── Pay-per-prompt: Tencent (Hunyuan) ──
-    ImageModelInfo(id: 'hunyuan-image-3-instruct', name: 'Hunyuan Image 3 Instruct'),
+    ImageModelInfo(
+      id: 'hunyuan-image-3-instruct',
+      name: 'Hunyuan Image 3 Instruct',
+    ),
     // ── Pay-per-prompt: Baidu (ERNIE) ──
     ImageModelInfo(id: 'ernie-image', name: 'ERNIE Image'),
     ImageModelInfo(id: 'ernie-image/turbo', name: 'ERNIE Image Turbo'),
@@ -450,17 +478,19 @@ class ImageGenService extends ChangeNotifier {
   ///
   /// Returns the models as provided by OpenRouter with their pricing,
   /// or an empty list if the API call fails.
-  Future<List<ImageModelInfo>> _fetchOpenRouterImageModels(String apiUrl, String apiKey) async {
+  Future<List<ImageModelInfo>> _fetchOpenRouterImageModels(
+    String apiUrl,
+    String apiKey,
+  ) async {
     final apiModels = <ImageModelInfo>[];
     final client = http.Client();
 
     try {
       // Query for models that can output images
       final uri = Uri.parse('$apiUrl/models?output_modalities=image');
-      final response = await client.get(
-        uri,
-        headers: {'Authorization': 'Bearer $apiKey'},
-      ).timeout(const Duration(seconds: 15));
+      final response = await client
+          .get(uri, headers: {'Authorization': 'Bearer $apiKey'})
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body);
@@ -474,11 +504,12 @@ class ImageGenService extends ChangeNotifier {
           // Extract pricing info if available (display as-is from OpenRouter)
           final pricing = m['pricing'] as Map<String, dynamic>?;
           String? pricingInfo;
-          
+
           // NOTE: OpenRouter returns $0/$0 for free-tier-only models or unclear pricing
           // We do NOT mark these as "free" since they may have restrictions or credits only
           // Instead, we show the pricing as-is and let user check OpenRouter's site for details
-          bool isPaid = true; // Conservative: assume paid unless clearly free ($0 everywhere)
+          bool isPaid =
+              true; // Conservative: assume paid unless clearly free ($0 everywhere)
 
           if (pricing != null) {
             final prompt = pricing['prompt'];
@@ -490,17 +521,23 @@ class ImageGenService extends ChangeNotifier {
             }
           }
 
-          apiModels.add(ImageModelInfo(
-            id: id,
-            name: name,
-            isPaid: isPaid,
-            pricingInfo: pricingInfo,
-          ));
+          apiModels.add(
+            ImageModelInfo(
+              id: id,
+              name: name,
+              isPaid: isPaid,
+              pricingInfo: pricingInfo,
+            ),
+          );
         }
 
-        debugPrint('ImageGen: Fetched ${apiModels.length} image models from OpenRouter');
+        debugPrint(
+          'ImageGen: Fetched ${apiModels.length} image models from OpenRouter',
+        );
       } else {
-        debugPrint('ImageGen: OpenRouter /models?output_modalities=image returned ${response.statusCode}');
+        debugPrint(
+          'ImageGen: OpenRouter /models?output_modalities=image returned ${response.statusCode}',
+        );
       }
     } catch (e) {
       debugPrint('ImageGen: Failed to fetch OpenRouter image models: $e');
@@ -529,22 +566,32 @@ class ImageGenService extends ChangeNotifier {
   /// Written as natural language so they work with FLUX, SD3, and SDXL
   /// as well as older SD 1.5-based models.
   static const Map<String, String> styleModifiers = {
-    'photorealistic': 'Photorealistic with cinematic lighting, sharp focus, and highly detailed textures.',
-    'anime':          'Anime-style illustration with clean linework, expressive eyes, vibrant colors, and cel shading.',
-    'fantasy_art':    'Epic fantasy digital art with dramatic lighting, rich environmental detail, and a painterly quality.',
-    'oil_painting':   'Classical oil painting with visible brushstrokes, rich color depth, and fine art composition.',
-    'digital_art':    'Polished digital art with vibrant colors, clean lines, and professional illustration quality.',
-    'watercolor':     'Soft watercolor illustration with flowing color washes, delicate edges, and gentle translucent tones.',
+    'photorealistic':
+        'Photorealistic with cinematic lighting, sharp focus, and highly detailed textures.',
+    'anime':
+        'Anime-style illustration with clean linework, expressive eyes, vibrant colors, and cel shading.',
+    'fantasy_art':
+        'Epic fantasy digital art with dramatic lighting, rich environmental detail, and a painterly quality.',
+    'oil_painting':
+        'Classical oil painting with visible brushstrokes, rich color depth, and fine art composition.',
+    'digital_art':
+        'Polished digital art with vibrant colors, clean lines, and professional illustration quality.',
+    'watercolor':
+        'Soft watercolor illustration with flowing color washes, delicate edges, and gentle translucent tones.',
   };
 
   /// Legacy comma-separated tag modifiers for SD 1.5 / Illustrious models.
   static const Map<String, String> legacyStyleModifiers = {
-    'photorealistic': 'photorealistic, cinematic lighting, sharp focus, highly detailed, 8k',
-    'anime':          'anime style, masterpiece, best quality, highly detailed, cel shading',
-    'fantasy_art':    'fantasy art, epic, dramatic lighting, highly detailed, painterly',
-    'oil_painting':   'oil painting, traditional media, brushstrokes, fine art',
-    'digital_art':    'digital art, polished, vibrant, illustration, high quality',
-    'watercolor':     'watercolor, translucent, soft washes, pastel, traditional media',
+    'photorealistic':
+        'photorealistic, cinematic lighting, sharp focus, highly detailed, 8k',
+    'anime':
+        'anime style, masterpiece, best quality, highly detailed, cel shading',
+    'fantasy_art':
+        'fantasy art, epic, dramatic lighting, highly detailed, painterly',
+    'oil_painting': 'oil painting, traditional media, brushstrokes, fine art',
+    'digital_art': 'digital art, polished, vibrant, illustration, high quality',
+    'watercolor':
+        'watercolor, translucent, soft washes, pastel, traditional media',
   };
 
   /// Available style labels for UI display.
@@ -576,7 +623,9 @@ class ImageGenService extends ChangeNotifier {
     List<String>? recentMessages,
   }) async {
     final paradigm = _storage.imageGenPromptParadigm; // 'natural' or 'tags'
-    final modifiers = paradigm == 'tags' ? legacyStyleModifiers : styleModifiers;
+    final modifiers = paradigm == 'tags'
+        ? legacyStyleModifiers
+        : styleModifiers;
 
     // Custom prompt mode — no LLM needed, just append style
     if (mode == ImageGenMode.customPrompt) {
@@ -645,15 +694,20 @@ class ImageGenService extends ChangeNotifier {
     String modeInstruction;
     switch (mode) {
       case ImageGenMode.visualizeScene:
-        modeInstruction = 'Describe the current scene as a vivid image — environment, characters present, lighting, mood.';
+        modeInstruction =
+            'Describe the current scene as a vivid image — environment, characters present, lighting, mood.';
       case ImageGenMode.fromLastMessage:
-        modeInstruction = 'Describe the scene depicted in the latest message as a vivid image.';
+        modeInstruction =
+            'Describe the scene depicted in the latest message as a vivid image.';
       case ImageGenMode.characterPortrait:
-        modeInstruction = 'Describe a portrait of the character — their appearance, expression, clothing, and pose.';
+        modeInstruction =
+            'Describe a portrait of the character — their appearance, expression, clothing, and pose.';
       case ImageGenMode.chatBackground:
-        modeInstruction = 'Describe the environment/setting as a wide panoramic landscape. Do NOT include any characters or people.';
+        modeInstruction =
+            'Describe the environment/setting as a wide panoramic landscape. Do NOT include any characters or people.';
       case ImageGenMode.userAvatar:
-        modeInstruction = 'Describe a portrait of the user character — their appearance, expression, and pose.';
+        modeInstruction =
+            'Describe a portrait of the user character — their appearance, expression, and pose.';
       default:
         modeInstruction = 'Describe the scene as a vivid image.';
     }
@@ -677,14 +731,17 @@ class ImageGenService extends ChangeNotifier {
     try {
       debugPrint('ImageGen: Crafting smart prompt via LLM...');
       String accumulated = '';
-      await for (final token in llmService.generateStream(GenerationParams(
-        prompt: llmPrompt,
-        maxLength: 2000,  // Generous budget: some models think extensively before generating the prompt
-        temperature: 0.2,
-        repeatPenalty: 1.0,
-        reasoningEnabled: false,
-        stopSequences: ['\n\n', '<END>', '</END>'],
-      ))) {
+      await for (final token in llmService.generateStream(
+        GenerationParams(
+          prompt: llmPrompt,
+          maxLength:
+              2000, // Generous budget: some models think extensively before generating the prompt
+          temperature: 0.2,
+          repeatPenalty: 1.0,
+          reasoningEnabled: false,
+          stopSequences: ['\n\n', '<END>', '</END>'],
+        ),
+      )) {
         accumulated += token;
       }
 
@@ -695,16 +752,21 @@ class ImageGenService extends ChangeNotifier {
       try {
         // Try to extract JSON from the response (may be wrapped in thinking or extra text)
         // Look for JSON object pattern: {...}
-        final jsonMatch = RegExp(r'\{[^{}]*"prompt"[^{}]*\}', dotAll: true).firstMatch(smartPrompt);
-        
+        final jsonMatch = RegExp(
+          r'\{[^{}]*"prompt"[^{}]*\}',
+          dotAll: true,
+        ).firstMatch(smartPrompt);
+
         if (jsonMatch != null) {
           final jsonStr = jsonMatch.group(0)!;
           final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
           final prompt = parsed['prompt']?.toString() ?? '';
-          
+
           if (prompt.isNotEmpty) {
             smartPrompt = prompt;
-            debugPrint('ImageGen: Successfully parsed JSON prompt (${smartPrompt.length} chars)');
+            debugPrint(
+              'ImageGen: Successfully parsed JSON prompt (${smartPrompt.length} chars)',
+            );
           } else {
             throw Exception('JSON prompt field was empty');
           }
@@ -713,7 +775,9 @@ class ImageGenService extends ChangeNotifier {
           throw Exception('No JSON object found in response');
         }
       } catch (e) {
-        debugPrint('ImageGen: Failed to parse JSON ($e), falling back to static prompt');
+        debugPrint(
+          'ImageGen: Failed to parse JSON ($e), falling back to static prompt',
+        );
         final fallback = buildPrompt(
           mode: mode,
           customPrompt: customPrompt,
@@ -724,7 +788,7 @@ class ImageGenService extends ChangeNotifier {
           scenario: scenario,
           worldInfo: worldInfo,
           personaName: personaName,
-personaText: personaText,
+          personaText: personaText,
           recentMessages: recentMessages,
         );
         return _truncate('$fallback. $styleSuffix', _maxPromptLength);
@@ -737,17 +801,22 @@ personaText: personaText,
           .trim();
 
       // Ensure style is present
-      if (styleSuffix.isNotEmpty && !smartPrompt.toLowerCase().contains(styleSuffix.toLowerCase().substring(0, 5))) {
+      if (styleSuffix.isNotEmpty &&
+          !smartPrompt.toLowerCase().contains(
+            styleSuffix.toLowerCase().substring(0, 5),
+          )) {
         final glue = isTags ? ', ' : '. ';
         smartPrompt = '${smartPrompt.trim()}$glue$styleSuffix';
       }
-      
+
       if (isTags) {
         // Tag paradigm logic (e.g. remove trailing periods, ensure commas)
         smartPrompt = smartPrompt.replaceAll('.', ',');
       }
 
-      debugPrint('ImageGen: Smart prompt crafted (${smartPrompt.length} chars)');
+      debugPrint(
+        'ImageGen: Smart prompt crafted (${smartPrompt.length} chars)',
+      );
       return _truncate(smartPrompt, _maxPromptLength);
     } catch (e) {
       debugPrint('ImageGen: Smart prompt failed ($e), falling back to static');
@@ -796,9 +865,13 @@ personaText: personaText,
           parts.add('Setting: ${_truncate(worldInfo, 200)}');
         }
         if (recentMessages != null && recentMessages.isNotEmpty) {
-          parts.add('Recent events: ${_truncate(recentMessages.join(" "), 300)}');
+          parts.add(
+            'Recent events: ${_truncate(recentMessages.join(" "), 300)}',
+          );
         }
-          parts.add('A wide establishing shot of the scene. Cinematic composition with atmospheric lighting.');
+        parts.add(
+          'A wide establishing shot of the scene. Cinematic composition with atmospheric lighting.',
+        );
         raw = parts.join(' ');
 
       case ImageGenMode.fromLastMessage:
@@ -816,7 +889,9 @@ personaText: personaText,
         if (characterPersonality != null && characterPersonality.isNotEmpty) {
           parts.add('Personality: ${_truncate(characterPersonality, 200)}');
         }
-        parts.add('A detailed close-up portrait, expressive face, high quality rendering.');
+        parts.add(
+          'A detailed close-up portrait, expressive face, high quality rendering.',
+        );
         raw = parts.join(' ');
 
       case ImageGenMode.chatBackground:
@@ -827,7 +902,9 @@ personaText: personaText,
         if (worldInfo != null && worldInfo.isNotEmpty) {
           parts.add('Setting: ${_truncate(worldInfo, 300)}');
         }
-        parts.add('Wide panoramic landscape, atmospheric lighting, no people or characters, suitable as a scene background.');
+        parts.add(
+          'Wide panoramic landscape, atmospheric lighting, no people or characters, suitable as a scene background.',
+        );
         raw = parts.join(' ');
 
       case ImageGenMode.userAvatar:
@@ -835,10 +912,12 @@ personaText: personaText,
         if (personaName != null && personaName.isNotEmpty) {
           parts.add('Portrait of $personaName.');
         }
-if (personaText != null && personaText.isNotEmpty) {
-      parts.add(_truncate(personaText, 400));
+        if (personaText != null && personaText.isNotEmpty) {
+          parts.add(_truncate(personaText, 400));
         }
-        parts.add('A detailed close-up portrait, expressive face, high quality rendering.');
+        parts.add(
+          'A detailed close-up portrait, expressive face, high quality rendering.',
+        );
         raw = parts.join(' ');
     }
 
@@ -864,7 +943,7 @@ if (personaText != null && personaText.isNotEmpty) {
   /// For Draw Things, uses gRPC. For A1111, uses HTTP.
   Future<bool> testLocalConnection(String baseUrl) async {
     final isDrawThings = _storage.imageGenBackend == 'drawthings';
-    
+
     if (isDrawThings) {
       try {
         final grpcService = _ensureDrawThingsGrpc;
@@ -894,7 +973,7 @@ if (personaText != null && personaText.isNotEmpty) {
   /// For Draw Things, uses gRPC. For A1111, uses HTTP.
   Future<List<String>> fetchA1111Models(String baseUrl) async {
     final isDrawThings = _storage.imageGenBackend == 'drawthings';
-    
+
     if (isDrawThings) {
       try {
         final grpcService = _ensureDrawThingsGrpc;
@@ -957,7 +1036,7 @@ if (personaText != null && personaText.isNotEmpty) {
             final m = e as Map<String, dynamic>;
             // Prefer alias if present and non-empty, else use name
             final alias = m['alias']?.toString() ?? '';
-            final name  = m['name']?.toString() ?? '';
+            final name = m['name']?.toString() ?? '';
             return alias.isNotEmpty ? alias : name;
           })
           .where((s) => s.isNotEmpty)
@@ -981,13 +1060,17 @@ if (personaText != null && personaText.isNotEmpty) {
   Future<bool> unloadLocalModel(String baseUrl) async {
     final client = http.Client();
     try {
-      final uri = Uri.parse('${baseUrl.trimRight()}/sdapi/v1/unload-checkpoint');
+      final uri = Uri.parse(
+        '${baseUrl.trimRight()}/sdapi/v1/unload-checkpoint',
+      );
       debugPrint('ImageGen: Requesting model unload at $uri');
       final response = await client
           .post(uri, headers: {'Content-Type': 'application/json'})
           .timeout(const Duration(seconds: 30));
       final ok = response.statusCode == 200;
-      debugPrint('ImageGen: Unload ${ok ? "accepted" : "rejected (${response.statusCode}) — may not be supported"}');
+      debugPrint(
+        'ImageGen: Unload ${ok ? "accepted" : "rejected (${response.statusCode}) — may not be supported"}',
+      );
       return ok;
     } catch (e) {
       debugPrint('ImageGen: unloadLocalModel failed (ignored): $e');
@@ -1024,7 +1107,9 @@ if (personaText != null && personaText.isNotEmpty) {
           )
           .timeout(const Duration(seconds: 120)); // model loads can be slow
       final ok = response.statusCode == 200;
-      debugPrint('ImageGen: Checkpoint switch ${ok ? "accepted" : "rejected (${response.statusCode})"}');
+      debugPrint(
+        'ImageGen: Checkpoint switch ${ok ? "accepted" : "rejected (${response.statusCode})"}',
+      );
       if (!ok) return false;
 
       // Step 3: confirm the model is fully loaded before returning.
@@ -1066,9 +1151,7 @@ if (personaText != null && personaText.isNotEmpty) {
 
     for (var i = 0; i < maxAttempts; i++) {
       try {
-        final resp = await client
-            .get(uri)
-            .timeout(const Duration(seconds: 10));
+        final resp = await client.get(uri).timeout(const Duration(seconds: 10));
         if (resp.statusCode == 200) {
           final body = jsonDecode(resp.body) as Map<String, dynamic>;
           final active = body['sd_model_checkpoint']?.toString() ?? '';
@@ -1076,8 +1159,10 @@ if (personaText != null && personaText.isNotEmpty) {
             debugPrint('ImageGen: Model ready confirmed on attempt ${i + 1}');
             return true;
           }
-          debugPrint('ImageGen: Waiting for model load… '
-              '(active="$active", expected="$expected", attempt ${i + 1}/$maxAttempts)');
+          debugPrint(
+            'ImageGen: Waiting for model load… '
+            '(active="$active", expected="$expected", attempt ${i + 1}/$maxAttempts)',
+          );
         }
       } catch (e) {
         debugPrint('ImageGen: Model ready poll failed (attempt ${i + 1}): $e');
@@ -1137,7 +1222,8 @@ if (personaText != null && personaText.isNotEmpty) {
     // Switch model only if a different checkpoint was requested.
     // Skipping redundant switches prevents the unload→reload cycle that
     // can leave tensors split across CPU & CUDA on Windows/nVidia setups.
-    if (switchModelFirst && modelCheckpoint.isNotEmpty &&
+    if (switchModelFirst &&
+        modelCheckpoint.isNotEmpty &&
         modelCheckpoint != _lastLoadedCheckpoint) {
       _statusMessage = 'Loading model: $modelCheckpoint…';
       notifyListeners();
@@ -1152,7 +1238,9 @@ if (personaText != null && personaText.isNotEmpty) {
         ? '$prompt <lora:$loraName:${loraWeight.toStringAsFixed(2)}>'
         : prompt;
 
-    debugPrint('ImageGen: POST $uri (model=${modelCheckpoint.isNotEmpty ? modelCheckpoint : "current"}, lora=${loraName.isNotEmpty ? loraName : "none"})');
+    debugPrint(
+      'ImageGen: POST $uri (model=${modelCheckpoint.isNotEmpty ? modelCheckpoint : "current"}, lora=${loraName.isNotEmpty ? loraName : "none"})',
+    );
 
     final payload = <String, dynamic>{
       'prompt': effectivePrompt,
@@ -1171,7 +1259,6 @@ if (personaText != null && personaText.isNotEmpty) {
       //   "Expected all tensors to be on the same device"
       // The model switch is already handled by switchLocalModel() above.
     };
-
 
     final client = http.Client();
     try {
@@ -1258,14 +1345,16 @@ if (personaText != null && personaText.isNotEmpty) {
 
     final client = http.Client();
     try {
-      final response = await client.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 120));
+      final response = await client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $apiKey',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 120));
 
       if (response.statusCode != 200) {
         debugPrint('ImageGen: HTTP ${response.statusCode} from $imageEndpoint');
@@ -1295,9 +1384,9 @@ if (personaText != null && personaText.isNotEmpty) {
         return base64Decode(first['b64_json'] as String);
       } else if (first.containsKey('url')) {
         // Download the image from the URL
-        final imgResponse =
-            await client.get(Uri.parse(first['url'] as String))
-                .timeout(const Duration(seconds: 30));
+        final imgResponse = await client
+            .get(Uri.parse(first['url'] as String))
+            .timeout(const Duration(seconds: 30));
         if (imgResponse.statusCode != 200) {
           throw Exception('Failed to download image from URL');
         }
@@ -1322,10 +1411,7 @@ if (personaText != null && personaText.isNotEmpty) {
     final payload = <String, dynamic>{
       'model': model,
       'messages': [
-        {
-          'role': 'user',
-          'content': prompt,
-        }
+        {'role': 'user', 'content': prompt},
       ],
       'modalities': ['image'],
       'max_tokens': 4096,
@@ -1333,16 +1419,18 @@ if (personaText != null && personaText.isNotEmpty) {
 
     final client = http.Client();
     try {
-      final response = await client.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-          'HTTP-Referer': 'https://github.com/linux4life1/front-porch-AI',
-          'X-Title': 'Front Porch AI',
-        },
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 120));
+      final response = await client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $apiKey',
+              'HTTP-Referer': 'https://github.com/linux4life1/front-porch-AI',
+              'X-Title': 'Front Porch AI',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 120));
 
       if (response.statusCode != 200) {
         String errorMsg = 'HTTP ${response.statusCode}';
@@ -1378,7 +1466,8 @@ if (personaText != null && personaText.isNotEmpty) {
                   return base64Decode(b64);
                 } else {
                   // Regular URL — download it
-                  final imgResp = await client.get(Uri.parse(imageUrl))
+                  final imgResp = await client
+                      .get(Uri.parse(imageUrl))
                       .timeout(const Duration(seconds: 30));
                   return imgResp.bodyBytes;
                 }

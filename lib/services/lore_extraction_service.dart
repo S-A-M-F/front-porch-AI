@@ -20,7 +20,8 @@ class LoreExtractionService {
     // 1. Process valid URLs
     for (int i = 0; i < urls.length; i++) {
       final url = urls[i].trim();
-      if (url.isEmpty || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      if (url.isEmpty ||
+          (!url.startsWith('http://') && !url.startsWith('https://'))) {
         continue;
       }
       onProgress?.call('Fetching URL ${i + 1}/${urls.length}...');
@@ -69,17 +70,27 @@ class LoreExtractionService {
 
       // Remove structural non-content tags
       final extraneousTags = [
-        'script', 'style', 'nav', 'header', 'footer', 
-        'aside', 'iframe', 'noscript', 'form', 'button'
+        'script',
+        'style',
+        'nav',
+        'header',
+        'footer',
+        'aside',
+        'iframe',
+        'noscript',
+        'form',
+        'button',
       ];
       for (final tag in extraneousTags) {
         document.querySelectorAll(tag).forEach((el) => el.remove());
       }
 
       // Collect pure texts from readable elements
-      final readableNodes = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
+      final readableNodes = document.querySelectorAll(
+        'p, h1, h2, h3, h4, h5, h6, li',
+      );
       final textBuffer = StringBuffer();
-      
+
       for (final node in readableNodes) {
         final t = node.text.trim();
         // Skip tiny navigation elements or empty lines that survived the purge
@@ -110,7 +121,7 @@ class LoreExtractionService {
       if (bytes == null || bytes.isEmpty) return null;
 
       final extension = file.extension?.toLowerCase() ?? '';
-      
+
       if (extension == 'pdf') {
         final document = PdfDocument(inputBytes: bytes);
         final extractor = PdfTextExtractor(document);

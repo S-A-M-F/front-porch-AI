@@ -76,22 +76,30 @@ class ByafService {
     if (manifestFile == null) {
       throw FormatException('Invalid .byaf file: missing manifest.json');
     }
-    final manifest = jsonDecode(utf8.decode(manifestFile.content as List<int>)) as Map<String, dynamic>;
+    final manifest =
+        jsonDecode(utf8.decode(manifestFile.content as List<int>))
+            as Map<String, dynamic>;
 
     // 2. Read character JSON
-    final characterPaths = (manifest['characters'] as List?)?.cast<String>() ?? [];
+    final characterPaths =
+        (manifest['characters'] as List?)?.cast<String>() ?? [];
     if (characterPaths.isEmpty) {
       throw FormatException('Invalid .byaf file: no characters defined');
     }
     final characterPath = characterPaths.first;
     final characterFile = archive.findFile(characterPath);
     if (characterFile == null) {
-      throw FormatException('Invalid .byaf file: character file not found at $characterPath');
+      throw FormatException(
+        'Invalid .byaf file: character file not found at $characterPath',
+      );
     }
-    final charJson = jsonDecode(utf8.decode(characterFile.content as List<int>)) as Map<String, dynamic>;
+    final charJson =
+        jsonDecode(utf8.decode(characterFile.content as List<int>))
+            as Map<String, dynamic>;
 
     // 3. Extract character fields
-    final name = (charJson['displayName'] ?? charJson['name'] ?? 'Unknown').toString();
+    final name = (charJson['displayName'] ?? charJson['name'] ?? 'Unknown')
+        .toString();
     final persona = (charJson['persona'] ?? '').toString();
 
     // Parse lore items
@@ -99,10 +107,12 @@ class ByafService {
     if (charJson['loreItems'] is List) {
       for (final item in charJson['loreItems']) {
         if (item is Map<String, dynamic>) {
-          loreItems.add(ByafLoreItem(
-            key: item['key']?.toString() ?? '',
-            value: item['value']?.toString() ?? '',
-          ));
+          loreItems.add(
+            ByafLoreItem(
+              key: item['key']?.toString() ?? '',
+              value: item['value']?.toString() ?? '',
+            ),
+          );
         }
       }
     }
@@ -122,8 +132,11 @@ class ByafService {
             // Save to temp
             final tempDir = await getTemporaryDirectory();
             if (!await tempDir.exists()) await tempDir.create(recursive: true);
-            final ext = path.extension(imgRelPath).isNotEmpty ? path.extension(imgRelPath) : '.png';
-            final tempPath = '${tempDir.path}/byaf_import_${DateTime.now().millisecondsSinceEpoch}$ext';
+            final ext = path.extension(imgRelPath).isNotEmpty
+                ? path.extension(imgRelPath)
+                : '.png';
+            final tempPath =
+                '${tempDir.path}/byaf_import_${DateTime.now().millisecondsSinceEpoch}$ext';
             await File(tempPath).writeAsBytes(imgFile.content as List<int>);
             extractedImagePath = tempPath;
           }
@@ -138,17 +151,22 @@ class ByafService {
     final messages = <ByafChatMessage>[];
     final modelSettings = <String, double>{};
 
-    final scenarioPaths = (manifest['scenarios'] as List?)?.cast<String>() ?? [];
+    final scenarioPaths =
+        (manifest['scenarios'] as List?)?.cast<String>() ?? [];
     if (scenarioPaths.isNotEmpty) {
       final scenarioFile = archive.findFile(scenarioPaths.first);
       if (scenarioFile != null) {
-        final scenarioJson = jsonDecode(utf8.decode(scenarioFile.content as List<int>)) as Map<String, dynamic>;
+        final scenarioJson =
+            jsonDecode(utf8.decode(scenarioFile.content as List<int>))
+                as Map<String, dynamic>;
 
         narrative = scenarioJson['narrative']?.toString();
-        formattingInstructions = scenarioJson['formattingInstructions']?.toString();
+        formattingInstructions = scenarioJson['formattingInstructions']
+            ?.toString();
 
         // First message
-        if (scenarioJson['firstMessages'] is List && (scenarioJson['firstMessages'] as List).isNotEmpty) {
+        if (scenarioJson['firstMessages'] is List &&
+            (scenarioJson['firstMessages'] as List).isNotEmpty) {
           final fm = (scenarioJson['firstMessages'] as List).first;
           if (fm is Map<String, dynamic>) {
             firstMessage = fm['text']?.toString();
@@ -156,7 +174,14 @@ class ByafService {
         }
 
         // Model settings
-        for (final key in ['temperature', 'minP', 'topP', 'topK', 'repeatPenalty', 'repeatLastN']) {
+        for (final key in [
+          'temperature',
+          'minP',
+          'topP',
+          'topK',
+          'repeatPenalty',
+          'repeatLastN',
+        ]) {
           if (scenarioJson[key] is num) {
             modelSettings[key] = (scenarioJson[key] as num).toDouble();
           }
@@ -172,20 +197,27 @@ class ByafService {
 
               if (type == 'human') {
                 text = msg['text']?.toString() ?? '';
-                createdAt = DateTime.tryParse(msg['createdAt']?.toString() ?? '');
+                createdAt = DateTime.tryParse(
+                  msg['createdAt']?.toString() ?? '',
+                );
               } else if (type == 'ai') {
                 // AI messages have outputs array — use first/active one
-                if (msg['outputs'] is List && (msg['outputs'] as List).isNotEmpty) {
+                if (msg['outputs'] is List &&
+                    (msg['outputs'] as List).isNotEmpty) {
                   final output = (msg['outputs'] as List).first;
                   if (output is Map<String, dynamic>) {
                     text = output['text']?.toString() ?? '';
-                    createdAt = DateTime.tryParse(output['createdAt']?.toString() ?? '');
+                    createdAt = DateTime.tryParse(
+                      output['createdAt']?.toString() ?? '',
+                    );
                   }
                 }
               }
 
               if (text.isNotEmpty) {
-                messages.add(ByafChatMessage(type: type, text: text, createdAt: createdAt));
+                messages.add(
+                  ByafChatMessage(type: type, text: text, createdAt: createdAt),
+                );
               }
             }
           }
@@ -223,12 +255,16 @@ class ByafService {
     Lorebook? lorebook;
     if (preview.loreItems.isNotEmpty) {
       lorebook = Lorebook(
-        entries: preview.loreItems.map((item) => LorebookEntry(
-          name: item.key,
-          key: item.key,
-          content: _convertPlaceholders(item.value),
-          enabled: true,
-        )).toList(),
+        entries: preview.loreItems
+            .map(
+              (item) => LorebookEntry(
+                name: item.key,
+                key: item.key,
+                content: _convertPlaceholders(item.value),
+                enabled: true,
+              ),
+            )
+            .toList(),
       );
     }
 
@@ -251,7 +287,10 @@ class ByafService {
   /// Save the character card as a PNG with embedded V2 metadata.
   /// Returns the saved file path.
   /// [charactersDirPath] is the absolute path to the Characters directory.
-  Future<String> saveCharacterPng(CharacterCard card, {String? charactersDirPath}) async {
+  Future<String> saveCharacterPng(
+    CharacterCard card, {
+    String? charactersDirPath,
+  }) async {
     final String charDirPath;
     if (charactersDirPath != null) {
       charDirPath = charactersDirPath;
@@ -264,8 +303,11 @@ class ByafService {
       await charDir.create(recursive: true);
     }
 
-    final safeName = card.name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '').replaceAll(' ', '_');
-    final outputPath = '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+    final safeName = card.name
+        .replaceAll(RegExp(r'[<>:"/\\|?*]'), '')
+        .replaceAll(' ', '_');
+    final outputPath =
+        '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
 
     // If we have an extracted image, copy it as the base PNG
     if (card.imagePath != null && File(card.imagePath!).existsSync()) {
@@ -290,11 +332,13 @@ class ByafService {
     final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
 
     // Insert the session
-    await db.insertSession(SessionsCompanion.insert(
-      id: sessionId,
-      characterId: Value(importedCard.dbId!),
-      name: Value('Imported from Backyard AI'),
-    ));
+    await db.insertSession(
+      SessionsCompanion.insert(
+        id: sessionId,
+        characterId: Value(importedCard.dbId!),
+        name: Value('Imported from Backyard AI'),
+      ),
+    );
 
     // Build message list
     final msgs = <MessagesCompanion>[];
@@ -303,14 +347,16 @@ class ByafService {
       final isUser = msg.type == 'human';
       final sender = isUser ? 'User' : importedCard.name;
 
-      msgs.add(MessagesCompanion(
-        sessionId: Value(sessionId),
-        position: Value(i),
-        sender: Value(sender),
-        isUser: Value(isUser),
-        swipes: Value(jsonEncode([_convertPlaceholders(msg.text)])),
-        swipeIndex: Value(0),
-      ));
+      msgs.add(
+        MessagesCompanion(
+          sessionId: Value(sessionId),
+          position: Value(i),
+          sender: Value(sender),
+          isUser: Value(isUser),
+          swipes: Value(jsonEncode([_convertPlaceholders(msg.text)])),
+          swipeIndex: Value(0),
+        ),
+      );
     }
 
     // Batch insert all messages
@@ -320,7 +366,7 @@ class ByafService {
   Future<void> _createPlaceholderPng(String outputPath) async {
     // Minimal valid 1x1 white PNG
     final pngBytes = base64Decode(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
     );
     await File(outputPath).writeAsBytes(pngBytes);
   }

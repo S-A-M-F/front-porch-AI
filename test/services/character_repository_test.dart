@@ -50,8 +50,16 @@ void main() {
 
     test('getCharactersByTag filters by tag', () {
       final chars = <CharacterCard>[
-        CharacterCard(name: 'Cat', tags: ['animal', 'pet'], imagePath: 'cat.png'),
-        CharacterCard(name: 'Dog', tags: ['animal', 'pet'], imagePath: 'dog.png'),
+        CharacterCard(
+          name: 'Cat',
+          tags: ['animal', 'pet'],
+          imagePath: 'cat.png',
+        ),
+        CharacterCard(
+          name: 'Dog',
+          tags: ['animal', 'pet'],
+          imagePath: 'dog.png',
+        ),
         CharacterCard(name: 'Car', tags: ['vehicle'], imagePath: 'car.png'),
       ];
       final animals = chars.where((c) => c.tags.contains('animal')).toList();
@@ -73,9 +81,14 @@ void main() {
         alternateGreetings: ['Hi!', 'Hello!'],
         tags: ['hero'],
         imagePath: 'original.png',
-        lorebook: Lorebook(entries: [LorebookEntry(key: 'lore', content: 'Some lore')]),
+        lorebook: Lorebook(
+          entries: [LorebookEntry(key: 'lore', content: 'Some lore')],
+        ),
         worldNames: ['World 1'],
-        frontPorchExtensions: FrontPorchExtensions(realismEnabled: true, shortTermBond: 50),
+        frontPorchExtensions: FrontPorchExtensions(
+          realismEnabled: true,
+          shortTermBond: 50,
+        ),
         rawExtensions: {'custom': 'data'},
       );
 
@@ -173,13 +186,19 @@ void main() {
       expect(card.allGreetings, isEmpty);
     });
 
-    test('CharacterCard allGreetings includes only firstMessage when no alternates', () {
-      final card = CharacterCard(name: 'Test', firstMessage: 'Hi there');
-      expect(card.allGreetings, ['Hi there']);
-    });
+    test(
+      'CharacterCard allGreetings includes only firstMessage when no alternates',
+      () {
+        final card = CharacterCard(name: 'Test', firstMessage: 'Hi there');
+        expect(card.allGreetings, ['Hi there']);
+      },
+    );
 
     test('CharacterCard formattedDescription replaces placeholders', () {
-      final card = CharacterCard(name: 'Luna', description: '{{char}} is a cat');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{char}} is a cat',
+      );
       expect(card.formattedDescription, 'Luna is a cat');
     });
 
@@ -213,11 +232,17 @@ void main() {
       );
       final json = card.toJson();
       expect(json['extensions']['third_party'], 'data');
-      expect(json['extensions']['front_porch']['realism_engine']['enabled'], true);
+      expect(
+        json['extensions']['front_porch']['realism_engine']['enabled'],
+        true,
+      );
     });
 
     test('CharacterCard replacePlaceholders handles {{char}}', () {
-      final card = CharacterCard(name: 'Luna', description: '{{char}} is a cat');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{char}} is a cat',
+      );
       expect(card.replacePlaceholders(card.description), 'Luna is a cat');
     });
 
@@ -228,7 +253,10 @@ void main() {
 
     test('CharacterCard replacePlaceholders handles {{user}}', () {
       final card = CharacterCard(name: 'Luna');
-      expect(card.replacePlaceholders('{{user}} pet the cat', userName: 'Alex'), 'Alex pet the cat');
+      expect(
+        card.replacePlaceholders('{{user}} pet the cat', userName: 'Alex'),
+        'Alex pet the cat',
+      );
     });
 
     test('CharacterCard replacePlaceholders is case-insensitive', () {

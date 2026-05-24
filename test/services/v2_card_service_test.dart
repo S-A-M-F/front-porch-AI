@@ -90,10 +90,20 @@ void main() {
       final card = CharacterCard(
         name: 'Lore Character',
         personality: 'Knows things',
-        lorebook: Lorebook(entries: [
-          LorebookEntry(name: 'World Lore', key: 'magic', content: 'Magic exists'),
-          LorebookEntry(name: 'Character Lore', key: 'sword', content: 'Wields a sword'),
-        ]),
+        lorebook: Lorebook(
+          entries: [
+            LorebookEntry(
+              name: 'World Lore',
+              key: 'magic',
+              content: 'Magic exists',
+            ),
+            LorebookEntry(
+              name: 'Character Lore',
+              key: 'sword',
+              content: 'Wields a sword',
+            ),
+          ],
+        ),
       );
 
       final outputPath = '$tempDir/lorebook_test.png';
@@ -200,7 +210,10 @@ void main() {
     });
 
     test('readCard throws for non-existent file', () async {
-      expect(() => service.readCard('$tempDir/nonexistent.png'), throwsA(isA<PathNotFoundException>()));
+      expect(
+        () => service.readCard('$tempDir/nonexistent.png'),
+        throwsA(isA<PathNotFoundException>()),
+      );
     });
 
     test('readCard returns null for invalid PNG', () async {
@@ -223,18 +236,29 @@ void main() {
     test('full round-trip with all fields', () async {
       final card = CharacterCard(
         name: 'Full Test Character',
-        description: 'A comprehensive test character with all possible fields populated',
+        description:
+            'A comprehensive test character with all possible fields populated',
         personality: 'Brave, clever, and slightly mischievous',
         scenario: 'During a grand festival in a medieval city',
-        firstMessage: 'The festival lights dance across the square as you approach.',
+        firstMessage:
+            'The festival lights dance across the square as you approach.',
         mesExample: '{{char}}: Welcome to the festival!\n{{user}}: Thank you!',
         systemPrompt: 'You are a festival guide.',
         postHistoryInstructions: 'Describe the atmosphere.',
-        alternateGreetings: ['The festival is lively tonight!', 'Care to join the celebration?'],
+        alternateGreetings: [
+          'The festival is lively tonight!',
+          'Care to join the celebration?',
+        ],
         tags: ['fantasy', 'festival', 'guide'],
-        lorebook: Lorebook(entries: [
-          LorebookEntry(name: 'Festival Lore', key: 'festival', content: 'Annual celebration'),
-        ]),
+        lorebook: Lorebook(
+          entries: [
+            LorebookEntry(
+              name: 'Festival Lore',
+              key: 'festival',
+              content: 'Annual celebration',
+            ),
+          ],
+        ),
         worldNames: ['Festival City'],
         ttsVoice: 'en_us',
         frontPorchExtensions: FrontPorchExtensions(

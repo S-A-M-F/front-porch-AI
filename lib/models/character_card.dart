@@ -39,7 +39,8 @@ class FrontPorchExtensions {
   bool passageOfTimeEnabled; // sub-toggle for automatic time advancement
   bool chaosModeEnabled;
   bool needsSimEnabled; // per-character default for the needs simulation toggle
-  bool enjoysLowHygiene; // when true, low hygiene is desirable (inverted behavior for filthy/musky characters)
+  bool
+  enjoysLowHygiene; // when true, low hygiene is desirable (inverted behavior for filthy/musky characters)
 
   // Chat appearance colors (null = use global default)
   Color? userBubbleColor;
@@ -236,6 +237,7 @@ class CharacterCard {
   String? folderId;
   Lorebook? lorebook;
   List<String> worldNames;
+
   /// Per-character TTS voice assignment.
   ///
   /// This must be a valid voice key for the *currently selected* TTS engine
@@ -245,7 +247,7 @@ class CharacterCard {
   String? dbId; // UUID primary key (runtime only, not serialized)
   FrontPorchExtensions? frontPorchExtensions; // V2.5 Realism Engine defaults
   Map<String, dynamic>?
-      rawExtensions; // Preserve unknown third-party extension keys
+  rawExtensions; // Preserve unknown third-party extension keys
   List<AvatarImage>? avatarImages; // Multiple avatar images for the character
   int primeAvatarIndex = 1; // 1-based index of the prime (default) avatar
 

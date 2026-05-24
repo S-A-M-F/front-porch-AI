@@ -114,18 +114,22 @@ class _LocalModelCardState extends State<LocalModelCard> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: _getQuantColor(widget.model.quantType.colorCategory)
-                                  .withValues(alpha: 0.15),
+                              color: _getQuantColor(
+                                widget.model.quantType.colorCategory,
+                              ).withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(
-                                color: _getQuantColor(widget.model.quantType.colorCategory)
-                                    .withValues(alpha: 0.3),
+                                color: _getQuantColor(
+                                  widget.model.quantType.colorCategory,
+                                ).withValues(alpha: 0.3),
                               ),
                             ),
                             child: Text(
                               widget.model.quantType.label,
                               style: TextStyle(
-                                color: _getQuantColor(widget.model.quantType.colorCategory),
+                                color: _getQuantColor(
+                                  widget.model.quantType.colorCategory,
+                                ),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -153,12 +157,21 @@ class _LocalModelCardState extends State<LocalModelCard> {
                       // Stats row
                       Row(
                         children: [
-                          _infoChip(Icons.drive_file_rename_outline, widget.model.sizeDisplay),
+                          _infoChip(
+                            Icons.drive_file_rename_outline,
+                            widget.model.sizeDisplay,
+                          ),
                           const SizedBox(width: 12),
-                          _infoChip(Icons.memory, VramEstimator.formatVramEstimate(vramUsage)),
+                          _infoChip(
+                            Icons.memory,
+                            VramEstimator.formatVramEstimate(vramUsage),
+                          ),
                           if (widget.model.paramCountB != null) ...[
                             const SizedBox(width: 12),
-                            _infoChip(Icons.miscellaneous_services, widget.model.paramDisplay),
+                            _infoChip(
+                              Icons.miscellaneous_services,
+                              widget.model.paramDisplay,
+                            ),
                           ],
                         ],
                       ),
@@ -201,7 +214,11 @@ class _LocalModelCardState extends State<LocalModelCard> {
                   children: [
                     if (widget.onSettings != null)
                       IconButton(
-                        icon: const Icon(Icons.settings_rounded, color: Colors.white54, size: 18),
+                        icon: const Icon(
+                          Icons.settings_rounded,
+                          color: Colors.white54,
+                          size: 18,
+                        ),
                         onPressed: widget.onSettings,
                         tooltip: 'Settings',
                         constraints: const BoxConstraints(),
@@ -210,7 +227,11 @@ class _LocalModelCardState extends State<LocalModelCard> {
                     const SizedBox(height: 4),
                     if (widget.onOpenLocation != null)
                       IconButton(
-                        icon: const Icon(Icons.folder_open_rounded, color: Colors.white54, size: 18),
+                        icon: const Icon(
+                          Icons.folder_open_rounded,
+                          color: Colors.white54,
+                          size: 18,
+                        ),
                         onPressed: widget.onOpenLocation,
                         tooltip: 'Open location',
                         constraints: const BoxConstraints(),
@@ -218,7 +239,11 @@ class _LocalModelCardState extends State<LocalModelCard> {
                       ),
                     const SizedBox(height: 4),
                     IconButton(
-                      icon: const Icon(Icons.delete_rounded, color: Colors.white54, size: 18),
+                      icon: const Icon(
+                        Icons.delete_rounded,
+                        color: Colors.white54,
+                        size: 18,
+                      ),
                       onPressed: widget.onDelete,
                       tooltip: 'Delete model',
                       constraints: const BoxConstraints(),
@@ -242,10 +267,7 @@ class _LocalModelCardState extends State<LocalModelCard> {
         const SizedBox(width: 4),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 11,
-          ),
+          style: const TextStyle(color: Colors.white70, fontSize: 11),
         ),
       ],
     );

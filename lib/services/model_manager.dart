@@ -29,7 +29,7 @@ import 'package:front_porch_ai/models/local_model_info.dart';
 import 'package:front_porch_ai/models/download_task.dart';
 
 /// Manages local model files and HuggingFace model discovery.
-/// 
+///
 /// Provides:
 /// - Local model scanning and metadata
 /// - HuggingFace search and file listing
@@ -63,7 +63,9 @@ class ModelManager extends ChangeNotifier {
 
   /// Set of downloaded filenames (for UI checkmarks).
   Set<String> get downloadedFilenames {
-    return _models.map((e) => e.path.split(Platform.pathSeparator).last).toSet();
+    return _models
+        .map((e) => e.path.split(Platform.pathSeparator).last)
+        .toSet();
   }
 
   /// Map of currently downloading files.
@@ -142,7 +144,10 @@ class ModelManager extends ChangeNotifier {
 
   /// Recursively scans directories for .gguf files.
   /// Tracks canonical paths to avoid duplicate symlinks.
-  List<FileSystemEntity> _safeRecursiveScan(Directory dir, [Set<String>? _seen]) {
+  List<FileSystemEntity> _safeRecursiveScan(
+    Directory dir, [
+    Set<String>? _seen,
+  ]) {
     final seen = _seen ?? <String>{};
     final results = <FileSystemEntity>[];
     try {
@@ -212,7 +217,9 @@ class ModelManager extends ChangeNotifier {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        return data.map((m) => HFModel.fromSearchResult(m as Map<String, dynamic>)).toList();
+        return data
+            .map((m) => HFModel.fromSearchResult(m as Map<String, dynamic>))
+            .toList();
       }
     } catch (e) {
       print('HF Search Error: $e');
@@ -223,7 +230,9 @@ class ModelManager extends ChangeNotifier {
   /// Gets the list of GGUF files for a HuggingFace repository.
   /// Returns typed [HFModelFile] objects.
   Future<List<HFModelFile>> getModelFiles(String repoId) async {
-    final url = Uri.parse('https://huggingface.co/api/models/$repoId/tree/main');
+    final url = Uri.parse(
+      'https://huggingface.co/api/models/$repoId/tree/main',
+    );
 
     try {
       final response = await http.get(url);
@@ -231,7 +240,9 @@ class ModelManager extends ChangeNotifier {
         final List<dynamic> data = jsonDecode(response.body);
         return data
             .where((f) => f['path'].toString().endsWith('.gguf'))
-            .map((f) => HFModelFile.fromApiMap(f as Map<String, dynamic>, repoId))
+            .map(
+              (f) => HFModelFile.fromApiMap(f as Map<String, dynamic>, repoId),
+            )
             .toList();
       }
     } catch (e) {
@@ -335,22 +346,30 @@ class ModelManager extends ChangeNotifier {
   @Deprecated('Use queueDownload with HFModelFile instead')
   Future<List<Map<String, dynamic>>> searchHFModelsLegacy(String query) async {
     final models = await searchHFModels(query);
-    return models.map((m) => {
-      'id': m.id,
-      'author': m.author,
-      'likes': m.likes,
-      'downloads': m.downloads,
-    }).toList();
+    return models
+        .map(
+          (m) => {
+            'id': m.id,
+            'author': m.author,
+            'likes': m.likes,
+            'downloads': m.downloads,
+          },
+        )
+        .toList();
   }
 
   // Legacy method - kept for backward compatibility
   @Deprecated('Use getModelFiles which returns HFModelFile instead')
   Future<List<Map<String, String>>> getModelFilesLegacy(String repoId) async {
     final files = await getModelFiles(repoId);
-    return files.map((f) => {
-      'filename': f.filename,
-      'url': f.downloadUrl,
-      'size': f.sizeBytes.toString(),
-    }).toList();
+    return files
+        .map(
+          (f) => {
+            'filename': f.filename,
+            'url': f.downloadUrl,
+            'size': f.sizeBytes.toString(),
+          },
+        )
+        .toList();
   }
 }

@@ -22,7 +22,8 @@ class CustomPageFlip extends StatefulWidget {
   State<CustomPageFlip> createState() => CustomPageFlipState();
 }
 
-class CustomPageFlipState extends State<CustomPageFlip> with SingleTickerProviderStateMixin {
+class CustomPageFlipState extends State<CustomPageFlip>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   int _currentPage = 0;
   bool _isTurning = false;
@@ -32,26 +33,29 @@ class CustomPageFlipState extends State<CustomPageFlip> with SingleTickerProvide
   void initState() {
     super.initState();
     _currentPage = widget.initialPage;
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    )..addListener(() {
-        setState(() {});
-      })..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          setState(() {
-            _isTurning = false;
-            if (_turningForward && _currentPage < widget.pages.length - 1) {
-              _currentPage++;
-              widget.onPageFlipped?.call(_currentPage);
-            } else if (!_turningForward && _currentPage > 0) {
-              _currentPage--;
-              widget.onPageFlipped?.call(_currentPage);
+    _controller =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 600),
+          )
+          ..addListener(() {
+            setState(() {});
+          })
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) {
+              setState(() {
+                _isTurning = false;
+                if (_turningForward && _currentPage < widget.pages.length - 1) {
+                  _currentPage++;
+                  widget.onPageFlipped?.call(_currentPage);
+                } else if (!_turningForward && _currentPage > 0) {
+                  _currentPage--;
+                  widget.onPageFlipped?.call(_currentPage);
+                }
+              });
+              _controller.reset();
             }
           });
-          _controller.reset();
-        }
-      });
   }
 
   @override
@@ -127,20 +131,24 @@ class CustomPageFlipState extends State<CustomPageFlip> with SingleTickerProvide
             return Stack(
               children: [
                 // Display the current page(s)
-                Positioned.fill(
-                  child: widget.pages[_currentPage],
-                ),
-                
+                Positioned.fill(child: widget.pages[_currentPage]),
+
                 // Tap zones for navigation
                 Positioned(
-                  left: 0, top: 0, bottom: 0, width: 100,
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 100,
                   child: GestureDetector(
                     onTap: previousPage,
                     behavior: HitTestBehavior.translucent,
                   ),
                 ),
                 Positioned(
-                  right: 0, top: 0, bottom: 0, width: 100,
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 100,
                   child: GestureDetector(
                     onTap: nextPage,
                     behavior: HitTestBehavior.translucent,
@@ -152,27 +160,25 @@ class CustomPageFlipState extends State<CustomPageFlip> with SingleTickerProvide
 
           // Render animation state
           final ratio = _controller.value;
-          
+
           Widget currentPageWidget;
           Widget nextOrPrevPageWidget;
-          
+
           if (_turningForward) {
-             currentPageWidget = widget.pages[_currentPage];
-             nextOrPrevPageWidget = _currentPage + 1 < widget.pages.length 
-                 ? widget.pages[_currentPage + 1] 
-                 : (widget.backCover ?? Container(color: Colors.transparent));
+            currentPageWidget = widget.pages[_currentPage];
+            nextOrPrevPageWidget = _currentPage + 1 < widget.pages.length
+                ? widget.pages[_currentPage + 1]
+                : (widget.backCover ?? Container(color: Colors.transparent));
           } else {
-             currentPageWidget = widget.pages[_currentPage];
-             nextOrPrevPageWidget = widget.pages[_currentPage - 1];
+            currentPageWidget = widget.pages[_currentPage];
+            nextOrPrevPageWidget = widget.pages[_currentPage - 1];
           }
 
           // Build a 3D door-hinge transition with realistic shadows
           return Stack(
             children: [
               // 1. The page underneath layer (the one being revealed)
-              Positioned.fill(
-                child: nextOrPrevPageWidget,
-              ),
+              Positioned.fill(child: nextOrPrevPageWidget),
 
               // 2. The shadow cast BY the turning page ON the page underneath
               Positioned.fill(
@@ -188,12 +194,17 @@ class CustomPageFlipState extends State<CustomPageFlip> with SingleTickerProvide
               // 3. The page being turned (3D transform)
               Positioned.fill(
                 child: Transform(
-                  alignment: isTwoPageSpread 
-                      ? Alignment.center 
-                      : (_turningForward ? Alignment.centerLeft : Alignment.centerRight),
+                  alignment: isTwoPageSpread
+                      ? Alignment.center
+                      : (_turningForward
+                            ? Alignment.centerLeft
+                            : Alignment.centerRight),
                   transform: Matrix4.identity()
                     ..setEntry(3, 2, 0.001) // Perspective
-                    ..rotateY((_turningForward ? -math.pi : math.pi) * (_turningForward ? ratio : 1.0 - ratio)),
+                    ..rotateY(
+                      (_turningForward ? -math.pi : math.pi) *
+                          (_turningForward ? ratio : 1.0 - ratio),
+                    ),
                   child: ClipRect(
                     clipper: _HalfPageClipper(
                       isRightHalf: _turningForward,
@@ -203,7 +214,7 @@ class CustomPageFlipState extends State<CustomPageFlip> with SingleTickerProvide
                       children: [
                         // The actual content of the turning page
                         currentPageWidget,
-                        
+
                         // Specular highlight / self-shadowing on the turning page itself
                         Positioned.fill(
                           child: IgnorePointer(
@@ -219,14 +230,14 @@ class CustomPageFlipState extends State<CustomPageFlip> with SingleTickerProvide
                   ),
                 ),
               ),
-              
-               // Tap zones during turn (prevents multi-taps breaking state)
-               Positioned.fill(
-                  child: GestureDetector(
-                    onTap: () {},
-                    behavior: HitTestBehavior.translucent,
-                  ),
-               ),
+
+              // Tap zones during turn (prevents multi-taps breaking state)
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () {},
+                  behavior: HitTestBehavior.translucent,
+                ),
+              ),
             ],
           );
         },
@@ -244,7 +255,7 @@ class _HalfPageClipper extends CustomClipper<Rect> {
   @override
   Rect getClip(Size size) {
     if (!isTwoPageSpread) return Rect.fromLTWH(0, 0, size.width, size.height);
-    
+
     if (isRightHalf) {
       return Rect.fromLTWH(size.width / 2, 0, size.width / 2, size.height);
     } else {
@@ -254,7 +265,8 @@ class _HalfPageClipper extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_HalfPageClipper oldClipper) {
-    return oldClipper.isRightHalf != isRightHalf || oldClipper.isTwoPageSpread != isTwoPageSpread;
+    return oldClipper.isRightHalf != isRightHalf ||
+        oldClipper.isTwoPageSpread != isTwoPageSpread;
   }
 }
 
@@ -263,41 +275,51 @@ class _CastShadowPainter extends CustomPainter {
   final bool isForward;
   final bool isTwoPageSpread;
 
-  _CastShadowPainter({required this.progress, required this.isForward, required this.isTwoPageSpread});
+  _CastShadowPainter({
+    required this.progress,
+    required this.isForward,
+    required this.isTwoPageSpread,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final spineX = isTwoPageSpread ? size.width / 2 : 0.0;
     final turningWidth = isTwoPageSpread ? size.width / 2 : size.width;
-    
+
     // As page lifts, shadow grows wider but lighter
     final maxShadowWidth = turningWidth * 0.3;
     final currentShadowWidth = maxShadowWidth * math.sin(progress * math.pi);
-    
+
     final gradientOpacity = 0.4 * (1.0 - math.sin(progress * math.pi / 2));
-    
+
     if (currentShadowWidth <= 0.01) return;
 
     final paint = Paint()
       ..shader = ui.Gradient.linear(
         Offset(spineX, 0),
-        Offset(spineX + (isForward ? -currentShadowWidth : currentShadowWidth), 0),
-        [
-          Colors.black.withValues(alpha: gradientOpacity),
-          Colors.transparent,
-        ],
+        Offset(
+          spineX + (isForward ? -currentShadowWidth : currentShadowWidth),
+          0,
+        ),
+        [Colors.black.withValues(alpha: gradientOpacity), Colors.transparent],
       );
 
     canvas.drawRect(
-      isForward 
-        ? Rect.fromLTWH(spineX - currentShadowWidth, 0, currentShadowWidth, size.height)
-        : Rect.fromLTWH(spineX, 0, currentShadowWidth, size.height),
+      isForward
+          ? Rect.fromLTWH(
+              spineX - currentShadowWidth,
+              0,
+              currentShadowWidth,
+              size.height,
+            )
+          : Rect.fromLTWH(spineX, 0, currentShadowWidth, size.height),
       paint,
     );
   }
 
   @override
-  bool shouldRepaint(_CastShadowPainter oldDelegate) => oldDelegate.progress != progress || oldDelegate.isForward != isForward;
+  bool shouldRepaint(_CastShadowPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.isForward != isForward;
 }
 
 class _SelfShadowPainter extends CustomPainter {
@@ -309,7 +331,7 @@ class _SelfShadowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // Adds a shine/shadow to the bending paper curve
     final opacity = 0.3 * math.sin(progress * math.pi);
-    
+
     final paint = Paint()
       ..shader = ui.Gradient.linear(
         const Offset(0, 0),
@@ -327,5 +349,6 @@ class _SelfShadowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SelfShadowPainter oldDelegate) => oldDelegate.progress != progress;
+  bool shouldRepaint(_SelfShadowPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

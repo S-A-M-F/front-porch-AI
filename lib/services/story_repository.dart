@@ -37,7 +37,9 @@ class StoryRepository extends ChangeNotifier {
   StoryRepository(this._db);
 
   /// Update the database reference (e.g. after cloud sync replaces the DB file).
-  void updateDatabase(AppDatabase db) { _db = db; }
+  void updateDatabase(AppDatabase db) {
+    _db = db;
+  }
 
   /// Load all projects from the database.
   Future<void> loadProjects() async {
@@ -61,12 +63,16 @@ class StoryRepository extends ChangeNotifier {
   }
 
   /// Create a new story project and persist it.
-  Future<model.StoryProject> createProject({String title = 'Untitled Story'}) async {
+  Future<model.StoryProject> createProject({
+    String title = 'Untitled Story',
+  }) async {
     final project = model.StoryProject(title: title);
-    final id = await _db.insertStoryProject(StoryProjectsCompanion(
-      title: Value(title),
-      data: Value(project.toJsonString()),
-    ));
+    final id = await _db.insertStoryProject(
+      StoryProjectsCompanion(
+        title: Value(title),
+        data: Value(project.toJsonString()),
+      ),
+    );
     project.dbId = id;
     _projects.insert(0, project);
     notifyListeners();
@@ -77,12 +83,14 @@ class StoryRepository extends ChangeNotifier {
   Future<void> saveProject(model.StoryProject project) async {
     if (project.dbId == null) return;
     project.updatedAt = DateTime.now();
-    await _db.updateStoryProject(StoryProjectsCompanion(
-      id: Value(project.dbId!),
-      title: Value(project.title),
-      data: Value(project.toJsonString()),
-      updatedAt: Value(project.updatedAt),
-    ));
+    await _db.updateStoryProject(
+      StoryProjectsCompanion(
+        id: Value(project.dbId!),
+        title: Value(project.title),
+        data: Value(project.toJsonString()),
+        updatedAt: Value(project.updatedAt),
+      ),
+    );
     notifyListeners();
   }
 

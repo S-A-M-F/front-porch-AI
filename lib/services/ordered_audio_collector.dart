@@ -28,7 +28,9 @@ class OrderedAudioCollector {
   /// sequential order. The list may be empty if this chunk arrived early.
   List<File> submit(int originalIndex, File audioFile) {
     if (_seen.contains(originalIndex)) {
-      kDebugPrint('[OrderedCollector] Duplicate chunk #$originalIndex received and discarded.');
+      kDebugPrint(
+        '[OrderedCollector] Duplicate chunk #$originalIndex received and discarded.',
+      );
       return const [];
     }
     _seen.add(originalIndex);
@@ -45,14 +47,20 @@ class OrderedAudioCollector {
         // Drop the oldest buffered chunk to make room (oldest = smallest index)
         final oldestIndex = _buffer.keys.reduce((a, b) => a < b ? a : b);
         _buffer.remove(oldestIndex);
-        kDebugPrint('[OrderedCollector] Buffer full. Dropped oldest buffered chunk #$oldestIndex.');
+        kDebugPrint(
+          '[OrderedCollector] Buffer full. Dropped oldest buffered chunk #$oldestIndex.',
+        );
       }
       _buffer[originalIndex] = audioFile;
-      kDebugPrint('[OrderedCollector] Buffered future chunk #$originalIndex (next expected: $_nextExpectedIndex)');
+      kDebugPrint(
+        '[OrderedCollector] Buffered future chunk #$originalIndex (next expected: $_nextExpectedIndex)',
+      );
       return const [];
     } else {
       // Late chunk that we already passed — ignore
-      kDebugPrint('[OrderedCollector] Late chunk #$originalIndex received (already played past it).');
+      kDebugPrint(
+        '[OrderedCollector] Late chunk #$originalIndex received (already played past it).',
+      );
       return const [];
     }
   }

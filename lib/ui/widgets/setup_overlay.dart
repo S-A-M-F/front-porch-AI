@@ -42,7 +42,8 @@ class _SetupOverlayState extends State<SetupOverlay> {
     final setupService = Provider.of<SetupService>(context);
     final backendManager = Provider.of<BackendManager>(context);
 
-    if (setupService.currentStep == SetupStep.idle || setupService.currentStep == SetupStep.complete) {
+    if (setupService.currentStep == SetupStep.idle ||
+        setupService.currentStep == SetupStep.complete) {
       return const SizedBox.shrink();
     }
 
@@ -67,7 +68,11 @@ class _SetupOverlayState extends State<SetupOverlay> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.auto_awesome, color: Colors.blueAccent, size: 48),
+              const Icon(
+                Icons.auto_awesome,
+                color: Colors.blueAccent,
+                size: 48,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Starting Front Porch AI',
@@ -85,13 +90,18 @@ class _SetupOverlayState extends State<SetupOverlay> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueAccent,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   child: const Text('Retry Setup'),
                 ),
                 TextButton(
                   onPressed: () => setupService.reset(),
-                  child: const Text('Continue to App anyway', style: TextStyle(color: Colors.white54)),
+                  child: const Text(
+                    'Continue to App anyway',
+                    style: TextStyle(color: Colors.white54),
+                  ),
                 ),
               ],
             ],
@@ -101,7 +111,11 @@ class _SetupOverlayState extends State<SetupOverlay> {
     );
   }
 
-  Widget _buildStepContent(SetupService setup, BackendManager backend, BuildContext context) {
+  Widget _buildStepContent(
+    SetupService setup,
+    BackendManager backend,
+    BuildContext context,
+  ) {
     switch (setup.currentStep) {
       case SetupStep.checkingBackend:
         return _buildStatusRow('Checking installation...', true);
@@ -113,7 +127,9 @@ class _SetupOverlayState extends State<SetupOverlay> {
             LinearProgressIndicator(
               value: backend.downloadProgress,
               backgroundColor: Colors.white10,
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Colors.blueAccent,
+              ),
             ),
             const SizedBox(height: 12),
             Text(
@@ -150,7 +166,10 @@ class _SetupOverlayState extends State<SetupOverlay> {
           const SizedBox(
             width: 16,
             height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.blueAccent,
+            ),
           ),
         if (spinning) const SizedBox(width: 12),
         Text(text, style: const TextStyle(color: Colors.white)),

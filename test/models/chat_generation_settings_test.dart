@@ -46,10 +46,7 @@ void main() {
 
   group('toJson', () {
     test('only includes non-null fields', () {
-      final settings = ChatGenerationSettings(
-        temperature: 0.8,
-        maxLength: 500,
-      );
+      final settings = ChatGenerationSettings(temperature: 0.8, maxLength: 500);
 
       final json = settings.toJson();
 
@@ -61,9 +58,7 @@ void main() {
     });
 
     test('toJson includes boolean field', () {
-      final settings = ChatGenerationSettings(
-        reasoningEnabled: true,
-      );
+      final settings = ChatGenerationSettings(reasoningEnabled: true);
 
       final json = settings.toJson();
       expect(json['reasoning_enabled'], isTrue);
@@ -232,10 +227,7 @@ void main() {
     });
 
     test('fromJson handles null values gracefully', () {
-      final json = {
-        'temperature': null,
-        'maxLength': null,
-      };
+      final json = {'temperature': null, 'maxLength': null};
 
       final settings = ChatGenerationSettings.fromJson(json);
 

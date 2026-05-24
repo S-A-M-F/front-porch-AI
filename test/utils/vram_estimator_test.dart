@@ -151,16 +151,28 @@ void main() {
 
   group('QuantType', () {
     test('parses common quantization types from filenames', () {
-      expect(QuantType.fromFilename('model-Q4_K_M.gguf'), equals(QuantType.q4K));
-      expect(QuantType.fromFilename('model-Q5_K_S.gguf'), equals(QuantType.q5K));
+      expect(
+        QuantType.fromFilename('model-Q4_K_M.gguf'),
+        equals(QuantType.q4K),
+      );
+      expect(
+        QuantType.fromFilename('model-Q5_K_S.gguf'),
+        equals(QuantType.q5K),
+      );
       expect(QuantType.fromFilename('model-Q8_0.gguf'), equals(QuantType.q8_0));
       expect(QuantType.fromFilename('model-Q2_K.gguf'), equals(QuantType.q2K));
-      expect(QuantType.fromFilename('model-IQ2_XXS.gguf'), equals(QuantType.iq2XXS));
+      expect(
+        QuantType.fromFilename('model-IQ2_XXS.gguf'),
+        equals(QuantType.iq2XXS),
+      );
       expect(QuantType.fromFilename('model-FP16.gguf'), equals(QuantType.fp16));
     });
 
     test('returns unknown for unrecognized quantization', () {
-      expect(QuantType.fromFilename('model-unknown.gguf'), equals(QuantType.unknown));
+      expect(
+        QuantType.fromFilename('model-unknown.gguf'),
+        equals(QuantType.unknown),
+      );
     });
 
     test('provides correct bytes per param estimates', () {

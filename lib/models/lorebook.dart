@@ -48,7 +48,11 @@ class LorebookEntry {
     return {
       'name': name,
       'key': key,
-      'keys': key.split(',').map((k) => k.trim()).where((k) => k.isNotEmpty).toList(),
+      'keys': key
+          .split(',')
+          .map((k) => k.trim())
+          .where((k) => k.isNotEmpty)
+          .toList(),
       'content': content,
       'enabled': enabled,
       'constant': constant,
@@ -84,9 +88,8 @@ class LorebookEntry {
     // Chub: 'name' field
     // SillyTavern: 'comment' field
     // Front Porch: 'name' field
-    final String name = json['name']?.toString() ??
-        json['comment']?.toString() ??
-        '';
+    final String name =
+        json['name']?.toString() ?? json['comment']?.toString() ?? '';
 
     // ── Extract enabled state ─────────────────────────────────────────────
     // Chub: 'enabled' (true = enabled)
@@ -164,9 +167,7 @@ class Lorebook {
   Lorebook({required this.entries});
 
   Map<String, dynamic> toJson() {
-    return {
-      'entries': entries.map((e) => e.toJson()).toList(),
-    };
+    return {'entries': entries.map((e) => e.toJson()).toList()};
   }
 
   factory Lorebook.fromJson(Map<String, dynamic> json) {

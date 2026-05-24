@@ -58,7 +58,8 @@ class CharacterCreatorPage extends StatefulWidget {
 
 class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   // Step tracking
-  int _currentStep = 0; // 0=setup, 1=mode select, 2=config, 3=generating, 4=review
+  int _currentStep =
+      0; // 0=setup, 1=mode select, 2=config, 3=generating, 4=review
   CreatorMode _creatorMode = CreatorMode.automated;
 
   // Step 1 — Input controllers
@@ -155,9 +156,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 24),
+            Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.orangeAccent,
+              size: 24,
+            ),
             SizedBox(width: 10),
-            Text('Start New Character?', style: TextStyle(color: Colors.white, fontSize: 18)),
+            Text(
+              'Start New Character?',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
           ],
         ),
         content: const Text(
@@ -167,7 +175,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -378,87 +389,177 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   ];
 
   static const _nsfwRelationships = {
-    'Love Interest', 'Secret Admirer', 'Forbidden Romance',
-    'FWB', 'Ex-lover', 'Arranged Marriage',
-    'Fake Dating', 'Bodyguard',
+    'Love Interest',
+    'Secret Admirer',
+    'Forbidden Romance',
+    'FWB',
+    'Ex-lover',
+    'Arranged Marriage',
+    'Fake Dating',
+    'Bodyguard',
   };
 
   static const _archetypePresets = {
     'Tsundere': {
-      'concept': 'A sharp-tongued person who hides their caring nature behind a cold exterior, denying their feelings while secretly looking out for {{user}}',
-      'keywords': 'tsundere, sharp-tongued, secretly caring, stubborn, easily flustered',
+      'concept':
+          'A sharp-tongued person who hides their caring nature behind a cold exterior, denying their feelings while secretly looking out for {{user}}',
+      'keywords':
+          'tsundere, sharp-tongued, secretly caring, stubborn, easily flustered',
     },
     'Yandere': {
-      'concept': 'An obsessively devoted person whose love borders on dangerous possessiveness, willing to do anything to keep {{user}} close',
-      'keywords': 'yandere, obsessive, possessive, devoted, unstable, sweet on the surface',
+      'concept':
+          'An obsessively devoted person whose love borders on dangerous possessiveness, willing to do anything to keep {{user}} close',
+      'keywords':
+          'yandere, obsessive, possessive, devoted, unstable, sweet on the surface',
     },
     'Kuudere': {
-      'concept': 'A stoic and emotionally reserved individual who rarely shows feelings, but whose rare moments of warmth are deeply meaningful',
+      'concept':
+          'A stoic and emotionally reserved individual who rarely shows feelings, but whose rare moments of warmth are deeply meaningful',
       'keywords': 'kuudere, stoic, calm, reserved, analytical, quietly caring',
     },
     'Femme Fatale': {
-      'concept': 'A dangerously alluring and manipulative figure who uses charm and wit as weapons, always three steps ahead',
-      'keywords': 'seductive, cunning, confident, dangerous, mysterious, manipulative',
+      'concept':
+          'A dangerously alluring and manipulative figure who uses charm and wit as weapons, always three steps ahead',
+      'keywords':
+          'seductive, cunning, confident, dangerous, mysterious, manipulative',
     },
     'Dark Lord': {
-      'concept': 'A powerful and charismatic ruler of dark forces, whose iron will conceals a complex past and a surprising code of honor',
-      'keywords': 'commanding, ruthless, charismatic, intelligent, dark humor, powerful',
+      'concept':
+          'A powerful and charismatic ruler of dark forces, whose iron will conceals a complex past and a surprising code of honor',
+      'keywords':
+          'commanding, ruthless, charismatic, intelligent, dark humor, powerful',
     },
     'Mentor': {
-      'concept': 'A wise and experienced guide who mentors {{user}} through challenges, offering cryptic advice and hard-earned wisdom',
+      'concept':
+          'A wise and experienced guide who mentors {{user}} through challenges, offering cryptic advice and hard-earned wisdom',
       'keywords': 'wise, patient, cryptic, experienced, protective, tough love',
     },
     'Rival': {
-      'concept': 'A fiercely competitive adversary who pushes {{user}} to their limits, respecting strength while refusing to lose',
-      'keywords': 'competitive, proud, skilled, determined, begrudging respect, ambitious',
+      'concept':
+          'A fiercely competitive adversary who pushes {{user}} to their limits, respecting strength while refusing to lose',
+      'keywords':
+          'competitive, proud, skilled, determined, begrudging respect, ambitious',
     },
     'Best Friend': {
-      'concept': 'A loyal and easygoing companion who always has {{user}}\'s back, bringing laughter and genuine support to every situation',
+      'concept':
+          'A loyal and easygoing companion who always has {{user}}\'s back, bringing laughter and genuine support to every situation',
       'keywords': 'loyal, funny, supportive, easygoing, ride-or-die, honest',
     },
     'The Healer': {
-      'concept': 'A gentle and empathetic soul with healing abilities who tends to everyone\'s wounds but their own, carrying quiet burdens',
-      'keywords': 'gentle, empathetic, selfless, nurturing, quietly strong, burdened',
+      'concept':
+          'A gentle and empathetic soul with healing abilities who tends to everyone\'s wounds but their own, carrying quiet burdens',
+      'keywords':
+          'gentle, empathetic, selfless, nurturing, quietly strong, burdened',
     },
     'Rogue': {
-      'concept': 'A charming and morally grey trickster who lives by their own rules, stealing hearts as easily as coin purses',
-      'keywords': 'charming, witty, roguish, morally grey, quick on their feet, flirtatious',
+      'concept':
+          'A charming and morally grey trickster who lives by their own rules, stealing hearts as easily as coin purses',
+      'keywords':
+          'charming, witty, roguish, morally grey, quick on their feet, flirtatious',
     },
     'Chosen One': {
-      'concept': 'A reluctant hero burdened by an ancient prophecy, thrust into a destiny they never asked for while just wanting a normal life',
-      'keywords': 'reluctant, burdened, humble, determined, conflicted, growing into power',
+      'concept':
+          'A reluctant hero burdened by an ancient prophecy, thrust into a destiny they never asked for while just wanting a normal life',
+      'keywords':
+          'reluctant, burdened, humble, determined, conflicted, growing into power',
     },
     'The Ex': {
-      'concept': 'A former flame who reappears unexpectedly in {{user}}\'s life, carrying unresolved tension, lingering feelings, and unanswered questions',
-      'keywords': 'complicated, nostalgic, guarded, magnetic, unresolved, bittersweet',
+      'concept':
+          'A former flame who reappears unexpectedly in {{user}}\'s life, carrying unresolved tension, lingering feelings, and unanswered questions',
+      'keywords':
+          'complicated, nostalgic, guarded, magnetic, unresolved, bittersweet',
     },
     'Dandere': {
-      'concept': 'A painfully shy and quiet soul who struggles to express themselves, but reveals incredible sweetness and depth once they feel safe enough to open up',
-      'keywords': 'dandere, shy, quiet, gentle, sweet, anxious, secretly passionate',
+      'concept':
+          'A painfully shy and quiet soul who struggles to express themselves, but reveals incredible sweetness and depth once they feel safe enough to open up',
+      'keywords':
+          'dandere, shy, quiet, gentle, sweet, anxious, secretly passionate',
     },
     'Genki': {
-      'concept': 'An unstoppable ball of infectious energy and optimism who drags everyone into adventures, refuses to let anyone be sad, and lights up every room',
-      'keywords': 'genki, energetic, optimistic, loud, cheerful, stubborn positivity, adventurous',
+      'concept':
+          'An unstoppable ball of infectious energy and optimism who drags everyone into adventures, refuses to let anyone be sad, and lights up every room',
+      'keywords':
+          'genki, energetic, optimistic, loud, cheerful, stubborn positivity, adventurous',
     },
     'Ojou-sama': {
-      'concept': 'A sheltered noble or wealthy heir with an imperious demeanor and signature \"ohoho\" laugh, who secretly yearns for normal friendships and real connections',
-      'keywords': 'ojou-sama, elegant, prideful, sheltered, secretly lonely, dramatic, refined',
+      'concept':
+          'A sheltered noble or wealthy heir with an imperious demeanor and signature \"ohoho\" laugh, who secretly yearns for normal friendships and real connections',
+      'keywords':
+          'ojou-sama, elegant, prideful, sheltered, secretly lonely, dramatic, refined',
     },
   };
 
   // ── Appearance Options (SFW) ──
-  static const _bodyTypes = ['Petite', 'Slim', 'Athletic', 'Average', 'Curvy', 'Muscular', 'Plus-size', 'Tall & Lanky'];
+  static const _bodyTypes = [
+    'Petite',
+    'Slim',
+    'Athletic',
+    'Average',
+    'Curvy',
+    'Muscular',
+    'Plus-size',
+    'Tall & Lanky',
+  ];
 
   // ── Race / Species Options ──
   static const _raceOptions = [
-    'Human', 'Elven', 'Dark Elf', 'Beastkin', 'Demon', 'Angel',
-    'Vampire', 'Lycan', 'Dragon-blood', 'Fae', 'Merfolk',
-    'Spirit', 'Undead', 'Elemental', 'Android', 'Alien', 'Monster',
+    'Human',
+    'Elven',
+    'Dark Elf',
+    'Beastkin',
+    'Demon',
+    'Angel',
+    'Vampire',
+    'Lycan',
+    'Dragon-blood',
+    'Fae',
+    'Merfolk',
+    'Spirit',
+    'Undead',
+    'Elemental',
+    'Android',
+    'Alien',
+    'Monster',
   ];
-  static const _hairLengths = ['Bald/Shaved', 'Pixie/Short', 'Medium', 'Long', 'Very Long'];
-  static const _hairStyles = ['Straight', 'Wavy', 'Curly', 'Braided', 'Ponytail', 'Messy/Wild', 'Twin Tails'];
-  static const _skinTones = ['Pale', 'Fair', 'Olive', 'Tan', 'Brown', 'Dark', 'Fantasy'];
-  static const _notableFeatureOptions = ['Glasses', 'Freckles', 'Scars', 'Tattoos', 'Piercings', 'Heterochromia', 'Fangs', 'Horns', 'Wings', 'Tail', 'Elf Ears', 'Cat Ears'];
+  static const _hairLengths = [
+    'Bald/Shaved',
+    'Pixie/Short',
+    'Medium',
+    'Long',
+    'Very Long',
+  ];
+  static const _hairStyles = [
+    'Straight',
+    'Wavy',
+    'Curly',
+    'Braided',
+    'Ponytail',
+    'Messy/Wild',
+    'Twin Tails',
+  ];
+  static const _skinTones = [
+    'Pale',
+    'Fair',
+    'Olive',
+    'Tan',
+    'Brown',
+    'Dark',
+    'Fantasy',
+  ];
+  static const _notableFeatureOptions = [
+    'Glasses',
+    'Freckles',
+    'Scars',
+    'Tattoos',
+    'Piercings',
+    'Heterochromia',
+    'Fangs',
+    'Horns',
+    'Wings',
+    'Tail',
+    'Elf Ears',
+    'Cat Ears',
+  ];
   static const _absCoreOptions = ['Soft', 'Toned', 'Defined', 'Ripped'];
   static const _thighOptions = ['Slim', 'Average', 'Thick', 'Thunder'];
   static const _hipOptions = ['Narrow', 'Average', 'Wide', 'Extra Wide'];
@@ -468,15 +569,65 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   // ── NSFW Options ──
   static const _chestSizes = ['Flat', 'Small', 'Medium', 'Large', 'Huge'];
   static const _buttSizes = ['Flat', 'Small', 'Medium', 'Large', 'Huge'];
-  static const _experienceOptions = ['Innocent', 'Virgin', 'Curious', 'Experienced', 'Insatiable'];
+  static const _experienceOptions = [
+    'Innocent',
+    'Virgin',
+    'Curious',
+    'Experienced',
+    'Insatiable',
+  ];
   static const _dominanceOptions = ['Submissive', 'Switch', 'Dominant'];
-  static const _kinkOptions = ['Praise', 'Degradation', 'Biting/Marking', 'Bondage', 'Exhibitionism', 'Voyeurism', 'Facesitting', 'Smothering', 'Breath Play', 'Breeding', 'Jealousy/Possession'];
-  static const _outfitVibes = ['Revealing', 'Lingerie', 'Uniform', 'Leather', 'Barely There'];
+  static const _kinkOptions = [
+    'Praise',
+    'Degradation',
+    'Biting/Marking',
+    'Bondage',
+    'Exhibitionism',
+    'Voyeurism',
+    'Facesitting',
+    'Smothering',
+    'Breath Play',
+    'Breeding',
+    'Jealousy/Possession',
+  ];
+  static const _outfitVibes = [
+    'Revealing',
+    'Lingerie',
+    'Uniform',
+    'Leather',
+    'Barely There',
+  ];
 
   // ── Backstory Options ──
-  static const _backstoryOrigins = ['Orphan', 'Noble Birth', 'Self-Made', 'Exile/Outcast', 'Military/Warrior', 'Scholar/Academic', 'Criminal Past', 'Mysterious/Unknown', 'Supernatural Origin', 'Common Folk'];
-  static const _backstoryTones = ['Tragic', 'Heroic', 'Comedic', 'Dark/Gritty', 'Wholesome', 'Mysterious', 'Redemptive'];
-  static const _backstoryEras = ['Ancient', 'Medieval', 'Victorian', 'Modern', 'Futuristic', 'Timeless/Fantasy'];
+  static const _backstoryOrigins = [
+    'Orphan',
+    'Noble Birth',
+    'Self-Made',
+    'Exile/Outcast',
+    'Military/Warrior',
+    'Scholar/Academic',
+    'Criminal Past',
+    'Mysterious/Unknown',
+    'Supernatural Origin',
+    'Common Folk',
+  ];
+  static const _backstoryTones = [
+    'Tragic',
+    'Heroic',
+    'Comedic',
+    'Dark/Gritty',
+    'Wholesome',
+    'Mysterious',
+    'Redemptive',
+  ];
+  static const _backstoryEras = [
+    'Ancient',
+    'Medieval',
+    'Victorian',
+    'Modern',
+    'Futuristic',
+    'Timeless/Fantasy',
+  ];
 
   // ── Generation Detail Options ──
   static const _generationDetailOptions = {
@@ -620,23 +771,34 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         _keywordsController.text = prefs.getString(_prefKeywords) ?? '';
         _artStyle = prefs.getString(_prefArtStyle) ?? 'Anime';
         _selectedModelId = prefs.getString(_prefModel) ?? '';
-        _greetingLength = prefs.getString(_prefGreetingLength) ?? 'Medium (2-4 paragraphs)';
+        _greetingLength =
+            prefs.getString(_prefGreetingLength) ?? 'Medium (2-4 paragraphs)';
         _altGreetingCount = prefs.getInt(_prefAltCount) ?? 2;
         final savedTones = prefs.getString(_prefTone) ?? 'Neutral';
-        _selectedTones = savedTones.split(',').where((t) => t.isNotEmpty).toSet();
+        _selectedTones = savedTones
+            .split(',')
+            .where((t) => t.isNotEmpty)
+            .toSet();
         if (_selectedTones.isEmpty) _selectedTones = {'Neutral'};
         _generateLorebook = prefs.getBool(_prefLorebook) ?? true;
         _ageController.text = prefs.getString(_prefAge) ?? '';
         _sexController.text = prefs.getString(_prefSex) ?? '';
         _relationshipController.text = prefs.getString(_prefRelationship) ?? '';
         _selectedPersonaId = prefs.getString(_prefPersona) ?? '';
-        _quickScenarioController.text = prefs.getString(_prefQuickScenario) ?? '';
+        _quickScenarioController.text =
+            prefs.getString(_prefQuickScenario) ?? '';
 
         final savedCategories = prefs.getString(_prefLoreCategories) ?? '';
-        _selectedLoreCategories = savedCategories.split(',').where((c) => c.isNotEmpty).toSet();
+        _selectedLoreCategories = savedCategories
+            .split(',')
+            .where((c) => c.isNotEmpty)
+            .toSet();
         _loreDepth = prefs.getString(_prefLoreDepth) ?? 'Standard';
         final savedRelationships = prefs.getString(_prefRelationships) ?? '';
-        _selectedRelationships = savedRelationships.split(',').where((r) => r.isNotEmpty).toSet();
+        _selectedRelationships = savedRelationships
+            .split(',')
+            .where((r) => r.isNotEmpty)
+            .toSet();
         _customRelationship = prefs.getString(_prefCustomRelationship) ?? '';
         _nsfwEnabled = prefs.getBool(_prefNsfwEnabled) ?? false;
         _bodyType = prefs.getString(_prefBodyType) ?? '';
@@ -646,7 +808,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         _hairStyle = prefs.getString(_prefHairStyle) ?? '';
         _skinTone = prefs.getString(_prefSkinTone) ?? '';
         final savedFeatures = prefs.getString(_prefNotableFeatures) ?? '';
-        _notableFeatures = savedFeatures.split(',').where((f) => f.isNotEmpty).toSet();
+        _notableFeatures = savedFeatures
+            .split(',')
+            .where((f) => f.isNotEmpty)
+            .toSet();
         _absCore = prefs.getString(_prefAbsCore) ?? '';
         _thighs = prefs.getString(_prefThighs) ?? '';
         _hips = prefs.getString(_prefHips) ?? '';
@@ -657,38 +822,57 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         _experience = prefs.getString(_prefExperience) ?? '';
         _dominance = prefs.getString(_prefDominance) ?? '';
         final savedKinks = prefs.getString(_prefKinks) ?? '';
-        _selectedKinks = savedKinks.split(',').where((k) => k.isNotEmpty).toSet();
+        _selectedKinks = savedKinks
+            .split(',')
+            .where((k) => k.isNotEmpty)
+            .toSet();
         _customKinksController.text = prefs.getString(_prefCustomKinks) ?? '';
         _outfitVibe = prefs.getString(_prefOutfitVibe) ?? '';
-        _generationDetail = prefs.getString(_prefGenerationDetail) ?? 'Standard';
+        _generationDetail =
+            prefs.getString(_prefGenerationDetail) ?? 'Standard';
         _backstoryOrigin = prefs.getString(_prefBackstoryOrigin) ?? '';
         _backstoryTone = prefs.getString(_prefBackstoryTone) ?? '';
         _backstoryEra = prefs.getString(_prefBackstoryEra) ?? '';
-        _backstoryNotesController.text = prefs.getString(_prefBackstoryNotes) ?? '';
+        _backstoryNotesController.text =
+            prefs.getString(_prefBackstoryNotes) ?? '';
         _conceptGenerated = prefs.getBool(_prefConceptGenerated) ?? false;
 
         // Guided mode fields
         final savedMode = prefs.getString(_prefCreatorMode) ?? 'automated';
-        _creatorMode = savedMode == 'guided' ? CreatorMode.guided : CreatorMode.automated;
+        _creatorMode = savedMode == 'guided'
+            ? CreatorMode.guided
+            : CreatorMode.automated;
         _guidedVisionController.text = prefs.getString(_prefGuidedVision) ?? '';
-        _guidedAppearanceController.text = prefs.getString(_prefGuidedAppearance) ?? '';
+        _guidedAppearanceController.text =
+            prefs.getString(_prefGuidedAppearance) ?? '';
         _guidedHairController.text = prefs.getString(_prefGuidedHair) ?? '';
-        _guidedFeaturesController.text = prefs.getString(_prefGuidedFeatures) ?? '';
+        _guidedFeaturesController.text =
+            prefs.getString(_prefGuidedFeatures) ?? '';
         _guidedRaceController.text = prefs.getString(_prefGuidedRace) ?? '';
-        _guidedPersonalityController.text = prefs.getString(_prefGuidedPersonality) ?? '';
+        _guidedPersonalityController.text =
+            prefs.getString(_prefGuidedPersonality) ?? '';
         _guidedSpeechController.text = prefs.getString(_prefGuidedSpeech) ?? '';
         _guidedSecretController.text = prefs.getString(_prefGuidedSecret) ?? '';
         _guidedOriginController.text = prefs.getString(_prefGuidedOrigin) ?? '';
-        _guidedSettingController.text = prefs.getString(_prefGuidedSetting) ?? '';
+        _guidedSettingController.text =
+            prefs.getString(_prefGuidedSetting) ?? '';
         _guidedToneController.text = prefs.getString(_prefGuidedTone) ?? '';
-        _guidedRelDynamicController.text = prefs.getString(_prefGuidedRelDynamic) ?? '';
-        _guidedRelScenarioController.text = prefs.getString(_prefGuidedRelScenario) ?? '';
-        _guidedNsfwBodyController.text = prefs.getString(_prefGuidedNsfwBody) ?? '';
-        _guidedNsfwExpController.text = prefs.getString(_prefGuidedNsfwExp) ?? '';
-        _guidedNsfwDomController.text = prefs.getString(_prefGuidedNsfwDom) ?? '';
-        _guidedNsfwKinksController.text = prefs.getString(_prefGuidedNsfwKinks) ?? '';
-        _guidedNsfwClothingController.text = prefs.getString(_prefGuidedNsfwClothing) ?? '';
-        _guidedNsfwPersonalityController.text = prefs.getString(_prefGuidedNsfwPersonality) ?? '';
+        _guidedRelDynamicController.text =
+            prefs.getString(_prefGuidedRelDynamic) ?? '';
+        _guidedRelScenarioController.text =
+            prefs.getString(_prefGuidedRelScenario) ?? '';
+        _guidedNsfwBodyController.text =
+            prefs.getString(_prefGuidedNsfwBody) ?? '';
+        _guidedNsfwExpController.text =
+            prefs.getString(_prefGuidedNsfwExp) ?? '';
+        _guidedNsfwDomController.text =
+            prefs.getString(_prefGuidedNsfwDom) ?? '';
+        _guidedNsfwKinksController.text =
+            prefs.getString(_prefGuidedNsfwKinks) ?? '';
+        _guidedNsfwClothingController.text =
+            prefs.getString(_prefGuidedNsfwClothing) ?? '';
+        _guidedNsfwPersonalityController.text =
+            prefs.getString(_prefGuidedNsfwPersonality) ?? '';
       });
     }
   }
@@ -710,7 +894,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     await prefs.setString(_prefPersona, _selectedPersonaId);
     await prefs.setString(_prefQuickScenario, _quickScenarioController.text);
 
-    await prefs.setString(_prefLoreCategories, _selectedLoreCategories.join(','));
+    await prefs.setString(
+      _prefLoreCategories,
+      _selectedLoreCategories.join(','),
+    );
     await prefs.setString(_prefLoreDepth, _loreDepth);
     await prefs.setString(_prefRelationships, _selectedRelationships.join(','));
     await prefs.setString(_prefCustomRelationship, _customRelationship);
@@ -742,26 +929,50 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     await prefs.setBool(_prefConceptGenerated, _conceptGenerated);
 
     // Guided mode fields
-    await prefs.setString(_prefCreatorMode, _creatorMode == CreatorMode.guided ? 'guided' : 'automated');
+    await prefs.setString(
+      _prefCreatorMode,
+      _creatorMode == CreatorMode.guided ? 'guided' : 'automated',
+    );
     await prefs.setString(_prefGuidedVision, _guidedVisionController.text);
-    await prefs.setString(_prefGuidedAppearance, _guidedAppearanceController.text);
+    await prefs.setString(
+      _prefGuidedAppearance,
+      _guidedAppearanceController.text,
+    );
     await prefs.setString(_prefGuidedHair, _guidedHairController.text);
     await prefs.setString(_prefGuidedFeatures, _guidedFeaturesController.text);
     await prefs.setString(_prefGuidedRace, _guidedRaceController.text);
-    await prefs.setString(_prefGuidedPersonality, _guidedPersonalityController.text);
+    await prefs.setString(
+      _prefGuidedPersonality,
+      _guidedPersonalityController.text,
+    );
     await prefs.setString(_prefGuidedSpeech, _guidedSpeechController.text);
     await prefs.setString(_prefGuidedSecret, _guidedSecretController.text);
     await prefs.setString(_prefGuidedOrigin, _guidedOriginController.text);
     await prefs.setString(_prefGuidedSetting, _guidedSettingController.text);
     await prefs.setString(_prefGuidedTone, _guidedToneController.text);
-    await prefs.setString(_prefGuidedRelDynamic, _guidedRelDynamicController.text);
-    await prefs.setString(_prefGuidedRelScenario, _guidedRelScenarioController.text);
+    await prefs.setString(
+      _prefGuidedRelDynamic,
+      _guidedRelDynamicController.text,
+    );
+    await prefs.setString(
+      _prefGuidedRelScenario,
+      _guidedRelScenarioController.text,
+    );
     await prefs.setString(_prefGuidedNsfwBody, _guidedNsfwBodyController.text);
     await prefs.setString(_prefGuidedNsfwExp, _guidedNsfwExpController.text);
     await prefs.setString(_prefGuidedNsfwDom, _guidedNsfwDomController.text);
-    await prefs.setString(_prefGuidedNsfwKinks, _guidedNsfwKinksController.text);
-    await prefs.setString(_prefGuidedNsfwClothing, _guidedNsfwClothingController.text);
-    await prefs.setString(_prefGuidedNsfwPersonality, _guidedNsfwPersonalityController.text);
+    await prefs.setString(
+      _prefGuidedNsfwKinks,
+      _guidedNsfwKinksController.text,
+    );
+    await prefs.setString(
+      _prefGuidedNsfwClothing,
+      _guidedNsfwClothingController.text,
+    );
+    await prefs.setString(
+      _prefGuidedNsfwPersonality,
+      _guidedNsfwPersonalityController.text,
+    );
   }
 
   Future<void> _loadAvailableModels() async {
@@ -812,12 +1023,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       return;
     }
     try {
-      final files = modelsDir
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.gguf'))
-          .toList()
-        ..sort((a, b) => p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()));
+      final files =
+          modelsDir
+              .listSync(recursive: true)
+              .whereType<File>()
+              .where((f) => f.path.toLowerCase().endsWith('.gguf'))
+              .toList()
+            ..sort(
+              (a, b) => p
+                  .basename(a.path)
+                  .toLowerCase()
+                  .compareTo(p.basename(b.path).toLowerCase()),
+            );
       setState(() {
         _localModels = files;
         // Default to last used model if available
@@ -855,7 +1072,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       String? execPath;
       if (binDir.existsSync()) {
         for (final f in binDir.listSync()) {
-          if (f is File && (f.path.contains('koboldcpp') || f.path.contains('KoboldCpp'))) {
+          if (f is File &&
+              (f.path.contains('koboldcpp') || f.path.contains('KoboldCpp'))) {
             execPath = f.path;
             break;
           }
@@ -937,7 +1155,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     _exampleDialogueController.dispose();
     _systemPromptController.dispose();
     _quickScenarioController.dispose();
-    
+
     // Guided controllers
     _guidedVisionController.dispose();
     _guidedAppearanceController.dispose();
@@ -999,18 +1217,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         child: _currentStep == 0
             ? _buildSetupStep()
             : _currentStep == 1
-                ? _buildModeSelectStep()
-                : _currentStep == 2
-                    ? (_creatorMode == CreatorMode.guided
-                        ? _buildGuidedConfigStep()
-                        : _creatorMode == CreatorMode.quick
-                            ? _buildQuickConfigStep()
-                            : _buildConfigStep())
-                    : _currentStep == 3
-                        ? _buildGeneratingStep()
-                        : _currentStep == 4
-                            ? _buildRealismStep()
-                            : _buildReviewStep(),
+            ? _buildModeSelectStep()
+            : _currentStep == 2
+            ? (_creatorMode == CreatorMode.guided
+                  ? _buildGuidedConfigStep()
+                  : _creatorMode == CreatorMode.quick
+                  ? _buildQuickConfigStep()
+                  : _buildConfigStep())
+            : _currentStep == 3
+            ? _buildGeneratingStep()
+            : _currentStep == 4
+            ? _buildRealismStep()
+            : _buildReviewStep(),
       ),
     );
   }
@@ -1046,16 +1264,30 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: isActive ? Colors.blueAccent : Colors.white12,
-            border: isCurrent ? Border.all(color: Colors.white, width: 2) : null,
+            border: isCurrent
+                ? Border.all(color: Colors.white, width: 2)
+                : null,
           ),
           child: Center(
             child: isActive && !isCurrent
                 ? const Icon(Icons.check, size: 14, color: Colors.white)
-                : Text('${step + 1}', style: TextStyle(fontSize: 11, color: isActive ? Colors.white : Colors.white38)),
+                : Text(
+                    '${step + 1}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isActive ? Colors.white : Colors.white38,
+                    ),
+                  ),
           ),
         ),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 10, color: isActive ? Colors.white70 : Colors.white30)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: isActive ? Colors.white70 : Colors.white30,
+          ),
+        ),
       ],
     );
   }
@@ -1089,12 +1321,20 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // Header
               const Text(
                 'Backend & Model Setup',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Choose your AI backend and model before configuring your character.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 32),
 
@@ -1110,7 +1350,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       isSelected: isKobold,
                       onTap: () async {
                         if (!isKobold) {
-                          await llmProvider.setActiveBackend(BackendType.kobold);
+                          await llmProvider.setActiveBackend(
+                            BackendType.kobold,
+                          );
                           _scanLocalModels();
                           setState(() {});
                         }
@@ -1125,7 +1367,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       isSelected: !isKobold,
                       onTap: () async {
                         if (isKobold) {
-                          await llmProvider.setActiveBackend(BackendType.openRouter);
+                          await llmProvider.setActiveBackend(
+                            BackendType.openRouter,
+                          );
                           _loadAvailableModels();
                           setState(() {});
                         }
@@ -1146,9 +1390,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
-                        Container(width: 8, height: 8, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.green)),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.green,
+                          ),
+                        ),
                         const SizedBox(width: 8),
-                        Text('KoboldCpp is running', style: TextStyle(color: Colors.green.shade300, fontSize: 12)),
+                        Text(
+                          'KoboldCpp is running',
+                          style: TextStyle(
+                            color: Colors.green.shade300,
+                            fontSize: 12,
+                          ),
+                        ),
                       ],
                     ),
                   )
@@ -1157,9 +1414,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
-                        Container(width: 8, height: 8, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.red)),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.red,
+                          ),
+                        ),
                         const SizedBox(width: 8),
-                        const Text('KoboldCpp is not running', style: TextStyle(color: Colors.red, fontSize: 12)),
+                        const Text(
+                          'KoboldCpp is not running',
+                          style: TextStyle(color: Colors.red, fontSize: 12),
+                        ),
                       ],
                     ),
                   ),
@@ -1178,18 +1445,32 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.folder_open, color: Colors.white24, size: 32),
+                                const Icon(
+                                  Icons.folder_open,
+                                  color: Colors.white24,
+                                  size: 32,
+                                ),
                                 const SizedBox(height: 8),
-                                const Text('No .gguf models found', style: TextStyle(color: Colors.white38)),
+                                const Text(
+                                  'No .gguf models found',
+                                  style: TextStyle(color: Colors.white38),
+                                ),
                                 const SizedBox(height: 4),
-                                Text('Place models in: ${Provider.of<StorageService>(context, listen: false).modelsDir.path}',
-                                    style: const TextStyle(color: Colors.white24, fontSize: 11)),
+                                Text(
+                                  'Place models in: ${Provider.of<StorageService>(context, listen: false).modelsDir.path}',
+                                  style: const TextStyle(
+                                    color: Colors.white24,
+                                    fontSize: 11,
+                                  ),
+                                ),
                                 const SizedBox(height: 8),
                                 TextButton.icon(
                                   onPressed: _scanLocalModels,
                                   icon: const Icon(Icons.refresh, size: 14),
                                   label: const Text('Rescan'),
-                                  style: TextButton.styleFrom(foregroundColor: Colors.blueAccent),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.blueAccent,
+                                  ),
                                 ),
                               ],
                             ),
@@ -1202,102 +1483,176 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             final file = _localModels[index] as File;
                             final name = p.basename(file.path);
                             final sizeBytes = file.lengthSync();
-                            final sizeGB = (sizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(1);
-                            final isSelected = file.path == _selectedLocalModelPath;
+                            final sizeGB = (sizeBytes / (1024 * 1024 * 1024))
+                                .toStringAsFixed(1);
+                            final isSelected =
+                                file.path == _selectedLocalModelPath;
                             return ListTile(
                               dense: true,
                               selected: isSelected,
-                              selectedTileColor: Colors.blueAccent.withValues(alpha: 0.15),
-                              leading: Icon(
-                                isSelected ? Icons.check_circle : Icons.description,
-                                size: 18,
-                                color: isSelected ? Colors.blueAccent : Colors.white24,
+                              selectedTileColor: Colors.blueAccent.withValues(
+                                alpha: 0.15,
                               ),
-                              title: Text(name,
-                                  style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontSize: 13),
-                                  overflow: TextOverflow.ellipsis),
-                              trailing: Text('${sizeGB}GB', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                              onTap: () => setState(() => _selectedLocalModelPath = file.path),
+                              leading: Icon(
+                                isSelected
+                                    ? Icons.check_circle
+                                    : Icons.description,
+                                size: 18,
+                                color: isSelected
+                                    ? Colors.blueAccent
+                                    : Colors.white24,
+                              ),
+                              title: Text(
+                                name,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.blueAccent
+                                      : Colors.white,
+                                  fontSize: 13,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: Text(
+                                '${sizeGB}GB',
+                                style: const TextStyle(
+                                  color: Colors.white38,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              onTap: () => setState(
+                                () => _selectedLocalModelPath = file.path,
+                              ),
                             );
                           },
                         ),
                 ),
                 const SizedBox(height: 16),
                 // ── Context Size Slider ──
-                Builder(builder: (context) {
-                  final storage = Provider.of<StorageService>(context);
-                  // Power-of-2 steps for context sizes
-                  const contextSteps = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
-                  // Find closest step index for current value
-                  int currentIdx = 0;
-                  for (int i = 0; i < contextSteps.length; i++) {
-                    if ((contextSteps[i] - storage.contextSize).abs() <
-                        (contextSteps[currentIdx] - storage.contextSize).abs()) {
-                      currentIdx = i;
+                Builder(
+                  builder: (context) {
+                    final storage = Provider.of<StorageService>(context);
+                    // Power-of-2 steps for context sizes
+                    const contextSteps = [
+                      2048,
+                      4096,
+                      8192,
+                      16384,
+                      32768,
+                      65536,
+                      131072,
+                    ];
+                    // Find closest step index for current value
+                    int currentIdx = 0;
+                    for (int i = 0; i < contextSteps.length; i++) {
+                      if ((contextSteps[i] - storage.contextSize).abs() <
+                          (contextSteps[currentIdx] - storage.contextSize)
+                              .abs()) {
+                        currentIdx = i;
+                      }
                     }
-                  }
-                  final contextLabel = storage.contextSize >= 1024
-                      ? '${(storage.contextSize / 1024).toStringAsFixed(storage.contextSize % 1024 == 0 ? 0 : 1)}K'
-                      : '${storage.contextSize}';
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.memory, size: 14, color: Colors.white38),
-                          const SizedBox(width: 6),
-                          Text('Context Size: $contextLabel tokens',
-                            style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
-                          const Spacer(),
-                          Text('${storage.contextSize}',
-                            style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      IgnorePointer(
-                        ignoring: storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty,
-                        child: Opacity(
-                          opacity: storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty ? 0.5 : 1.0,
-                          child: Tooltip(
-                            message: storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty
-                                ? 'Context size is controlled by the active .kcpps preset and cannot be edited here.'
-                                : '',
-                            child: SliderTheme(
-                              data: SliderThemeData(
-                                activeTrackColor: Colors.blueAccent,
-                                inactiveTrackColor: Colors.white10,
-                                thumbColor: Colors.blueAccent,
-                                overlayColor: Colors.blueAccent.withValues(alpha: 0.2),
-                                trackHeight: 4,
+                    final contextLabel = storage.contextSize >= 1024
+                        ? '${(storage.contextSize / 1024).toStringAsFixed(storage.contextSize % 1024 == 0 ? 0 : 1)}K'
+                        : '${storage.contextSize}';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.memory,
+                              size: 14,
+                              color: Colors.white38,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Context Size: $contextLabel tokens',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
                               ),
-                              child: Slider(
-                                value: currentIdx.toDouble(),
-                                min: 0,
-                                max: (contextSteps.length - 1).toDouble(),
-                                divisions: contextSteps.length - 1,
-                                onChanged: (val) {
-                                  storage.setContextSize(contextSteps[val.round()]);
-                                },
+                            ),
+                            const Spacer(),
+                            Text(
+                              '${storage.contextSize}',
+                              style: const TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        IgnorePointer(
+                          ignoring:
+                              storage.activeKcppsPath != null &&
+                              storage.activeKcppsPath!.isNotEmpty,
+                          child: Opacity(
+                            opacity:
+                                storage.activeKcppsPath != null &&
+                                    storage.activeKcppsPath!.isNotEmpty
+                                ? 0.5
+                                : 1.0,
+                            child: Tooltip(
+                              message:
+                                  storage.activeKcppsPath != null &&
+                                      storage.activeKcppsPath!.isNotEmpty
+                                  ? 'Context size is controlled by the active .kcpps preset and cannot be edited here.'
+                                  : '',
+                              child: SliderTheme(
+                                data: SliderThemeData(
+                                  activeTrackColor: Colors.blueAccent,
+                                  inactiveTrackColor: Colors.white10,
+                                  thumbColor: Colors.blueAccent,
+                                  overlayColor: Colors.blueAccent.withValues(
+                                    alpha: 0.2,
+                                  ),
+                                  trackHeight: 4,
+                                ),
+                                child: Slider(
+                                  value: currentIdx.toDouble(),
+                                  min: 0,
+                                  max: (contextSteps.length - 1).toDouble(),
+                                  divisions: contextSteps.length - 1,
+                                  onChanged: (val) {
+                                    storage.setContextSize(
+                                      contextSteps[val.round()],
+                                    );
+                                  },
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('2K', style: TextStyle(color: Colors.white24, fontSize: 10)),
-                          const Text('128K', style: TextStyle(color: Colors.white24, fontSize: 10)),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Larger context uses more VRAM. Match your KoboldCpp --contextsize setting.',
-                        style: TextStyle(color: Colors.white24, fontSize: 10),
-                      ),
-                    ],
-                  );
-                }),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              '2K',
+                              style: TextStyle(
+                                color: Colors.white24,
+                                fontSize: 10,
+                              ),
+                            ),
+                            const Text(
+                              '128K',
+                              style: TextStyle(
+                                color: Colors.white24,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Larger context uses more VRAM. Match your KoboldCpp --contextsize setting.',
+                          style: TextStyle(color: Colors.white24, fontSize: 10),
+                        ),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 16),
                 // Start/Stop button + status
                 Row(
@@ -1309,7 +1664,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             : () async {
                                 setState(() => _koboldStatus = 'Stopping...');
                                 await llmProvider.koboldService.stopKobold();
-                                if (mounted) setState(() => _koboldStatus = 'Stopped');
+                                if (mounted)
+                                  setState(() => _koboldStatus = 'Stopped');
                               },
                         icon: const Icon(Icons.stop, size: 16),
                         label: const Text('Stop KoboldCpp'),
@@ -1320,13 +1676,28 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       )
                     else
                       ElevatedButton.icon(
-                        onPressed: _isReloadingKobold || _selectedLocalModelPath.isEmpty
+                        onPressed:
+                            _isReloadingKobold ||
+                                _selectedLocalModelPath.isEmpty
                             ? null
-                            : () => _reloadKoboldWithModel(_selectedLocalModelPath),
+                            : () => _reloadKoboldWithModel(
+                                _selectedLocalModelPath,
+                              ),
                         icon: _isReloadingKobold
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Icon(Icons.play_arrow, size: 16),
-                        label: Text(_isReloadingKobold ? 'Starting...' : 'Start KoboldCpp'),
+                        label: Text(
+                          _isReloadingKobold
+                              ? 'Starting...'
+                              : 'Start KoboldCpp',
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green.shade700,
                           foregroundColor: Colors.white,
@@ -1338,14 +1709,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       onPressed: _scanLocalModels,
                       icon: const Icon(Icons.folder_open, size: 14),
                       label: const Text('Rescan'),
-                      style: TextButton.styleFrom(foregroundColor: Colors.white38),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white38,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     if (_koboldStatus.isNotEmpty)
                       Expanded(
-                        child: Text(_koboldStatus,
+                        child: Text(
+                          _koboldStatus,
                           style: TextStyle(
-                            color: _koboldStatus.contains('Error') ? Colors.red : Colors.white54,
+                            color: _koboldStatus.contains('Error')
+                                ? Colors.red
+                                : Colors.white54,
                             fontSize: 12,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -1370,9 +1746,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           padding: EdgeInsets.symmetric(vertical: 14),
                           child: Row(
                             children: [
-                              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38)),
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white38,
+                                ),
+                              ),
                               SizedBox(width: 12),
-                              Text('Loading models...', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                              Text(
+                                'Loading models...',
+                                style: TextStyle(
+                                  color: Colors.white38,
+                                  fontSize: 13,
+                                ),
+                              ),
                             ],
                           ),
                         )
@@ -1391,18 +1780,38 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             child: Row(
                               children: [
-                                const Icon(Icons.search, size: 16, color: Colors.white24),
+                                const Icon(
+                                  Icons.search,
+                                  size: 16,
+                                  color: Colors.white24,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
                                     _selectedModelId.isEmpty
                                         ? 'Select a model...'
-                                        : (_availableModels.where((m) => m.id == _selectedModelId).firstOrNull?.name ?? _selectedModelId),
-                                    style: TextStyle(color: _selectedModelId.isEmpty ? Colors.white38 : Colors.white, fontSize: 13),
+                                        : (_availableModels
+                                                  .where(
+                                                    (m) =>
+                                                        m.id ==
+                                                        _selectedModelId,
+                                                  )
+                                                  .firstOrNull
+                                                  ?.name ??
+                                              _selectedModelId),
+                                    style: TextStyle(
+                                      color: _selectedModelId.isEmpty
+                                          ? Colors.white38
+                                          : Colors.white,
+                                      fontSize: 13,
+                                    ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                const Icon(Icons.arrow_drop_down, color: Colors.white38),
+                                const Icon(
+                                  Icons.arrow_drop_down,
+                                  color: Colors.white38,
+                                ),
                               ],
                             ),
                           ),
@@ -1430,11 +1839,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   child: ElevatedButton.icon(
                     onPressed: () => setState(() => _currentStep = 1),
                     icon: const Icon(Icons.arrow_forward, size: 20),
-                    label: const Text('Next: Choose Mode', style: TextStyle(fontSize: 16)),
+                    label: const Text(
+                      'Next: Choose Mode',
+                      style: TextStyle(fontSize: 16),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -1446,23 +1860,44 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     );
   }
 
-  Widget _backendChip({required String label, required IconData icon, required bool isSelected, required VoidCallback onTap}) {
+  Widget _backendChip({
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blueAccent.withValues(alpha: 0.15) : const Color(0xFF1E293B),
+          color: isSelected
+              ? Colors.blueAccent.withValues(alpha: 0.15)
+              : const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: isSelected ? Colors.blueAccent : Colors.white12, width: isSelected ? 2 : 1),
+          border: Border.all(
+            color: isSelected ? Colors.blueAccent : Colors.white12,
+            width: isSelected ? 2 : 1,
+          ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: isSelected ? Colors.blueAccent : Colors.white38),
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? Colors.blueAccent : Colors.white38,
+            ),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white54, fontSize: 13, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.blueAccent : Colors.white54,
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
           ],
         ),
       ),
@@ -1485,12 +1920,20 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             children: [
               const Text(
                 'How do you want to create?',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Choose the creation mode that fits your workflow.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 32),
 
@@ -1501,10 +1944,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 iconColor: Colors.amberAccent,
                 title: 'Automated Creator',
                 subtitle: 'Pick traits from bubbles, let AI fill the gaps',
-                description: 'Best when you want to explore and discover. '
+                description:
+                    'Best when you want to explore and discover. '
                     'Select from archetypes, appearance options, backstory presets, '
                     'and personality keywords. The AI handles the rest.',
-                features: const ['Archetype presets', 'Bubble selectors for every trait', 'AI generates description from selections'],
+                features: const [
+                  'Archetype presets',
+                  'Bubble selectors for every trait',
+                  'AI generates description from selections',
+                ],
               ),
               const SizedBox(height: 16),
 
@@ -1515,10 +1963,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 iconColor: Colors.tealAccent,
                 title: 'Guided Creator',
                 subtitle: 'Write your vision, AI helps you flesh it out',
-                description: 'Best when you already have a character in mind but need help '
+                description:
+                    'Best when you already have a character in mind but need help '
                     'getting it on paper. Describe your idea in your own words — '
                     'guided prompts and suggestions help you express your vision.',
-                features: const ['Free-form text with guided prompts', 'Suggestion chips for inspiration', '"Help me expand this" AI assist'],
+                features: const [
+                  'Free-form text with guided prompts',
+                  'Suggestion chips for inspiration',
+                  '"Help me expand this" AI assist',
+                ],
               ),
               const SizedBox(height: 16),
 
@@ -1529,10 +1982,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 iconColor: Colors.greenAccent,
                 title: 'Quick Create',
                 subtitle: 'Name it, describe it, done — AI does the rest',
-                description: 'Fastest path to a finished character. '
+                description:
+                    'Fastest path to a finished character. '
                     'Just give a name and a one-liner. The full AI pipeline '
                     '(interview, lorebook, greetings) runs automatically.',
-                features: const ['Name + concept only', 'NSFW toggle', 'Full pipeline in ~2 min'],
+                features: const [
+                  'Name + concept only',
+                  'NSFW toggle',
+                  'Full pipeline in ~2 min',
+                ],
               ),
 
               const SizedBox(height: 32),
@@ -1547,11 +2005,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       child: OutlinedButton.icon(
                         onPressed: () => setState(() => _currentStep = 0),
                         icon: const Icon(Icons.arrow_back, size: 18),
-                        label: const Text('Back', style: TextStyle(fontSize: 14)),
+                        label: const Text(
+                          'Back',
+                          style: TextStyle(fontSize: 14),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white54,
                           side: const BorderSide(color: Colors.white24),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -1566,18 +2029,20 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           _creatorMode == CreatorMode.guided
                               ? 'Next: Guided Setup'
                               : _creatorMode == CreatorMode.quick
-                                  ? 'Next: Quick Setup'
-                                  : 'Next: Automated Setup',
+                              ? 'Next: Quick Setup'
+                              : 'Next: Automated Setup',
                           style: const TextStyle(fontSize: 16),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _creatorMode == CreatorMode.guided
                               ? const Color(0xFF0D7377)
                               : _creatorMode == CreatorMode.quick
-                                  ? const Color(0xFF1B5E20)
-                                  : Colors.blueAccent,
+                              ? const Color(0xFF1B5E20)
+                              : Colors.blueAccent,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -1606,8 +2071,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       borderColor = mode == CreatorMode.guided
           ? Colors.tealAccent
           : mode == CreatorMode.quick
-              ? Colors.greenAccent
-              : Colors.amberAccent;
+          ? Colors.greenAccent
+          : Colors.amberAccent;
     } else {
       borderColor = Colors.white12;
     }
@@ -1624,10 +2089,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         decoration: BoxDecoration(
           color: isSelected
               ? (mode == CreatorMode.guided
-                  ? Colors.tealAccent.withValues(alpha: 0.06)
-                  : mode == CreatorMode.quick
-                      ? Colors.greenAccent.withValues(alpha: 0.06)
-                      : Colors.amberAccent.withValues(alpha: 0.06))
+                    ? Colors.tealAccent.withValues(alpha: 0.06)
+                    : mode == CreatorMode.quick
+                    ? Colors.greenAccent.withValues(alpha: 0.06)
+                    : Colors.amberAccent.withValues(alpha: 0.06))
               : const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
@@ -1650,38 +2115,81 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 children: [
                   Row(
                     children: [
-                      Text(title, style: TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold,
-                        color: isSelected ? Colors.white : Colors.white70,
-                      )),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? Colors.white : Colors.white70,
+                        ),
+                      ),
                       const Spacer(),
                       if (isSelected)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: borderColor.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Text('Selected', style: TextStyle(color: borderColor, fontSize: 11, fontWeight: FontWeight.w600)),
+                          child: Text(
+                            'Selected',
+                            style: TextStyle(
+                              color: borderColor,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text(subtitle, style: TextStyle(color: isSelected ? iconColor : Colors.white38, fontSize: 13)),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: isSelected ? iconColor : Colors.white38,
+                      fontSize: 13,
+                    ),
+                  ),
                   const SizedBox(height: 8),
-                  Text(description, style: const TextStyle(color: Colors.white38, fontSize: 12, height: 1.4)),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 4,
-                    children: features.map((f) => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check_circle_outline, size: 12, color: isSelected ? iconColor : Colors.white24),
-                        const SizedBox(width: 4),
-                        Text(f, style: TextStyle(color: isSelected ? Colors.white54 : Colors.white24, fontSize: 11)),
-                      ],
-                    )).toList(),
+                    children: features
+                        .map(
+                          (f) => Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline,
+                                size: 12,
+                                color: isSelected ? iconColor : Colors.white24,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                f,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white54
+                                      : Colors.white24,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        .toList(),
                   ),
                 ],
               ),
@@ -1720,15 +2228,29 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       color: Colors.greenAccent.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.bolt, color: Colors.greenAccent, size: 22),
+                    child: const Icon(
+                      Icons.bolt,
+                      color: Colors.greenAccent,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 14),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Quick Create', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-                        Text('Name it, describe it, generate.', style: TextStyle(fontSize: 13, color: Colors.white38)),
+                        Text(
+                          'Quick Create',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Text(
+                          'Name it, describe it, generate.',
+                          style: TextStyle(fontSize: 13, color: Colors.white38),
+                        ),
                       ],
                     ),
                   ),
@@ -1737,7 +2259,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 32),
 
               // Name field
-              const Text('Character Name', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              const Text(
+                'Character Name',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: _nameController,
@@ -1748,19 +2277,44 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 },
                 decoration: InputDecoration(
                   hintText: 'Morgana, Kaito, Vex...',
-                  hintStyle: const TextStyle(color: Colors.white12, fontSize: 14),
+                  hintStyle: const TextStyle(
+                    color: Colors.white12,
+                    fontSize: 14,
+                  ),
                   filled: true,
                   fillColor: const Color(0xFF1E293B),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.greenAccent, width: 2)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.white12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.white12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: Colors.greenAccent,
+                      width: 2,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
 
               // Concept field
-              const Text('Describe them (optional)', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              const Text(
+                'Describe them (optional)',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 4),
               const Text(
                 'A sentence or two is plenty. Leave it blank and the AI will invent someone.',
@@ -1777,20 +2331,46 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   _saveState();
                 },
                 decoration: InputDecoration(
-                  hintText: 'A gruff dwarven blacksmith who secretly writes poetry...',
-                  hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
+                  hintText:
+                      'A gruff dwarven blacksmith who secretly writes poetry...',
+                  hintStyle: const TextStyle(
+                    color: Colors.white12,
+                    fontSize: 12,
+                  ),
                   filled: true,
                   fillColor: const Color(0xFF1E293B),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.greenAccent, width: 2)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.white12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.white12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: Colors.greenAccent,
+                      width: 2,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
 
               // Scenario field
-              const Text('Scenario / Setting (optional)', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              const Text(
+                'Scenario / Setting (optional)',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 4),
               const Text(
                 'Where does the story take place? What\'s the situation? The AI will build on this.',
@@ -1807,40 +2387,84 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   _saveState();
                 },
                 decoration: InputDecoration(
-                  hintText: 'A modern coffee shop where they work as a barista, a fantasy guild hall, a space station...',
-                  hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
+                  hintText:
+                      'A modern coffee shop where they work as a barista, a fantasy guild hall, a space station...',
+                  hintStyle: const TextStyle(
+                    color: Colors.white12,
+                    fontSize: 12,
+                  ),
                   filled: true,
                   fillColor: const Color(0xFF1E293B),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.greenAccent, width: 2)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.white12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.white12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: Colors.greenAccent,
+                      width: 2,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
 
               // Art style
-              const Text('Avatar Art Style', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              const Text(
+                'Avatar Art Style',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 8),
               Wrap(
-                spacing: 8, runSpacing: 8,
+                spacing: 8,
+                runSpacing: 8,
                 children: _artStyles.map((style) {
                   final isSelected = _artStyle == style;
                   return ChoiceChip(
                     label: Text(style),
                     selected: isSelected,
-                    onSelected: (_) { setState(() => _artStyle = style); _saveState(); },
+                    onSelected: (_) {
+                      setState(() => _artStyle = style);
+                      _saveState();
+                    },
                     selectedColor: Colors.greenAccent.shade700,
                     backgroundColor: const Color(0xFF1E293B),
-                    labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
-                    side: BorderSide(color: isSelected ? Colors.greenAccent.shade700 : Colors.white12),
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : Colors.white70,
+                      fontSize: 13,
+                    ),
+                    side: BorderSide(
+                      color: isSelected
+                          ? Colors.greenAccent.shade700
+                          : Colors.white12,
+                    ),
                   );
                 }).toList(),
               ),
               const SizedBox(height: 24),
 
               // Greeting tones
-              const Text('Greeting Tone', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              const Text(
+                'Greeting Tone',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 4),
               Text(
                 _quickGreetingCount == 0
@@ -1852,36 +2476,57 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _greetingTones.where((tone) => tone != 'Spicy/NSFW' || _quickNsfwEnabled).map((tone) {
-                  final isSelected = _quickSelectedTones.contains(tone);
-                  final maxTones = _quickGreetingCount + 1;
-                  final atLimit = _quickSelectedTones.length >= maxTones && !isSelected;
-                  return FilterChip(
-                    label: Text(tone),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        if (selected) {
-                          if (atLimit) _quickSelectedTones.remove(_quickSelectedTones.last);
-                          _quickSelectedTones.add(tone);
-                        } else if (_quickSelectedTones.length > 1) {
-                          _quickSelectedTones.remove(tone);
-                        }
-                      });
-                      _saveState();
-                    },
-                    selectedColor: Colors.greenAccent.shade700,
-                    backgroundColor: const Color(0xFF1E293B),
-                    checkmarkColor: Colors.white,
-                    labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
-                    side: BorderSide(color: isSelected ? Colors.greenAccent.shade700 : Colors.white12),
-                  );
-                }).toList(),
+                children: _greetingTones
+                    .where((tone) => tone != 'Spicy/NSFW' || _quickNsfwEnabled)
+                    .map((tone) {
+                      final isSelected = _quickSelectedTones.contains(tone);
+                      final maxTones = _quickGreetingCount + 1;
+                      final atLimit =
+                          _quickSelectedTones.length >= maxTones && !isSelected;
+                      return FilterChip(
+                        label: Text(tone),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              if (atLimit)
+                                _quickSelectedTones.remove(
+                                  _quickSelectedTones.last,
+                                );
+                              _quickSelectedTones.add(tone);
+                            } else if (_quickSelectedTones.length > 1) {
+                              _quickSelectedTones.remove(tone);
+                            }
+                          });
+                          _saveState();
+                        },
+                        selectedColor: Colors.greenAccent.shade700,
+                        backgroundColor: const Color(0xFF1E293B),
+                        checkmarkColor: Colors.white,
+                        labelStyle: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 13,
+                        ),
+                        side: BorderSide(
+                          color: isSelected
+                              ? Colors.greenAccent.shade700
+                              : Colors.white12,
+                        ),
+                      );
+                    })
+                    .toList(),
               ),
               const SizedBox(height: 24),
 
               // Number of greetings
-              const Text('Number of Greetings', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              const Text(
+                'Number of Greetings',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 4),
               const Text(
                 'How many first messages to generate (1 main + alternates).',
@@ -1898,13 +2543,17 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       divisions: 5,
                       activeColor: Colors.greenAccent.shade700,
                       inactiveColor: Colors.white12,
-                      label: _quickGreetingCount == 0 ? '1 greeting' : '1 + $_quickGreetingCount alt${_quickGreetingCount == 1 ? '' : 's'}',
+                      label: _quickGreetingCount == 0
+                          ? '1 greeting'
+                          : '1 + $_quickGreetingCount alt${_quickGreetingCount == 1 ? '' : 's'}',
                       onChanged: (val) {
                         setState(() {
                           _quickGreetingCount = val.round();
                           final maxTones = _quickGreetingCount + 1;
                           while (_quickSelectedTones.length > maxTones) {
-                            _quickSelectedTones.remove(_quickSelectedTones.last);
+                            _quickSelectedTones.remove(
+                              _quickSelectedTones.last,
+                            );
                           }
                         });
                         _saveState();
@@ -1914,8 +2563,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   SizedBox(
                     width: 80,
                     child: Text(
-                      _quickGreetingCount == 0 ? '1 greeting' : '1 + $_quickGreetingCount',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      _quickGreetingCount == 0
+                          ? '1 greeting'
+                          : '1 + $_quickGreetingCount',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],
@@ -1928,18 +2582,24 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
               // NSFW toggle
               InkWell(
-                onTap: () => setState(() => _quickNsfwEnabled = !_quickNsfwEnabled),
+                onTap: () =>
+                    setState(() => _quickNsfwEnabled = !_quickNsfwEnabled),
                 borderRadius: BorderRadius.circular(12),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: _quickNsfwEnabled
                         ? Colors.pinkAccent.withValues(alpha: 0.08)
                         : const Color(0xFF1E293B),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: _quickNsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.5) : Colors.white12,
+                      color: _quickNsfwEnabled
+                          ? Colors.pinkAccent.withValues(alpha: 0.5)
+                          : Colors.white12,
                       width: _quickNsfwEnabled ? 2 : 1,
                     ),
                   ),
@@ -1947,7 +2607,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     children: [
                       Icon(
                         Icons.local_fire_department,
-                        color: _quickNsfwEnabled ? Colors.pinkAccent : Colors.white24,
+                        color: _quickNsfwEnabled
+                            ? Colors.pinkAccent
+                            : Colors.white24,
                         size: 20,
                       ),
                       const SizedBox(width: 12),
@@ -1958,7 +2620,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             Text(
                               'NSFW Content',
                               style: TextStyle(
-                                color: _quickNsfwEnabled ? Colors.pinkAccent.shade100 : Colors.white70,
+                                color: _quickNsfwEnabled
+                                    ? Colors.pinkAccent.shade100
+                                    : Colors.white70,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -1967,7 +2631,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             Text(
                               'Enables adult themes in personality, lorebook, and greetings',
                               style: TextStyle(
-                                color: _quickNsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.6) : Colors.white24,
+                                color: _quickNsfwEnabled
+                                    ? Colors.pinkAccent.withValues(alpha: 0.6)
+                                    : Colors.white24,
                                 fontSize: 11,
                               ),
                             ),
@@ -1997,7 +2663,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white54,
                         side: const BorderSide(color: Colors.white24),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ),
@@ -2009,7 +2677,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         onPressed: nameEmpty ? null : _startQuickGeneration,
                         icon: const Icon(Icons.bolt, size: 20),
                         label: Text(
-                          nameEmpty ? 'Enter a name to continue' : 'Create Character',
+                          nameEmpty
+                              ? 'Enter a name to continue'
+                              : 'Create Character',
                           style: const TextStyle(fontSize: 16),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -2017,7 +2687,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           foregroundColor: Colors.white,
                           disabledBackgroundColor: Colors.white10,
                           disabledForegroundColor: Colors.white30,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -2033,7 +2705,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
   /// Shared method to extract world lore and respect token budgets.
   Future<String?> _extractWorldLore(LLMProvider provider) async {
-    final loreUrls = _loreUrlsController.text.split(',').map((e) => e.trim()).toList();
+    final loreUrls = _loreUrlsController.text
+        .split(',')
+        .map((e) => e.trim())
+        .toList();
     if (loreUrls.isEmpty && _loreFiles.isEmpty) return null;
 
     if (mounted) setState(() => _generationStatus = 'Gathering world lore...');
@@ -2047,31 +2722,39 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     if (worldLore.trim().isNotEmpty) {
       final estimatedTokens = worldLore.length ~/ 4;
-      
+
       int freeContextLimit = 30000;
-      if ((provider.activeBackend == BackendType.kobold && provider.koboldService.isReady) ||
-          (provider.activeBackend == BackendType.pseudoRemote && provider.pseudoRemoteService.isReady)) {
-         final storage = Provider.of<StorageService>(context, listen: false);
-         final koboldContext = storage.contextSize;
-         freeContextLimit = koboldContext - 3000; // Leave 3K for generation
+      if ((provider.activeBackend == BackendType.kobold &&
+              provider.koboldService.isReady) ||
+          (provider.activeBackend == BackendType.pseudoRemote &&
+              provider.pseudoRemoteService.isReady)) {
+        final storage = Provider.of<StorageService>(context, listen: false);
+        final koboldContext = storage.contextSize;
+        freeContextLimit = koboldContext - 3000; // Leave 3K for generation
       } else {
-         freeContextLimit = 120000; 
+        freeContextLimit = 120000;
       }
-      
+
       if (estimatedTokens > freeContextLimit) {
-         debugPrint('Lore tokens ($estimatedTokens) exceeds free limit ($freeContextLimit). Truncating.');
-         final charLimit = (freeContextLimit * 4).clamp(0, worldLore.length);
-         worldLore = worldLore.substring(0, charLimit);
-         worldLore += '\n[TRUNCATED DUE TO CONTEXT LIMITS]';
-         
-         if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-             content: Text('World Lore truncated to fit context limits ($estimatedTokens > $freeContextLimit).'),
-             backgroundColor: Colors.orange,
-             behavior: SnackBarBehavior.floating,
-             duration: const Duration(seconds: 5),
-           ));
-         }
+        debugPrint(
+          'Lore tokens ($estimatedTokens) exceeds free limit ($freeContextLimit). Truncating.',
+        );
+        final charLimit = (freeContextLimit * 4).clamp(0, worldLore.length);
+        worldLore = worldLore.substring(0, charLimit);
+        worldLore += '\n[TRUNCATED DUE TO CONTEXT LIMITS]';
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'World Lore truncated to fit context limits ($estimatedTokens > $freeContextLimit).',
+              ),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       }
       return worldLore;
     }
@@ -2105,13 +2788,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       final kobold = llmProvider.koboldService;
       if (!kobold.isReady) {
         setState(() {
-          _generationStatus = 'Error: KoboldCpp is not running. Start it first.';
+          _generationStatus =
+              'Error: KoboldCpp is not running. Start it first.';
           _isGenerating = false;
         });
         return;
       }
       llmService = kobold;
-    } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
+    } else if (_selectedModelId.isNotEmpty &&
+        _selectedModelId != llmProvider.openRouterService.modelName) {
       llmService = OpenRouterService(
         apiUrl: storage.remoteApiUrl,
         apiKey: storage.remoteApiKey,
@@ -2121,7 +2806,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       final active = llmProvider.activeService;
       if (!active.isReady) {
         setState(() {
-          _generationStatus = 'Error: No LLM service available. Configure a model first.';
+          _generationStatus =
+              'Error: No LLM service available. Configure a model first.';
           _isGenerating = false;
         });
         return;
@@ -2132,16 +2818,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     // Resolve active persona if any
     String userPersonaContext = '';
     if (_selectedPersonaId.isNotEmpty) {
-      final personaService = Provider.of<UserPersonaService>(context, listen: false);
-      final persona = personaService.personas.where((p) => p.id == _selectedPersonaId).firstOrNull;
+      final personaService = Provider.of<UserPersonaService>(
+        context,
+        listen: false,
+      );
+      final persona = personaService.personas
+          .where((p) => p.id == _selectedPersonaId)
+          .firstOrNull;
       if (persona != null) {
         final parts = <String>[];
         if (persona.name.isNotEmpty) parts.add('Name: ${persona.name}');
-          if (persona.persona.isNotEmpty) parts.add('Persona: ${persona.persona}');
+        if (persona.persona.isNotEmpty)
+          parts.add('Persona: ${persona.persona}');
         userPersonaContext = parts.join('\n');
       }
     }
-    
+
     // Extract World Lore
     final worldLore = await _extractWorldLore(llmProvider);
 
@@ -2201,7 +2893,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     if (card == null || genError != null) {
       setState(() {
         _isGenerating = false;
-        _generationStatus = genError ?? 'Generation failed. Check your backend connection.';
+        _generationStatus =
+            genError ?? 'Generation failed. Check your backend connection.';
         _activeGenService = null;
       });
       return;
@@ -2254,9 +2947,17 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   ];
 
   static const _scenarioSeeds = [
-    'Met at a café', 'Childhood friends', 'Mysterious stranger', 'Coworkers',
-    'Online match', 'Rescued by them', 'Woke up next to them', 'Battle partners',
-    'Neighbors', 'Classmates', 'Summoned them',
+    'Met at a café',
+    'Childhood friends',
+    'Mysterious stranger',
+    'Coworkers',
+    'Online match',
+    'Rescued by them',
+    'Woke up next to them',
+    'Battle partners',
+    'Neighbors',
+    'Classmates',
+    'Summoned them',
   ];
 
   /// Build a guided text field with suggestion chips that fill the field.
@@ -2279,14 +2980,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           Row(
             children: [
               if (isNsfw) ...[
-                const Icon(Icons.local_fire_department, size: 12, color: Colors.pinkAccent),
+                const Icon(
+                  Icons.local_fire_department,
+                  size: 12,
+                  color: Colors.pinkAccent,
+                ),
                 const SizedBox(width: 4),
               ],
               Expanded(
-                child: Text(label, style: TextStyle(
-                  color: isNsfw ? Colors.pinkAccent.shade100 : Colors.white54,
-                  fontSize: 12, fontWeight: FontWeight.w500,
-                )),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: isNsfw ? Colors.pinkAccent.shade100 : Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
               ?trailing,
             ],
@@ -2306,10 +3015,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
               filled: true,
               fillColor: const Color(0xFF1E293B),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white12)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white12)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: accentColor)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.white12),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.white12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: accentColor),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
             ),
           ),
           if (suggestions.isNotEmpty) ...[
@@ -2318,28 +3039,47 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               spacing: 6,
               runSpacing: 6,
               children: suggestions.map((sug) {
-                final isInField = controller.text.toLowerCase().contains(sug.toLowerCase());
+                final isInField = controller.text.toLowerCase().contains(
+                  sug.toLowerCase(),
+                );
                 return InkWell(
                   onTap: () {
                     if (!isInField) {
                       final current = controller.text.trim();
-                      controller.text = current.isEmpty ? sug : '$current, $sug';
-                      controller.selection = TextSelection.fromPosition(TextPosition(offset: controller.text.length));
+                      controller.text = current.isEmpty
+                          ? sug
+                          : '$current, $sug';
+                      controller.selection = TextSelection.fromPosition(
+                        TextPosition(offset: controller.text.length),
+                      );
                       setState(() {});
                       _saveState();
                     }
                   },
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isInField ? accentColor.withValues(alpha: 0.2) : const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: isInField ? accentColor.withValues(alpha: 0.5) : Colors.white10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
                     ),
-                    child: Text(sug, style: TextStyle(
-                      color: isInField ? accentColor : Colors.white38, fontSize: 11,
-                    )),
+                    decoration: BoxDecoration(
+                      color: isInField
+                          ? accentColor.withValues(alpha: 0.2)
+                          : const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isInField
+                            ? accentColor.withValues(alpha: 0.5)
+                            : Colors.white10,
+                      ),
+                    ),
+                    child: Text(
+                      sug,
+                      style: TextStyle(
+                        color: isInField ? accentColor : Colors.white38,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 );
               }).toList(),
@@ -2373,8 +3113,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           iconColor: accentColor,
           collapsedIconColor: Colors.white24,
           leading: Icon(icon, color: accentColor, size: 18),
-          title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-          subtitle: Text(subtitle, style: const TextStyle(color: Colors.white24, fontSize: 11)),
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            subtitle,
+            style: const TextStyle(color: Colors.white24, fontSize: 11),
+          ),
           children: children,
         ),
       ),
@@ -2395,7 +3145,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               : const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: _reasoningEnabled ? accentColor.withValues(alpha: 0.5) : Colors.white12,
+            color: _reasoningEnabled
+                ? accentColor.withValues(alpha: 0.5)
+                : Colors.white12,
             width: _reasoningEnabled ? 2 : 1,
           ),
         ),
@@ -2423,7 +3175,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   Text(
                     'Let the model reason before generating. Higher quality, but slower',
                     style: TextStyle(
-                      color: _reasoningEnabled ? accentColor.withValues(alpha: 0.6) : Colors.white24,
+                      color: _reasoningEnabled
+                          ? accentColor.withValues(alpha: 0.6)
+                          : Colors.white24,
                       fontSize: 11,
                     ),
                   ),
@@ -2445,7 +3199,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('World Lore / Wiki URLs (optional)', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+        const Text(
+          'World Lore / Wiki URLs (optional)',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 4),
         const Text(
           'Paste one or more wiki/lore URLs separated by commas. You can also attach local files below.',
@@ -2459,14 +3220,27 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           minLines: 2,
           onChanged: (_) => _saveState(),
           decoration: InputDecoration(
-            hintText: 'https://wowpedia.fandom.com/wiki/Demon_hunter, https://wowpedia.fandom.com/wiki/Illidan_Stormrage',
+            hintText:
+                'https://wowpedia.fandom.com/wiki/Demon_hunter, https://wowpedia.fandom.com/wiki/Illidan_Stormrage',
             hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
             filled: true,
             fillColor: const Color(0xFF1E293B),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: accentColor, width: 2)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.white12),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.white12),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: accentColor, width: 2),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -2474,29 +3248,55 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Column(
-              children: _loreFiles.map((f) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                margin: const EdgeInsets.only(bottom: 4),
-                decoration: BoxDecoration(
-                  color: Colors.blueAccent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.description, size: 14, color: Colors.blueAccent),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(f.name, style: const TextStyle(color: Colors.white70, fontSize: 12), overflow: TextOverflow.ellipsis)),
-                    InkWell(
-                      onTap: () {
-                        setState(() => _loreFiles.remove(f));
-                        _saveState();
-                      },
-                      child: const Icon(Icons.close, size: 14, color: Colors.white38),
+              children: _loreFiles
+                  .map(
+                    (f) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      margin: const EdgeInsets.only(bottom: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blueAccent.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.blueAccent.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.description,
+                            size: 14,
+                            color: Colors.blueAccent,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              f.name,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () {
+                              setState(() => _loreFiles.remove(f));
+                              _saveState();
+                            },
+                            child: const Icon(
+                              Icons.close,
+                              size: 14,
+                              color: Colors.white38,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              )).toList(),
+                  )
+                  .toList(),
             ),
           ),
         OutlinedButton.icon(
@@ -2523,7 +3323,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             foregroundColor: Colors.white54,
             side: const BorderSide(color: Colors.white24),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         ),
       ],
@@ -2532,7 +3334,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
   Widget _buildGuidedConfigStep() {
     // Pick a stable placeholder based on name hash
-    final placeholderIdx = _nameController.text.hashCode.abs() % _guidedVisionPlaceholders.length;
+    final placeholderIdx =
+        _nameController.text.hashCode.abs() % _guidedVisionPlaceholders.length;
 
     return Center(
       key: const ValueKey('guided-config'),
@@ -2546,17 +3349,29 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // ── Header ──
               Row(
                 children: [
-                  const Icon(Icons.edit_note, color: Colors.tealAccent, size: 28),
+                  const Icon(
+                    Icons.edit_note,
+                    color: Colors.tealAccent,
+                    size: 28,
+                  ),
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Guided Character Creator',
-                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                        Text(
+                          'Guided Character Creator',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                         SizedBox(height: 2),
-                        Text("Describe your character — we'll help you flesh them out.",
-                          style: TextStyle(fontSize: 13, color: Colors.white38)),
+                        Text(
+                          "Describe your character — we'll help you flesh them out.",
+                          style: TextStyle(fontSize: 13, color: Colors.white38),
+                        ),
                       ],
                     ),
                   ),
@@ -2567,11 +3382,23 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // ══════════════════════════════════════════════
               // Section 1: The Vision (Required)
               // ══════════════════════════════════════════════
-              const Text("What's your character like?",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white)),
+              const Text(
+                "What's your character like?",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
               const SizedBox(height: 4),
-              const Text("Don't worry about perfect writing — a few sentences, a scene, bullet points, whatever comes naturally.",
-                style: TextStyle(fontSize: 12, color: Colors.white38, height: 1.4)),
+              const Text(
+                "Don't worry about perfect writing — a few sentences, a scene, bullet points, whatever comes naturally.",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white38,
+                  height: 1.4,
+                ),
+              ),
               const SizedBox(height: 16),
 
               // Name + randomizer
@@ -2582,7 +3409,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   Tooltip(
                     message: 'Generate a random name',
                     child: IconButton(
-                      icon: const Icon(Icons.casino, color: Colors.amberAccent, size: 20),
+                      icon: const Icon(
+                        Icons.casino,
+                        color: Colors.amberAccent,
+                        size: 20,
+                      ),
                       onPressed: _randomizeName,
                       visualDensity: VisualDensity.compact,
                     ),
@@ -2590,7 +3421,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              _styledTextField(controller: _nameController, hint: 'e.g. Aria Blackwood, Captain Zara, Luna...', maxLines: 1),
+              _styledTextField(
+                controller: _nameController,
+                hint: 'e.g. Aria Blackwood, Captain Zara, Luna...',
+                maxLines: 1,
+              ),
               const SizedBox(height: 16),
 
               // Age & Sex
@@ -2603,7 +3438,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       children: [
                         _inputLabel('Age', required: false),
                         const SizedBox(height: 8),
-                        _styledTextField(controller: _ageController, hint: 'e.g. 25, Ancient...', maxLines: 1),
+                        _styledTextField(
+                          controller: _ageController,
+                          hint: 'e.g. 25, Ancient...',
+                          maxLines: 1,
+                        ),
                       ],
                     ),
                   ),
@@ -2614,7 +3453,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       children: [
                         _inputLabel('Gender', required: false),
                         const SizedBox(height: 8),
-                        _styledTextField(controller: _sexController, hint: 'e.g. Female, Male...', maxLines: 1),
+                        _styledTextField(
+                          controller: _sexController,
+                          hint: 'e.g. Female, Male...',
+                          maxLines: 1,
+                        ),
                       ],
                     ),
                   ),
@@ -2634,26 +3477,61 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     label: 'Build / Body Type',
                     controller: _guidedAppearanceController,
                     hint: "Or describe: 'tall and lanky with long legs'",
-                    suggestions: const ['Petite', 'Slim', 'Athletic', 'Curvy', 'Muscular', 'Plus-size', 'Tall & Lanky'],
+                    suggestions: const [
+                      'Petite',
+                      'Slim',
+                      'Athletic',
+                      'Curvy',
+                      'Muscular',
+                      'Plus-size',
+                      'Tall & Lanky',
+                    ],
                     maxLines: 2,
                   ),
                   _guidedField(
                     label: 'Hair',
                     controller: _guidedHairController,
                     hint: "e.g. 'waist-length silver hair, usually messy'",
-                    suggestions: const ['Short', 'Long', 'Flowing', 'Braided', 'Wild', 'Shaved', 'Pixie'],
+                    suggestions: const [
+                      'Short',
+                      'Long',
+                      'Flowing',
+                      'Braided',
+                      'Wild',
+                      'Shaved',
+                      'Pixie',
+                    ],
                   ),
                   _guidedField(
                     label: 'Distinguishing Features',
                     controller: _guidedFeaturesController,
-                    hint: "e.g. 'a jagged scar across her left eye, pointed elf ears'",
-                    suggestions: const ['Glasses', 'Scars', 'Tattoos', 'Horns', 'Wings', 'Fangs', 'Cat Ears', 'Freckles'],
+                    hint:
+                        "e.g. 'a jagged scar across her left eye, pointed elf ears'",
+                    suggestions: const [
+                      'Glasses',
+                      'Scars',
+                      'Tattoos',
+                      'Horns',
+                      'Wings',
+                      'Fangs',
+                      'Cat Ears',
+                      'Freckles',
+                    ],
                   ),
                   _guidedField(
                     label: 'Race / Species',
                     controller: _guidedRaceController,
                     hint: "e.g. 'half-dragon shapeshifter'",
-                    suggestions: const ['Human', 'Elf', 'Demon', 'Vampire', 'Beastkin', 'Android', 'Angel', 'Fae'],
+                    suggestions: const [
+                      'Human',
+                      'Elf',
+                      'Demon',
+                      'Vampire',
+                      'Beastkin',
+                      'Android',
+                      'Angel',
+                      'Fae',
+                    ],
                   ),
                 ],
               ),
@@ -2669,20 +3547,41 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   _guidedField(
                     label: 'Personality',
                     controller: _guidedPersonalityController,
-                    hint: "What are they like? e.g. 'Sharp wit, never shows vulnerability, but secretly writes poetry'",
-                    suggestions: const ['Sarcastic', 'Gentle', 'Intense', 'Playful', 'Cold', 'Chaotic', 'Nurturing', 'Mysterious'],
+                    hint:
+                        "What are they like? e.g. 'Sharp wit, never shows vulnerability, but secretly writes poetry'",
+                    suggestions: const [
+                      'Sarcastic',
+                      'Gentle',
+                      'Intense',
+                      'Playful',
+                      'Cold',
+                      'Chaotic',
+                      'Nurturing',
+                      'Mysterious',
+                    ],
                     maxLines: 3,
                   ),
                   _guidedField(
                     label: 'How They Talk',
                     controller: _guidedSpeechController,
-                    hint: "e.g. 'Formal and old-fashioned' or 'Lots of slang, drops F-bombs'",
-                    suggestions: const ['Formal', 'Casual', 'Poetic', 'Blunt', 'Soft-spoken', 'Loud', 'Sarcastic', 'Flirty'],
+                    hint:
+                        "e.g. 'Formal and old-fashioned' or 'Lots of slang, drops F-bombs'",
+                    suggestions: const [
+                      'Formal',
+                      'Casual',
+                      'Poetic',
+                      'Blunt',
+                      'Soft-spoken',
+                      'Loud',
+                      'Sarcastic',
+                      'Flirty',
+                    ],
                   ),
                   _guidedField(
                     label: 'Secret / Hidden Depth',
                     controller: _guidedSecretController,
-                    hint: "What's beneath the surface? e.g. 'Seems cold but is terrified of being alone'",
+                    hint:
+                        "What's beneath the surface? e.g. 'Seems cold but is terrified of being alone'",
                   ),
                 ],
               ),
@@ -2692,27 +3591,56 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // ══════════════════════════════════════════════
               _guidedSection(
                 title: 'Backstory',
-                subtitle: 'Even a sentence helps the AI build a richer history.',
+                subtitle:
+                    'Even a sentence helps the AI build a richer history.',
                 icon: Icons.auto_stories,
                 children: [
                   _guidedField(
                     label: 'Origin / Background',
                     controller: _guidedOriginController,
-                    hint: "e.g. 'Grew up on the streets after her parents disappeared'",
-                    suggestions: const ['Orphan', 'Nobility', 'Self-made', 'Military', 'Criminal past', 'Mysterious origins', 'Small-town', 'Royalty'],
+                    hint:
+                        "e.g. 'Grew up on the streets after her parents disappeared'",
+                    suggestions: const [
+                      'Orphan',
+                      'Nobility',
+                      'Self-made',
+                      'Military',
+                      'Criminal past',
+                      'Mysterious origins',
+                      'Small-town',
+                      'Royalty',
+                    ],
                     maxLines: 2,
                   ),
                   _guidedField(
                     label: 'Setting / Era',
                     controller: _guidedSettingController,
-                    hint: "When and where? e.g. 'Cyberpunk megacity' or 'Medieval fantasy kingdom'",
-                    suggestions: const ['Modern', 'Medieval', 'Futuristic', 'Victorian', 'Ancient', 'Post-apocalyptic', 'Urban fantasy'],
+                    hint:
+                        "When and where? e.g. 'Cyberpunk megacity' or 'Medieval fantasy kingdom'",
+                    suggestions: const [
+                      'Modern',
+                      'Medieval',
+                      'Futuristic',
+                      'Victorian',
+                      'Ancient',
+                      'Post-apocalyptic',
+                      'Urban fantasy',
+                    ],
                   ),
                   _guidedField(
                     label: 'Tone',
                     controller: _guidedToneController,
-                    hint: "Overall feel? e.g. 'Dark and gritty but with moments of warmth'",
-                    suggestions: const ['Dark', 'Wholesome', 'Tragic', 'Comedic', 'Mysterious', 'Heroic', 'Bittersweet'],
+                    hint:
+                        "Overall feel? e.g. 'Dark and gritty but with moments of warmth'",
+                    suggestions: const [
+                      'Dark',
+                      'Wholesome',
+                      'Tragic',
+                      'Comedic',
+                      'Mysterious',
+                      'Heroic',
+                      'Bittersweet',
+                    ],
                   ),
                 ],
               ),
@@ -2728,14 +3656,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   _guidedField(
                     label: 'Dynamic',
                     controller: _guidedRelDynamicController,
-                    hint: "e.g. 'Coworkers who secretly like each other' or 'She's my bodyguard'",
-                    suggestions: const ['Strangers', 'Childhood friends', 'Rivals', 'Roommates', 'Love interest', 'Mentor/Student', 'Exes', 'Online friends'],
+                    hint:
+                        "e.g. 'Coworkers who secretly like each other' or 'She's my bodyguard'",
+                    suggestions: const [
+                      'Strangers',
+                      'Childhood friends',
+                      'Rivals',
+                      'Roommates',
+                      'Love interest',
+                      'Mentor/Student',
+                      'Exes',
+                      'Online friends',
+                    ],
                     maxLines: 2,
                   ),
                   _guidedField(
                     label: 'Opening Scenario',
                     controller: _guidedRelScenarioController,
-                    hint: "Where does the story start? e.g. 'First day at a new school'",
+                    hint:
+                        "Where does the story start? e.g. 'First day at a new school'",
                   ),
                 ],
               ),
@@ -2750,22 +3689,52 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // NSFW toggle
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.08) : const Color(0xFF1E293B),
+                  color: _nsfwEnabled
+                      ? Colors.pinkAccent.withValues(alpha: 0.08)
+                      : const Color(0xFF1E293B),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.4) : Colors.white12),
+                  border: Border.all(
+                    color: _nsfwEnabled
+                        ? Colors.pinkAccent.withValues(alpha: 0.4)
+                        : Colors.white12,
+                  ),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.local_fire_department, color: _nsfwEnabled ? Colors.pinkAccent : Colors.white24, size: 18),
+                    Icon(
+                      Icons.local_fire_department,
+                      color: _nsfwEnabled ? Colors.pinkAccent : Colors.white24,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Enable NSFW Options', style: TextStyle(color: _nsfwEnabled ? Colors.pinkAccent.shade100 : Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
-                          Text('Unlock intimate character details', style: TextStyle(color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.5) : Colors.white24, fontSize: 10)),
+                          Text(
+                            'Enable NSFW Options',
+                            style: TextStyle(
+                              color: _nsfwEnabled
+                                  ? Colors.pinkAccent.shade100
+                                  : Colors.white54,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            'Unlock intimate character details',
+                            style: TextStyle(
+                              color: _nsfwEnabled
+                                  ? Colors.pinkAccent.withValues(alpha: 0.5)
+                                  : Colors.white24,
+                              fontSize: 10,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -2791,43 +3760,76 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     _guidedField(
                       label: 'Body (intimate details)',
                       controller: _guidedNsfwBodyController,
-                      hint: "Describe specifics if you want: 'modest chest, wide hips, thick thighs'",
-                      suggestions: const ['Flat', 'Small', 'Medium', 'Large', 'Huge'],
+                      hint:
+                          "Describe specifics if you want: 'modest chest, wide hips, thick thighs'",
+                      suggestions: const [
+                        'Flat',
+                        'Small',
+                        'Medium',
+                        'Large',
+                        'Huge',
+                      ],
                       isNsfw: true,
                     ),
                     _guidedField(
                       label: 'Experience Level',
                       controller: _guidedNsfwExpController,
-                      hint: "How experienced are they? e.g. 'First time, nervous but eager'",
-                      suggestions: const ['Innocent', 'Virgin', 'Curious', 'Experienced', 'Insatiable'],
+                      hint:
+                          "How experienced are they? e.g. 'First time, nervous but eager'",
+                      suggestions: const [
+                        'Innocent',
+                        'Virgin',
+                        'Curious',
+                        'Experienced',
+                        'Insatiable',
+                      ],
                       isNsfw: true,
                     ),
                     _guidedField(
                       label: 'Dominance',
                       controller: _guidedNsfwDomController,
-                      hint: "Who takes the lead? e.g. 'Dominant in public, submissive behind closed doors'",
+                      hint:
+                          "Who takes the lead? e.g. 'Dominant in public, submissive behind closed doors'",
                       suggestions: const ['Submissive', 'Switch', 'Dominant'],
                       isNsfw: true,
                     ),
                     _guidedField(
                       label: 'Turn-ons & Kinks',
                       controller: _guidedNsfwKinksController,
-                      hint: "What are they into? e.g. 'Loves being praised, goes weak when you grab her hair'",
-                      suggestions: const ['Praise', 'Teasing', 'Biting', 'Bondage', 'Exhibitionism', 'Jealousy', 'Breeding'],
+                      hint:
+                          "What are they into? e.g. 'Loves being praised, goes weak when you grab her hair'",
+                      suggestions: const [
+                        'Praise',
+                        'Teasing',
+                        'Biting',
+                        'Bondage',
+                        'Exhibitionism',
+                        'Jealousy',
+                        'Breeding',
+                      ],
                       maxLines: 2,
                       isNsfw: true,
                     ),
                     _guidedField(
                       label: 'Clothing / Aesthetic',
                       controller: _guidedNsfwClothingController,
-                      hint: "What do they wear? e.g. 'Always wears thigh-highs and an oversized shirt at home'",
-                      suggestions: const ['Revealing', 'Lingerie', 'Uniform', 'Leather', 'Elegant', 'Barely There'],
+                      hint:
+                          "What do they wear? e.g. 'Always wears thigh-highs and an oversized shirt at home'",
+                      suggestions: const [
+                        'Revealing',
+                        'Lingerie',
+                        'Uniform',
+                        'Leather',
+                        'Elegant',
+                        'Barely There',
+                      ],
                       isNsfw: true,
                     ),
                     _guidedField(
                       label: 'Sexual Personality',
                       controller: _guidedNsfwPersonalityController,
-                      hint: "How do they act during intimacy? e.g. 'Giggly and playful, hides her face when embarrassed'",
+                      hint:
+                          "How do they act during intimacy? e.g. 'Giggly and playful, hides her face when embarrassed'",
                       maxLines: 2,
                       isNsfw: true,
                     ),
@@ -2843,24 +3845,41 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 decoration: BoxDecoration(
                   color: Colors.tealAccent.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: Colors.tealAccent.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.edit_note, color: Colors.tealAccent, size: 20),
+                        const Icon(
+                          Icons.edit_note,
+                          color: Colors.tealAccent,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Your Character Vision',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                              Text(
+                                'Your Character Vision',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
                               SizedBox(height: 2),
-                              Text('Write your idea, or let AI generate a description from the details above.',
-                                style: TextStyle(fontSize: 11, color: Colors.white38)),
+                              Text(
+                                'Write your idea, or let AI generate a description from the details above.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white38,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -2871,17 +3890,38 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       controller: _guidedVisionController,
                       maxLines: null,
                       minLines: 6,
-                      style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
-                      onChanged: (_) { setState(() {}); _saveState(); },
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        height: 1.5,
+                      ),
+                      onChanged: (_) {
+                        setState(() {});
+                        _saveState();
+                      },
                       decoration: InputDecoration(
                         hintText: _guidedVisionPlaceholders[placeholderIdx],
-                        hintStyle: const TextStyle(color: Colors.white12, fontSize: 13),
+                        hintStyle: const TextStyle(
+                          color: Colors.white12,
+                          fontSize: 13,
+                        ),
                         hintMaxLines: 3,
                         filled: true,
                         fillColor: const Color(0xFF1E293B),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white12)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white12)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.tealAccent)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.white12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.white12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Colors.tealAccent,
+                          ),
+                        ),
                         contentPadding: const EdgeInsets.all(16),
                       ),
                     ),
@@ -2894,21 +3934,36 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         return InkWell(
                           onTap: () {
                             final current = _guidedVisionController.text.trim();
-                            _guidedVisionController.text = current.isEmpty ? seed : '$current. $seed';
-                            _guidedVisionController.selection = TextSelection.fromPosition(
-                              TextPosition(offset: _guidedVisionController.text.length));
+                            _guidedVisionController.text = current.isEmpty
+                                ? seed
+                                : '$current. $seed';
+                            _guidedVisionController.selection =
+                                TextSelection.fromPosition(
+                                  TextPosition(
+                                    offset: _guidedVisionController.text.length,
+                                  ),
+                                );
                             setState(() {});
                             _saveState();
                           },
                           borderRadius: BorderRadius.circular(16),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF1E293B),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: Colors.white10),
                             ),
-                            child: Text(seed, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                            child: Text(
+                              seed,
+                              style: const TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                              ),
+                            ),
                           ),
                         );
                       }).toList(),
@@ -2924,24 +3979,46 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                SizedBox(width: 16, height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.tealAccent)),
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.tealAccent,
+                                  ),
+                                ),
                                 SizedBox(width: 8),
-                                Text('Generating description...', style: TextStyle(color: Colors.tealAccent, fontSize: 12)),
+                                Text(
+                                  'Generating description...',
+                                  style: TextStyle(
+                                    color: Colors.tealAccent,
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ],
                             ),
                           )
                         else
                           ElevatedButton.icon(
-                            onPressed: _nameController.text.trim().isEmpty ? null : _expandNarrative,
+                            onPressed: _nameController.text.trim().isEmpty
+                                ? null
+                                : _expandNarrative,
                             icon: const Icon(Icons.auto_fix_high, size: 16),
-                            label: const Text('Generate Character Description', style: TextStyle(fontSize: 13)),
+                            label: const Text(
+                              'Generate Character Description',
+                              style: TextStyle(fontSize: 13),
+                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF0D7377),
                               foregroundColor: Colors.white,
                               disabledBackgroundColor: Colors.white10,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
                             ),
                           ),
                       ],
@@ -2956,52 +4033,93 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // ══════════════════════════════════════════════
               _guidedSection(
                 title: 'Output Settings',
-                subtitle: 'Greeting style, art style, lorebook, and detail level.',
+                subtitle:
+                    'Greeting style, art style, lorebook, and detail level.',
                 icon: Icons.tune,
                 children: [
                   // Persona selector
-                  _inputLabel('{{user}} Persona for Greetings', required: false),
+                  _inputLabel(
+                    '{{user}} Persona for Greetings',
+                    required: false,
+                  ),
                   const SizedBox(height: 4),
-                  const Text('Select a persona to tailor greetings, or "None" for public cards.',
-                    style: TextStyle(color: Colors.white24, fontSize: 11)),
+                  const Text(
+                    'Select a persona to tailor greetings, or "None" for public cards.',
+                    style: TextStyle(color: Colors.white24, fontSize: 11),
+                  ),
                   const SizedBox(height: 8),
-                  Builder(builder: (context) {
-                    final personaService = Provider.of<UserPersonaService>(context);
-                    final personas = personaService.personas;
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white12),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedPersonaId,
-                          isExpanded: true,
-                          dropdownColor: const Color(0xFF1E293B),
-                          style: const TextStyle(color: Colors.white, fontSize: 13),
-                          items: [
-                            const DropdownMenuItem(value: '', child: Row(children: [
-                              Icon(Icons.person_off, size: 16, color: Colors.white38),
-                              SizedBox(width: 8),
-                              Text('None (Blank Slate)', style: TextStyle(color: Colors.white54)),
-                            ])),
-                            ...personas.map((p) => DropdownMenuItem(value: p.id, child: Row(children: [
-                              const Icon(Icons.person, size: 16, color: Colors.blueAccent),
-                              const SizedBox(width: 8),
-                              Flexible(child: Text(p.displayLabel, overflow: TextOverflow.ellipsis)),
-                            ]))),
-                          ],
-                          onChanged: (value) {
-                            setState(() => _selectedPersonaId = value ?? '');
-                            _saveState();
-                          },
+                  Builder(
+                    builder: (context) {
+                      final personaService = Provider.of<UserPersonaService>(
+                        context,
+                      );
+                      final personas = personaService.personas;
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white12),
                         ),
-                      ),
-                    );
-                  }),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedPersonaId,
+                            isExpanded: true,
+                            dropdownColor: const Color(0xFF1E293B),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: '',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.person_off,
+                                      size: 16,
+                                      color: Colors.white38,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'None (Blank Slate)',
+                                      style: TextStyle(color: Colors.white54),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ...personas.map(
+                                (p) => DropdownMenuItem(
+                                  value: p.id,
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.person,
+                                        size: 16,
+                                        color: Colors.blueAccent,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          p.displayLabel,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              setState(() => _selectedPersonaId = value ?? '');
+                              _saveState();
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                   const SizedBox(height: 16),
 
                   // Greeting tones
@@ -3011,36 +4129,49 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     _altGreetingCount == 0
                         ? 'Tone for the first message.'
                         : 'Select up to ${_altGreetingCount + 1} — one per greeting.',
-                    style: const TextStyle(color: Colors.white24, fontSize: 11)),
+                    style: const TextStyle(color: Colors.white24, fontSize: 11),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: _greetingTones.where((tone) => tone != 'Spicy/NSFW' || _nsfwEnabled).map((tone) {
-                      final isSelected = _selectedTones.contains(tone);
-                      final maxTones = _altGreetingCount + 1;
-                      final atLimit = _selectedTones.length >= maxTones && !isSelected;
-                      return FilterChip(
-                        label: Text(tone),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              if (atLimit) _selectedTones.remove(_selectedTones.last);
-                              _selectedTones.add(tone);
-                            } else if (_selectedTones.length > 1) {
-                              _selectedTones.remove(tone);
-                            }
-                          });
-                          _saveState();
-                        },
-                        selectedColor: Colors.blueAccent,
-                        backgroundColor: const Color(0xFF1E293B),
-                        checkmarkColor: Colors.white,
-                        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
-                        side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
-                      );
-                    }).toList(),
+                    children: _greetingTones
+                        .where((tone) => tone != 'Spicy/NSFW' || _nsfwEnabled)
+                        .map((tone) {
+                          final isSelected = _selectedTones.contains(tone);
+                          final maxTones = _altGreetingCount + 1;
+                          final atLimit =
+                              _selectedTones.length >= maxTones && !isSelected;
+                          return FilterChip(
+                            label: Text(tone),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              setState(() {
+                                if (selected) {
+                                  if (atLimit)
+                                    _selectedTones.remove(_selectedTones.last);
+                                  _selectedTones.add(tone);
+                                } else if (_selectedTones.length > 1) {
+                                  _selectedTones.remove(tone);
+                                }
+                              });
+                              _saveState();
+                            },
+                            selectedColor: Colors.blueAccent,
+                            backgroundColor: const Color(0xFF1E293B),
+                            checkmarkColor: Colors.white,
+                            labelStyle: TextStyle(
+                              color: isSelected ? Colors.white : Colors.white70,
+                              fontSize: 13,
+                            ),
+                            side: BorderSide(
+                              color: isSelected
+                                  ? Colors.blueAccent
+                                  : Colors.white12,
+                            ),
+                          );
+                        })
+                        .toList(),
                   ),
                   const SizedBox(height: 16),
 
@@ -3052,10 +4183,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _inputLabel('First Message Length', required: false),
+                            _inputLabel(
+                              'First Message Length',
+                              required: false,
+                            ),
                             const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF1E293B),
                                 borderRadius: BorderRadius.circular(10),
@@ -3066,9 +4202,24 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                   value: _greetingLength,
                                   isExpanded: true,
                                   dropdownColor: const Color(0xFF1E293B),
-                                  style: const TextStyle(color: Colors.white, fontSize: 13),
-                                  items: _greetingLengths.map((len) => DropdownMenuItem(value: len, child: Text(len))).toList(),
-                                  onChanged: (value) { if (value != null) { setState(() => _greetingLength = value); _saveState(); } },
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                  ),
+                                  items: _greetingLengths
+                                      .map(
+                                        (len) => DropdownMenuItem(
+                                          value: len,
+                                          child: Text(len),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      setState(() => _greetingLength = value);
+                                      _saveState();
+                                    }
+                                  },
                                 ),
                               ),
                             ),
@@ -3086,22 +4237,38 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               children: [
                                 Expanded(
                                   child: Slider(
-                                    value: _altGreetingCount.toDouble(), min: 0, max: 5, divisions: 5,
-                                    activeColor: Colors.blueAccent, inactiveColor: Colors.white12,
+                                    value: _altGreetingCount.toDouble(),
+                                    min: 0,
+                                    max: 5,
+                                    divisions: 5,
+                                    activeColor: Colors.blueAccent,
+                                    inactiveColor: Colors.white12,
                                     label: '$_altGreetingCount',
                                     onChanged: (val) {
                                       setState(() {
                                         _altGreetingCount = val.round();
                                         final maxTones = _altGreetingCount + 1;
-                                        while (_selectedTones.length > maxTones) {
-                                          _selectedTones.remove(_selectedTones.last);
+                                        while (_selectedTones.length >
+                                            maxTones) {
+                                          _selectedTones.remove(
+                                            _selectedTones.last,
+                                          );
                                         }
                                       });
                                       _saveState();
                                     },
                                   ),
                                 ),
-                                SizedBox(width: 24, child: Text('$_altGreetingCount', style: const TextStyle(color: Colors.white70, fontSize: 13))),
+                                SizedBox(
+                                  width: 24,
+                                  child: Text(
+                                    '$_altGreetingCount',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ],
@@ -3115,7 +4282,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   _inputLabel('Avatar Art Style', required: false),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 8, runSpacing: 8,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: _artStyles.map((style) {
                       final isSelected = _artStyle == style;
                       return ChoiceChip(
@@ -3124,8 +4292,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         onSelected: (_) => setState(() => _artStyle = style),
                         selectedColor: Colors.blueAccent,
                         backgroundColor: const Color(0xFF1E293B),
-                        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
-                        side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
+                        labelStyle: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 13,
+                        ),
+                        side: BorderSide(
+                          color: isSelected
+                              ? Colors.blueAccent
+                              : Colors.white12,
+                        ),
                       );
                     }).toList(),
                   ),
@@ -3135,17 +4310,28 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   _inputLabel('Description Detail', required: false),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 8, runSpacing: 8,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: _generationDetailOptions.keys.map((label) {
                       final isSelected = _generationDetail == label;
                       return ChoiceChip(
                         label: Text(label),
                         selected: isSelected,
-                        onSelected: (_) { setState(() => _generationDetail = label); _saveState(); },
+                        onSelected: (_) {
+                          setState(() => _generationDetail = label);
+                          _saveState();
+                        },
                         selectedColor: Colors.blueAccent,
                         backgroundColor: const Color(0xFF1E293B),
-                        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 13),
-                        side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
+                        labelStyle: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 13,
+                        ),
+                        side: BorderSide(
+                          color: isSelected
+                              ? Colors.blueAccent
+                              : Colors.white12,
+                        ),
                       );
                     }).toList(),
                   ),
@@ -3154,38 +4340,82 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   // Lorebook
                   Row(
                     children: [
-                      const Icon(Icons.menu_book, color: Colors.blueAccent, size: 18),
+                      const Icon(
+                        Icons.menu_book,
+                        color: Colors.blueAccent,
+                        size: 18,
+                      ),
                       const SizedBox(width: 8),
-                      const Expanded(child: Text('Auto-generate World Lore',
-                        style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600))),
-                      Switch(value: _generateLorebook, activeTrackColor: Colors.blueAccent,
-                        onChanged: (val) { setState(() => _generateLorebook = val); _saveState(); }),
+                      const Expanded(
+                        child: Text(
+                          'Auto-generate World Lore',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Switch(
+                        value: _generateLorebook,
+                        activeTrackColor: Colors.blueAccent,
+                        onChanged: (val) {
+                          setState(() => _generateLorebook = val);
+                          _saveState();
+                        },
+                      ),
                     ],
                   ),
                   if (_generateLorebook) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text('Depth:', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                        const Text(
+                          'Depth:',
+                          style: TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
                         const SizedBox(width: 4),
                         const Tooltip(
-                          message: 'Controls how many consecutive generation steps the Lore Engine processes. Deep = more expansive lore structure but longer wait time.',
-                          child: Icon(Icons.info_outline, size: 14, color: Colors.white38),
+                          message:
+                              'Controls how many consecutive generation steps the Lore Engine processes. Deep = more expansive lore structure but longer wait time.',
+                          child: Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: Colors.white38,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         ..._loreDepths.map((depth) {
                           final isSelected = _loreDepth == depth;
-                          final count = depth == 'Light' ? '3-4' : depth == 'Deep' ? '10-15' : '5-8';
+                          final count = depth == 'Light'
+                              ? '3-4'
+                              : depth == 'Deep'
+                              ? '10-15'
+                              : '5-8';
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: ChoiceChip(
-                              label: Text('$depth ($count)', style: const TextStyle(fontSize: 11)),
+                              label: Text(
+                                '$depth ($count)',
+                                style: const TextStyle(fontSize: 11),
+                              ),
                               selected: isSelected,
-                              onSelected: (_) { setState(() => _loreDepth = depth); _saveState(); },
+                              onSelected: (_) {
+                                setState(() => _loreDepth = depth);
+                                _saveState();
+                              },
                               selectedColor: Colors.blueAccent,
                               backgroundColor: const Color(0xFF1E293B),
-                              labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white54),
-                              side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
+                              labelStyle: TextStyle(
+                                color: isSelected
+                                    ? Colors.white
+                                    : Colors.white54,
+                              ),
+                              side: BorderSide(
+                                color: isSelected
+                                    ? Colors.blueAccent
+                                    : Colors.white12,
+                              ),
                               visualDensity: VisualDensity.compact,
                             ),
                           );
@@ -3207,15 +4437,26 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   decoration: BoxDecoration(
                     color: Colors.amber.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: Colors.amber.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.lightbulb_outline, color: Colors.amberAccent, size: 16),
+                      Icon(
+                        Icons.lightbulb_outline,
+                        color: Colors.amberAccent,
+                        size: 16,
+                      ),
                       SizedBox(width: 8),
                       Expanded(
-                        child: Text('Tip: The more detail you provide, the better the AI can capture your vision.',
-                          style: TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                        child: Text(
+                          'Tip: The more detail you provide, the better the AI can capture your vision.',
+                          style: TextStyle(
+                            color: Colors.amberAccent,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -3231,11 +4472,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       child: OutlinedButton.icon(
                         onPressed: () => setState(() => _currentStep = 1),
                         icon: const Icon(Icons.arrow_back, size: 18),
-                        label: const Text('Back', style: TextStyle(fontSize: 14)),
+                        label: const Text(
+                          'Back',
+                          style: TextStyle(fontSize: 14),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white54,
                           side: const BorderSide(color: Colors.white24),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -3244,17 +4490,23 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       width: 240,
                       height: 52,
                       child: ElevatedButton.icon(
-                        onPressed: _nameController.text.trim().isEmpty ||
-                            _guidedVisionController.text.trim().length < 10
+                        onPressed:
+                            _nameController.text.trim().isEmpty ||
+                                _guidedVisionController.text.trim().length < 10
                             ? null
                             : _startGuidedGeneration,
                         icon: const Icon(Icons.auto_awesome, size: 20),
-                        label: const Text('Generate Character', style: TextStyle(fontSize: 16)),
+                        label: const Text(
+                          'Generate Character',
+                          style: TextStyle(fontSize: 16),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF0D7377),
                           foregroundColor: Colors.white,
                           disabledBackgroundColor: Colors.white10,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -3273,7 +4525,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   // ═══════════════════════════════════════════════════════════════
 
   /// Helper: single-select chip row
-  Widget _singleSelectChipRow(String label, String current, List<String> options, void Function(String) onChanged, {bool isNsfw = false}) {
+  Widget _singleSelectChipRow(
+    String label,
+    String current,
+    List<String> options,
+    void Function(String) onChanged, {
+    bool isNsfw = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -3282,10 +4540,21 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           Row(
             children: [
               if (isNsfw) ...[
-                const Icon(Icons.local_fire_department, size: 12, color: Colors.pinkAccent),
+                const Icon(
+                  Icons.local_fire_department,
+                  size: 12,
+                  color: Colors.pinkAccent,
+                ),
                 const SizedBox(width: 4),
               ],
-              Text(label, style: TextStyle(color: isNsfw ? Colors.pinkAccent.shade100 : Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isNsfw ? Colors.pinkAccent.shade100 : Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -3294,7 +4563,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             runSpacing: 6,
             children: options.map((opt) {
               final isSelected = current == opt;
-              final accentColor = isNsfw ? Colors.pinkAccent : Colors.blueAccent;
+              final accentColor = isNsfw
+                  ? Colors.pinkAccent
+                  : Colors.blueAccent;
               return ChoiceChip(
                 label: Text(opt, style: const TextStyle(fontSize: 11)),
                 selected: isSelected,
@@ -3304,8 +4575,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 },
                 selectedColor: accentColor.withValues(alpha: 0.3),
                 backgroundColor: const Color(0xFF1E293B),
-                labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white54),
-                side: BorderSide(color: isSelected ? accentColor : Colors.white10),
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : Colors.white54,
+                ),
+                side: BorderSide(
+                  color: isSelected ? accentColor : Colors.white10,
+                ),
                 visualDensity: VisualDensity.compact,
               );
             }).toList(),
@@ -3316,7 +4591,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   }
 
   /// Helper: multi-select chip row
-  Widget _multiSelectChipRow(String label, Set<String> selected, List<String> options, void Function(Set<String>) onChanged, {bool isNsfw = false}) {
+  Widget _multiSelectChipRow(
+    String label,
+    Set<String> selected,
+    List<String> options,
+    void Function(Set<String>) onChanged, {
+    bool isNsfw = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -3325,10 +4606,21 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           Row(
             children: [
               if (isNsfw) ...[
-                const Icon(Icons.local_fire_department, size: 12, color: Colors.pinkAccent),
+                const Icon(
+                  Icons.local_fire_department,
+                  size: 12,
+                  color: Colors.pinkAccent,
+                ),
                 const SizedBox(width: 4),
               ],
-              Text(label, style: TextStyle(color: isNsfw ? Colors.pinkAccent.shade100 : Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isNsfw ? Colors.pinkAccent.shade100 : Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -3337,21 +4629,31 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             runSpacing: 6,
             children: options.map((opt) {
               final isSelected = selected.contains(opt);
-              final accentColor = isNsfw ? Colors.pinkAccent : Colors.blueAccent;
+              final accentColor = isNsfw
+                  ? Colors.pinkAccent
+                  : Colors.blueAccent;
               return FilterChip(
                 label: Text(opt, style: const TextStyle(fontSize: 11)),
                 selected: isSelected,
                 onSelected: (val) {
                   final newSet = Set<String>.from(selected);
-                  if (val) { newSet.add(opt); } else { newSet.remove(opt); }
+                  if (val) {
+                    newSet.add(opt);
+                  } else {
+                    newSet.remove(opt);
+                  }
                   onChanged(newSet);
                   _saveState();
                 },
                 selectedColor: accentColor.withValues(alpha: 0.3),
                 backgroundColor: const Color(0xFF1E293B),
                 checkmarkColor: accentColor,
-                labelStyle: TextStyle(color: isSelected ? accentColor : Colors.white38),
-                side: BorderSide(color: isSelected ? accentColor : Colors.white10),
+                labelStyle: TextStyle(
+                  color: isSelected ? accentColor : Colors.white38,
+                ),
+                side: BorderSide(
+                  color: isSelected ? accentColor : Colors.white10,
+                ),
                 visualDensity: VisualDensity.compact,
               );
             }).toList(),
@@ -3360,6 +4662,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       ),
     );
   }
+
   Widget _buildConfigStep() {
     return Center(
       key: const ValueKey('config'),
@@ -3373,35 +4676,73 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // Header
               const Text(
                 'Bring Your Character to Life',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Give us a name and a concept — the AI will do the rest. '
                 'It will generate a complete character card with personality, backstory, '
                 'dialogue examples, and a custom avatar.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 24),
 
               // ── NSFW Toggle ──
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.08) : const Color(0xFF1E293B),
+                  color: _nsfwEnabled
+                      ? Colors.pinkAccent.withValues(alpha: 0.08)
+                      : const Color(0xFF1E293B),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.4) : Colors.white12),
+                  border: Border.all(
+                    color: _nsfwEnabled
+                        ? Colors.pinkAccent.withValues(alpha: 0.4)
+                        : Colors.white12,
+                  ),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.local_fire_department, color: _nsfwEnabled ? Colors.pinkAccent : Colors.white24, size: 18),
+                    Icon(
+                      Icons.local_fire_department,
+                      color: _nsfwEnabled ? Colors.pinkAccent : Colors.white24,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Enable NSFW Options', style: TextStyle(color: _nsfwEnabled ? Colors.pinkAccent.shade100 : Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
-                          Text('Unlock spicy appearance & relationship options', style: TextStyle(color: _nsfwEnabled ? Colors.pinkAccent.withValues(alpha: 0.5) : Colors.white24, fontSize: 10)),
+                          Text(
+                            'Enable NSFW Options',
+                            style: TextStyle(
+                              color: _nsfwEnabled
+                                  ? Colors.pinkAccent.shade100
+                                  : Colors.white54,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            'Unlock spicy appearance & relationship options',
+                            style: TextStyle(
+                              color: _nsfwEnabled
+                                  ? Colors.pinkAccent.withValues(alpha: 0.5)
+                                  : Colors.white24,
+                              fontSize: 10,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -3424,20 +4765,36 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF162032),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: Colors.amber.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.bolt, color: Colors.amberAccent, size: 18),
+                        const Icon(
+                          Icons.bolt,
+                          color: Colors.amberAccent,
+                          size: 18,
+                        ),
                         const SizedBox(width: 6),
-                        const Text('Quick Start — Archetype Presets', style: TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Quick Start — Archetype Presets',
+                          style: TextStyle(
+                            color: Colors.amberAccent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    const Text('Tap to auto-fill concept & personality', style: TextStyle(color: Colors.white24, fontSize: 11)),
+                    const Text(
+                      'Tap to auto-fill concept & personality',
+                      style: TextStyle(color: Colors.white24, fontSize: 11),
+                    ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
@@ -3445,12 +4802,30 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       children: _archetypePresets.entries.map((entry) {
                         final isSelected = _selectedArchetype == entry.key;
                         return ChoiceChip(
-                          label: Text(entry.key, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : Colors.white70)),
-                          avatar: Icon(isSelected ? Icons.check : Icons.auto_awesome, size: 14, color: isSelected ? Colors.white : Colors.amberAccent),
+                          label: Text(
+                            entry.key,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isSelected ? Colors.white : Colors.white70,
+                            ),
+                          ),
+                          avatar: Icon(
+                            isSelected ? Icons.check : Icons.auto_awesome,
+                            size: 14,
+                            color: isSelected
+                                ? Colors.white
+                                : Colors.amberAccent,
+                          ),
                           selected: isSelected,
-                          selectedColor: Colors.amberAccent.withValues(alpha: 0.3),
+                          selectedColor: Colors.amberAccent.withValues(
+                            alpha: 0.3,
+                          ),
                           backgroundColor: const Color(0xFF1E293B),
-                          side: BorderSide(color: isSelected ? Colors.amberAccent : Colors.white12),
+                          side: BorderSide(
+                            color: isSelected
+                                ? Colors.amberAccent
+                                : Colors.white12,
+                          ),
                           checkmarkColor: Colors.amberAccent,
                           showCheckmark: false,
                           onSelected: (_) {
@@ -3459,8 +4834,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                 _selectedArchetype = '';
                               } else {
                                 _selectedArchetype = entry.key;
-                                _conceptController.text = entry.value['concept'] ?? '';
-                                _keywordsController.text = entry.value['keywords'] ?? '';
+                                _conceptController.text =
+                                    entry.value['concept'] ?? '';
+                                _keywordsController.text =
+                                    entry.value['keywords'] ?? '';
                                 if (_nameController.text.isEmpty) {
                                   _nameController.text = entry.key;
                                 }
@@ -3484,7 +4861,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   Tooltip(
                     message: 'Generate a random character name',
                     child: IconButton(
-                      icon: const Icon(Icons.casino, color: Colors.amberAccent, size: 20),
+                      icon: const Icon(
+                        Icons.casino,
+                        color: Colors.amberAccent,
+                        size: 20,
+                      ),
                       onPressed: _randomizeName,
                       visualDensity: VisualDensity.compact,
                     ),
@@ -3542,46 +4923,97 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF162032),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: Colors.blueAccent.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.person_outline, color: Colors.blueAccent, size: 18),
+                        const Icon(
+                          Icons.person_outline,
+                          color: Colors.blueAccent,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
-                        const Text('Character Appearance', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                        const Text(
+                          'Character Appearance',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const Spacer(),
-                        const Text('All optional', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                        const Text(
+                          'All optional',
+                          style: TextStyle(color: Colors.white24, fontSize: 10),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _singleSelectChipRow('Race / Species', _race, _raceOptions, (v) => setState(() => _race = v)),
+                    _singleSelectChipRow(
+                      'Race / Species',
+                      _race,
+                      _raceOptions,
+                      (v) => setState(() => _race = v),
+                    ),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
                         children: [
-                          const Text('Custom: ', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                          const Text(
+                            'Custom: ',
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 12,
+                            ),
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: _customRaceController,
-                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
                               decoration: InputDecoration(
-                                hintText: 'e.g. Kitsune, Arachnid, Void-born...',
-                                hintStyle: const TextStyle(color: Colors.white12, fontSize: 12),
+                                hintText:
+                                    'e.g. Kitsune, Arachnid, Void-born...',
+                                hintStyle: const TextStyle(
+                                  color: Colors.white12,
+                                  fontSize: 12,
+                                ),
                                 isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
                                 filled: true,
                                 fillColor: const Color(0xFF1E293B),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.white12)),
-                                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.white12)),
-                                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.blueAccent)),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(color: Colors.white12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(color: Colors.white12),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: Colors.blueAccent,
+                                  ),
+                                ),
                               ),
                               onChanged: (_) {
                                 // Clear chip selection if typing custom
-                                if (_customRaceController.text.trim().isNotEmpty && _race.isNotEmpty) {
+                                if (_customRaceController.text
+                                        .trim()
+                                        .isNotEmpty &&
+                                    _race.isNotEmpty) {
                                   setState(() => _race = '');
                                 }
                                 _saveState();
@@ -3591,22 +5023,84 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         ],
                       ),
                     ),
-                    _singleSelectChipRow('Body Type', _bodyType, _bodyTypes, (v) => setState(() => _bodyType = v)),
-                    _singleSelectChipRow('Hair Length', _hairLength, _hairLengths, (v) => setState(() => _hairLength = v)),
-                    _singleSelectChipRow('Hair Style', _hairStyle, _hairStyles, (v) => setState(() => _hairStyle = v)),
-                    _singleSelectChipRow('Skin Tone', _skinTone, _skinTones, (v) => setState(() => _skinTone = v)),
-                    _multiSelectChipRow('Notable Features', _notableFeatures, _notableFeatureOptions, (v) => setState(() => _notableFeatures = v)),
+                    _singleSelectChipRow(
+                      'Body Type',
+                      _bodyType,
+                      _bodyTypes,
+                      (v) => setState(() => _bodyType = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Hair Length',
+                      _hairLength,
+                      _hairLengths,
+                      (v) => setState(() => _hairLength = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Hair Style',
+                      _hairStyle,
+                      _hairStyles,
+                      (v) => setState(() => _hairStyle = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Skin Tone',
+                      _skinTone,
+                      _skinTones,
+                      (v) => setState(() => _skinTone = v),
+                    ),
+                    _multiSelectChipRow(
+                      'Notable Features',
+                      _notableFeatures,
+                      _notableFeatureOptions,
+                      (v) => setState(() => _notableFeatures = v),
+                    ),
                     const Divider(color: Colors.white10, height: 16),
-                    _singleSelectChipRow('Abs / Core', _absCore, _absCoreOptions, (v) => setState(() => _absCore = v)),
-                    _singleSelectChipRow('Thighs', _thighs, _thighOptions, (v) => setState(() => _thighs = v)),
-                    _singleSelectChipRow('Hips', _hips, _hipOptions, (v) => setState(() => _hips = v)),
-                    _singleSelectChipRow('Shoulders', _shoulders, _shoulderOptions, (v) => setState(() => _shoulders = v)),
-                    _singleSelectChipRow('Waist', _waist, _waistOptions, (v) => setState(() => _waist = v)),
+                    _singleSelectChipRow(
+                      'Abs / Core',
+                      _absCore,
+                      _absCoreOptions,
+                      (v) => setState(() => _absCore = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Thighs',
+                      _thighs,
+                      _thighOptions,
+                      (v) => setState(() => _thighs = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Hips',
+                      _hips,
+                      _hipOptions,
+                      (v) => setState(() => _hips = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Shoulders',
+                      _shoulders,
+                      _shoulderOptions,
+                      (v) => setState(() => _shoulders = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Waist',
+                      _waist,
+                      _waistOptions,
+                      (v) => setState(() => _waist = v),
+                    ),
                     // NSFW body details
                     if (_nsfwEnabled) ...[
                       const Divider(color: Colors.pinkAccent, height: 24),
-                      _singleSelectChipRow('Chest Size', _chestSize, _chestSizes, (v) => setState(() => _chestSize = v), isNsfw: true),
-                      _singleSelectChipRow('Butt Size', _buttSize, _buttSizes, (v) => setState(() => _buttSize = v), isNsfw: true),
+                      _singleSelectChipRow(
+                        'Chest Size',
+                        _chestSize,
+                        _chestSizes,
+                        (v) => setState(() => _chestSize = v),
+                        isNsfw: true,
+                      ),
+                      _singleSelectChipRow(
+                        'Butt Size',
+                        _buttSize,
+                        _buttSizes,
+                        (v) => setState(() => _buttSize = v),
+                        isNsfw: true,
+                      ),
                     ],
                   ],
                 ),
@@ -3616,54 +5110,69 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // ── Relationship Presets (multi-select, NSFW gated) ──
               _inputLabel('Relationship to {{user}}', required: false),
               const SizedBox(height: 4),
-              const Text('Select one or more dynamics', style: TextStyle(color: Colors.white24, fontSize: 11)),
+              const Text(
+                'Select one or more dynamics',
+                style: TextStyle(color: Colors.white24, fontSize: 11),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _relationshipPresets.where((rel) {
-                  // Hide NSFW chips if toggle is off
-                  if (!_nsfwEnabled && _nsfwRelationships.contains(rel)) return false;
-                  return true;
-                }).map((rel) {
-                  final isSelected = _selectedRelationships.contains(rel);
-                  final isNsfw = _nsfwRelationships.contains(rel);
-                  return FilterChip(
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isNsfw) ...[
-                          Icon(Icons.local_fire_department, size: 12, color: isSelected ? Colors.white : Colors.pinkAccent.shade100),
-                          const SizedBox(width: 4),
-                        ],
-                        Text(rel),
-                      ],
-                    ),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        if (selected) {
-                          _selectedRelationships.add(rel);
-                        } else {
-                          _selectedRelationships.remove(rel);
-                        }
-                      });
-                      _saveState();
-                    },
-                    selectedColor: isNsfw ? Colors.pinkAccent.withValues(alpha: 0.3) : Colors.blueAccent,
-                    backgroundColor: const Color(0xFF1E293B),
-                    checkmarkColor: Colors.white,
-                    labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white70,
-                      fontSize: 12,
-                    ),
-                    side: BorderSide(
-                      color: isSelected
-                          ? (isNsfw ? Colors.pinkAccent : Colors.blueAccent)
-                          : Colors.white12,
-                    ),
-                  );
-                }).toList(),
+                children: _relationshipPresets
+                    .where((rel) {
+                      // Hide NSFW chips if toggle is off
+                      if (!_nsfwEnabled && _nsfwRelationships.contains(rel))
+                        return false;
+                      return true;
+                    })
+                    .map((rel) {
+                      final isSelected = _selectedRelationships.contains(rel);
+                      final isNsfw = _nsfwRelationships.contains(rel);
+                      return FilterChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isNsfw) ...[
+                              Icon(
+                                Icons.local_fire_department,
+                                size: 12,
+                                color: isSelected
+                                    ? Colors.white
+                                    : Colors.pinkAccent.shade100,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(rel),
+                          ],
+                        ),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedRelationships.add(rel);
+                            } else {
+                              _selectedRelationships.remove(rel);
+                            }
+                          });
+                          _saveState();
+                        },
+                        selectedColor: isNsfw
+                            ? Colors.pinkAccent.withValues(alpha: 0.3)
+                            : Colors.blueAccent,
+                        backgroundColor: const Color(0xFF1E293B),
+                        checkmarkColor: Colors.white,
+                        labelStyle: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 12,
+                        ),
+                        side: BorderSide(
+                          color: isSelected
+                              ? (isNsfw ? Colors.pinkAccent : Colors.blueAccent)
+                              : Colors.white12,
+                        ),
+                      );
+                    })
+                    .toList(),
               ),
               const SizedBox(height: 8),
               _styledTextField(
@@ -3680,24 +5189,61 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   decoration: BoxDecoration(
                     color: Colors.pinkAccent.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.pinkAccent.withValues(alpha: 0.2)),
+                    border: Border.all(
+                      color: Colors.pinkAccent.withValues(alpha: 0.2),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.local_fire_department, color: Colors.pinkAccent, size: 18),
+                          const Icon(
+                            Icons.local_fire_department,
+                            color: Colors.pinkAccent,
+                            size: 18,
+                          ),
                           const SizedBox(width: 8),
-                          const Text('Sexual Traits', style: TextStyle(color: Colors.pinkAccent, fontSize: 14, fontWeight: FontWeight.w600)),
+                          const Text(
+                            'Sexual Traits',
+                            style: TextStyle(
+                              color: Colors.pinkAccent,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const Spacer(),
-                          const Text('All optional', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                          const Text(
+                            'All optional',
+                            style: TextStyle(
+                              color: Colors.white24,
+                              fontSize: 10,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _singleSelectChipRow('Experience', _experience, _experienceOptions, (v) => setState(() => _experience = v), isNsfw: true),
-                      _singleSelectChipRow('Dominance', _dominance, _dominanceOptions, (v) => setState(() => _dominance = v), isNsfw: true),
-                      _multiSelectChipRow('Kinks', _selectedKinks, _kinkOptions, (v) => setState(() => _selectedKinks = v), isNsfw: true),
+                      _singleSelectChipRow(
+                        'Experience',
+                        _experience,
+                        _experienceOptions,
+                        (v) => setState(() => _experience = v),
+                        isNsfw: true,
+                      ),
+                      _singleSelectChipRow(
+                        'Dominance',
+                        _dominance,
+                        _dominanceOptions,
+                        (v) => setState(() => _dominance = v),
+                        isNsfw: true,
+                      ),
+                      _multiSelectChipRow(
+                        'Kinks',
+                        _selectedKinks,
+                        _kinkOptions,
+                        (v) => setState(() => _selectedKinks = v),
+                        isNsfw: true,
+                      ),
                       // Custom kinks
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -3706,21 +5252,39 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.local_fire_department, size: 12, color: Colors.pinkAccent),
+                                const Icon(
+                                  Icons.local_fire_department,
+                                  size: 12,
+                                  color: Colors.pinkAccent,
+                                ),
                                 const SizedBox(width: 4),
-                                Text('Custom Kinks', style: TextStyle(color: Colors.pinkAccent.shade100, fontSize: 12, fontWeight: FontWeight.w500)),
+                                Text(
+                                  'Custom Kinks',
+                                  style: TextStyle(
+                                    color: Colors.pinkAccent.shade100,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 6),
                             _styledTextField(
                               controller: _customKinksController,
-                              hint: 'e.g. foot worship, roleplay, praise kink...',
+                              hint:
+                                  'e.g. foot worship, roleplay, praise kink...',
                               maxLines: 1,
                             ),
                           ],
                         ),
                       ),
-                      _singleSelectChipRow('Outfit Vibe', _outfitVibe, _outfitVibes, (v) => setState(() => _outfitVibe = v), isNsfw: true),
+                      _singleSelectChipRow(
+                        'Outfit Vibe',
+                        _outfitVibe,
+                        _outfitVibes,
+                        (v) => setState(() => _outfitVibe = v),
+                        isNsfw: true,
+                      ),
                     ],
                   ),
                 ),
@@ -3744,34 +5308,73 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF162032),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: Colors.blueAccent.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.auto_stories, color: Colors.blueAccent, size: 18),
+                        const Icon(
+                          Icons.auto_stories,
+                          color: Colors.blueAccent,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
-                        const Text('Backstory', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                        const Text(
+                          'Backstory',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const Spacer(),
-                        const Text('All optional', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                        const Text(
+                          'All optional',
+                          style: TextStyle(color: Colors.white24, fontSize: 10),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _singleSelectChipRow('Origin', _backstoryOrigin, _backstoryOrigins, (v) => setState(() => _backstoryOrigin = v)),
-                    _singleSelectChipRow('Tone', _backstoryTone, _backstoryTones, (v) => setState(() => _backstoryTone = v)),
-                    _singleSelectChipRow('Era', _backstoryEra, _backstoryEras, (v) => setState(() => _backstoryEra = v)),
+                    _singleSelectChipRow(
+                      'Origin',
+                      _backstoryOrigin,
+                      _backstoryOrigins,
+                      (v) => setState(() => _backstoryOrigin = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Tone',
+                      _backstoryTone,
+                      _backstoryTones,
+                      (v) => setState(() => _backstoryTone = v),
+                    ),
+                    _singleSelectChipRow(
+                      'Era',
+                      _backstoryEra,
+                      _backstoryEras,
+                      (v) => setState(() => _backstoryEra = v),
+                    ),
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Custom Backstory Notes', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w500)),
+                          const Text(
+                            'Custom Backstory Notes',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                           const SizedBox(height: 6),
                           _styledTextField(
                             controller: _backstoryNotesController,
-                            hint: 'e.g. Was betrayed by their order, seeks revenge...',
+                            hint:
+                                'e.g. Was betrayed by their order, seeks revenge...',
                             maxLines: 2,
                           ),
                         ],
@@ -3785,7 +5388,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // Description detail level
               _inputLabel('Description Detail', required: false),
               const SizedBox(height: 4),
-              const Text('Controls how detailed the character description will be', style: TextStyle(color: Colors.white24, fontSize: 11)),
+              const Text(
+                'Controls how detailed the character description will be',
+                style: TextStyle(color: Colors.white24, fontSize: 11),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -3825,25 +5431,39 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           SizedBox(
-                            width: 16, height: 16,
+                            width: 16,
+                            height: 16,
                             child: CircularProgressIndicator(
-                              value: _conceptGenProgress > 0 ? _conceptGenProgress : null,
+                              value: _conceptGenProgress > 0
+                                  ? _conceptGenProgress
+                                  : null,
                               strokeWidth: 2,
                               color: Colors.amberAccent,
                             ),
                           ),
                           if (_conceptGenProgress > 0) ...[
                             const SizedBox(width: 6),
-                            Text('${(_conceptGenProgress * 100).toInt()}%', style: const TextStyle(color: Colors.amberAccent, fontSize: 11)),
+                            Text(
+                              '${(_conceptGenProgress * 100).toInt()}%',
+                              style: const TextStyle(
+                                color: Colors.amberAccent,
+                                fontSize: 11,
+                              ),
+                            ),
                           ],
                         ],
                       ),
                     )
                   else
                     Tooltip(
-                      message: 'Generate a description using all your selections',
+                      message:
+                          'Generate a description using all your selections',
                       child: IconButton(
-                        icon: const Icon(Icons.auto_fix_high, color: Colors.amberAccent, size: 20),
+                        icon: const Icon(
+                          Icons.auto_fix_high,
+                          color: Colors.amberAccent,
+                          size: 20,
+                        ),
                         onPressed: _randomizeConcept,
                         visualDensity: VisualDensity.compact,
                       ),
@@ -3872,15 +5492,27 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           decoration: BoxDecoration(
                             color: Colors.black12,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.2)),
+                            border: Border.all(
+                              color: Colors.amberAccent.withValues(alpha: 0.2),
+                            ),
                           ),
                           child: const Center(
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.auto_fix_high, color: Colors.amberAccent, size: 18),
+                                Icon(
+                                  Icons.auto_fix_high,
+                                  color: Colors.amberAccent,
+                                  size: 18,
+                                ),
                                 SizedBox(width: 8),
-                                Text('Tap to generate description', style: TextStyle(color: Colors.amberAccent, fontSize: 13)),
+                                Text(
+                                  'Tap to generate description',
+                                  style: TextStyle(
+                                    color: Colors.amberAccent,
+                                    fontSize: 13,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -3897,18 +5529,30 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF162032),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: Colors.blueAccent.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.menu_book, color: Colors.blueAccent, size: 18),
+                        const Icon(
+                          Icons.menu_book,
+                          color: Colors.blueAccent,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         const Expanded(
-                          child: Text('Auto-generate World Lore',
-                            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                          child: Text(
+                            'Auto-generate World Lore',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                         Switch(
                           value: _generateLorebook,
@@ -3925,20 +5569,38 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       // Depth selector
                       Row(
                         children: [
-                          const Text('Depth:', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          const Text(
+                            'Depth:',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
                           const SizedBox(width: 4),
                           const Tooltip(
-                            message: 'Controls how many consecutive generation steps the Lore Engine processes. Deep = more expansive lore structure but longer wait time.',
-                            child: Icon(Icons.info_outline, size: 14, color: Colors.white38),
+                            message:
+                                'Controls how many consecutive generation steps the Lore Engine processes. Deep = more expansive lore structure but longer wait time.',
+                            child: Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: Colors.white38,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           ..._loreDepths.map((depth) {
                             final isSelected = _loreDepth == depth;
-                            final count = depth == 'Light' ? '3-4' : depth == 'Deep' ? '10-15' : '5-8';
+                            final count = depth == 'Light'
+                                ? '3-4'
+                                : depth == 'Deep'
+                                ? '10-15'
+                                : '5-8';
                             return Padding(
                               padding: const EdgeInsets.only(right: 8),
                               child: ChoiceChip(
-                                label: Text('$depth ($count)', style: const TextStyle(fontSize: 11)),
+                                label: Text(
+                                  '$depth ($count)',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
                                 selected: isSelected,
                                 onSelected: (_) {
                                   setState(() => _loreDepth = depth);
@@ -3946,8 +5608,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                 },
                                 selectedColor: Colors.blueAccent,
                                 backgroundColor: const Color(0xFF1E293B),
-                                labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white54),
-                                side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
+                                labelStyle: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.white54,
+                                ),
+                                side: BorderSide(
+                                  color: isSelected
+                                      ? Colors.blueAccent
+                                      : Colors.white12,
+                                ),
                                 visualDensity: VisualDensity.compact,
                               ),
                             );
@@ -3955,15 +5625,23 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      const Text('Focus areas (optional):', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                      const Text(
+                        'Focus areas (optional):',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: _loreCategoryOptions.map((cat) {
-                          final isSelected = _selectedLoreCategories.contains(cat);
+                          final isSelected = _selectedLoreCategories.contains(
+                            cat,
+                          );
                           return FilterChip(
-                            label: Text(cat, style: const TextStyle(fontSize: 11)),
+                            label: Text(
+                              cat,
+                              style: const TextStyle(fontSize: 11),
+                            ),
                             selected: isSelected,
                             onSelected: (selected) {
                               setState(() {
@@ -3975,11 +5653,21 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               });
                               _saveState();
                             },
-                            selectedColor: Colors.blueAccent.withValues(alpha: 0.3),
+                            selectedColor: Colors.blueAccent.withValues(
+                              alpha: 0.3,
+                            ),
                             backgroundColor: const Color(0xFF1E293B),
                             checkmarkColor: Colors.blueAccent,
-                            labelStyle: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white38),
-                            side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
+                            labelStyle: TextStyle(
+                              color: isSelected
+                                  ? Colors.blueAccent
+                                  : Colors.white38,
+                            ),
+                            side: BorderSide(
+                              color: isSelected
+                                  ? Colors.blueAccent
+                                  : Colors.white12,
+                            ),
                             visualDensity: VisualDensity.compact,
                           );
                         }).toList(),
@@ -3998,53 +5686,78 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 style: TextStyle(color: Colors.white24, fontSize: 11),
               ),
               const SizedBox(height: 8),
-              Builder(builder: (context) {
-                final personaService = Provider.of<UserPersonaService>(context);
-                final personas = personaService.personas;
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white12),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedPersonaId,
-                      isExpanded: true,
-                      dropdownColor: const Color(0xFF1E293B),
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                      items: [
-                        const DropdownMenuItem(
-                          value: '',
-                          child: Row(
-                            children: [
-                              Icon(Icons.person_off, size: 16, color: Colors.white38),
-                              SizedBox(width: 8),
-                              Text('None (Blank Slate)', style: TextStyle(color: Colors.white54)),
-                            ],
-                          ),
-                        ),
-                        ...personas.map((p) => DropdownMenuItem(
-                          value: p.id,
-                          child: Row(
-                            children: [
-                              const Icon(Icons.person, size: 16, color: Colors.blueAccent),
-                              const SizedBox(width: 8),
-                              Flexible(child: Text(p.displayLabel, overflow: TextOverflow.ellipsis)),
-                            ],
-                          ),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedPersonaId = value ?? '');
-                        _saveState();
-                      },
+              Builder(
+                builder: (context) {
+                  final personaService = Provider.of<UserPersonaService>(
+                    context,
+                  );
+                  final personas = personaService.personas;
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white12),
                     ),
-                  ),
-                );
-              }),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedPersonaId,
+                        isExpanded: true,
+                        dropdownColor: const Color(0xFF1E293B),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
+                        items: [
+                          const DropdownMenuItem(
+                            value: '',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.person_off,
+                                  size: 16,
+                                  color: Colors.white38,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  'None (Blank Slate)',
+                                  style: TextStyle(color: Colors.white54),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ...personas.map(
+                            (p) => DropdownMenuItem(
+                              value: p.id,
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.person,
+                                    size: 16,
+                                    color: Colors.blueAccent,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      p.displayLabel,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() => _selectedPersonaId = value ?? '');
+                          _saveState();
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 24),
 
               // Greeting tone (multi-select, capped to total greeting count)
@@ -4060,39 +5773,45 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _greetingTones.where((tone) => tone != 'Spicy/NSFW' || _nsfwEnabled).map((tone) {
-                  final isSelected = _selectedTones.contains(tone);
-                  final maxTones = _altGreetingCount + 1;
-                  final atLimit = _selectedTones.length >= maxTones && !isSelected;
-                  return FilterChip(
-                    label: Text(tone),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        if (selected) {
-                          if (atLimit) {
-                            // At limit — swap: remove the last tone and add this one
-                            _selectedTones.remove(_selectedTones.last);
-                          }
-                          _selectedTones.add(tone);
-                        } else if (_selectedTones.length > 1) {
-                          _selectedTones.remove(tone);
-                        }
-                      });
-                      _saveState();
-                    },
-                    selectedColor: Colors.blueAccent,
-                    backgroundColor: const Color(0xFF1E293B),
-                    checkmarkColor: Colors.white,
-                    labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white70,
-                      fontSize: 13,
-                    ),
-                    side: BorderSide(
-                      color: isSelected ? Colors.blueAccent : Colors.white12,
-                    ),
-                  );
-                }).toList(),
+                children: _greetingTones
+                    .where((tone) => tone != 'Spicy/NSFW' || _nsfwEnabled)
+                    .map((tone) {
+                      final isSelected = _selectedTones.contains(tone);
+                      final maxTones = _altGreetingCount + 1;
+                      final atLimit =
+                          _selectedTones.length >= maxTones && !isSelected;
+                      return FilterChip(
+                        label: Text(tone),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              if (atLimit) {
+                                // At limit — swap: remove the last tone and add this one
+                                _selectedTones.remove(_selectedTones.last);
+                              }
+                              _selectedTones.add(tone);
+                            } else if (_selectedTones.length > 1) {
+                              _selectedTones.remove(tone);
+                            }
+                          });
+                          _saveState();
+                        },
+                        selectedColor: Colors.blueAccent,
+                        backgroundColor: const Color(0xFF1E293B),
+                        checkmarkColor: Colors.white,
+                        labelStyle: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 13,
+                        ),
+                        side: BorderSide(
+                          color: isSelected
+                              ? Colors.blueAccent
+                              : Colors.white12,
+                        ),
+                      );
+                    })
+                    .toList(),
               ),
               const SizedBox(height: 24),
 
@@ -4119,11 +5838,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               value: _greetingLength,
                               isExpanded: true,
                               dropdownColor: const Color(0xFF1E293B),
-                              style: const TextStyle(color: Colors.white, fontSize: 13),
-                              items: _greetingLengths.map((len) => DropdownMenuItem(
-                                value: len,
-                                child: Text(len),
-                              )).toList(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
+                              items: _greetingLengths
+                                  .map(
+                                    (len) => DropdownMenuItem(
+                                      value: len,
+                                      child: Text(len),
+                                    ),
+                                  )
+                                  .toList(),
                               onChanged: (value) {
                                 if (value != null) {
                                   setState(() => _greetingLength = value);
@@ -4161,7 +5887,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                     // Trim excess tones if count decreased
                                     final maxTones = _altGreetingCount + 1;
                                     while (_selectedTones.length > maxTones) {
-                                      _selectedTones.remove(_selectedTones.last);
+                                      _selectedTones.remove(
+                                        _selectedTones.last,
+                                      );
                                     }
                                   });
                                   _saveState();
@@ -4170,7 +5898,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             ),
                             SizedBox(
                               width: 24,
-                              child: Text('$_altGreetingCount', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                              child: Text(
+                                '$_altGreetingCount',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -4222,11 +5956,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       child: OutlinedButton.icon(
                         onPressed: () => setState(() => _currentStep = 1),
                         icon: const Icon(Icons.arrow_back, size: 18),
-                        label: const Text('Back', style: TextStyle(fontSize: 14)),
+                        label: const Text(
+                          'Back',
+                          style: TextStyle(fontSize: 14),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white54,
                           side: const BorderSide(color: Colors.white24),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -4235,16 +5974,24 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       width: 240,
                       height: 52,
                       child: ElevatedButton.icon(
-                        onPressed: _nameController.text.trim().isEmpty || _conceptController.text.trim().isEmpty || !_conceptGenerated
+                        onPressed:
+                            _nameController.text.trim().isEmpty ||
+                                _conceptController.text.trim().isEmpty ||
+                                !_conceptGenerated
                             ? null
                             : _startGeneration,
                         icon: const Icon(Icons.auto_awesome, size: 20),
-                        label: const Text('Generate Character', style: TextStyle(fontSize: 16)),
+                        label: const Text(
+                          'Generate Character',
+                          style: TextStyle(fontSize: 16),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blueAccent,
                           foregroundColor: Colors.white,
                           disabledBackgroundColor: Colors.white10,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -4261,14 +6008,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   Widget _inputLabel(String text, {bool required = false}) {
     return Row(
       children: [
-        Text(text, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-        if (required) const Text(' *', style: TextStyle(color: Colors.redAccent)),
+        Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (required)
+          const Text(' *', style: TextStyle(color: Colors.redAccent)),
       ],
     );
   }
-
-
-
 
   /// Show a searchable model picker dialog. Returns the selected model ID or null.
   Future<String?> _showModelSearchDialog({
@@ -4285,14 +6037,20 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             final filtered = _availableModels.where((m) {
               if (searchQuery.isEmpty) return true;
               final q = searchQuery.toLowerCase();
-              return m.name.toLowerCase().contains(q) || m.id.toLowerCase().contains(q);
+              return m.name.toLowerCase().contains(q) ||
+                  m.id.toLowerCase().contains(q);
             }).toList();
 
             return Dialog(
               backgroundColor: const Color(0xFF0F172A),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 500, maxHeight: 500),
+                constraints: const BoxConstraints(
+                  maxWidth: 500,
+                  maxHeight: 500,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -4301,9 +6059,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       padding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
                       child: Row(
                         children: [
-                          Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                           IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white38, size: 20),
+                            icon: const Icon(
+                              Icons.close,
+                              color: Colors.white38,
+                              size: 20,
+                            ),
                             onPressed: () => Navigator.pop(context),
                           ),
                         ],
@@ -4314,18 +6085,30 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                       child: TextField(
                         autofocus: true,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
                         decoration: InputDecoration(
                           hintText: 'Search models...',
-                          hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
-                          prefixIcon: const Icon(Icons.search, color: Colors.white24, size: 20),
+                          hintStyle: const TextStyle(
+                            color: Colors.white24,
+                            fontSize: 13,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: Colors.white24,
+                            size: 20,
+                          ),
                           filled: true,
                           fillColor: const Color(0xFF1E293B),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
                         ),
                         onChanged: (v) => setDialogState(() => searchQuery = v),
                       ),
@@ -4340,12 +6123,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             _modelListTile(
                               name: 'Same as generator',
                               id: '',
-                              isSelected: currentValue == null || currentValue.isEmpty,
+                              isSelected:
+                                  currentValue == null || currentValue.isEmpty,
                               isThinking: false,
                               onTap: () => Navigator.pop(context, ''),
                             ),
                           ...filtered.map((m) {
-                            final isThinking = m.name.toLowerCase().contains('think') ||
+                            final isThinking =
+                                m.name.toLowerCase().contains('think') ||
                                 m.id.toLowerCase().contains('thinking') ||
                                 m.id.toLowerCase().contains('reasoner');
                             return _modelListTile(
@@ -4359,7 +6144,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           if (filtered.isEmpty)
                             const Padding(
                               padding: EdgeInsets.all(24),
-                              child: Center(child: Text('No models found', style: TextStyle(color: Colors.white38))),
+                              child: Center(
+                                child: Text(
+                                  'No models found',
+                                  style: TextStyle(color: Colors.white38),
+                                ),
+                              ),
                             ),
                         ],
                       ),
@@ -4386,17 +6176,27 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       selected: isSelected,
       selectedTileColor: Colors.blueAccent.withValues(alpha: 0.15),
       leading: isThinking
-          ? const Icon(Icons.psychology, size: 18, color: Colors.deepPurpleAccent)
-          : (id.isEmpty ? const Icon(Icons.link, size: 18, color: Colors.white24) : null),
+          ? const Icon(
+              Icons.psychology,
+              size: 18,
+              color: Colors.deepPurpleAccent,
+            )
+          : (id.isEmpty
+                ? const Icon(Icons.link, size: 18, color: Colors.white24)
+                : null),
       title: Text(
         name,
         style: TextStyle(
-          color: isSelected ? Colors.blueAccent : (isThinking ? Colors.deepPurple.shade200 : Colors.white),
+          color: isSelected
+              ? Colors.blueAccent
+              : (isThinking ? Colors.deepPurple.shade200 : Colors.white),
           fontSize: 13,
         ),
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: isSelected ? const Icon(Icons.check, size: 16, color: Colors.blueAccent) : null,
+      trailing: isSelected
+          ? const Icon(Icons.check, size: 16, color: Colors.blueAccent)
+          : null,
       onTap: onTap,
     );
   }
@@ -4415,7 +6215,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       enabled: enabled,
       maxLines: maxLines,
       minLines: minLines,
-      style: TextStyle(color: enabled ? Colors.white : Colors.white38, fontSize: 14),
+      style: TextStyle(
+        color: enabled ? Colors.white : Colors.white38,
+        fontSize: 14,
+      ),
       onChanged: (_) {
         setState(() {}); // Rebuild to update button state
         _saveState(); // Auto-save on change
@@ -4437,7 +6240,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: Colors.blueAccent),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -4460,17 +6266,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0.0, end: 1.0),
                 duration: const Duration(seconds: 2),
-                builder: (_, value, child) => Transform.rotate(
-                  angle: value * 6.28,
-                  child: child,
-                ),
+                builder: (_, value, child) =>
+                    Transform.rotate(angle: value * 6.28, child: child),
                 onEnd: () {}, // Continuous animation via key
-                child: const Icon(Icons.auto_awesome, size: 64, color: Colors.amberAccent),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  size: 64,
+                  color: Colors.amberAccent,
+                ),
               ),
               const SizedBox(height: 24),
               Text(
-                _generationStatus.isEmpty ? 'Generating character...' : _generationStatus,
-                style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.w500),
+                _generationStatus.isEmpty
+                    ? 'Generating character...'
+                    : _generationStatus,
+                style: const TextStyle(
+                  fontSize: 18,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: 16),
               // Progress bar
@@ -4492,11 +6306,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   child: OutlinedButton.icon(
                     onPressed: _abortGeneration,
                     icon: const Icon(Icons.stop_circle_outlined, size: 20),
-                    label: const Text('Abort Generation', style: TextStyle(fontSize: 14)),
+                    label: const Text(
+                      'Abort Generation',
+                      style: TextStyle(fontSize: 14),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.redAccent,
                       side: const BorderSide(color: Colors.redAccent),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -4557,7 +6376,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               }),
               icon: const Icon(Icons.arrow_back),
               label: const Text('Try Again'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+              ),
             ),
           ],
         ),
@@ -4575,43 +6396,61 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             children: [
               const Text(
                 'Realism Engine',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Set the initial state for the Realism Engine when a new conversation starts. '
                 'These values will seed the relationship, emotion, and time-of-day systems.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 32),
 
               RealismFormSection(
                 enabled: _realismStepEnabled,
-                onEnabledChanged: (v) => setState(() => _realismStepEnabled = v),
+                onEnabledChanged: (v) =>
+                    setState(() => _realismStepEnabled = v),
                 timeOfDay: _realismTimeOfDay,
-                onTimeOfDayChanged: (v) => setState(() => _realismTimeOfDay = v),
+                onTimeOfDayChanged: (v) =>
+                    setState(() => _realismTimeOfDay = v),
                 dayCount: _realismDayCount,
                 onDayCountChanged: (v) => setState(() => _realismDayCount = v),
                 shortTermBond: _realismShortTermBond,
-                onShortTermBondChanged: (v) => setState(() => _realismShortTermBond = v),
+                onShortTermBondChanged: (v) =>
+                    setState(() => _realismShortTermBond = v),
                 longTermBond: _realismLongTermBond,
-                onLongTermBondChanged: (v) => setState(() => _realismLongTermBond = v),
+                onLongTermBondChanged: (v) =>
+                    setState(() => _realismLongTermBond = v),
                 trustLevel: _realismTrustLevel,
-                onTrustLevelChanged: (v) => setState(() => _realismTrustLevel = v),
+                onTrustLevelChanged: (v) =>
+                    setState(() => _realismTrustLevel = v),
                 emotion: _realismEmotion,
                 onEmotionChanged: (v) => setState(() => _realismEmotion = v),
                 emotionIntensity: _realismEmotionIntensity,
-                onEmotionIntensityChanged: (v) => setState(() => _realismEmotionIntensity = v),
+                onEmotionIntensityChanged: (v) =>
+                    setState(() => _realismEmotionIntensity = v),
                 nsfwCooldownEnabled: _realismNsfwCooldown,
-                onNsfwCooldownChanged: (v) => setState(() => _realismNsfwCooldown = v),
+                onNsfwCooldownChanged: (v) =>
+                    setState(() => _realismNsfwCooldown = v),
                 chaosModeEnabled: _realismChaosMode,
-                onChaosModeChanged: (v) => setState(() => _realismChaosMode = v),
+                onChaosModeChanged: (v) =>
+                    setState(() => _realismChaosMode = v),
                 needsSimEnabled: _realismNeedsSim,
                 onNeedsSimChanged: (v) => setState(() => _realismNeedsSim = v),
                 enjoysLowHygiene: _realismEnjoysLowHygiene,
-                onEnjoysLowHygieneChanged: (v) => setState(() => _realismEnjoysLowHygiene = v),
+                onEnjoysLowHygieneChanged: (v) =>
+                    setState(() => _realismEnjoysLowHygiene = v),
                 currentTask: _realismCurrentTask,
-                onCurrentTaskChanged: (v) => setState(() => _realismCurrentTask = v),
+                onCurrentTaskChanged: (v) =>
+                    setState(() => _realismCurrentTask = v),
               ),
 
               // Navigation
@@ -4626,11 +6465,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         child: OutlinedButton.icon(
                           onPressed: () => setState(() => _currentStep = 3),
                           icon: const Icon(Icons.arrow_back, size: 18),
-                          label: const Text('Back', style: TextStyle(fontSize: 14)),
+                          label: const Text(
+                            'Back',
+                            style: TextStyle(fontSize: 14),
+                          ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.white54,
                             side: const BorderSide(color: Colors.white24),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -4641,11 +6485,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         child: ElevatedButton.icon(
                           onPressed: () => setState(() => _currentStep = 5),
                           icon: const Icon(Icons.arrow_forward, size: 20),
-                          label: const Text('Next: Review & Save', style: TextStyle(fontSize: 16)),
+                          label: const Text(
+                            'Next: Review & Save',
+                            style: TextStyle(fontSize: 16),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blueAccent,
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -4663,7 +6512,6 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   // ═══════════════════════════════════════════════════════════════
   //  STEP 5: Review & Edit
   // ═══════════════════════════════════════════════════════════════
-
 
   Widget _buildReviewStep() {
     if (_generatedCard == null) {
@@ -4686,7 +6534,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               }),
               icon: const Icon(Icons.arrow_back),
               label: const Text('Try Again'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+              ),
             ),
           ],
         ),
@@ -4725,41 +6575,74 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               ? const Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    CircularProgressIndicator(color: Colors.blueAccent),
+                                    CircularProgressIndicator(
+                                      color: Colors.blueAccent,
+                                    ),
                                     SizedBox(height: 12),
-                                    Text('Generating avatar...', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                                    Text(
+                                      'Generating avatar...',
+                                      style: TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   ],
                                 )
-                              : Provider.of<LLMProvider>(context, listen: false).activeBackend == BackendType.kobold
-                                  ? Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(Icons.content_copy, size: 32, color: Colors.white24),
-                                          const SizedBox(height: 8),
-                                          const Text('Avatar generation unavailable with KoboldCpp',
-                                            style: TextStyle(color: Colors.white38, fontSize: 12),
-                                            textAlign: TextAlign.center),
-                                          const SizedBox(height: 8),
-                                          const Text('Copy the image prompt below to generate locally',
-                                            style: TextStyle(color: Colors.white24, fontSize: 11),
-                                            textAlign: TextAlign.center),
-                                        ],
+                              : Provider.of<LLMProvider>(
+                                      context,
+                                      listen: false,
+                                    ).activeBackend ==
+                                    BackendType.kobold
+                              ? Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.content_copy,
+                                        size: 32,
+                                        color: Colors.white24,
                                       ),
-                                    )
-                                  : Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.image_outlined, size: 48, color: Colors.white24),
-                                        const SizedBox(height: 8),
-                                        TextButton.icon(
-                                          onPressed: _generateAvatar,
-                                          icon: const Icon(Icons.auto_awesome, size: 16),
-                                          label: const Text('Generate Avatar'),
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'Avatar generation unavailable with KoboldCpp',
+                                        style: TextStyle(
+                                          color: Colors.white38,
+                                          fontSize: 12,
                                         ),
-                                      ],
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'Copy the image prompt below to generate locally',
+                                        style: TextStyle(
+                                          color: Colors.white24,
+                                          fontSize: 11,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.image_outlined,
+                                      size: 48,
+                                      color: Colors.white24,
                                     ),
+                                    const SizedBox(height: 8),
+                                    TextButton.icon(
+                                      onPressed: _generateAvatar,
+                                      icon: const Icon(
+                                        Icons.auto_awesome,
+                                        size: 16,
+                                      ),
+                                      label: const Text('Generate Avatar'),
+                                    ),
+                                  ],
+                                ),
                         )
                       : null,
                 ),
@@ -4771,23 +6654,31 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       TextButton.icon(
                         onPressed: _isGeneratingAvatar ? null : _generateAvatar,
                         icon: const Icon(Icons.refresh, size: 16),
-                        label: Text(_isGeneratingAvatar ? 'Generating...' : 'Regenerate'),
-                        style: TextButton.styleFrom(foregroundColor: Colors.blueAccent),
+                        label: Text(
+                          _isGeneratingAvatar ? 'Generating...' : 'Regenerate',
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.blueAccent,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       TextButton.icon(
-                        onPressed: _isGeneratingAvatar ? null : () async {
-                          final cropped = await ImageCropDialog.show(
-                            context,
-                            imageBytes: _generatedAvatar!,
-                          );
-                          if (cropped != null && mounted) {
-                            setState(() => _generatedAvatar = cropped);
-                          }
-                        },
+                        onPressed: _isGeneratingAvatar
+                            ? null
+                            : () async {
+                                final cropped = await ImageCropDialog.show(
+                                  context,
+                                  imageBytes: _generatedAvatar!,
+                                );
+                                if (cropped != null && mounted) {
+                                  setState(() => _generatedAvatar = cropped);
+                                }
+                              },
                         icon: const Icon(Icons.crop, size: 16),
                         label: const Text('Crop'),
-                        style: TextButton.styleFrom(foregroundColor: Colors.orangeAccent),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.orangeAccent,
+                        ),
                       ),
                     ],
                   ),
@@ -4795,15 +6686,31 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 // Editable image prompt — collapsible
                 Row(
                   children: [
-                    const Text('Image Prompt', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600)),
+                    const Text(
+                      'Image Prompt',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.copy, color: Colors.white38, size: 16),
+                      icon: const Icon(
+                        Icons.copy,
+                        color: Colors.white38,
+                        size: 16,
+                      ),
                       onPressed: () {
                         if (_imagePromptController.text.isNotEmpty) {
-                          Clipboard.setData(ClipboardData(text: _imagePromptController.text));
+                          Clipboard.setData(
+                            ClipboardData(text: _imagePromptController.text),
+                          );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Image prompt copied to clipboard'), duration: Duration(seconds: 2)),
+                            const SnackBar(
+                              content: Text('Image prompt copied to clipboard'),
+                              duration: Duration(seconds: 2),
+                            ),
                           );
                         }
                       },
@@ -4814,11 +6721,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     const SizedBox(width: 8),
                     IconButton(
                       icon: Icon(
-                        _imagePromptExpanded ? Icons.expand_less : Icons.expand_more,
+                        _imagePromptExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
                         color: Colors.white38,
                         size: 18,
                       ),
-                      onPressed: () => setState(() => _imagePromptExpanded = !_imagePromptExpanded),
+                      onPressed: () => setState(
+                        () => _imagePromptExpanded = !_imagePromptExpanded,
+                      ),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                       tooltip: _imagePromptExpanded ? 'Collapse' : 'Expand',
@@ -4833,7 +6744,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                   decoration: InputDecoration(
                     hintText: 'Describe the character portrait...',
-                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    hintStyle: const TextStyle(
+                      color: Colors.white24,
+                      fontSize: 12,
+                    ),
                     filled: true,
                     fillColor: const Color(0xFF1E293B),
                     border: OutlineInputBorder(
@@ -4851,7 +6765,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 // Character name
                 Text(
                   _generatedCard!.name,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
@@ -4861,12 +6779,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     spacing: 6,
                     runSpacing: 6,
                     alignment: WrapAlignment.center,
-                    children: _generatedCard!.tags.map((tag) => Chip(
-                      label: Text(tag, style: const TextStyle(fontSize: 11, color: Colors.white70)),
-                      backgroundColor: const Color(0xFF374151),
-                      side: BorderSide.none,
-                      visualDensity: VisualDensity.compact,
-                    )).toList(),
+                    children: _generatedCard!.tags
+                        .map(
+                          (tag) => Chip(
+                            label: Text(
+                              tag,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.white70,
+                              ),
+                            ),
+                            backgroundColor: const Color(0xFF374151),
+                            side: BorderSide.none,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        )
+                        .toList(),
                   ),
                 const SizedBox(height: 24),
                 // Action buttons
@@ -4880,7 +6808,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       backgroundColor: Colors.green.shade700,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -4895,7 +6825,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       foregroundColor: Colors.white54,
                       side: const BorderSide(color: Colors.white24),
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -4911,7 +6843,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               children: [
                 const Text(
                   'Review & Edit',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 const Text(
@@ -4920,38 +6856,77 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 ),
                 const SizedBox(height: 24),
                 _editableField('Description', _descController, maxLines: 6),
-                _editableField('Personality', _personalityController, maxLines: 4),
+                _editableField(
+                  'Personality',
+                  _personalityController,
+                  maxLines: 4,
+                ),
                 _editableField('Scenario', _scenarioController, maxLines: 3),
-                _editableField('First Message', _firstMessageController, maxLines: 6),
-                _editableField('Example Dialogue', _exampleDialogueController, maxLines: 6),
+                _editableField(
+                  'First Message',
+                  _firstMessageController,
+                  maxLines: 6,
+                ),
+                _editableField(
+                  'Example Dialogue',
+                  _exampleDialogueController,
+                  maxLines: 6,
+                ),
 
                 // ── Lorebook Preview & Cherry-pick ──
-                if (_generatedCard!.lorebook != null && _generatedCard!.lorebook!.entries.isNotEmpty) ...[
+                if (_generatedCard!.lorebook != null &&
+                    _generatedCard!.lorebook!.entries.isNotEmpty) ...[
                   const Divider(color: Colors.white12, height: 32),
                   Row(
                     children: [
-                      const Icon(Icons.menu_book, color: Colors.blueAccent, size: 18),
+                      const Icon(
+                        Icons.menu_book,
+                        color: Colors.blueAccent,
+                        size: 18,
+                      ),
                       const SizedBox(width: 8),
-                      const Text('World Lore Entries', style: TextStyle(color: Colors.blueAccent, fontSize: 15, fontWeight: FontWeight.w600)),
+                      const Text(
+                        'World Lore Entries',
+                        style: TextStyle(
+                          color: Colors.blueAccent,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
-                      Text('${_lorebookEntryEnabled.values.where((v) => v).length}/${_generatedCard!.lorebook!.entries.length} enabled',
-                        style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                      Text(
+                        '${_lorebookEntryEnabled.values.where((v) => v).length}/${_generatedCard!.lorebook!.entries.length} enabled',
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  const Text('Uncheck entries you don\'t want included in the saved character.',
-                    style: TextStyle(color: Colors.white24, fontSize: 11)),
+                  const Text(
+                    'Uncheck entries you don\'t want included in the saved character.',
+                    style: TextStyle(color: Colors.white24, fontSize: 11),
+                  ),
                   const SizedBox(height: 12),
-                  ...List.generate(_generatedCard!.lorebook!.entries.length, (i) {
+                  ...List.generate(_generatedCard!.lorebook!.entries.length, (
+                    i,
+                  ) {
                     final entry = _generatedCard!.lorebook!.entries[i];
                     final enabled = _lorebookEntryEnabled[i] ?? true;
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: enabled ? const Color(0xFF1E293B) : const Color(0xFF111827),
+                        color: enabled
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFF111827),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: enabled ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.white10),
+                        border: Border.all(
+                          color: enabled
+                              ? Colors.blueAccent.withValues(alpha: 0.3)
+                              : Colors.white10,
+                        ),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4959,7 +6934,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           Checkbox(
                             value: enabled,
                             activeColor: Colors.blueAccent,
-                            onChanged: (val) => setState(() => _lorebookEntryEnabled[i] = val ?? true),
+                            onChanged: (val) => setState(
+                              () => _lorebookEntryEnabled[i] = val ?? true,
+                            ),
                             visualDensity: VisualDensity.compact,
                           ),
                           const SizedBox(width: 4),
@@ -4969,11 +6946,31 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(entry.name, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                                  Text(
+                                    entry.name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                   const SizedBox(height: 2),
-                                  Text('Keys: ${entry.key}', style: const TextStyle(color: Colors.blueAccent, fontSize: 11)),
+                                  Text(
+                                    'Keys: ${entry.key}',
+                                    style: const TextStyle(
+                                      color: Colors.blueAccent,
+                                      fontSize: 11,
+                                    ),
+                                  ),
                                   const SizedBox(height: 4),
-                                  Text(entry.content, style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4)),
+                                  Text(
+                                    entry.content,
+                                    style: const TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 12,
+                                      height: 1.4,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -4991,18 +6988,33 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     );
   }
 
-  Widget _editableField(String label, TextEditingController controller, {int maxLines = 3}) {
+  Widget _editableField(
+    String label,
+    TextEditingController controller, {
+    int maxLines = 3,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.blueAccent,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 6),
           AppTextField(
             controller: controller,
             maxLines: maxLines,
-            style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              height: 1.5,
+            ),
             decoration: InputDecoration(
               filled: true,
               fillColor: const Color(0xFF1E293B),
@@ -5040,33 +7052,64 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     try {
       final llmService = _getActiveLlmService();
-      if (llmService == null) { setState(() => _isExpandingNarrative = false); return; }
+      if (llmService == null) {
+        setState(() => _isExpandingNarrative = false);
+        return;
+      }
 
       // ── Gather all filled-in fields ──
       final details = <String>[];
       final name = _nameController.text.trim();
       if (name.isNotEmpty) details.add('Name: $name');
-      if (_ageController.text.trim().isNotEmpty) details.add('Age: ${_ageController.text.trim()}');
-      if (_sexController.text.trim().isNotEmpty) details.add('Sex: ${_sexController.text.trim()}');
-      if (_guidedAppearanceController.text.trim().isNotEmpty) details.add('Build/Body: ${_guidedAppearanceController.text.trim()}');
-      if (_guidedHairController.text.trim().isNotEmpty) details.add('Hair: ${_guidedHairController.text.trim()}');
-      if (_guidedFeaturesController.text.trim().isNotEmpty) details.add('Features: ${_guidedFeaturesController.text.trim()}');
-      if (_guidedRaceController.text.trim().isNotEmpty) details.add('Race/Species: ${_guidedRaceController.text.trim()}');
-      if (_guidedPersonalityController.text.trim().isNotEmpty) details.add('Personality: ${_guidedPersonalityController.text.trim()}');
-      if (_guidedSpeechController.text.trim().isNotEmpty) details.add('Speech style: ${_guidedSpeechController.text.trim()}');
-      if (_guidedSecretController.text.trim().isNotEmpty) details.add('Hidden depth: ${_guidedSecretController.text.trim()}');
-      if (_guidedOriginController.text.trim().isNotEmpty) details.add('Background: ${_guidedOriginController.text.trim()}');
-      if (_guidedSettingController.text.trim().isNotEmpty) details.add('Setting: ${_guidedSettingController.text.trim()}');
-      if (_guidedToneController.text.trim().isNotEmpty) details.add('Tone: ${_guidedToneController.text.trim()}');
-      if (_guidedRelDynamicController.text.trim().isNotEmpty) details.add('Relationship to {{user}}: ${_guidedRelDynamicController.text.trim()}');
-      if (_guidedRelScenarioController.text.trim().isNotEmpty) details.add('Opening scenario: ${_guidedRelScenarioController.text.trim()}');
+      if (_ageController.text.trim().isNotEmpty)
+        details.add('Age: ${_ageController.text.trim()}');
+      if (_sexController.text.trim().isNotEmpty)
+        details.add('Sex: ${_sexController.text.trim()}');
+      if (_guidedAppearanceController.text.trim().isNotEmpty)
+        details.add('Build/Body: ${_guidedAppearanceController.text.trim()}');
+      if (_guidedHairController.text.trim().isNotEmpty)
+        details.add('Hair: ${_guidedHairController.text.trim()}');
+      if (_guidedFeaturesController.text.trim().isNotEmpty)
+        details.add('Features: ${_guidedFeaturesController.text.trim()}');
+      if (_guidedRaceController.text.trim().isNotEmpty)
+        details.add('Race/Species: ${_guidedRaceController.text.trim()}');
+      if (_guidedPersonalityController.text.trim().isNotEmpty)
+        details.add('Personality: ${_guidedPersonalityController.text.trim()}');
+      if (_guidedSpeechController.text.trim().isNotEmpty)
+        details.add('Speech style: ${_guidedSpeechController.text.trim()}');
+      if (_guidedSecretController.text.trim().isNotEmpty)
+        details.add('Hidden depth: ${_guidedSecretController.text.trim()}');
+      if (_guidedOriginController.text.trim().isNotEmpty)
+        details.add('Background: ${_guidedOriginController.text.trim()}');
+      if (_guidedSettingController.text.trim().isNotEmpty)
+        details.add('Setting: ${_guidedSettingController.text.trim()}');
+      if (_guidedToneController.text.trim().isNotEmpty)
+        details.add('Tone: ${_guidedToneController.text.trim()}');
+      if (_guidedRelDynamicController.text.trim().isNotEmpty)
+        details.add(
+          'Relationship to {{user}}: ${_guidedRelDynamicController.text.trim()}',
+        );
+      if (_guidedRelScenarioController.text.trim().isNotEmpty)
+        details.add(
+          'Opening scenario: ${_guidedRelScenarioController.text.trim()}',
+        );
       if (_nsfwEnabled) {
-        if (_guidedNsfwBodyController.text.trim().isNotEmpty) details.add('Intimate body: ${_guidedNsfwBodyController.text.trim()}');
-        if (_guidedNsfwExpController.text.trim().isNotEmpty) details.add('Experience: ${_guidedNsfwExpController.text.trim()}');
-        if (_guidedNsfwDomController.text.trim().isNotEmpty) details.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
-        if (_guidedNsfwKinksController.text.trim().isNotEmpty) details.add('Kinks: ${_guidedNsfwKinksController.text.trim()}');
-        if (_guidedNsfwClothingController.text.trim().isNotEmpty) details.add('Clothing: ${_guidedNsfwClothingController.text.trim()}');
-        if (_guidedNsfwPersonalityController.text.trim().isNotEmpty) details.add('Sexual personality: ${_guidedNsfwPersonalityController.text.trim()}');
+        if (_guidedNsfwBodyController.text.trim().isNotEmpty)
+          details.add(
+            'Intimate body: ${_guidedNsfwBodyController.text.trim()}',
+          );
+        if (_guidedNsfwExpController.text.trim().isNotEmpty)
+          details.add('Experience: ${_guidedNsfwExpController.text.trim()}');
+        if (_guidedNsfwDomController.text.trim().isNotEmpty)
+          details.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
+        if (_guidedNsfwKinksController.text.trim().isNotEmpty)
+          details.add('Kinks: ${_guidedNsfwKinksController.text.trim()}');
+        if (_guidedNsfwClothingController.text.trim().isNotEmpty)
+          details.add('Clothing: ${_guidedNsfwClothingController.text.trim()}');
+        if (_guidedNsfwPersonalityController.text.trim().isNotEmpty)
+          details.add(
+            'Sexual personality: ${_guidedNsfwPersonalityController.text.trim()}',
+          );
       }
 
       final userVision = _guidedVisionController.text.trim();
@@ -5082,23 +7125,26 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           : '';
 
       String accumulated = '';
-      await for (final token in llmService.generateStream(GenerationParams(
-        prompt: 'A user is creating a roleplay character using a guided form. They filled in '
-            'various fields with details about the character. Generate a vivid, cohesive character '
-            'description that weaves ALL of these details together into 2-3 flowing paragraphs. '
-            'PRESERVE the user\'s creative intent — do not override their ideas with generic tropes. '
-            'If they provided NSFW details, include them tastefully in the description.\n\n'
-            'Character details from form:\n$detailsBlock$visionBlock\n\n'
-            'Output ONLY a JSON object with exactly one key: "expanded". The value should be '
-            'the complete character description in third person. No markdown, no explanation, just the JSON:',
-        maxLength: 1024,
-        minLength: 64,
-        temperature: 1.0,
-        repeatPenalty: 1.1,
-        minP: 0.05,
-        reasoningEnabled: false,
-        stopSequences: ['<END>'],
-      ))) {
+      await for (final token in llmService.generateStream(
+        GenerationParams(
+          prompt:
+              'A user is creating a roleplay character using a guided form. They filled in '
+              'various fields with details about the character. Generate a vivid, cohesive character '
+              'description that weaves ALL of these details together into 2-3 flowing paragraphs. '
+              'PRESERVE the user\'s creative intent — do not override their ideas with generic tropes. '
+              'If they provided NSFW details, include them tastefully in the description.\n\n'
+              'Character details from form:\n$detailsBlock$visionBlock\n\n'
+              'Output ONLY a JSON object with exactly one key: "expanded". The value should be '
+              'the complete character description in third person. No markdown, no explanation, just the JSON:',
+          maxLength: 1024,
+          minLength: 64,
+          temperature: 1.0,
+          repeatPenalty: 1.1,
+          minP: 0.05,
+          reasoningEnabled: false,
+          stopSequences: ['<END>'],
+        ),
+      )) {
         accumulated += token;
       }
 
@@ -5109,12 +7155,17 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           context: context,
           builder: (context) => AlertDialog(
             backgroundColor: const Color(0xFF1E293B),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             title: const Row(
               children: [
                 Icon(Icons.auto_fix_high, color: Colors.tealAccent, size: 22),
                 SizedBox(width: 8),
-                Text('Generated Description', style: TextStyle(color: Colors.white, fontSize: 18)),
+                Text(
+                  'Generated Description',
+                  style: TextStyle(color: Colors.white, fontSize: 18),
+                ),
               ],
             ),
             content: SizedBox(
@@ -5124,22 +7175,34 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('AI generated this description from your details:', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    const Text(
+                      'AI generated this description from your details:',
+                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: const Color(0xFF0F172A),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.3)),
+                        border: Border.all(
+                          color: Colors.tealAccent.withValues(alpha: 0.3),
+                        ),
                       ),
                       child: SelectableText(
                         result,
-                        style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text('This will replace the current vision text. You can edit it after.', style: TextStyle(color: Colors.white24, fontSize: 11)),
+                    const Text(
+                      'This will replace the current vision text. You can edit it after.',
+                      style: TextStyle(color: Colors.white24, fontSize: 11),
+                    ),
                   ],
                 ),
               ),
@@ -5147,11 +7210,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Discard', style: TextStyle(color: Colors.white38)),
+                child: const Text(
+                  'Discard',
+                  style: TextStyle(color: Colors.white38),
+                ),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0D7377)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0D7377),
+                ),
                 child: const Text('Use This'),
               ),
             ],
@@ -5195,16 +7263,29 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     if (llmProvider.hasManagedProcess) {
       final kobold = llmProvider.koboldService;
       if (!kobold.isReady) {
-        setState(() { _generationStatus = 'Error: KoboldCpp is not running. Start it first.'; _isGenerating = false; });
+        setState(() {
+          _generationStatus =
+              'Error: KoboldCpp is not running. Start it first.';
+          _isGenerating = false;
+        });
         return;
       }
       llmService = kobold;
-    } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
-      llmService = OpenRouterService(apiUrl: storage.remoteApiUrl, apiKey: storage.remoteApiKey, modelName: _selectedModelId);
+    } else if (_selectedModelId.isNotEmpty &&
+        _selectedModelId != llmProvider.openRouterService.modelName) {
+      llmService = OpenRouterService(
+        apiUrl: storage.remoteApiUrl,
+        apiKey: storage.remoteApiKey,
+        modelName: _selectedModelId,
+      );
     } else {
       final active = llmProvider.activeService;
       if (!active.isReady) {
-        setState(() { _generationStatus = 'Error: No LLM service available. Configure a model first.'; _isGenerating = false; });
+        setState(() {
+          _generationStatus =
+              'Error: No LLM service available. Configure a model first.';
+          _isGenerating = false;
+        });
         return;
       }
       llmService = active;
@@ -5213,12 +7294,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     // Resolve persona context
     String userPersonaContext = '';
     if (_selectedPersonaId.isNotEmpty) {
-      final personaService = Provider.of<UserPersonaService>(context, listen: false);
-      final selectedPersona = personaService.personas.where((p) => p.id == _selectedPersonaId).firstOrNull;
+      final personaService = Provider.of<UserPersonaService>(
+        context,
+        listen: false,
+      );
+      final selectedPersona = personaService.personas
+          .where((p) => p.id == _selectedPersonaId)
+          .firstOrNull;
       if (selectedPersona != null) {
         final parts = <String>[];
-        if (selectedPersona.name.isNotEmpty) parts.add('Name: ${selectedPersona.name}');
-        if (selectedPersona.persona.isNotEmpty) parts.add('Persona: ${selectedPersona.persona}');
+        if (selectedPersona.name.isNotEmpty)
+          parts.add('Name: ${selectedPersona.name}');
+        if (selectedPersona.persona.isNotEmpty)
+          parts.add('Persona: ${selectedPersona.persona}');
         userPersonaContext = parts.join('\n');
       }
     }
@@ -5226,19 +7314,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     // ── Assemble guided narrative ──
     final conceptParts = <String>[vision];
     if (_guidedAppearanceController.text.trim().isNotEmpty) {
-      conceptParts.add('Physical build: ${_guidedAppearanceController.text.trim()}');
+      conceptParts.add(
+        'Physical build: ${_guidedAppearanceController.text.trim()}',
+      );
     }
     if (_guidedHairController.text.trim().isNotEmpty) {
       conceptParts.add('Hair: ${_guidedHairController.text.trim()}');
     }
     if (_guidedFeaturesController.text.trim().isNotEmpty) {
-      conceptParts.add('Distinguishing features: ${_guidedFeaturesController.text.trim()}');
+      conceptParts.add(
+        'Distinguishing features: ${_guidedFeaturesController.text.trim()}',
+      );
     }
     if (_guidedRaceController.text.trim().isNotEmpty) {
       conceptParts.add('Race/Species: ${_guidedRaceController.text.trim()}');
     }
     if (_guidedPersonalityController.text.trim().isNotEmpty) {
-      conceptParts.add('Personality: ${_guidedPersonalityController.text.trim()}');
+      conceptParts.add(
+        'Personality: ${_guidedPersonalityController.text.trim()}',
+      );
     }
     if (_guidedSpeechController.text.trim().isNotEmpty) {
       conceptParts.add('Speech style: ${_guidedSpeechController.text.trim()}');
@@ -5256,20 +7350,40 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       conceptParts.add('Tone: ${_guidedToneController.text.trim()}');
     }
     if (_guidedRelDynamicController.text.trim().isNotEmpty) {
-      conceptParts.add('Relationship to {{user}}: ${_guidedRelDynamicController.text.trim()}');
+      conceptParts.add(
+        'Relationship to {{user}}: ${_guidedRelDynamicController.text.trim()}',
+      );
     }
     if (_guidedRelScenarioController.text.trim().isNotEmpty) {
-      conceptParts.add('Opening scenario: ${_guidedRelScenarioController.text.trim()}');
+      conceptParts.add(
+        'Opening scenario: ${_guidedRelScenarioController.text.trim()}',
+      );
     }
 
     // NSFW parts
     if (_nsfwEnabled) {
-      if (_guidedNsfwBodyController.text.trim().isNotEmpty) conceptParts.add('Intimate body details: ${_guidedNsfwBodyController.text.trim()}');
-      if (_guidedNsfwExpController.text.trim().isNotEmpty) conceptParts.add('Sexual experience: ${_guidedNsfwExpController.text.trim()}');
-      if (_guidedNsfwDomController.text.trim().isNotEmpty) conceptParts.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
-      if (_guidedNsfwKinksController.text.trim().isNotEmpty) conceptParts.add('Turn-ons/kinks: ${_guidedNsfwKinksController.text.trim()}');
-      if (_guidedNsfwClothingController.text.trim().isNotEmpty) conceptParts.add('Clothing aesthetic: ${_guidedNsfwClothingController.text.trim()}');
-      if (_guidedNsfwPersonalityController.text.trim().isNotEmpty) conceptParts.add('Sexual personality: ${_guidedNsfwPersonalityController.text.trim()}');
+      if (_guidedNsfwBodyController.text.trim().isNotEmpty)
+        conceptParts.add(
+          'Intimate body details: ${_guidedNsfwBodyController.text.trim()}',
+        );
+      if (_guidedNsfwExpController.text.trim().isNotEmpty)
+        conceptParts.add(
+          'Sexual experience: ${_guidedNsfwExpController.text.trim()}',
+        );
+      if (_guidedNsfwDomController.text.trim().isNotEmpty)
+        conceptParts.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
+      if (_guidedNsfwKinksController.text.trim().isNotEmpty)
+        conceptParts.add(
+          'Turn-ons/kinks: ${_guidedNsfwKinksController.text.trim()}',
+        );
+      if (_guidedNsfwClothingController.text.trim().isNotEmpty)
+        conceptParts.add(
+          'Clothing aesthetic: ${_guidedNsfwClothingController.text.trim()}',
+        );
+      if (_guidedNsfwPersonalityController.text.trim().isNotEmpty)
+        conceptParts.add(
+          'Sexual personality: ${_guidedNsfwPersonalityController.text.trim()}',
+        );
     }
 
     final enrichedConcept = conceptParts.join('. ');
@@ -5277,27 +7391,43 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     // ── Build character context for the generator ──
     final contextParts = <String>[];
-    if (_ageController.text.trim().isNotEmpty) contextParts.add('Age: ${_ageController.text.trim()}');
-    if (_sexController.text.trim().isNotEmpty) contextParts.add('Sex: ${_sexController.text.trim()}');
-    if (_guidedAppearanceController.text.trim().isNotEmpty) contextParts.add('Appearance: ${_guidedAppearanceController.text.trim()}');
-    if (_guidedHairController.text.trim().isNotEmpty) contextParts.add('Hair: ${_guidedHairController.text.trim()}');
-    if (_guidedFeaturesController.text.trim().isNotEmpty) contextParts.add('Features: ${_guidedFeaturesController.text.trim()}');
-    if (_guidedRaceController.text.trim().isNotEmpty) contextParts.add('Race/Species: ${_guidedRaceController.text.trim()}');
-    if (_guidedRelDynamicController.text.trim().isNotEmpty) contextParts.add('Relationship to {{user}}: ${_guidedRelDynamicController.text.trim()}');
-    if (_guidedOriginController.text.trim().isNotEmpty) contextParts.add('Backstory: ${_guidedOriginController.text.trim()}');
-    if (_guidedSettingController.text.trim().isNotEmpty) contextParts.add('Setting: ${_guidedSettingController.text.trim()}');
-    if (_guidedToneController.text.trim().isNotEmpty) contextParts.add('Tone: ${_guidedToneController.text.trim()}');
+    if (_ageController.text.trim().isNotEmpty)
+      contextParts.add('Age: ${_ageController.text.trim()}');
+    if (_sexController.text.trim().isNotEmpty)
+      contextParts.add('Sex: ${_sexController.text.trim()}');
+    if (_guidedAppearanceController.text.trim().isNotEmpty)
+      contextParts.add(
+        'Appearance: ${_guidedAppearanceController.text.trim()}',
+      );
+    if (_guidedHairController.text.trim().isNotEmpty)
+      contextParts.add('Hair: ${_guidedHairController.text.trim()}');
+    if (_guidedFeaturesController.text.trim().isNotEmpty)
+      contextParts.add('Features: ${_guidedFeaturesController.text.trim()}');
+    if (_guidedRaceController.text.trim().isNotEmpty)
+      contextParts.add('Race/Species: ${_guidedRaceController.text.trim()}');
+    if (_guidedRelDynamicController.text.trim().isNotEmpty)
+      contextParts.add(
+        'Relationship to {{user}}: ${_guidedRelDynamicController.text.trim()}',
+      );
+    if (_guidedOriginController.text.trim().isNotEmpty)
+      contextParts.add('Backstory: ${_guidedOriginController.text.trim()}');
+    if (_guidedSettingController.text.trim().isNotEmpty)
+      contextParts.add('Setting: ${_guidedSettingController.text.trim()}');
+    if (_guidedToneController.text.trim().isNotEmpty)
+      contextParts.add('Tone: ${_guidedToneController.text.trim()}');
     if (_nsfwEnabled) {
       final nsfwContext = <String>[];
-      if (_guidedNsfwExpController.text.trim().isNotEmpty) nsfwContext.add('Experience: ${_guidedNsfwExpController.text.trim()}');
-      if (_guidedNsfwDomController.text.trim().isNotEmpty) nsfwContext.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
-      if (_guidedNsfwKinksController.text.trim().isNotEmpty) nsfwContext.add('Kinks: ${_guidedNsfwKinksController.text.trim()}');
+      if (_guidedNsfwExpController.text.trim().isNotEmpty)
+        nsfwContext.add('Experience: ${_guidedNsfwExpController.text.trim()}');
+      if (_guidedNsfwDomController.text.trim().isNotEmpty)
+        nsfwContext.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
+      if (_guidedNsfwKinksController.text.trim().isNotEmpty)
+        nsfwContext.add('Kinks: ${_guidedNsfwKinksController.text.trim()}');
       if (nsfwContext.isNotEmpty) contextParts.add(nsfwContext.join(', '));
     }
 
     final genService = CharacterGenService(llmService);
     _activeGenService = genService;
-
 
     final card = await genService.generateCharacter(
       name: name,
@@ -5310,14 +7440,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       generateLorebook: _generateLorebook,
       loreCategories: _selectedLoreCategories.toList(),
       loreDepth: _loreDepth,
-      descriptionDetail: _generationDetailOptions[_generationDetail] ?? '2-3 paragraphs',
+      descriptionDetail:
+          _generationDetailOptions[_generationDetail] ?? '2-3 paragraphs',
       age: _ageController.text.trim(),
       sex: _sexController.text.trim(),
       relationship: _guidedRelDynamicController.text.trim(),
       backstory: [
-        if (_guidedOriginController.text.trim().isNotEmpty) _guidedOriginController.text.trim(),
-        if (_guidedToneController.text.trim().isNotEmpty) '${_guidedToneController.text.trim()} tone',
-        if (_guidedSettingController.text.trim().isNotEmpty) '${_guidedSettingController.text.trim()} setting',
+        if (_guidedOriginController.text.trim().isNotEmpty)
+          _guidedOriginController.text.trim(),
+        if (_guidedToneController.text.trim().isNotEmpty)
+          '${_guidedToneController.text.trim()} tone',
+        if (_guidedSettingController.text.trim().isNotEmpty)
+          '${_guidedSettingController.text.trim()} setting',
       ].join(', '),
       characterContext: contextParts.join('\n'),
       userPersonaContext: userPersonaContext,
@@ -5333,8 +7467,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           });
         }
       },
-      onStatus: (status) { if (mounted) setState(() => _generationStatus = status); },
-      onError: (error) { if (mounted) setState(() => _generationStatus = 'Error: $error'); },
+      onStatus: (status) {
+        if (mounted) setState(() => _generationStatus = status);
+      },
+      onError: (error) {
+        if (mounted) setState(() => _generationStatus = 'Error: $error');
+      },
     );
 
     // Fetch the dedicated image prompt
@@ -5358,13 +7496,23 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       _exampleDialogueController.text = card.mesExample;
       _systemPromptController.text = card.systemPrompt;
 
-      setState(() { _currentStep = 4; _isGenerating = false; _progress = 1.0; _activeGenService = null; }); // → Realism step
+      setState(() {
+        _currentStep = 4;
+        _isGenerating = false;
+        _progress = 1.0;
+        _activeGenService = null;
+      }); // → Realism step
 
       if (llmProvider.activeBackend != BackendType.kobold) {
         _generateAvatar();
       }
     } else {
-      setState(() { _currentStep = 4; _isGenerating = false; _generatedCard = null; _activeGenService = null; }); // → Realism step (error)
+      setState(() {
+        _currentStep = 4;
+        _isGenerating = false;
+        _generatedCard = null;
+        _activeGenService = null;
+      }); // → Realism step (error)
     }
   }
 
@@ -5382,16 +7530,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           : '';
 
       String accumulated = '';
-      await for (final token in llmService.generateStream(GenerationParams(
-        prompt: 'Generate ONE unique, creative character name for a roleplay character.$archetypeHint Output ONLY a JSON object with exactly one key: "name". No markdown, no explanation, just the JSON:',
-        maxLength: 128,
-        minLength: 16,
-        temperature: 1.2,
-        repeatPenalty: 1.1,
-        minP: 0.05,
-        reasoningEnabled: false,
-        stopSequences: ['<END>'],
-      ))) {
+      await for (final token in llmService.generateStream(
+        GenerationParams(
+          prompt:
+              'Generate ONE unique, creative character name for a roleplay character.$archetypeHint Output ONLY a JSON object with exactly one key: "name". No markdown, no explanation, just the JSON:',
+          maxLength: 128,
+          minLength: 16,
+          temperature: 1.2,
+          repeatPenalty: 1.1,
+          minP: 0.05,
+          reasoningEnabled: false,
+          stopSequences: ['<END>'],
+        ),
+      )) {
         accumulated += token;
       }
 
@@ -5423,54 +7574,93 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
       // Build context from all selections
       final contextParts = <String>[];
-      if (_selectedArchetype.isNotEmpty) contextParts.add('Archetype: $_selectedArchetype');
-      if (_nameController.text.trim().isNotEmpty) contextParts.add('Name: ${_nameController.text.trim()}');
-      if (_keywordsController.text.trim().isNotEmpty) contextParts.add('Personality: ${_keywordsController.text.trim()}');
-      if (_ageController.text.trim().isNotEmpty) contextParts.add('Age: ${_ageController.text.trim()}');
-      if (_sexController.text.trim().isNotEmpty) contextParts.add('Sex: ${_sexController.text.trim()}');
-      final effectiveRace = _customRaceController.text.trim().isNotEmpty ? _customRaceController.text.trim() : _race;
-      if (effectiveRace.isNotEmpty) contextParts.add('Race/species: $effectiveRace');
+      if (_selectedArchetype.isNotEmpty)
+        contextParts.add('Archetype: $_selectedArchetype');
+      if (_nameController.text.trim().isNotEmpty)
+        contextParts.add('Name: ${_nameController.text.trim()}');
+      if (_keywordsController.text.trim().isNotEmpty)
+        contextParts.add('Personality: ${_keywordsController.text.trim()}');
+      if (_ageController.text.trim().isNotEmpty)
+        contextParts.add('Age: ${_ageController.text.trim()}');
+      if (_sexController.text.trim().isNotEmpty)
+        contextParts.add('Sex: ${_sexController.text.trim()}');
+      final effectiveRace = _customRaceController.text.trim().isNotEmpty
+          ? _customRaceController.text.trim()
+          : _race;
+      if (effectiveRace.isNotEmpty)
+        contextParts.add('Race/species: $effectiveRace');
       if (_bodyType.isNotEmpty) contextParts.add('Body type: $_bodyType');
       if (_hairLength.isNotEmpty || _hairStyle.isNotEmpty) {
-        contextParts.add('Hair: ${[if (_hairLength.isNotEmpty) _hairLength, if (_hairStyle.isNotEmpty) _hairStyle].join(", ")}');
+        contextParts.add(
+          'Hair: ${[if (_hairLength.isNotEmpty) _hairLength, if (_hairStyle.isNotEmpty) _hairStyle].join(", ")}',
+        );
       }
       if (_skinTone.isNotEmpty) contextParts.add('Skin tone: $_skinTone');
-      if (_notableFeatures.isNotEmpty) contextParts.add('Notable features: ${_notableFeatures.join(", ")}');
-      if (_selectedRelationships.isNotEmpty) contextParts.add('Relationship to user: ${_selectedRelationships.join(", ")}');
-      if (_backstoryOrigin.isNotEmpty) contextParts.add('Backstory origin: $_backstoryOrigin');
-      if (_backstoryTone.isNotEmpty) contextParts.add('Backstory tone: $_backstoryTone');
-      if (_backstoryEra.isNotEmpty) contextParts.add('Era/setting: $_backstoryEra');
-      if (_backstoryNotesController.text.trim().isNotEmpty) contextParts.add('Backstory notes: ${_backstoryNotesController.text.trim()}');
+      if (_notableFeatures.isNotEmpty)
+        contextParts.add('Notable features: ${_notableFeatures.join(", ")}');
+      if (_selectedRelationships.isNotEmpty)
+        contextParts.add(
+          'Relationship to user: ${_selectedRelationships.join(", ")}',
+        );
+      if (_backstoryOrigin.isNotEmpty)
+        contextParts.add('Backstory origin: $_backstoryOrigin');
+      if (_backstoryTone.isNotEmpty)
+        contextParts.add('Backstory tone: $_backstoryTone');
+      if (_backstoryEra.isNotEmpty)
+        contextParts.add('Era/setting: $_backstoryEra');
+      if (_backstoryNotesController.text.trim().isNotEmpty)
+        contextParts.add(
+          'Backstory notes: ${_backstoryNotesController.text.trim()}',
+        );
       if (_nsfwEnabled) {
-        if (_experience.isNotEmpty) contextParts.add('Experience: $_experience');
+        if (_experience.isNotEmpty)
+          contextParts.add('Experience: $_experience');
         if (_dominance.isNotEmpty) contextParts.add('Dominance: $_dominance');
-        if (_selectedKinks.isNotEmpty) contextParts.add('Kinks: ${_selectedKinks.join(", ")}');
-        if (_outfitVibe.isNotEmpty) contextParts.add('Outfit vibe: $_outfitVibe');
+        if (_selectedKinks.isNotEmpty)
+          contextParts.add('Kinks: ${_selectedKinks.join(", ")}');
+        if (_outfitVibe.isNotEmpty)
+          contextParts.add('Outfit vibe: $_outfitVibe');
       }
 
       final contextStr = contextParts.isNotEmpty
           ? ' Use these character details as inspiration: ${contextParts.join("; ")}.'
           : '';
 
-      final descLength = _generationDetailOptions[_generationDetail] ?? '2-3 paragraphs';
-      final maxTokensForDesc = const {'Brief': 256, 'Standard': 512, 'Detailed': 1024, 'Comprehensive': 2048}[_generationDetail] ?? 512;
+      final descLength =
+          _generationDetailOptions[_generationDetail] ?? '2-3 paragraphs';
+      final maxTokensForDesc =
+          const {
+            'Brief': 256,
+            'Standard': 512,
+            'Detailed': 1024,
+            'Comprehensive': 2048,
+          }[_generationDetail] ??
+          512;
 
       String accumulated = '';
       int tokenCount = 0;
-      await for (final token in llmService.generateStream(GenerationParams(
-        prompt: 'Generate a creative character description ($descLength) for a roleplay character.$contextStr Write in third person. Include physical appearance, personality hints, and backstory elements. Output ONLY a JSON object with exactly one key: "concept". Be vivid and detailed. No markdown, no explanation, just the JSON:',
-        maxLength: maxTokensForDesc,
-        minLength: 32,
-        temperature: 1.2,
-        repeatPenalty: 1.1,
-        minP: 0.05,
-        reasoningEnabled: false,
-        stopSequences: ['<END>'],
-      ))) {
+      await for (final token in llmService.generateStream(
+        GenerationParams(
+          prompt:
+              'Generate a creative character description ($descLength) for a roleplay character.$contextStr Write in third person. Include physical appearance, personality hints, and backstory elements. Output ONLY a JSON object with exactly one key: "concept". Be vivid and detailed. No markdown, no explanation, just the JSON:',
+          maxLength: maxTokensForDesc,
+          minLength: 32,
+          temperature: 1.2,
+          repeatPenalty: 1.1,
+          minP: 0.05,
+          reasoningEnabled: false,
+          stopSequences: ['<END>'],
+        ),
+      )) {
         accumulated += token;
         tokenCount++;
         if (mounted) {
-          setState(() => _conceptGenProgress = (tokenCount / maxTokensForDesc).clamp(0.0, 0.95));
+          setState(
+            () => _conceptGenProgress = (tokenCount / maxTokensForDesc).clamp(
+              0.0,
+              0.95,
+            ),
+          );
         }
       }
 
@@ -5494,11 +7684,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   /// falls back to regex extraction if JSON.decode fails.
   String? _extractChargenValue(String raw, String key) {
     // Step 1: Strip thinking blocks
-    String cleaned = raw.replaceAll(
-      RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '',
-    ).replaceAll(
-      RegExp(r'<think>[\s\S]*$', caseSensitive: false), '',
-    ).trim();
+    String cleaned = raw
+        .replaceAll(
+          RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+          '',
+        )
+        .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
+        .trim();
 
     // Step 2: Strip markdown code fences (common with local models)
     cleaned = cleaned
@@ -5506,7 +7698,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         .replaceAll(RegExp(r'^```\s*$', multiLine: true), '')
         .trim();
 
-    debugPrint('CharacterCreator: Raw $key output (${cleaned.length} chars): ${cleaned.length > 200 ? '${cleaned.substring(0, 200)}...' : cleaned}');
+    debugPrint(
+      'CharacterCreator: Raw $key output (${cleaned.length} chars): ${cleaned.length > 200 ? '${cleaned.substring(0, 200)}...' : cleaned}',
+    );
 
     // Step 3: Extract JSON object
     final jsonStart = cleaned.indexOf('{');
@@ -5526,7 +7720,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         return value;
       }
     } catch (_) {
-      debugPrint('CharacterCreator: Direct JSON parse failed for $key, trying fixes...');
+      debugPrint(
+        'CharacterCreator: Direct JSON parse failed for $key, trying fixes...',
+      );
     }
 
     // Step 5: Fix literal newlines inside JSON strings and retry
@@ -5564,7 +7760,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       }
       fixed = sb.toString();
       // Also fix trailing commas
-      fixed = fixed.replaceAll(RegExp(r',\s*}'), '}').replaceAll(RegExp(r',\s*]'), ']');
+      fixed = fixed
+          .replaceAll(RegExp(r',\s*}'), '}')
+          .replaceAll(RegExp(r',\s*]'), ']');
 
       final data = json.decode(fixed) as Map<String, dynamic>;
       final value = data[key]?.toString();
@@ -5573,7 +7771,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         return value;
       }
     } catch (_) {
-      debugPrint('CharacterCreator: Fixed JSON parse also failed for $key, trying regex...');
+      debugPrint(
+        'CharacterCreator: Fixed JSON parse also failed for $key, trying regex...',
+      );
     }
 
     // Step 6: Regex fallback — extract value after "key": "
@@ -5586,26 +7786,42 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         bool esc = false;
         for (int i = valueStart; i < jsonStr.length; i++) {
           final ch = jsonStr[i];
-          if (esc) { esc = false; continue; }
-          if (ch == '\\') { esc = true; continue; }
+          if (esc) {
+            esc = false;
+            continue;
+          }
+          if (ch == '\\') {
+            esc = true;
+            continue;
+          }
           if (ch == '"') {
             // Found the end of the value
-            final value = jsonStr.substring(valueStart, i)
+            final value = jsonStr
+                .substring(valueStart, i)
                 .replaceAll('\\n', '\n')
                 .replaceAll('\\t', '\t')
                 .replaceAll('\\"', '"');
             if (value.isNotEmpty) {
-              debugPrint('CharacterCreator: Regex extraction succeeded for $key');
+              debugPrint(
+                'CharacterCreator: Regex extraction succeeded for $key',
+              );
               return value;
             }
             break;
           }
         }
         // If no closing quote found, just grab everything after the key to the end
-        final rawValue = jsonStr.substring(valueStart).replaceAll(RegExp(r'"\s*}?\s*$'), '');
+        final rawValue = jsonStr
+            .substring(valueStart)
+            .replaceAll(RegExp(r'"\s*}?\s*$'), '');
         if (rawValue.isNotEmpty) {
-          debugPrint('CharacterCreator: Regex extraction (no closing quote) for $key');
-          return rawValue.replaceAll('\\n', '\n').replaceAll('\\t', '\t').replaceAll('\\"', '"');
+          debugPrint(
+            'CharacterCreator: Regex extraction (no closing quote) for $key',
+          );
+          return rawValue
+              .replaceAll('\\n', '\n')
+              .replaceAll('\\t', '\t')
+              .replaceAll('\\"', '"');
         }
       }
     } catch (_) {}
@@ -5624,7 +7840,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       final kobold = llmProvider.koboldService;
       if (kobold.isReady) llmService = kobold;
     } else {
-      if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
+      if (_selectedModelId.isNotEmpty &&
+          _selectedModelId != llmProvider.openRouterService.modelName) {
         llmService = OpenRouterService(
           apiUrl: storage.remoteApiUrl,
           apiKey: storage.remoteApiKey,
@@ -5639,7 +7856,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       setState(() => _isRandomizing = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No LLM available — configure a model first'), backgroundColor: Color(0xFF2A2A2A), behavior: SnackBarBehavior.floating),
+          const SnackBar(
+            content: Text('No LLM available — configure a model first'),
+            backgroundColor: Color(0xFF2A2A2A),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
       return null;
@@ -5672,13 +7893,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       final kobold = llmProvider.koboldService;
       if (!kobold.isReady) {
         setState(() {
-          _generationStatus = 'Error: KoboldCpp is not running. Start it first.';
+          _generationStatus =
+              'Error: KoboldCpp is not running. Start it first.';
           _isGenerating = false;
         });
         return;
       }
       llmService = kobold;
-    } else if (_selectedModelId.isNotEmpty && _selectedModelId != llmProvider.openRouterService.modelName) {
+    } else if (_selectedModelId.isNotEmpty &&
+        _selectedModelId != llmProvider.openRouterService.modelName) {
       final tempService = OpenRouterService(
         apiUrl: storage.remoteApiUrl,
         apiKey: storage.remoteApiKey,
@@ -5689,7 +7912,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       final active = llmProvider.activeService;
       if (!active.isReady) {
         setState(() {
-          _generationStatus = 'Error: No LLM service available. Configure a model first.';
+          _generationStatus =
+              'Error: No LLM service available. Configure a model first.';
           _isGenerating = false;
         });
         return;
@@ -5700,38 +7924,47 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     final backendLabel = llmProvider.activeBackend == BackendType.kobold
         ? "KoboldCpp"
         : llmProvider.activeBackend == BackendType.pseudoRemote
-            ? "PseudoRemote"
-            : _selectedModelId.isNotEmpty
-                ? _selectedModelId
-                : "default API model";
-    debugPrint('CharacterGen: Using backend: ${llmService.runtimeType} ($backendLabel)');
+        ? "PseudoRemote"
+        : _selectedModelId.isNotEmpty
+        ? _selectedModelId
+        : "default API model";
+    debugPrint(
+      'CharacterGen: Using backend: ${llmService.runtimeType} ($backendLabel)',
+    );
 
     // Resolve selected persona context
     String userPersonaContext = '';
     if (_selectedPersonaId.isNotEmpty) {
-      final personaService = Provider.of<UserPersonaService>(context, listen: false);
+      final personaService = Provider.of<UserPersonaService>(
+        context,
+        listen: false,
+      );
       final selectedPersona = personaService.personas
           .where((p) => p.id == _selectedPersonaId)
           .firstOrNull;
       if (selectedPersona != null) {
         final parts = <String>[];
-        if (selectedPersona.name.isNotEmpty) parts.add('Name: ${selectedPersona.name}');
-        if (selectedPersona.persona.isNotEmpty) parts.add('Persona: ${selectedPersona.persona}');
+        if (selectedPersona.name.isNotEmpty)
+          parts.add('Name: ${selectedPersona.name}');
+        if (selectedPersona.persona.isNotEmpty)
+          parts.add('Persona: ${selectedPersona.persona}');
         userPersonaContext = parts.join('\n');
       }
     }
 
     // Extract World Lore
     final worldLore = await _extractWorldLore(llmProvider);
-    
+
     final genService = CharacterGenService(llmService);
     _activeGenService = genService;
 
-
     // Build appearance + NSFW context
     final appearanceParts = <String>[];
-    final effectiveRace = _customRaceController.text.trim().isNotEmpty ? _customRaceController.text.trim() : _race;
-    if (effectiveRace.isNotEmpty) appearanceParts.add('$effectiveRace race/species');
+    final effectiveRace = _customRaceController.text.trim().isNotEmpty
+        ? _customRaceController.text.trim()
+        : _race;
+    if (effectiveRace.isNotEmpty)
+      appearanceParts.add('$effectiveRace race/species');
     if (_bodyType.isNotEmpty) appearanceParts.add('$_bodyType build');
     if (_hairLength.isNotEmpty) appearanceParts.add('$_hairLength hair');
     if (_hairStyle.isNotEmpty) appearanceParts.add('$_hairStyle hair style');
@@ -5749,11 +7982,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     final nsfwParts = <String>[];
     if (_nsfwEnabled) {
-      if (_experience.isNotEmpty) nsfwParts.add('Sexual experience: $_experience');
+      if (_experience.isNotEmpty)
+        nsfwParts.add('Sexual experience: $_experience');
       if (_dominance.isNotEmpty) nsfwParts.add('Dominance: $_dominance');
-      if (_selectedKinks.isNotEmpty) nsfwParts.add('Kinks: ${_selectedKinks.join(", ")}');
-      if (_customKinksController.text.trim().isNotEmpty) nsfwParts.add('Also into: ${_customKinksController.text.trim()}');
-      if (_outfitVibe.isNotEmpty) nsfwParts.add('Typical outfit vibe: $_outfitVibe');
+      if (_selectedKinks.isNotEmpty)
+        nsfwParts.add('Kinks: ${_selectedKinks.join(", ")}');
+      if (_customKinksController.text.trim().isNotEmpty)
+        nsfwParts.add('Also into: ${_customKinksController.text.trim()}');
+      if (_outfitVibe.isNotEmpty)
+        nsfwParts.add('Typical outfit vibe: $_outfitVibe');
     }
 
     String enrichedConcept = concept;
@@ -5775,31 +8012,39 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       generateLorebook: _generateLorebook,
       loreCategories: _selectedLoreCategories.toList(),
       loreDepth: _loreDepth,
-      descriptionDetail: _generationDetailOptions[_generationDetail] ?? '2-3 paragraphs',
+      descriptionDetail:
+          _generationDetailOptions[_generationDetail] ?? '2-3 paragraphs',
       age: _ageController.text.trim(),
       sex: _sexController.text.trim(),
       worldLore: worldLore,
       relationship: [
         ..._selectedRelationships,
-        if (_relationshipController.text.trim().isNotEmpty) _relationshipController.text.trim(),
+        if (_relationshipController.text.trim().isNotEmpty)
+          _relationshipController.text.trim(),
       ].join(', '),
       backstory: [
         if (_backstoryOrigin.isNotEmpty) _backstoryOrigin,
         if (_backstoryTone.isNotEmpty) '$_backstoryTone tone',
         if (_backstoryEra.isNotEmpty) '$_backstoryEra era',
-        if (_backstoryNotesController.text.trim().isNotEmpty) _backstoryNotesController.text.trim(),
+        if (_backstoryNotesController.text.trim().isNotEmpty)
+          _backstoryNotesController.text.trim(),
       ].join(', '),
       characterContext: [
         if (effectiveRace.isNotEmpty) 'Race/Species: $effectiveRace',
-        if (_ageController.text.trim().isNotEmpty) 'Age: ${_ageController.text.trim()}',
-        if (_sexController.text.trim().isNotEmpty) 'Sex: ${_sexController.text.trim()}',
-        if (appearanceParts.isNotEmpty) 'Appearance: ${appearanceParts.join(", ")}',
-        if (_selectedRelationships.isNotEmpty || _relationshipController.text.trim().isNotEmpty)
+        if (_ageController.text.trim().isNotEmpty)
+          'Age: ${_ageController.text.trim()}',
+        if (_sexController.text.trim().isNotEmpty)
+          'Sex: ${_sexController.text.trim()}',
+        if (appearanceParts.isNotEmpty)
+          'Appearance: ${appearanceParts.join(", ")}',
+        if (_selectedRelationships.isNotEmpty ||
+            _relationshipController.text.trim().isNotEmpty)
           'Relationship to {{user}}: ${[..._selectedRelationships, if (_relationshipController.text.trim().isNotEmpty) _relationshipController.text.trim()].join(", ")}',
         if (_backstoryOrigin.isNotEmpty) 'Backstory origin: $_backstoryOrigin',
         if (_backstoryTone.isNotEmpty) 'Story tone: $_backstoryTone',
         if (_backstoryEra.isNotEmpty) 'Era/setting: $_backstoryEra',
-        if (_backstoryNotesController.text.trim().isNotEmpty) 'Backstory: ${_backstoryNotesController.text.trim()}',
+        if (_backstoryNotesController.text.trim().isNotEmpty)
+          'Backstory: ${_backstoryNotesController.text.trim()}',
         if (_nsfwEnabled && nsfwParts.isNotEmpty) nsfwParts.join(', '),
       ].join('\n'),
       userPersonaContext: userPersonaContext,
@@ -5807,7 +8052,6 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       reasoningEnabled: _reasoningEnabled,
       imageGenPromptParadigm: storage.imageGenPromptParadigm,
       onProgress: (accumulated) {
-
         if (mounted) {
           setState(() {
             _generationPreview = accumulated;
@@ -5823,7 +8067,6 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         }
       },
       onError: (error) {
-
         if (mounted) {
           setState(() {
             _generationStatus = 'Error: $error';
@@ -5881,7 +8124,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   Future<void> _generateAvatar() async {
     if (_isGeneratingAvatar) return;
 
-    final imageGenService = Provider.of<ImageGenService>(context, listen: false);
+    final imageGenService = Provider.of<ImageGenService>(
+      context,
+      listen: false,
+    );
 
     // Determine prompt for avatar
     String prompt = _imagePromptController.text.trim();
@@ -5891,14 +8137,31 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         String cleanPrompt = _imagePrompt!;
         final charName = _nameController.text.trim();
         if (charName.isNotEmpty) {
-          cleanPrompt = cleanPrompt.replaceAll(RegExp(RegExp.escape(charName), caseSensitive: false), '').trim();
+          cleanPrompt = cleanPrompt
+              .replaceAll(
+                RegExp(RegExp.escape(charName), caseSensitive: false),
+                '',
+              )
+              .trim();
           for (final part in charName.split(RegExp(r'\s+'))) {
             if (part.length > 2) {
-              cleanPrompt = cleanPrompt.replaceAll(RegExp('\\b${RegExp.escape(part)}\\b', caseSensitive: false), '').trim();
+              cleanPrompt = cleanPrompt
+                  .replaceAll(
+                    RegExp(
+                      '\\b${RegExp.escape(part)}\\b',
+                      caseSensitive: false,
+                    ),
+                    '',
+                  )
+                  .trim();
             }
           }
-          cleanPrompt = cleanPrompt.replaceAll(RegExp(r',\s*,'), ',').replaceAll(RegExp(r'\s{2,}'), ' ').trim();
-          if (cleanPrompt.startsWith(',')) cleanPrompt = cleanPrompt.substring(1).trim();
+          cleanPrompt = cleanPrompt
+              .replaceAll(RegExp(r',\s*,'), ',')
+              .replaceAll(RegExp(r'\s{2,}'), ' ')
+              .trim();
+          if (cleanPrompt.startsWith(','))
+            cleanPrompt = cleanPrompt.substring(1).trim();
         }
         // Append art style as a tag, not a sentence
         prompt = '$cleanPrompt, $_artStyle style';
@@ -5910,14 +8173,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         if (sex.isNotEmpty) tags.add(sex.toLowerCase());
         if (age.isNotEmpty) tags.add('$age years old');
         // Pull visual details from guided appearance fields if available
-        if (_guidedAppearanceController.text.trim().isNotEmpty) tags.add(_guidedAppearanceController.text.trim());
-        if (_guidedHairController.text.trim().isNotEmpty) tags.add(_guidedHairController.text.trim());
-        if (_guidedFeaturesController.text.trim().isNotEmpty) tags.add(_guidedFeaturesController.text.trim());
-        if (_guidedRaceController.text.trim().isNotEmpty) tags.add(_guidedRaceController.text.trim());
+        if (_guidedAppearanceController.text.trim().isNotEmpty)
+          tags.add(_guidedAppearanceController.text.trim());
+        if (_guidedHairController.text.trim().isNotEmpty)
+          tags.add(_guidedHairController.text.trim());
+        if (_guidedFeaturesController.text.trim().isNotEmpty)
+          tags.add(_guidedFeaturesController.text.trim());
+        if (_guidedRaceController.text.trim().isNotEmpty)
+          tags.add(_guidedRaceController.text.trim());
         // If no guided fields, extract a brief snippet from description (first 150 chars max)
         if (tags.length <= 4 && _descController.text.trim().isNotEmpty) {
           final descSnippet = _descController.text.trim();
-          tags.add(descSnippet.length > 150 ? descSnippet.substring(0, 150) : descSnippet);
+          tags.add(
+            descSnippet.length > 150
+                ? descSnippet.substring(0, 150)
+                : descSnippet,
+          );
         }
         prompt = tags.join(', ');
       }
@@ -6003,7 +8274,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         if (!charDir.existsSync()) charDir.createSync(recursive: true);
 
         final epoch = DateTime.now().millisecondsSinceEpoch;
-        final safeName = card.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
+        final safeName = card.name
+            .replaceAll(RegExp(r'[^\w\s]'), '')
+            .replaceAll(' ', '_');
         final imagePath = p.join(charDir.path, '${safeName}_$epoch.png');
 
         // Write the raw image — V2 embedding is handled by the repo
@@ -6021,7 +8294,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                const Icon(
+                  Icons.check_circle,
+                  color: Colors.greenAccent,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text('${card.name} created successfully!'),
               ],
@@ -6032,7 +8309,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         );
         // Clear saved form data since character was created
         final prefs = await SharedPreferences.getInstance();
-        for (final key in [_prefName, _prefConcept, _prefKeywords, _prefArtStyle]) {
+        for (final key in [
+          _prefName,
+          _prefConcept,
+          _prefKeywords,
+          _prefArtStyle,
+        ]) {
           await prefs.remove(key);
         }
         if (mounted) Navigator.of(context).pop();

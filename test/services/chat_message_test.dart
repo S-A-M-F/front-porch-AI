@@ -32,11 +32,7 @@ void main() {
     });
 
     test('text returns single item when no swipes provided', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       expect(msg.text, 'Hello');
       expect(msg.swipes, ['Hello']);
@@ -83,18 +79,16 @@ void main() {
 
   group('displayText', () {
     test('preserves text without thinking tags', () {
-      final msg = ChatMessage(
-        text: 'Hello!',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello!', sender: 'Luna', isUser: false);
 
       expect(msg.displayText, 'Hello!');
     });
 
     test('strips completed thinking block with surrounding text', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'Let me think about this carefully') + 'Hello!',
+        text:
+            _thinkingText(content: 'Let me think about this carefully') +
+            'Hello!',
         sender: 'Luna',
         isUser: false,
       );
@@ -114,7 +108,10 @@ void main() {
 
     test('strips multiple thinking blocks', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'first') + 'Between' + _thinkingText(content: 'second'),
+        text:
+            _thinkingText(content: 'first') +
+            'Between' +
+            _thinkingText(content: 'second'),
         sender: 'Luna',
         isUser: false,
       );
@@ -176,7 +173,9 @@ void main() {
 
     test('extracts completed thinking content', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'Let me think about this carefully') + 'Hello!',
+        text:
+            _thinkingText(content: 'Let me think about this carefully') +
+            'Hello!',
         sender: 'Luna',
         isUser: false,
       );
@@ -186,7 +185,10 @@ void main() {
 
     test('extracts in-progress thinking content', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'I am still working on this...', inProgress: true),
+        text: _thinkingText(
+          content: 'I am still working on this...',
+          inProgress: true,
+        ),
         sender: 'Luna',
         isUser: false,
       );
@@ -195,11 +197,7 @@ void main() {
     });
 
     test('returns null for text without thinking tags', () {
-      final msg = ChatMessage(
-        text: 'texthello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'texthello', sender: 'Luna', isUser: false);
 
       expect(msg.thinkingContent, isNull);
     });
@@ -216,13 +214,18 @@ void main() {
 
     test('prefers completed block over in-progress', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'Closed block') + _thinkingText(content: 'Open block', inProgress: true),
+        text:
+            _thinkingText(content: 'Closed block') +
+            _thinkingText(content: 'Open block', inProgress: true),
         sender: 'Luna',
         isUser: false,
       );
 
-      expect(msg.thinkingContent, 'Closed block',
-          reason: 'completed block takes priority');
+      expect(
+        msg.thinkingContent,
+        'Closed block',
+        reason: 'completed block takes priority',
+      );
     });
   });
 
@@ -238,32 +241,20 @@ void main() {
     });
 
     test('false when no thinking tags and no duration', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       expect(msg.hasThinking, isFalse);
     });
 
     test('true when thinkingDurationMs > 0', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       msg.thinkingDurationMs = 500;
       expect(msg.hasThinking, isTrue);
     });
 
     test('false when thinkingDurationMs is 0', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       expect(msg.hasThinking, isFalse);
     });
@@ -286,7 +277,10 @@ void main() {
         text: 'Hello',
         sender: 'Luna',
         isUser: false,
-        swipeMetadata: [null, {'swipeKey': 'swipeValue'}],
+        swipeMetadata: [
+          null,
+          {'swipeKey': 'swipeValue'},
+        ],
         swipeIndex: 1,
       );
 
@@ -307,11 +301,7 @@ void main() {
     });
 
     test('setting activeMetadata creates swipe metadata entry', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       msg.activeMetadata = {'new': 'data'};
       expect(msg.swipeMetadata.length, 1);
@@ -389,7 +379,11 @@ void main() {
         sender: 'Luna',
         isUser: false,
         swipes: ['Hello', 'Swipe 1'],
-        swipeMetadata: [null, {'swipeKey': 'swipeValue'}, null],
+        swipeMetadata: [
+          null,
+          {'swipeKey': 'swipeValue'},
+          null,
+        ],
         swipeIndex: 1,
       );
 
@@ -414,11 +408,7 @@ void main() {
     });
 
     test('characterId omitted from JSON when null', () {
-      final original = ChatMessage(
-        text: 'Hello',
-        sender: 'User',
-        isUser: true,
-      );
+      final original = ChatMessage(text: 'Hello', sender: 'User', isUser: true);
 
       final json = original.toJson();
       expect(json.containsKey('character_id'), isFalse);
@@ -474,7 +464,11 @@ void main() {
         text: 'Hello',
         sender: 'Luna',
         isUser: false,
-        swipeMetadata: [null, {'key': 'val'}, null],
+        swipeMetadata: [
+          null,
+          {'key': 'val'},
+          null,
+        ],
       );
 
       final json = original.toJson();
@@ -484,21 +478,13 @@ void main() {
 
   group('swipeDurations', () {
     test('default duration is 0', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       expect(msg.swipeDurations[0], 0);
     });
 
     test('setting thinkingDurationMs pads the list', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       msg.thinkingDurationMs = 500;
       expect(msg.swipeDurations.length, 1);

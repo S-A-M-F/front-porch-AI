@@ -29,7 +29,8 @@ class HardwareInfo {
   final bool hasRocm;
   final bool hasMetal;
   final bool isSharedMemory; // Intel ARC iGPU, AMD APU, etc.
-  final String linuxDistro; // 'arch', 'ubuntu', 'debian', 'fedora', 'rhel', 'opensuse', 'unknown'
+  final String
+  linuxDistro; // 'arch', 'ubuntu', 'debian', 'fedora', 'rhel', 'opensuse', 'unknown'
 
   HardwareInfo({
     required this.gpuName,
@@ -44,7 +45,8 @@ class HardwareInfo {
   });
 
   @override
-  String toString() => '$gpuName (VRAM: ${vramMb}MB, RAM: ${ramMb}MB, Shared: $isSharedMemory, Distro: $linuxDistro) [CUDA: $hasCuda, ROCm: $hasRocm, Metal: $hasMetal]';
+  String toString() =>
+      '$gpuName (VRAM: ${vramMb}MB, RAM: ${ramMb}MB, Shared: $isSharedMemory, Distro: $linuxDistro) [CUDA: $hasCuda, ROCm: $hasRocm, Metal: $hasMetal]';
 }
 
 class HardwareService extends ChangeNotifier {
@@ -100,8 +102,8 @@ class HardwareService extends ChangeNotifier {
           if (line.startsWith('MemTotal:')) {
             final parts = line.split(RegExp(r'\s+'));
             if (parts.length >= 2) {
-               final kb = int.tryParse(parts[1]) ?? 0;
-               ramMb = (kb / 1024).round();
+              final kb = int.tryParse(parts[1]) ?? 0;
+              ramMb = (kb / 1024).round();
             }
           }
         }
@@ -117,7 +119,9 @@ class HardwareService extends ChangeNotifier {
       if (lspci.exitCode == 0) {
         final lines = lspci.stdout.toString().split('\n');
         for (final line in lines) {
-          if (line.contains('VGA') || line.contains('3D controller') || line.contains('Display controller')) {
+          if (line.contains('VGA') ||
+              line.contains('3D controller') ||
+              line.contains('Display controller')) {
             gpuName = line.substring(line.indexOf(':') + 1).trim();
             // Clean up name
             gpuName = gpuName.replaceAll(RegExp(r'\[.*?\]'), '').trim();
@@ -142,7 +146,10 @@ class HardwareService extends ChangeNotifier {
     // VRAM detection
     if (vendor == 'Nvidia') {
       try {
-        final res = await Process.run('nvidia-smi', ['--query-gpu=memory.total', '--format=csv,noheader,nounits']);
+        final res = await Process.run('nvidia-smi', [
+          '--query-gpu=memory.total',
+          '--format=csv,noheader,nounits',
+        ]);
         if (res.exitCode == 0) {
           vramMb = int.tryParse(res.stdout.toString().trim()) ?? 0;
         }
@@ -156,7 +163,8 @@ class HardwareService extends ChangeNotifier {
           for (final card in cards) {
             final vramFile = File('${card.path}/device/mem_info_vram_total');
             if (await vramFile.exists()) {
-              final vramBytes = int.tryParse((await vramFile.readAsString()).trim()) ?? 0;
+              final vramBytes =
+                  int.tryParse((await vramFile.readAsString()).trim()) ?? 0;
               final cardVramMb = (vramBytes / (1024 * 1024)).round();
               if (cardVramMb > vramMb) vramMb = cardVramMb;
             }
@@ -166,7 +174,7 @@ class HardwareService extends ChangeNotifier {
         print('AMD VRAM sysfs detection error: $e');
       }
     }
-    
+
     _hardwareInfo = HardwareInfo(
       gpuName: gpuName,
       vramMb: vramMb,
@@ -196,17 +204,30 @@ class HardwareService extends ChangeNotifier {
           }
         }
         // Match distro families
-        if (id == 'arch' || id == 'manjaro' || id == 'endeavouros' || id == 'garuda' || idLike.contains('arch')) {
+        if (id == 'arch' ||
+            id == 'manjaro' ||
+            id == 'endeavouros' ||
+            id == 'garuda' ||
+            idLike.contains('arch')) {
           return 'arch';
-        } else if (id == 'ubuntu' || id == 'linuxmint' || id == 'pop' || idLike.contains('ubuntu')) {
+        } else if (id == 'ubuntu' ||
+            id == 'linuxmint' ||
+            id == 'pop' ||
+            idLike.contains('ubuntu')) {
           return 'ubuntu';
         } else if (id == 'debian' || idLike.contains('debian')) {
           return 'debian';
         } else if (id == 'fedora' || idLike.contains('fedora')) {
           return 'fedora';
-        } else if (id == 'rhel' || id == 'centos' || id == 'rocky' || id == 'almalinux' || idLike.contains('rhel')) {
+        } else if (id == 'rhel' ||
+            id == 'centos' ||
+            id == 'rocky' ||
+            id == 'almalinux' ||
+            idLike.contains('rhel')) {
           return 'rhel';
-        } else if (id == 'opensuse-tumbleweed' || id == 'opensuse-leap' || idLike.contains('suse')) {
+        } else if (id == 'opensuse-tumbleweed' ||
+            id == 'opensuse-leap' ||
+            idLike.contains('suse')) {
           return 'opensuse';
         }
         return id.isNotEmpty ? id : 'unknown';
@@ -224,25 +245,31 @@ class HardwareService extends ChangeNotifier {
     String vendor = 'Apple';
 
     try {
-      final result = await Process.run('system_profiler', ['SPDisplaysDataType', 'SPHardwareDataType', '-json']);
+      final result = await Process.run('system_profiler', [
+        'SPDisplaysDataType',
+        'SPHardwareDataType',
+        '-json',
+      ]);
       if (result.exitCode == 0) {
         final json = jsonDecode(result.stdout.toString());
-        
+
         // RAM
         final hardwareData = json['SPHardwareDataType'];
-        if (hardwareData != null && hardwareData is List && hardwareData.isNotEmpty) {
-           final memory = hardwareData[0]['physical_memory']; // e.g., "16 GB"
-           if (memory != null && memory is String) {
-             final parts = memory.split(' ');
-             if (parts.length >= 2) {
-               int val = int.tryParse(parts[0]) ?? 0;
-               if (parts[1].toUpperCase() == 'GB') {
-                 ramMb = val * 1024;
-               } else if (parts[1].toUpperCase() == 'MB') {
-                 ramMb = val;
-               }
-             }
-           }
+        if (hardwareData != null &&
+            hardwareData is List &&
+            hardwareData.isNotEmpty) {
+          final memory = hardwareData[0]['physical_memory']; // e.g., "16 GB"
+          if (memory != null && memory is String) {
+            final parts = memory.split(' ');
+            if (parts.length >= 2) {
+              int val = int.tryParse(parts[0]) ?? 0;
+              if (parts[1].toUpperCase() == 'GB') {
+                ramMb = val * 1024;
+              } else if (parts[1].toUpperCase() == 'MB') {
+                ramMb = val;
+              }
+            }
+          }
         }
 
         // GPU
@@ -251,27 +278,27 @@ class HardwareService extends ChangeNotifier {
           final gpu = videoData[0];
           gpuName = gpu['sppci_model'] ?? 'Unknown Mac GPU';
           vendor = gpu['sppci_vendor'] ?? 'Apple';
-          
+
           if (gpuName.contains('Apple M')) {
             // Unified memory - VRAM is effectively RAM (minus OS overhead)
             // But for Kobold purpose, we usually treat a chunk of RAM as VRAM.
             // Let's set VRAM = RAM * 0.75 as a heuristic for unified memory
             vramMb = (ramMb * 0.75).round();
           } else {
-             // Discrete GPU (older Macs)
-             // Parsing "vram_total" usually string like "4 GB"
-             final vramStr = gpu['spdisplays_vram'];
-             if (vramStr != null) {
-                final parts = vramStr.split(' ');
-                 if (parts.length >= 2) {
-                   int val = int.tryParse(parts[0]) ?? 0;
-                   if (parts[1].toUpperCase() == 'GB') {
-                     vramMb = val * 1024;
-                   } else if (parts[1].toUpperCase() == 'MB') {
-                     vramMb = val;
-                   }
+            // Discrete GPU (older Macs)
+            // Parsing "vram_total" usually string like "4 GB"
+            final vramStr = gpu['spdisplays_vram'];
+            if (vramStr != null) {
+              final parts = vramStr.split(' ');
+              if (parts.length >= 2) {
+                int val = int.tryParse(parts[0]) ?? 0;
+                if (parts[1].toUpperCase() == 'GB') {
+                  vramMb = val * 1024;
+                } else if (parts[1].toUpperCase() == 'MB') {
+                  vramMb = val;
                 }
-             }
+              }
+            }
           }
         }
       }
@@ -301,7 +328,7 @@ class HardwareService extends ChangeNotifier {
       // for HardwareInformation.qwMemorySize (64-bit VRAM size)
       final regResult = await Process.run('powershell', [
         '-command',
-        r"Get-ItemProperty 'HKLM:\SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\*' -ErrorAction SilentlyContinue | Select-Object DriverDesc, 'HardwareInformation.qwMemorySize' | ConvertTo-Json"
+        r"Get-ItemProperty 'HKLM:\SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\*' -ErrorAction SilentlyContinue | Select-Object DriverDesc, 'HardwareInformation.qwMemorySize' | ConvertTo-Json",
       ]);
 
       // Ignore exit code 1 if we get valid JSON output (PowerShell might error on some registry keys but succeed on others)
@@ -315,24 +342,24 @@ class HardwareService extends ChangeNotifier {
           int maxVram = 0;
 
           for (var item in json) {
-             // qwMemorySize is returned as a long number, sometimes string in JSON
-             var memSize = item['HardwareInformation.qwMemorySize'];
-             int size = 0;
-             if (memSize is int) {
-               size = memSize;
-             } else if (memSize is String) {
-               size = int.tryParse(memSize) ?? 0;
-             }
-             
-             if (size > maxVram) {
-               maxVram = size;
-               bestGpu = item;
-             }
+            // qwMemorySize is returned as a long number, sometimes string in JSON
+            var memSize = item['HardwareInformation.qwMemorySize'];
+            int size = 0;
+            if (memSize is int) {
+              size = memSize;
+            } else if (memSize is String) {
+              size = int.tryParse(memSize) ?? 0;
+            }
+
+            if (size > maxVram) {
+              maxVram = size;
+              bestGpu = item;
+            }
           }
-          
+
           if (maxVram > 0) {
-             vramMb = (maxVram / (1024 * 1024)).round();
-             gpuName = bestGpu['DriverDesc'] ?? 'Unknown GPU';
+            vramMb = (maxVram / (1024 * 1024)).round();
+            gpuName = bestGpu['DriverDesc'] ?? 'Unknown GPU';
           }
         } catch (e) {
           print('Registry VRAM parse error: $e');
@@ -345,7 +372,7 @@ class HardwareService extends ChangeNotifier {
       if (vramMb == 0) {
         final gpuResult = await Process.run('powershell', [
           '-command',
-          'Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, AdapterCompatibility | ConvertTo-Json'
+          'Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, AdapterCompatibility | ConvertTo-Json',
         ]);
 
         if (gpuResult.exitCode == 0) {
@@ -383,7 +410,7 @@ class HardwareService extends ChangeNotifier {
         try {
           final smiResult = await Process.run('nvidia-smi', [
             '--query-gpu=name,memory.total',
-            '--format=csv,noheader,nounits'
+            '--format=csv,noheader,nounits',
           ]);
           if (smiResult.exitCode == 0) {
             final lines = smiResult.stdout.toString().trim().split('\n');
@@ -420,10 +447,11 @@ class HardwareService extends ChangeNotifier {
         vendor = 'Nvidia';
       } else if (nameLower.contains('amd') || nameLower.contains('radeon')) {
         vendor = 'AMD';
-      } else if (nameLower.contains('intel') || nameLower.contains('iris') || nameLower.contains('uhd')) {
+      } else if (nameLower.contains('intel') ||
+          nameLower.contains('iris') ||
+          nameLower.contains('uhd')) {
         vendor = 'Intel';
       }
-
     } catch (e) {
       print('Windows GPU detection failed: $e');
     }
@@ -431,17 +459,17 @@ class HardwareService extends ChangeNotifier {
     // Detect RAM
     final ramResult = await Process.run('powershell', [
       '-command',
-      'Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory | ConvertTo-Json'
+      'Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory | ConvertTo-Json',
     ]);
-    
+
     int ramMb = 0;
     if (ramResult.exitCode == 0) {
-       try {
-         final json = jsonDecode(ramResult.stdout.toString());
-         ramMb = ((json['TotalPhysicalMemory'] ?? 0) / (1024 * 1024)).round();
-       } catch (e) {
-         print('Error parsing RAM info: $e');
-       }
+      try {
+        final json = jsonDecode(ramResult.stdout.toString());
+        ramMb = ((json['TotalPhysicalMemory'] ?? 0) / (1024 * 1024)).round();
+      } catch (e) {
+        print('Error parsing RAM info: $e');
+      }
     }
 
     // Detect shared memory GPUs (Intel ARC iGPU, AMD APU, etc.)
@@ -451,7 +479,7 @@ class HardwareService extends ChangeNotifier {
     try {
       final sharedResult = await Process.run('powershell', [
         '-command',
-        'Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, SharedSystemMemory | ConvertTo-Json'
+        'Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, SharedSystemMemory | ConvertTo-Json',
       ]);
       if (sharedResult.exitCode == 0) {
         final output = sharedResult.stdout.toString().trim();
@@ -496,7 +524,7 @@ class HardwareService extends ChangeNotifier {
 
   bool _hasCuda = false;
   bool _hasRocm = false;
-  
+
   Future<void> _checkDrivers() async {
     _hasCuda = false;
     _hasRocm = false;
@@ -518,7 +546,7 @@ class HardwareService extends ChangeNotifier {
     if (Platform.isLinux) {
       try {
         final res = await Process.run('rocminfo', []);
-         if (res.exitCode == 0) _hasRocm = true;
+        if (res.exitCode == 0) _hasRocm = true;
       } catch (_) {}
     } else if (Platform.isWindows) {
       // Harder to check "ROCm" specifically on Windows without HIP SDK.

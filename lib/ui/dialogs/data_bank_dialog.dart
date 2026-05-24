@@ -106,19 +106,23 @@ class _DataBankDialogState extends State<DataBankDialog> {
     final db = Provider.of<AppDatabase>(context, listen: false);
 
     if (_editingId != null) {
-      await db.updateDataBankEntry(DataBankEntriesCompanion(
-        id: drift.Value(_editingId!),
-        title: drift.Value(title),
-        content: drift.Value(content),
-        embedding: const drift.Value(null),
-        dimensions: const drift.Value(0),
-      ));
+      await db.updateDataBankEntry(
+        DataBankEntriesCompanion(
+          id: drift.Value(_editingId!),
+          title: drift.Value(title),
+          content: drift.Value(content),
+          embedding: const drift.Value(null),
+          dimensions: const drift.Value(0),
+        ),
+      );
     } else {
-      await db.insertDataBankEntry(DataBankEntriesCompanion(
-        characterId: drift.Value(widget.characterId),
-        title: drift.Value(title),
-        content: drift.Value(content),
-      ));
+      await db.insertDataBankEntry(
+        DataBankEntriesCompanion(
+          characterId: drift.Value(widget.characterId),
+          title: drift.Value(title),
+          content: drift.Value(content),
+        ),
+      );
     }
 
     _cancelEditing();
@@ -132,7 +136,10 @@ class _DataBankDialogState extends State<DataBankDialog> {
   }
 
   Future<void> _embedAll() async {
-    final embeddingService = Provider.of<EmbeddingService>(context, listen: false);
+    final embeddingService = Provider.of<EmbeddingService>(
+      context,
+      listen: false,
+    );
     final db = Provider.of<AppDatabase>(context, listen: false);
 
     // Ensure availability has been checked (lazy init)
@@ -143,7 +150,11 @@ class _DataBankDialogState extends State<DataBankDialog> {
     if (!embeddingService.isAvailable) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Embedding service not available. Start the ONNX server or enable an API source.')),
+        const SnackBar(
+          content: Text(
+            'Embedding service not available. Start the ONNX server or enable an API source.',
+          ),
+        ),
       );
       return;
     }
@@ -153,17 +164,23 @@ class _DataBankDialogState extends State<DataBankDialog> {
       _embeddedCount = 0;
     });
 
-    final needsEmbed = _entries.where((e) => e.embedding == null || e.dimensions == 0).toList();
+    final needsEmbed = _entries
+        .where((e) => e.embedding == null || e.dimensions == 0)
+        .toList();
 
     for (final entry in needsEmbed) {
       final vector = await embeddingService.embed(entry.content);
       if (vector != null) {
-        final bytes = Float32List.fromList(vector.map((d) => d.toDouble()).cast<double>().toList());
-        await db.updateDataBankEntry(DataBankEntriesCompanion(
-          id: drift.Value(entry.id),
-          embedding: drift.Value(Uint8List.view(bytes.buffer)),
-          dimensions: drift.Value(vector.length),
-        ));
+        final bytes = Float32List.fromList(
+          vector.map((d) => d.toDouble()).cast<double>().toList(),
+        );
+        await db.updateDataBankEntry(
+          DataBankEntriesCompanion(
+            id: drift.Value(entry.id),
+            embedding: drift.Value(Uint8List.view(bytes.buffer)),
+            dimensions: drift.Value(vector.length),
+          ),
+        );
         if (mounted) setState(() => _embeddedCount++);
       }
     }
@@ -175,7 +192,17 @@ class _DataBankDialogState extends State<DataBankDialog> {
   // ── File Import ──────────────────────────────────────────────────────
 
   /// Supported file extensions for import.
-  static const _textExtensions = ['txt', 'md', 'json', 'csv', 'log', 'xml', 'html', 'yml', 'yaml'];
+  static const _textExtensions = [
+    'txt',
+    'md',
+    'json',
+    'csv',
+    'log',
+    'xml',
+    'html',
+    'yml',
+    'yaml',
+  ];
   static const _pdfExtensions = ['pdf'];
 
   /// Pick a file and import its contents as Data Bank entries.
@@ -231,21 +258,25 @@ class _DataBankDialogState extends State<DataBankDialog> {
         final chunkTitle = chunks.length == 1
             ? fileName
             : '$fileName (${i + 1}/${chunks.length})';
-        await db.insertDataBankEntry(DataBankEntriesCompanion(
-          characterId: drift.Value(widget.characterId),
-          title: drift.Value(chunkTitle),
-          content: drift.Value(chunks[i]),
-        ));
+        await db.insertDataBankEntry(
+          DataBankEntriesCompanion(
+            characterId: drift.Value(widget.characterId),
+            title: drift.Value(chunkTitle),
+            content: drift.Value(chunks[i]),
+          ),
+        );
       }
 
-      debugPrint('[DataBank] Imported "$fileName": ${chunks.length} chunk(s), ${fullText.length} chars total');
+      debugPrint(
+        '[DataBank] Imported "$fileName": ${chunks.length} chunk(s), ${fullText.length} chars total',
+      );
       await _loadEntries();
     } catch (e) {
       debugPrint('[DataBank] Import failed: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _importing = false);
@@ -258,12 +289,16 @@ class _DataBankDialogState extends State<DataBankDialog> {
     final request = http.MultipartRequest('POST', Uri.parse(serverUrl));
     request.files.add(await http.MultipartFile.fromPath('file', filePath));
 
-    final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+    final streamedResponse = await request.send().timeout(
+      const Duration(seconds: 30),
+    );
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      debugPrint('[DataBank] PDF extracted: ${data['pages']} pages, ${data['characters']} chars');
+      debugPrint(
+        '[DataBank] PDF extracted: ${data['pages']} pages, ${data['characters']} chars',
+      );
       return data['text'] as String;
     } else {
       final error = jsonDecode(response.body)['error'] ?? 'Unknown error';
@@ -330,7 +365,9 @@ class _DataBankDialogState extends State<DataBankDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final embeddedEntries = _entries.where((e) => e.embedding != null && e.dimensions > 0).length;
+    final embeddedEntries = _entries
+        .where((e) => e.embedding != null && e.dimensions > 0)
+        .length;
     final unembedded = _entries.length - embeddedEntries;
 
     return Dialog(
@@ -351,7 +388,11 @@ class _DataBankDialogState extends State<DataBankDialog> {
                 Expanded(
                   child: Text(
                     'Data Bank — ${widget.characterName}',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -373,11 +414,21 @@ class _DataBankDialogState extends State<DataBankDialog> {
               Row(
                 children: [
                   const SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purpleAccent),
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.purpleAccent,
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  Text(_importStatus, style: const TextStyle(fontSize: 11, color: Colors.purpleAccent)),
+                  Text(
+                    _importStatus,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.purpleAccent,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -395,7 +446,10 @@ class _DataBankDialogState extends State<DataBankDialog> {
                     label: const Text('Add Entry'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.purpleAccent,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       textStyle: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -406,7 +460,10 @@ class _DataBankDialogState extends State<DataBankDialog> {
                     label: const Text('Import File'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF374151),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       textStyle: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -415,12 +472,26 @@ class _DataBankDialogState extends State<DataBankDialog> {
                     ElevatedButton.icon(
                       onPressed: _embedding ? null : _embedAll,
                       icon: _embedding
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                           : const Icon(Icons.memory, size: 16),
-                      label: Text(_embedding ? '$_embeddedCount/$unembedded' : 'Embed ($unembedded)'),
+                      label: Text(
+                        _embedding
+                            ? '$_embeddedCount/$unembedded'
+                            : 'Embed ($unembedded)',
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF374151),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         textStyle: const TextStyle(fontSize: 12),
                       ),
                     ),
@@ -438,90 +509,122 @@ class _DataBankDialogState extends State<DataBankDialog> {
                 child: _loading
                     ? const Center(child: CircularProgressIndicator())
                     : _entries.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.library_books_outlined, size: 48, color: Colors.white12),
-                                const SizedBox(height: 12),
-                                const Text('No entries yet', style: TextStyle(color: Colors.white30, fontSize: 14)),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'Add text or import files to build a knowledge base.\nRAG retrieves matching entries during conversations.',
-                                  style: TextStyle(color: Colors.white24, fontSize: 11),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.library_books_outlined,
+                              size: 48,
+                              color: Colors.white12,
                             ),
-                          )
-                        : ListView.builder(
-                            itemCount: _entries.length,
-                            itemBuilder: (context, index) {
-                              final entry = _entries[index];
-                              final hasEmbed = entry.embedding != null && entry.dimensions > 0;
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 6),
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.04),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.white10),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                            const SizedBox(height: 12),
+                            const Text(
+                              'No entries yet',
+                              style: TextStyle(
+                                color: Colors.white30,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Add text or import files to build a knowledge base.\nRAG retrieves matching entries during conversations.',
+                              style: TextStyle(
+                                color: Colors.white24,
+                                fontSize: 11,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _entries.length,
+                        itemBuilder: (context, index) {
+                          final entry = _entries[index];
+                          final hasEmbed =
+                              entry.embedding != null && entry.dimensions > 0;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          hasEmbed ? Icons.check_circle : Icons.circle_outlined,
-                                          size: 14,
-                                          color: hasEmbed ? Colors.greenAccent : Colors.white24,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            entry.title,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${entry.content.split(RegExp(r'\\s+')).length}w',
-                                          style: const TextStyle(fontSize: 9, color: Colors.white24),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        IconButton(
-                                          icon: const Icon(Icons.edit, size: 14, color: Colors.white38),
-                                          onPressed: () => _startEditing(entry),
-                                          constraints: const BoxConstraints(),
-                                          padding: const EdgeInsets.all(4),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete, size: 14, color: Colors.redAccent),
-                                          onPressed: () => _deleteEntry(entry.id),
-                                          constraints: const BoxConstraints(),
-                                          padding: const EdgeInsets.all(4),
-                                        ),
-                                      ],
+                                    Icon(
+                                      hasEmbed
+                                          ? Icons.check_circle
+                                          : Icons.circle_outlined,
+                                      size: 14,
+                                      color: hasEmbed
+                                          ? Colors.greenAccent
+                                          : Colors.white24,
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        entry.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
                                     Text(
-                                      entry.content.length > 150
-                                          ? '${entry.content.substring(0, 150)}...'
-                                          : entry.content,
-                                      style: const TextStyle(color: Colors.white38, fontSize: 10),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
+                                      '${entry.content.split(RegExp(r'\\s+')).length}w',
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        color: Colors.white24,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.edit,
+                                        size: 14,
+                                        color: Colors.white38,
+                                      ),
+                                      onPressed: () => _startEditing(entry),
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(4),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        size: 14,
+                                        color: Colors.redAccent,
+                                      ),
+                                      onPressed: () => _deleteEntry(entry.id),
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(4),
                                     ),
                                   ],
                                 ),
-                              );
-                            },
-                          ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  entry.content.length > 150
+                                      ? '${entry.content.substring(0, 150)}...'
+                                      : entry.content,
+                                  style: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 10,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
               ),
             ],
           ],
@@ -537,7 +640,11 @@ class _DataBankDialogState extends State<DataBankDialog> {
         children: [
           Text(
             _editingId == null ? 'New Entry' : 'Edit Entry',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white70),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.white70,
+            ),
           ),
           const SizedBox(height: 12),
           AppTextField(
@@ -580,12 +687,17 @@ class _DataBankDialogState extends State<DataBankDialog> {
             children: [
               TextButton(
                 onPressed: _cancelEditing,
-                child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white54),
+                ),
               ),
               const SizedBox(width: 12),
               ElevatedButton(
                 onPressed: _saveEntry,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purpleAccent,
+                ),
                 child: const Text('Save'),
               ),
             ],

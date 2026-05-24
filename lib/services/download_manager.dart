@@ -82,10 +82,7 @@ class DownloadManager extends ChangeNotifier {
   double get overallSpeed =>
       activeDownloads.fold<double>(0, (s, t) => s + t.speedBytesPerSec);
 
-  DownloadManager({
-    required this.targetDir,
-    this.maxConcurrent = 3,
-  }) {
+  DownloadManager({required this.targetDir, this.maxConcurrent = 3}) {
     _ensureTargetDir();
     _startProcessing();
   }
@@ -271,7 +268,9 @@ class DownloadManager extends ChangeNotifier {
 
         final actualHash = await _calculateSha256(task.targetPath);
         if (actualHash != task.expectedSha256) {
-          task.fail('SHA256 mismatch: expected ${task.expectedSha256}, got $actualHash');
+          task.fail(
+            'SHA256 mismatch: expected ${task.expectedSha256}, got $actualHash',
+          );
           notifyListeners();
           // Try next in queue
           _actionController.add(const DownloadAction.start());
@@ -334,7 +333,9 @@ class DownloadManager extends ChangeNotifier {
       final contentRange = response.headers['content-range'];
       if (contentRange != null) {
         // Format: "bytes 12345-67890/67891"
-        final match = RegExp(r'bytes (\d+)-(\d+)/(\d+)').firstMatch(contentRange);
+        final match = RegExp(
+          r'bytes (\d+)-(\d+)/(\d+)',
+        ).firstMatch(contentRange);
         if (match != null) {
           startOffset = int.parse(match.group(1)!);
           totalSize = int.parse(match.group(3)!);

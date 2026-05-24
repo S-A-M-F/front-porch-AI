@@ -25,8 +25,8 @@ import 'package:front_porch_ai/services/llm_service.dart';
 class RemoteModelInfo {
   final String id;
   final String name;
-  final double? promptCostPerMillion;  // USD per 1M input tokens
-  final double? completionCostPerMillion;  // USD per 1M output tokens
+  final double? promptCostPerMillion; // USD per 1M input tokens
+  final double? completionCostPerMillion; // USD per 1M output tokens
 
   const RemoteModelInfo({
     required this.id,
@@ -71,7 +71,8 @@ class OpenRouterService extends LLMService {
   bool get isReady {
     if (!_isReady || _modelName.isEmpty) return false;
     // Allow empty API key for local backends (LM Studio, vLLM, etc.)
-    final isLocal = _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
+    final isLocal =
+        _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
     return _apiKey.isNotEmpty || isLocal;
   }
 
@@ -82,23 +83,37 @@ class OpenRouterService extends LLMService {
     String apiUrl = 'https://openrouter.ai/api/v1',
     String apiKey = '',
     String modelName = '',
-  })  : _apiUrl = apiUrl,
-        _apiKey = apiKey,
-        _modelName = modelName {
-    final isLocal = apiUrl.contains('localhost') || apiUrl.contains('127.0.0.1');
+  }) : _apiUrl = apiUrl,
+       _apiKey = apiKey,
+       _modelName = modelName {
+    final isLocal =
+        apiUrl.contains('localhost') || apiUrl.contains('127.0.0.1');
     _isReady = (_apiKey.isNotEmpty || isLocal) && _modelName.isNotEmpty;
   }
 
   /// Update configuration at runtime (e.g. when user changes settings).
   void configure({String? apiUrl, String? apiKey, String? modelName}) {
     bool changed = false;
-    if (apiUrl != null && apiUrl != _apiUrl) { _apiUrl = apiUrl; changed = true; }
-    if (apiKey != null && apiKey != _apiKey) { _apiKey = apiKey; changed = true; }
-    if (modelName != null && modelName != _modelName) { _modelName = modelName; changed = true; }
+    if (apiUrl != null && apiUrl != _apiUrl) {
+      _apiUrl = apiUrl;
+      changed = true;
+    }
+    if (apiKey != null && apiKey != _apiKey) {
+      _apiKey = apiKey;
+      changed = true;
+    }
+    if (modelName != null && modelName != _modelName) {
+      _modelName = modelName;
+      changed = true;
+    }
     // Allow local backends without API key
-    final isLocal = _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
+    final isLocal =
+        _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
     final newReady = (_apiKey.isNotEmpty || isLocal) && _modelName.isNotEmpty;
-    if (newReady != _isReady) { _isReady = newReady; changed = true; }
+    if (newReady != _isReady) {
+      _isReady = newReady;
+      changed = true;
+    }
     if (changed) {
       // Defer notification to after the current frame to avoid calling
       // notifyListeners() during the widget build phase, which crashes
@@ -114,18 +129,16 @@ class OpenRouterService extends LLMService {
   Future<String> testConnection() async {
     if (_apiUrl.isEmpty) return 'API URL is empty.';
     // Allow empty API key for local backends (localhost / 127.0.0.1)
-    final isLocal = _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
+    final isLocal =
+        _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
     if (_apiKey.isEmpty && !isLocal) return 'API key is empty.';
 
     final client = http.Client();
     try {
       final uri = Uri.parse('$_apiUrl/models');
-      final response = await client.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $_apiKey',
-        },
-      ).timeout(const Duration(seconds: 10));
+      final response = await client
+          .get(uri, headers: {'Authorization': 'Bearer $_apiKey'})
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         return 'Connection successful!';
@@ -147,19 +160,22 @@ class OpenRouterService extends LLMService {
   /// Fetch the list of available models with pricing info from the API.
   Future<List<RemoteModelInfo>> fetchAvailableModels() async {
     if (_apiUrl.isEmpty) return [];
-    final isLocal = _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
+    final isLocal =
+        _apiUrl.contains('localhost') || _apiUrl.contains('127.0.0.1');
     if (_apiKey.isEmpty && !isLocal) return [];
 
     final client = http.Client();
     try {
       final uri = Uri.parse('$_apiUrl/models');
       debugPrint('[OpenRouter] Fetching models from: $uri');
-      final response = await client.get(
-        uri,
-        headers: {
-          if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
-        },
-      ).timeout(const Duration(seconds: 15));
+      final response = await client
+          .get(
+            uri,
+            headers: {
+              if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
 
       debugPrint('[OpenRouter] Response status: ${response.statusCode}');
       if (response.statusCode != 200) {
@@ -170,9 +186,10 @@ class OpenRouterService extends LLMService {
       final body = jsonDecode(response.body);
       debugPrint('[OpenRouter] Response keys: ${body.keys.toList()}');
       // Handle both OpenAI format ('data') and LM Studio format ('models')
-      final data = (body['data'] as List<dynamic>?) 
-          ?? (body['models'] as List<dynamic>?) 
-          ?? [];
+      final data =
+          (body['data'] as List<dynamic>?) ??
+          (body['models'] as List<dynamic>?) ??
+          [];
       debugPrint('[OpenRouter] Found ${data.length} model entries');
       if (data.isNotEmpty) {
         debugPrint('[OpenRouter] First entry type: ${data.first.runtimeType}');
@@ -189,8 +206,17 @@ class OpenRouterService extends LLMService {
           id = m;
           name = m;
         } else if (m is Map) {
-          id = m['id']?.toString() ?? m['key']?.toString() ?? m['name']?.toString() ?? m['model']?.toString() ?? '';
-          name = m['display_name']?.toString() ?? m['name']?.toString() ?? m['id']?.toString() ?? id;
+          id =
+              m['id']?.toString() ??
+              m['key']?.toString() ??
+              m['name']?.toString() ??
+              m['model']?.toString() ??
+              '';
+          name =
+              m['display_name']?.toString() ??
+              m['name']?.toString() ??
+              m['id']?.toString() ??
+              id;
         }
         if (id.isEmpty) continue;
         final pricing = m['pricing'] as Map<String, dynamic>?;
@@ -199,18 +225,24 @@ class OpenRouterService extends LLMService {
         double? promptCost;
         double? completionCost;
         if (pricing != null) {
-          final promptRaw = double.tryParse(pricing['prompt']?.toString() ?? '');
-          final completionRaw = double.tryParse(pricing['completion']?.toString() ?? '');
+          final promptRaw = double.tryParse(
+            pricing['prompt']?.toString() ?? '',
+          );
+          final completionRaw = double.tryParse(
+            pricing['completion']?.toString() ?? '',
+          );
           if (promptRaw != null) promptCost = promptRaw * 1000000;
           if (completionRaw != null) completionCost = completionRaw * 1000000;
         }
 
-        models.add(RemoteModelInfo(
-          id: id,
-          name: name,
-          promptCostPerMillion: promptCost,
-          completionCostPerMillion: completionCost,
-        ));
+        models.add(
+          RemoteModelInfo(
+            id: id,
+            name: name,
+            promptCostPerMillion: promptCost,
+            completionCostPerMillion: completionCost,
+          ),
+        );
       }
 
       debugPrint('[OpenRouter] Parsed ${models.length} models');
@@ -227,7 +259,9 @@ class OpenRouterService extends LLMService {
   @override
   Stream<String> generateStream(GenerationParams params) async* {
     if (!isReady) {
-      throw Exception('Remote API not configured. Please set API key and model.');
+      throw Exception(
+        'Remote API not configured. Please set API key and model.',
+      );
     }
 
     final uri = Uri.parse('$_apiUrl/chat/completions');
@@ -253,9 +287,7 @@ class OpenRouterService extends LLMService {
 
     // Add reasoning params when enabled
     if (params.reasoningEnabled) {
-      payload['reasoning'] = {
-        'effort': params.reasoningEffort,
-      };
+      payload['reasoning'] = {'effort': params.reasoningEffort};
     }
 
     // Add stop sequences if present
@@ -268,7 +300,8 @@ class OpenRouterService extends LLMService {
     request.headers['Content-Type'] = 'application/json';
     request.headers['Authorization'] = 'Bearer $_apiKey';
     // Identify the app for providers that support it
-    request.headers['HTTP-Referer'] = 'https://github.com/linux4life1/front-porch-AI';
+    request.headers['HTTP-Referer'] =
+        'https://github.com/linux4life1/front-porch-AI';
     request.headers['X-Title'] = 'Front Porch AI';
     request.body = jsonEncode(payload);
 
@@ -283,7 +316,9 @@ class OpenRouterService extends LLMService {
     final wrapThinking = params.reasoningEnabled;
 
     try {
-      final response = await client.send(request).timeout(const Duration(seconds: 120));
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 120));
 
       if (response.statusCode != 200) {
         final body = await response.stream.bytesToString();
@@ -309,7 +344,9 @@ class OpenRouterService extends LLMService {
           if (line.isEmpty) continue;
           if (line == 'data: [DONE]' || line == 'data:[DONE]') {
             // Close reasoning block if still open
-            if (wrapThinking && hasYieldedReasoningStart && !hasYieldedReasoningEnd) {
+            if (wrapThinking &&
+                hasYieldedReasoningStart &&
+                !hasYieldedReasoningEnd) {
               yield '</think>\n';
             }
             return;
@@ -317,7 +354,9 @@ class OpenRouterService extends LLMService {
           if (!line.startsWith('data:')) continue;
 
           // Handle both 'data: {...}' and 'data:{...}' (LM Studio omits the space)
-          final data = line.startsWith('data: ') ? line.substring(6) : line.substring(5);
+          final data = line.startsWith('data: ')
+              ? line.substring(6)
+              : line.substring(5);
           try {
             final json = jsonDecode(data);
             final choice = json['choices']?[0];
@@ -327,7 +366,9 @@ class OpenRouterService extends LLMService {
             // Handle reasoning content (thinking tokens)
             // OpenRouter uses 'reasoning', LM Studio/OpenAI uses 'reasoning_content'
             final reasoning = delta['reasoning'] ?? delta['reasoning_content'];
-            if (reasoning != null && reasoning is String && reasoning.isNotEmpty) {
+            if (reasoning != null &&
+                reasoning is String &&
+                reasoning.isNotEmpty) {
               if (wrapThinking) {
                 if (!hasYieldedReasoningStart) {
                   yield '<think>';
@@ -344,7 +385,9 @@ class OpenRouterService extends LLMService {
             // Handle regular content — close reasoning block first if needed
             final content = delta['content'];
             if (content != null && content is String && content.isNotEmpty) {
-              if (wrapThinking && hasYieldedReasoningStart && !hasYieldedReasoningEnd) {
+              if (wrapThinking &&
+                  hasYieldedReasoningStart &&
+                  !hasYieldedReasoningEnd) {
                 yield '</think>\n';
                 hasYieldedReasoningEnd = true;
               }
@@ -359,15 +402,20 @@ class OpenRouterService extends LLMService {
       // Process any remaining data in the buffer (last chunk may lack trailing newline)
       final remaining = buffer.trim();
       if (remaining.isNotEmpty && remaining.startsWith('data:')) {
-        final data = remaining.startsWith('data: ') ? remaining.substring(6) : remaining.substring(5);
+        final data = remaining.startsWith('data: ')
+            ? remaining.substring(6)
+            : remaining.substring(5);
         if (data != '[DONE]') {
           try {
             final json = jsonDecode(data);
             final choice = json['choices']?[0];
             final delta = choice?['delta'];
             if (delta != null) {
-              final reasoning = delta['reasoning'] ?? delta['reasoning_content'];
-              if (reasoning != null && reasoning is String && reasoning.isNotEmpty) {
+              final reasoning =
+                  delta['reasoning'] ?? delta['reasoning_content'];
+              if (reasoning != null &&
+                  reasoning is String &&
+                  reasoning.isNotEmpty) {
                 yield reasoning;
               }
               final content = delta['content'];

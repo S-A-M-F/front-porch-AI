@@ -91,41 +91,48 @@ void main() {
       stub.setActiveCharacter(edited);
 
       // REGRESSION: Before the fix, activeCharacter would still be `original`
-      expect(stub.activeCharacter!.personality, 'Bold and confident',
-          reason: 'early-return must still update the character reference');
-      expect(stub.messages, isNotEmpty,
-          reason: 'existing messages must be preserved');
+      expect(
+        stub.activeCharacter!.personality,
+        'Bold and confident',
+        reason: 'early-return must still update the character reference',
+      );
+      expect(
+        stub.messages,
+        isNotEmpty,
+        reason: 'existing messages must be preserved',
+      );
     });
 
-    test('does NOT preserve messages when dbId differs (different character)', () {
-      final stub = _CharacterSessionStub();
+    test(
+      'does NOT preserve messages when dbId differs (different character)',
+      () {
+        final stub = _CharacterSessionStub();
 
-      final charA = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Hello from Luna',
-      )..dbId = 'char-001';
+        final charA = CharacterCard(
+          name: 'Luna',
+          firstMessage: 'Hello from Luna',
+        )..dbId = 'char-001';
 
-      stub.setActiveCharacter(charA);
-      expect(stub.messages.length, 1);
+        stub.setActiveCharacter(charA);
+        expect(stub.messages.length, 1);
 
-      final charB = CharacterCard(
-        name: 'Stella',
-        firstMessage: 'Hello from Stella',
-      )..dbId = 'char-002';
+        final charB = CharacterCard(
+          name: 'Stella',
+          firstMessage: 'Hello from Stella',
+        )..dbId = 'char-002';
 
-      stub.setActiveCharacter(charB);
-      // Different character: messages should be cleared and re-initialized
-      expect(stub.messages.length, 1);
-      expect(stub.messages.first, 'Hello from Stella');
-    });
+        stub.setActiveCharacter(charB);
+        // Different character: messages should be cleared and re-initialized
+        expect(stub.messages.length, 1);
+        expect(stub.messages.first, 'Hello from Stella');
+      },
+    );
 
     test('preserves V2.5 extensions on the updated reference', () {
       final stub = _CharacterSessionStub();
 
-      final original = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Hi',
-      )..dbId = 'char-001';
+      final original = CharacterCard(name: 'Luna', firstMessage: 'Hi')
+        ..dbId = 'char-001';
 
       stub.setActiveCharacter(original);
 
@@ -175,10 +182,16 @@ void main() {
       // Start new chat — should refresh from repository
       stub.startNewChat();
 
-      expect(stub.activeCharacter!.personality, 'Bold and confident',
-          reason: 'startNewChat must refresh activeCharacter from repository');
-      expect(stub.messages.first, 'Hey there!',
-          reason: 'first message should come from the refreshed character');
+      expect(
+        stub.activeCharacter!.personality,
+        'Bold and confident',
+        reason: 'startNewChat must refresh activeCharacter from repository',
+      );
+      expect(
+        stub.messages.first,
+        'Hey there!',
+        reason: 'first message should come from the refreshed character',
+      );
     });
 
     test('keeps current character when not found in repository', () {
@@ -194,17 +207,18 @@ void main() {
       stub.repositoryCharacters = []; // empty repo
 
       stub.startNewChat();
-      expect(stub.activeCharacter!.personality, 'Shy',
-          reason: 'should keep existing character when not in repository');
+      expect(
+        stub.activeCharacter!.personality,
+        'Shy',
+        reason: 'should keep existing character when not in repository',
+      );
     });
 
     test('refreshes first message content from repository', () {
       final stub = _CharacterSessionStub();
 
-      final original = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Old greeting',
-      )..dbId = 'char-001';
+      final original = CharacterCard(name: 'Luna', firstMessage: 'Old greeting')
+        ..dbId = 'char-001';
 
       stub.setActiveCharacter(original);
       expect(stub.messages.first, 'Old greeting');
@@ -217,17 +231,18 @@ void main() {
       stub.repositoryCharacters = [updated];
       stub.startNewChat();
 
-      expect(stub.messages.first, 'Shiny new greeting!',
-          reason: 'new chat greeting must use the refreshed character data');
+      expect(
+        stub.messages.first,
+        'Shiny new greeting!',
+        reason: 'new chat greeting must use the refreshed character data',
+      );
     });
 
     test('refreshes realism extensions from repository', () {
       final stub = _CharacterSessionStub();
 
-      final original = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Hi',
-      )..dbId = 'char-001';
+      final original = CharacterCard(name: 'Luna', firstMessage: 'Hi')
+        ..dbId = 'char-001';
 
       stub.setActiveCharacter(original);
       expect(stub.activeCharacter!.frontPorchExtensions, isNull);
@@ -249,7 +264,10 @@ void main() {
 
       expect(stub.activeCharacter!.frontPorchExtensions, isNotNull);
       expect(stub.activeCharacter!.frontPorchExtensions!.realismEnabled, true);
-      expect(stub.activeCharacter!.frontPorchExtensions!.chaosModeEnabled, true);
+      expect(
+        stub.activeCharacter!.frontPorchExtensions!.chaosModeEnabled,
+        true,
+      );
     });
   });
 }

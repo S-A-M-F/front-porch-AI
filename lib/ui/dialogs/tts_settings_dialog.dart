@@ -73,7 +73,9 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
 
         return Dialog(
           backgroundColor: const Color(0xFF1F2937),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Container(
             width: 540,
             constraints: const BoxConstraints(maxHeight: 650),
@@ -82,7 +84,10 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
               children: [
                 // Header
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
                   decoration: const BoxDecoration(
                     border: Border(bottom: BorderSide(color: Colors.white10)),
                   ),
@@ -90,8 +95,14 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                     children: [
                       const Icon(Icons.volume_up, color: Colors.blueAccent),
                       const SizedBox(width: 12),
-                      const Text('Text-to-Speech Settings',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                      const Text(
+                        'Text-to-Speech Settings',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                       const Spacer(),
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white54),
@@ -109,10 +120,17 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                       children: [
                         // Enable TTS
                         SwitchListTile(
-                          title: const Text('Enable Text-to-Speech',
-                              style: TextStyle(color: Colors.white)),
-                          subtitle: const Text('Add speaker buttons to character messages',
-                              style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          title: const Text(
+                            'Enable Text-to-Speech',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          subtitle: const Text(
+                            'Add speaker buttons to character messages',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
                           value: storage.ttsEnabled,
                           activeTrackColor: Colors.blueAccent,
                           contentPadding: EdgeInsets.zero,
@@ -122,18 +140,28 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                         const SizedBox(height: 20),
 
                         // ──── Engine selector ────
-                        const Text('TTS Engine',
-                            style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+                        const Text(
+                          'TTS Engine',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         _buildEngineSelector(storage),
 
                         const SizedBox(height: 20),
 
                         // ──── Engine-specific settings ────
-                        if (engineId == 'kokoro') ..._buildKokoroSettings(storage, tts, voices),
-                        if (engineId == 'openai') ..._buildOpenAiSettings(storage, tts, voices),
-                        if (engineId == 'elevenlabs') ..._buildElevenLabsSettings(storage, tts, voices),
-                        if (engineId == 'piper') ..._buildPiperSettings(storage, tts),
+                        if (engineId == 'kokoro')
+                          ..._buildKokoroSettings(storage, tts, voices),
+                        if (engineId == 'openai')
+                          ..._buildOpenAiSettings(storage, tts, voices),
+                        if (engineId == 'elevenlabs')
+                          ..._buildElevenLabsSettings(storage, tts, voices),
+                        if (engineId == 'piper')
+                          ..._buildPiperSettings(storage, tts),
 
                         const SizedBox(height: 20),
 
@@ -141,11 +169,23 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                         // Speech rate
                         Row(
                           children: [
-                            const Text('Speech Rate',
-                                style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+                            const Text(
+                              'Speech Rate',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             const Spacer(),
-                            Text('${storage.ttsSpeechRate.toStringAsFixed(1)}x',
-                                style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w600)),
+                            Text(
+                              '${storage.ttsSpeechRate.toStringAsFixed(1)}x',
+                              style: const TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                         Slider(
@@ -163,17 +203,35 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                             children: [
                               const Align(
                                 alignment: Alignment.centerLeft,
-                                child: Text('0.5x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                                child: Text(
+                                  '0.5x',
+                                  style: TextStyle(
+                                    color: Colors.white24,
+                                    fontSize: 10,
+                                  ),
+                                ),
                               ),
                               // 1.0 is at (1.0 - 0.5) / (2.0 - 0.5) = 0.333 of the range
                               // Convert to -1..1 alignment: 0.333 * 2 - 1 = -0.333
                               const Align(
                                 alignment: Alignment(-0.333, 0),
-                                child: Text('1.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                                child: Text(
+                                  '1.0x',
+                                  style: TextStyle(
+                                    color: Colors.white24,
+                                    fontSize: 10,
+                                  ),
+                                ),
                               ),
                               const Align(
                                 alignment: Alignment.centerRight,
-                                child: Text('2.0x', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                                child: Text(
+                                  '2.0x',
+                                  style: TextStyle(
+                                    color: Colors.white24,
+                                    fontSize: 10,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -185,16 +243,33 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                         if (engineId != 'piper') ...[
                           Row(
                             children: [
-                              const Text('TTS Workers',
-                                  style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+                              const Text(
+                                'TTS Workers',
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                               const SizedBox(width: 6),
                               Tooltip(
-                                message: 'Resident Kokoro workers (1-8).\nEach keeps the full model in RAM.\n2–4 is usually best for long narration.\nHigher values help when you have many short lines at once (power users only).',
-                                child: Icon(Icons.info_outline, color: Colors.white24, size: 14),
+                                message:
+                                    'Resident Kokoro workers (1-8).\nEach keeps the full model in RAM.\n2–4 is usually best for long narration.\nHigher values help when you have many short lines at once (power users only).',
+                                child: Icon(
+                                  Icons.info_outline,
+                                  color: Colors.white24,
+                                  size: 14,
+                                ),
                               ),
                               const Spacer(),
-                              Text('${storage.ttsConcurrency} workers',
-                                  style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w600)),
+                              Text(
+                                '${storage.ttsConcurrency} workers',
+                                style: const TextStyle(
+                                  color: Colors.blueAccent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ],
                           ),
                           Slider(
@@ -204,17 +279,35 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                             divisions: 7,
                             activeColor: Colors.blueAccent,
                             inactiveColor: Colors.white12,
-                            onChanged: (val) => storage.setTtsConcurrency(val.round()),
+                            onChanged: (val) =>
+                                storage.setTtsConcurrency(val.round()),
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('1', style: TextStyle(color: Colors.white24, fontSize: 10)),
-                                Text('~${_ramForWorkers(storage.ttsConcurrency)} RAM',
-                                    style: const TextStyle(color: Colors.white24, fontSize: 10)),
-                                const Text('8', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                                const Text(
+                                  '1',
+                                  style: TextStyle(
+                                    color: Colors.white24,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                                Text(
+                                  '~${_ramForWorkers(storage.ttsConcurrency)} RAM',
+                                  style: const TextStyle(
+                                    color: Colors.white24,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                                const Text(
+                                  '8',
+                                  style: TextStyle(
+                                    color: Colors.white24,
+                                    fontSize: 10,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -224,10 +317,17 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
 
                         // Auto-play
                         SwitchListTile(
-                          title: const Text('Auto-Play',
-                              style: TextStyle(color: Colors.white)),
-                          subtitle: const Text('Automatically speak new character messages',
-                              style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          title: const Text(
+                            'Auto-Play',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          subtitle: const Text(
+                            'Automatically speak new character messages',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
                           value: storage.ttsAutoPlay,
                           activeTrackColor: Colors.blueAccent,
                           contentPadding: EdgeInsets.zero,
@@ -239,30 +339,52 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                         // ──── Narration Filters ────
                         const Divider(color: Colors.white12),
                         const SizedBox(height: 4),
-                        const Text('Narration Filters',
-                            style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+                        const Text(
+                          'Narration Filters',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         SwitchListTile(
-                          title: const Text('Only narrate "quotes"',
-                              style: TextStyle(color: Colors.white, fontSize: 14)),
-                          subtitle: const Text('TTS will only read text inside quotation marks',
-                              style: TextStyle(color: Colors.white54, fontSize: 11)),
+                          title: const Text(
+                            'Only narrate "quotes"',
+                            style: TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                          subtitle: const Text(
+                            'TTS will only read text inside quotation marks',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
+                          ),
                           value: storage.ttsNarrateQuotedOnly,
                           activeTrackColor: Colors.blueAccent,
                           contentPadding: EdgeInsets.zero,
                           dense: true,
-                          onChanged: (val) => storage.setTtsNarrateQuotedOnly(val),
+                          onChanged: (val) =>
+                              storage.setTtsNarrateQuotedOnly(val),
                         ),
                         SwitchListTile(
-                          title: const Text('Ignore *text inside asterisks*',
-                              style: TextStyle(color: Colors.white, fontSize: 14)),
-                          subtitle: const Text('TTS will skip all narration in *asterisks*, even quotes',
-                              style: TextStyle(color: Colors.white54, fontSize: 11)),
+                          title: const Text(
+                            'Ignore *text inside asterisks*',
+                            style: TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                          subtitle: const Text(
+                            'TTS will skip all narration in *asterisks*, even quotes',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
+                          ),
                           value: storage.ttsIgnoreAsterisks,
                           activeTrackColor: Colors.blueAccent,
                           contentPadding: EdgeInsets.zero,
                           dense: true,
-                          onChanged: (val) => storage.setTtsIgnoreAsterisks(val),
+                          onChanged: (val) =>
+                              storage.setTtsIgnoreAsterisks(val),
                         ),
 
                         const SizedBox(height: 16),
@@ -271,18 +393,25 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                         if (storage.ttsVoiceModel.isNotEmpty)
                           Center(
                             child: ElevatedButton.icon(
-onPressed: tts.isSpeaking
-    ? () => tts.stop()
-    : () {
-        final testText = storage.ttsNarrateQuotedOnly
-            ? '“Hello! This is a test of the text to speech system.” The quick brown fox jumps over the lazy dog.'
-            : 'Hello! This is a test of the text to speech system. The quick brown fox jumps over the lazy dog.';
-        tts.speak(testText);
-      },
-                              icon: Icon(tts.isSpeaking ? Icons.stop : Icons.play_arrow),
-                              label: Text(tts.isSpeaking ? 'Stop' : 'Test Voice'),
+                              onPressed: tts.isSpeaking
+                                  ? () => tts.stop()
+                                  : () {
+                                      final testText =
+                                          storage.ttsNarrateQuotedOnly
+                                          ? '“Hello! This is a test of the text to speech system.” The quick brown fox jumps over the lazy dog.'
+                                          : 'Hello! This is a test of the text to speech system. The quick brown fox jumps over the lazy dog.';
+                                      tts.speak(testText);
+                                    },
+                              icon: Icon(
+                                tts.isSpeaking ? Icons.stop : Icons.play_arrow,
+                              ),
+                              label: Text(
+                                tts.isSpeaking ? 'Stop' : 'Test Voice',
+                              ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: tts.isSpeaking ? Colors.redAccent : Colors.green,
+                                backgroundColor: tts.isSpeaking
+                                    ? Colors.redAccent
+                                    : Colors.green,
                                 foregroundColor: Colors.white,
                               ),
                             ),
@@ -317,7 +446,12 @@ onPressed: tts.isSpeaking
     );
   }
 
-  Widget _engineTab(StorageService storage, String id, String label, String subtitle) {
+  Widget _engineTab(
+    StorageService storage,
+    String id,
+    String label,
+    String subtitle,
+  ) {
     final selected = storage.ttsEngine == id;
     return Expanded(
       child: GestureDetector(
@@ -329,24 +463,32 @@ onPressed: tts.isSpeaking
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.transparent,
+            color: selected
+                ? Colors.blueAccent.withValues(alpha: 0.3)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
-            border: selected ? Border.all(color: Colors.blueAccent, width: 1) : null,
+            border: selected
+                ? Border.all(color: Colors.blueAccent, width: 1)
+                : null,
           ),
           child: Column(
             children: [
-              Text(label,
-                  style: TextStyle(
-                    color: selected ? Colors.blueAccent : Colors.white54,
-                    fontSize: 12,
-                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                  )),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.blueAccent : Colors.white54,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(subtitle,
-                  style: TextStyle(
-                    color: selected ? Colors.white38 : Colors.white24,
-                    fontSize: 9,
-                  )),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: selected ? Colors.white38 : Colors.white24,
+                  fontSize: 9,
+                ),
+              ),
             ],
           ),
         ),
@@ -356,7 +498,10 @@ onPressed: tts.isSpeaking
 
   /// Kokoro-specific settings.
   List<Widget> _buildKokoroSettings(
-      StorageService storage, TtsService tts, List<TtsVoiceInfo> voices) {
+    StorageService storage,
+    TtsService tts,
+    List<TtsVoiceInfo> voices,
+  ) {
     // Group voices by language
     final languages = <String, List<TtsVoiceInfo>>{};
     for (final v in voices) {
@@ -378,13 +523,20 @@ onPressed: tts.isSpeaking
                   Row(
                     children: [
                       const SizedBox(
-                        width: 14, height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent),
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.blueAccent,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Downloading Kokoro model (${(tts.modelDownloadProgress * 100).toInt()}%)...',
-                        style: const TextStyle(color: Colors.blueAccent, fontSize: 11),
+                        style: const TextStyle(
+                          color: Colors.blueAccent,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ),
@@ -418,7 +570,11 @@ onPressed: tts.isSpeaking
                   }
                   return Row(
                     children: [
-                      const Icon(Icons.download_rounded, color: Colors.blueAccent, size: 16),
+                      const Icon(
+                        Icons.download_rounded,
+                        color: Colors.blueAccent,
+                        size: 16,
+                      ),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
@@ -431,10 +587,18 @@ onPressed: tts.isSpeaking
                         onPressed: () async {
                           final success = await tts.downloadModel();
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(success ? 'Kokoro model ready!' : 'Download failed — check connection'),
-                              backgroundColor: success ? Colors.green : Colors.redAccent,
-                            ));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  success
+                                      ? 'Kokoro model ready!'
+                                      : 'Download failed — check connection',
+                                ),
+                                backgroundColor: success
+                                    ? Colors.green
+                                    : Colors.redAccent,
+                              ),
+                            );
                           }
                         },
                         icon: const Icon(Icons.download, size: 14),
@@ -442,7 +606,10 @@ onPressed: tts.isSpeaking
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blueAccent,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           textStyle: const TextStyle(fontSize: 12),
                           minimumSize: const Size(0, 30),
                         ),
@@ -456,8 +623,14 @@ onPressed: tts.isSpeaking
       const SizedBox(height: 16),
 
       // ── Voice selector ──
-      const Text('Voice',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'Voice',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
         initialValue: voices.any((v) => v.id == storage.ttsVoiceModel)
@@ -475,30 +648,48 @@ onPressed: tts.isSpeaking
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
         ),
         items: languages.entries.expand((entry) {
           return [
             DropdownMenuItem<String>(
               enabled: false,
               value: '__header_${entry.key}',
-              child: Text(entry.key,
-                  style: const TextStyle(
-                      color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-            ),
-            ...entry.value.map((v) => DropdownMenuItem(
-              value: v.id,
-              child: Row(
-                children: [
-                  Text(v.gender == 'Female' ? '♀ ' : v.gender == 'Male' ? '♂ ' : '⚬ ',
-                      style: TextStyle(
-                        color: v.gender == 'Female' ? Colors.pinkAccent : Colors.cyanAccent,
-                        fontSize: 13,
-                      )),
-                  Text(v.name, overflow: TextOverflow.ellipsis),
-                ],
+              child: Text(
+                entry.key,
+                style: const TextStyle(
+                  color: Colors.blueAccent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            )),
+            ),
+            ...entry.value.map(
+              (v) => DropdownMenuItem(
+                value: v.id,
+                child: Row(
+                  children: [
+                    Text(
+                      v.gender == 'Female'
+                          ? '♀ '
+                          : v.gender == 'Male'
+                          ? '♂ '
+                          : '⚬ ',
+                      style: TextStyle(
+                        color: v.gender == 'Female'
+                            ? Colors.pinkAccent
+                            : Colors.cyanAccent,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Text(v.name, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ),
           ];
         }).toList(),
         onChanged: (val) {
@@ -520,11 +711,20 @@ onPressed: tts.isSpeaking
 
   /// OpenAI TTS-specific settings.
   List<Widget> _buildOpenAiSettings(
-      StorageService storage, TtsService tts, List<TtsVoiceInfo> voices) {
+    StorageService storage,
+    TtsService tts,
+    List<TtsVoiceInfo> voices,
+  ) {
     return [
       // API Key
-      const Text('API Key',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'API Key',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 8),
       TextField(
         controller: _apiKeyController,
@@ -539,10 +739,16 @@ onPressed: tts.isSpeaking
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
           suffixIcon: IconButton(
-            icon: Icon(_obscureApiKey ? Icons.visibility_off : Icons.visibility,
-                color: Colors.white38, size: 18),
+            icon: Icon(
+              _obscureApiKey ? Icons.visibility_off : Icons.visibility,
+              color: Colors.white38,
+              size: 18,
+            ),
             onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
           ),
         ),
@@ -551,11 +757,19 @@ onPressed: tts.isSpeaking
       const SizedBox(height: 12),
 
       // Model
-      const Text('Model',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'Model',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 4),
-      const Text('OpenAI uses tts-1 or tts-1-hd. Other providers may differ.',
-          style: TextStyle(color: Colors.white24, fontSize: 11)),
+      const Text(
+        'OpenAI uses tts-1 or tts-1-hd. Other providers may differ.',
+        style: TextStyle(color: Colors.white24, fontSize: 11),
+      ),
       const SizedBox(height: 8),
       TextField(
         controller: _modelController,
@@ -569,18 +783,29 @@ onPressed: tts.isSpeaking
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
         ),
         onChanged: (val) => storage.setOpenaiTtsModel(val.trim()),
       ),
       const SizedBox(height: 12),
 
       // Base URL
-      const Text('API Base URL',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'API Base URL',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 4),
-      const Text('Change this to use an OpenAI-compatible TTS provider',
-          style: TextStyle(color: Colors.white24, fontSize: 11)),
+      const Text(
+        'Change this to use an OpenAI-compatible TTS provider',
+        style: TextStyle(color: Colors.white24, fontSize: 11),
+      ),
       const SizedBox(height: 8),
       TextField(
         controller: _baseUrlController,
@@ -594,7 +819,10 @@ onPressed: tts.isSpeaking
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
           suffixIcon: IconButton(
             icon: const Icon(Icons.restore, color: Colors.white38, size: 18),
             tooltip: 'Reset to OpenAI default',
@@ -609,8 +837,14 @@ onPressed: tts.isSpeaking
       const SizedBox(height: 12),
 
       // Voice
-      const Text('Voice',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'Voice',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
         initialValue: voices.any((v) => v.id == storage.ttsVoiceModel)
@@ -628,24 +862,44 @@ onPressed: tts.isSpeaking
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        ),
-        items: voices.map((v) => DropdownMenuItem(
-          value: v.id,
-          child: Row(
-            children: [
-              Text(v.gender == 'Female' ? '♀ ' : v.gender == 'Male' ? '♂ ' : '⚬ ',
-                  style: TextStyle(
-                    color: v.gender == 'Female' ? Colors.pinkAccent : Colors.cyanAccent,
-                    fontSize: 13,
-                  )),
-              Text(v.name),
-              const SizedBox(width: 6),
-              Text('(${v.gender})',
-                  style: const TextStyle(color: Colors.white38, fontSize: 11)),
-            ],
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
           ),
-        )).toList(),
+        ),
+        items: voices
+            .map(
+              (v) => DropdownMenuItem(
+                value: v.id,
+                child: Row(
+                  children: [
+                    Text(
+                      v.gender == 'Female'
+                          ? '♀ '
+                          : v.gender == 'Male'
+                          ? '♂ '
+                          : '⚬ ',
+                      style: TextStyle(
+                        color: v.gender == 'Female'
+                            ? Colors.pinkAccent
+                            : Colors.cyanAccent,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Text(v.name),
+                    const SizedBox(width: 6),
+                    Text(
+                      '(${v.gender})',
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .toList(),
         onChanged: (val) {
           if (val != null) storage.setTtsVoiceModel(val);
         },
@@ -677,14 +931,21 @@ onPressed: tts.isSpeaking
   /// Piper legacy settings.
   List<Widget> _buildPiperSettings(StorageService storage, TtsService tts) {
     return [
-      const Text('Default Voice',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'Default Voice',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
             child: DropdownButtonFormField<String>(
-              initialValue: _installedPiperVoices.contains(storage.ttsVoiceModel)
+              initialValue:
+                  _installedPiperVoices.contains(storage.ttsVoiceModel)
                   ? storage.ttsVoiceModel
                   : null,
               dropdownColor: const Color(0xFF374151),
@@ -700,11 +961,19 @@ onPressed: tts.isSpeaking
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
-              items: _installedPiperVoices.map((v) =>
-                DropdownMenuItem(value: v, child: Text(v, overflow: TextOverflow.ellipsis)),
-              ).toList(),
+              items: _installedPiperVoices
+                  .map(
+                    (v) => DropdownMenuItem(
+                      value: v,
+                      child: Text(v, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
               onChanged: (val) {
                 if (val != null) storage.setTtsVoiceModel(val);
               },
@@ -755,7 +1024,9 @@ onPressed: tts.isSpeaking
                     ? 'Piper TTS engine is ready'
                     : 'Piper TTS engine not found. Requires bundled Piper binary.',
                 style: TextStyle(
-                  color: tts.isPiperAvailable ? Colors.greenAccent : Colors.amber,
+                  color: tts.isPiperAvailable
+                      ? Colors.greenAccent
+                      : Colors.amber,
                   fontSize: 11,
                 ),
               ),
@@ -768,11 +1039,20 @@ onPressed: tts.isSpeaking
 
   /// ElevenLabs-specific settings.
   List<Widget> _buildElevenLabsSettings(
-      StorageService storage, TtsService tts, List<TtsVoiceInfo> voices) {
+    StorageService storage,
+    TtsService tts,
+    List<TtsVoiceInfo> voices,
+  ) {
     return [
       // API Key
-      const Text('API Key',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'API Key',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 8),
       TextField(
         controller: TextEditingController(text: storage.elevenlabsApiKey),
@@ -787,10 +1067,16 @@ onPressed: tts.isSpeaking
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
           suffixIcon: IconButton(
-            icon: Icon(_obscureApiKey ? Icons.visibility_off : Icons.visibility,
-                color: Colors.white38, size: 18),
+            icon: Icon(
+              _obscureApiKey ? Icons.visibility_off : Icons.visibility,
+              color: Colors.white38,
+              size: 18,
+            ),
             onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
           ),
         ),
@@ -799,8 +1085,14 @@ onPressed: tts.isSpeaking
       const SizedBox(height: 12),
 
       // Model
-      const Text('Model',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'Model',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
         initialValue: storage.elevenlabsModel,
@@ -813,15 +1105,24 @@ onPressed: tts.isSpeaking
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
         ),
         items: const [
-          DropdownMenuItem(value: 'eleven_flash_v2_5',
-              child: Text('Flash v2.5 — fastest (~75ms)')),
-          DropdownMenuItem(value: 'eleven_multilingual_v2',
-              child: Text('Multilingual v2 — 29 languages')),
-          DropdownMenuItem(value: 'eleven_v3',
-              child: Text('v3 — best quality, 70+ languages')),
+          DropdownMenuItem(
+            value: 'eleven_flash_v2_5',
+            child: Text('Flash v2.5 — fastest (~75ms)'),
+          ),
+          DropdownMenuItem(
+            value: 'eleven_multilingual_v2',
+            child: Text('Multilingual v2 — 29 languages'),
+          ),
+          DropdownMenuItem(
+            value: 'eleven_v3',
+            child: Text('v3 — best quality, 70+ languages'),
+          ),
         ],
         onChanged: (val) {
           if (val != null) storage.setElevenlabsModel(val);
@@ -830,8 +1131,14 @@ onPressed: tts.isSpeaking
       const SizedBox(height: 12),
 
       // Voice
-      const Text('Voice',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'Voice',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 8),
       Row(
         children: [
@@ -852,21 +1159,41 @@ onPressed: tts.isSpeaking
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              items: voices.map((v) => DropdownMenuItem(
-                value: v.id,
-                child: Row(
-                  children: [
-                    Text(v.gender == 'Female' ? '♀ ' : v.gender == 'Male' ? '♂ ' : '⚬ ',
-                        style: TextStyle(
-                          color: v.gender == 'Female' ? Colors.pinkAccent : Colors.cyanAccent,
-                          fontSize: 13,
-                        )),
-                    Expanded(child: Text(v.name, overflow: TextOverflow.ellipsis)),
-                  ],
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
                 ),
-              )).toList(),
+              ),
+              items: voices
+                  .map(
+                    (v) => DropdownMenuItem(
+                      value: v.id,
+                      child: Row(
+                        children: [
+                          Text(
+                            v.gender == 'Female'
+                                ? '♀ '
+                                : v.gender == 'Male'
+                                ? '♂ '
+                                : '⚬ ',
+                            style: TextStyle(
+                              color: v.gender == 'Female'
+                                  ? Colors.pinkAccent
+                                  : Colors.cyanAccent,
+                              fontSize: 13,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              v.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
               onChanged: (val) {
                 if (val != null) storage.setTtsVoiceModel(val);
               },
@@ -880,11 +1207,13 @@ onPressed: tts.isSpeaking
                 final fetched = await engine.fetchVoices();
                 if (mounted) setState(() {});
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text('Found ${fetched.length} voices'),
-                    backgroundColor: Colors.green,
-                    duration: const Duration(seconds: 2),
-                  ));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Found ${fetched.length} voices'),
+                      backgroundColor: Colors.green,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
                 }
               }
             },
@@ -904,18 +1233,32 @@ onPressed: tts.isSpeaking
       // ── Voice Settings Sliders ──
       const Divider(color: Colors.white12),
       const SizedBox(height: 8),
-      const Text('Voice Settings',
-          style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+      const Text(
+        'Voice Settings',
+        style: TextStyle(
+          color: Colors.white54,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       const SizedBox(height: 12),
 
       // Stability
       Row(
         children: [
-          const Text('Stability',
-              style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const Text(
+            'Stability',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
           const Spacer(),
-          Text(storage.elevenlabsStability.toStringAsFixed(2),
-              style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            storage.elevenlabsStability.toStringAsFixed(2),
+            style: const TextStyle(
+              color: Colors.blueAccent,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
       Slider(
@@ -932,8 +1275,14 @@ onPressed: tts.isSpeaking
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Expressive', style: TextStyle(color: Colors.white24, fontSize: 9)),
-            Text('Consistent', style: TextStyle(color: Colors.white24, fontSize: 9)),
+            Text(
+              'Expressive',
+              style: TextStyle(color: Colors.white24, fontSize: 9),
+            ),
+            Text(
+              'Consistent',
+              style: TextStyle(color: Colors.white24, fontSize: 9),
+            ),
           ],
         ),
       ),
@@ -943,11 +1292,19 @@ onPressed: tts.isSpeaking
       // Similarity Boost
       Row(
         children: [
-          const Text('Similarity',
-              style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const Text(
+            'Similarity',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
           const Spacer(),
-          Text(storage.elevenlabsSimilarity.toStringAsFixed(2),
-              style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            storage.elevenlabsSimilarity.toStringAsFixed(2),
+            style: const TextStyle(
+              color: Colors.blueAccent,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
       Slider(
@@ -964,8 +1321,14 @@ onPressed: tts.isSpeaking
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Creative', style: TextStyle(color: Colors.white24, fontSize: 9)),
-            Text('Faithful', style: TextStyle(color: Colors.white24, fontSize: 9)),
+            Text(
+              'Creative',
+              style: TextStyle(color: Colors.white24, fontSize: 9),
+            ),
+            Text(
+              'Faithful',
+              style: TextStyle(color: Colors.white24, fontSize: 9),
+            ),
           ],
         ),
       ),
@@ -975,11 +1338,19 @@ onPressed: tts.isSpeaking
       // Style
       Row(
         children: [
-          const Text('Style',
-              style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const Text(
+            'Style',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
           const Spacer(),
-          Text(storage.elevenlabsStyle.toStringAsFixed(2),
-              style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            storage.elevenlabsStyle.toStringAsFixed(2),
+            style: const TextStyle(
+              color: Colors.blueAccent,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
       Slider(
@@ -996,8 +1367,14 @@ onPressed: tts.isSpeaking
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Subtle', style: TextStyle(color: Colors.white24, fontSize: 9)),
-            Text('Expressive', style: TextStyle(color: Colors.white24, fontSize: 9)),
+            Text(
+              'Subtle',
+              style: TextStyle(color: Colors.white24, fontSize: 9),
+            ),
+            Text(
+              'Expressive',
+              style: TextStyle(color: Colors.white24, fontSize: 9),
+            ),
           ],
         ),
       ),
