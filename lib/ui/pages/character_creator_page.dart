@@ -30,7 +30,9 @@ import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_gen_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
@@ -38,6 +40,17 @@ import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
+import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
+import 'package:front_porch_ai/ui/widgets/model_selector.dart';
+import 'package:front_porch_ai/ui/widgets/alternate_greetings_slider.dart';
+import 'package:front_porch_ai/ui/widgets/avatar_art_style_selector.dart';
+import 'package:front_porch_ai/ui/widgets/greeting_tone_selector.dart';
+import 'package:front_porch_ai/ui/widgets/nsfw_toggle.dart';
+import 'package:front_porch_ai/ui/widgets/persona_selector_dropdown.dart';
+import 'package:front_porch_ai/ui/widgets/first_message_length_dropdown.dart';
+import 'package:front_porch_ai/ui/widgets/description_detail_chip_row.dart';
+import 'package:front_porch_ai/ui/widgets/character_name_input.dart';
+import 'package:front_porch_ai/ui/widgets/age_gender_row.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Creator mode selection.
@@ -332,37 +345,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   bool _isReloadingKobold = false;
   String _koboldStatus = '';
 
-  static const _artStyles = [
-    'Anime',
-    'Realistic',
-    'Painterly',
-    'Pixel Art',
-    'Comic Book',
-    'Watercolor',
-    'Fantasy Illustration',
-  ];
-
-  static const _greetingLengths = [
-    'Short (1-2 paragraphs)',
-    'Medium (2-4 paragraphs)',
-    'Long (4-6 paragraphs)',
-  ];
-
-  static const _greetingTones = [
-    'Neutral',
-    'Romantic',
-    'Spicy/NSFW',
-    'Flirty/Playful',
-    'Wholesome',
-    'Slice of Life',
-    'Story/Narrative',
-    'Adventure',
-    'Combat/Action',
-    'Comedy/Humor',
-    'Suspense/Thriller',
-    'Dark/Mystery',
-    'Melancholy',
-  ];
+  // Pseudo-remote state
+  bool _isReloadingPseudoRemote = false;
+  List<File> _localPresets = [];
 
   static const _loreCategoryOptions = [
     'Locations',
@@ -754,12 +739,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     super.initState();
     _loadSavedState();
     _loadAvailableModels();
-    // Scan local GGUF models for KoboldCpp
+    // Scan local resources
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final llmProvider = Provider.of<LLMProvider>(context, listen: false);
       if (llmProvider.hasManagedProcess) {
         _scanLocalModels();
       }
+      _scanLocalPresets();
     });
   }
 
@@ -1049,6 +1035,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     }
   }
 
+  /// Scan binDir for .kcpps preset files.
+  void _scanLocalPresets() {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    setState(() => _localPresets = scanKcppsPresets(storage.binDir));
+  }
+
   /// Stop KoboldCpp and restart with a new model file.
   Future<void> _reloadKoboldWithModel(String modelPath) async {
     if (_isReloadingKobold) return;
@@ -1137,6 +1129,54 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         });
       }
     }
+  }
+
+  Future<void> _startPseudoRemote() async {
+    if (_isReloadingPseudoRemote) return;
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final backendManager = Provider.of<BackendManager>(context, listen: false);
+    final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+
+    if (backendManager.backendPath == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backend executable not found.')),
+        );
+      }
+      return;
+    }
+    if (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Select a .kcpps preset first.')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isReloadingPseudoRemote = true);
+
+    final overrideModel = (storage.kcppsHasModel && storage.kcppsModelFileExists)
+        ? null
+        : _selectedLocalModelPath.isEmpty ? null : _selectedLocalModelPath;
+
+    try {
+      await pseudoRemote.start(
+        executablePath: backendManager.backendPath!,
+        kcppsPath: storage.activeKcppsPath!,
+        modelPath: overrideModel,
+      );
+    } catch (e) {
+      debugPrint('CharacterCreator: Pseudo-remote start error: $e');
+    } finally {
+      if (mounted) setState(() => _isReloadingPseudoRemote = false);
+    }
+  }
+
+  Future<void> _stopPseudoRemote() async {
+    setState(() => _isReloadingPseudoRemote = true);
+    await Provider.of<PseudoRemoteService>(context, listen: false).stop();
+    if (mounted) setState(() => _isReloadingPseudoRemote = false);
   }
 
   @override
@@ -1319,7 +1359,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
   Widget _buildSetupStep() {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
-    final isKobold = llmProvider.activeBackend == BackendType.kobold;
+    final activeBackend = llmProvider.activeBackend;
+    final isKobold = activeBackend == BackendType.kobold;
 
     return Center(
       key: const ValueKey('setup'),
@@ -1371,14 +1412,32 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       },
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _backendChip(
+                      label: 'Pseudo-Remote',
+                      icon: Icons.laptop,
+                      isSelected: activeBackend == BackendType.pseudoRemote,
+                      onTap: () async {
+                        if (activeBackend != BackendType.pseudoRemote) {
+                          await llmProvider.setActiveBackend(
+                            BackendType.pseudoRemote,
+                          );
+                          _scanLocalModels();
+                          _scanLocalPresets();
+                          setState(() {});
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _backendChip(
                       label: 'API (Remote)',
                       icon: Icons.cloud,
-                      isSelected: !isKobold,
+                      isSelected: activeBackend == BackendType.openRouter,
                       onTap: () async {
-                        if (isKobold) {
+                        if (activeBackend != BackendType.openRouter) {
                           await llmProvider.setActiveBackend(
                             BackendType.openRouter,
                           );
@@ -1817,6 +1876,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       ),
                   ],
                 ),
+              ] else if (activeBackend == BackendType.pseudoRemote) ...[
+                _buildPseudoRemoteSection(),
               ] else ...[
                 // API model picker
                 _inputLabel('Generation Model', required: false),
@@ -1953,6 +2014,141 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           ),
         ),
       ),
+    );
+  }
+
+  /// Pseudo-remote backend configuration section for Step 0.
+  Widget _buildPseudoRemoteSection() {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    // Note: context here is the page's State.context, valid for the life of the
+    // page. Captured provider instances are used inside callbacks instead of
+    // Provider.of so that navigation away doesn't trigger stale-context assertions.
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _inputLabel('Configuration Preset (.kcpps)', required: false),
+        const SizedBox(height: 8),
+        KcppsSelector(
+          storage: storage,
+          localPresets: _localPresets,
+          hint: 'Required — select a .kcpps preset',
+          onChanged: (val) {
+            storage.setActiveKcppsPath(val);
+            if (val != null &&
+                storage.kcppsHasModel &&
+                storage.kcppsModelFileExists) {
+              if (mounted) setState(() => _selectedLocalModelPath = '');
+            }
+          },
+          onExternalClear: () => storage.setActiveKcppsPath(null),
+          onBrowsePicked: (_) {
+            if (storage.kcppsHasModel && storage.kcppsModelFileExists) {
+              if (mounted) setState(() => _selectedLocalModelPath = '');
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+
+        _inputLabel('Model (optional override)', required: false),
+        const SizedBox(height: 8),
+        Text(
+          'Leave as "Managed by kcpps" to use the model defined in the preset.',
+          style: TextStyle(
+            color: AppColors.textTertiary(context),
+            fontSize: 11,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ModelSelector(
+          models: _localModels.cast<File>(),
+          selectedModelPath:
+              _selectedLocalModelPath.isEmpty ? null : _selectedLocalModelPath,
+          showManagedByKcpps:
+              storage.kcppsHasModel && storage.kcppsModelFileExists,
+          onChanged: (val) {
+            setState(() => _selectedLocalModelPath = val ?? '');
+            if (val != null) storage.setLastUsedModelPath(val);
+          },
+        ),
+        const SizedBox(height: 24),
+
+        // ── Status + Start/Stop ──
+        Builder(
+          builder: (context) {
+            final p = Provider.of<PseudoRemoteService>(context);
+            final isRunning = p.isRunning || p.isStarting;
+            final dotColor = p.isReady
+                ? Colors.green.shade300
+                : isRunning
+                    ? Colors.orange.shade300
+                    : Colors.red.shade300;
+            final label = p.isReady
+                ? 'Ready'
+                : p.isStarting
+                    ? 'Starting...'
+                    : p.isRunning
+                        ? 'Loading model...'
+                        : 'Stopped';
+
+            return Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: dotColor,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(color: dotColor, fontSize: 12),
+                ),
+                const SizedBox(width: 16),
+                if (isRunning)
+                  ElevatedButton.icon(
+                    onPressed: _isReloadingPseudoRemote ? null : _stopPseudoRemote,
+                    icon: const Icon(Icons.stop, size: 16),
+                    label: const Text('Stop Backend'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                    ),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed:
+                        (storage.activeKcppsPath == null ||
+                                storage.activeKcppsPath!.isEmpty)
+                            ? null
+                            : _startPseudoRemote,
+                    icon: _isReloadingPseudoRemote
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.play_arrow, size: 16),
+                    label: Text(
+                      _isReloadingPseudoRemote
+                          ? 'Starting...'
+                          : 'Start Backend',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -2118,24 +2314,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      height: 52,
-                      child: OutlinedButton.icon(
-                        onPressed: () => setState(() => _currentStep = 0),
-                        icon: Icon(Icons.arrow_back, size: 18),
-                        label: const Text(
-                          'Back',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textSecondary(context),
-                          side: BorderSide(color: AppColors.textTertiary(context)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
+                    _buildBackButton(0, fontSize: 14),
                     const SizedBox(width: 16),
                     SizedBox(
                       width: 280,
@@ -2565,33 +2744,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _artStyles.map((style) {
-                  final isSelected = _artStyle == style;
-                  return ChoiceChip(
-                    label: Text(style),
-                    selected: isSelected,
-                    onSelected: (_) {
-                      setState(() => _artStyle = style);
-                      _saveState();
-                    },
-                    selectedColor: quickAccent.withValues(alpha: 0.15),
-                    backgroundColor: AppColors.surfaceContainerOf(context),
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? quickAccent
-                          : AppColors.textSecondary(context),
-                      fontSize: 13,
-                    ),
-                    side: BorderSide(
-                      color: isSelected
-                          ? quickAccent
-                          : AppColors.borderOf(context),
-                    ),
-                  );
-                }).toList(),
+              AvatarArtStyleSelector(
+                selectedStyle: _artStyle,
+                accentColor: quickAccent,
+                onChanged: (style) {
+                  setState(() => _artStyle = style);
+                  _saveState();
+                },
               ),
               const SizedBox(height: 24),
 
@@ -2605,57 +2764,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                _quickGreetingCount == 0
-                    ? 'Tone for the first message.'
-                    : 'Select up to ${_quickGreetingCount + 1} — one per greeting.',
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _greetingTones
-                    .where((tone) => tone != 'Spicy/NSFW' || _quickNsfwEnabled)
-                    .map((tone) {
-                      final isSelected = _quickSelectedTones.contains(tone);
-                      final maxTones = _quickGreetingCount + 1;
-                      final atLimit =
-                          _quickSelectedTones.length >= maxTones && !isSelected;
-                      return FilterChip(
-                        label: Text(tone),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              if (atLimit)
-                                _quickSelectedTones.remove(
-                                  _quickSelectedTones.last,
-                                );
-                              _quickSelectedTones.add(tone);
-                            } else if (_quickSelectedTones.length > 1) {
-                              _quickSelectedTones.remove(tone);
-                            }
-                          });
-                          _saveState();
-                        },
-                        selectedColor: quickAccent.withValues(alpha: 0.15),
-                        backgroundColor: AppColors.surfaceContainerOf(context),
-                        checkmarkColor: quickAccent,
-                        labelStyle: TextStyle(
-                          color: isSelected
-                              ? quickAccent
-                              : AppColors.textSecondary(context),
-                          fontSize: 13,
-                        ),
-                        side: BorderSide(
-                          color: isSelected
-                              ? quickAccent
-                              : AppColors.borderOf(context),
-                        ),
-                      );
-                    })
-                    .toList(),
+              GreetingToneSelector(
+                selectedTones: _quickSelectedTones,
+                greetingCount: _quickGreetingCount,
+                nsfwEnabled: _quickNsfwEnabled,
+                accentColor: quickAccent,
+                onChanged: (tones) {
+                  setState(() => _quickSelectedTones = tones);
+                  _saveState();
+                },
               ),
               const SizedBox(height: 24),
 
@@ -2674,46 +2791,21 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
               ),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Slider(
-                      value: _quickGreetingCount.toDouble(),
-                      min: 0,
-                      max: 5,
-                      divisions: 5,
-                      activeColor: quickAccent,
-                      inactiveColor: AppColors.borderOf(context),
-                      label: _quickGreetingCount == 0
-                          ? '1 greeting'
-                          : '1 + $_quickGreetingCount alt${_quickGreetingCount == 1 ? '' : 's'}',
-                      onChanged: (val) {
-                        setState(() {
-                          _quickGreetingCount = val.round();
-                          final maxTones = _quickGreetingCount + 1;
-                          while (_quickSelectedTones.length > maxTones) {
-                            _quickSelectedTones.remove(
-                              _quickSelectedTones.last,
-                            );
-                          }
-                        });
-                        _saveState();
-                      },
-                    ),
-                  ),
-                  SizedBox(
-                    width: 80,
-                    child: Text(
-                      _quickGreetingCount == 0
-                          ? '1 greeting'
-                          : '1 + $_quickGreetingCount',
-                      style: TextStyle(
-                        color: AppColors.textSecondary(context),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
+              AlternateGreetingsSlider(
+                value: _quickGreetingCount,
+                accentColor: quickAccent,
+                formatLabel: (v) =>
+                    v == 0 ? '1 greeting' : '1 + $v alt${v == 1 ? '' : 's'}',
+                onChanged: (val) {
+                  setState(() {
+                    _quickGreetingCount = val;
+                    final maxTones = _quickGreetingCount + 1;
+                    while (_quickSelectedTones.length > maxTones) {
+                      _quickSelectedTones.remove(_quickSelectedTones.last);
+                    }
+                  });
+                  _saveState();
+                },
               ),
               const SizedBox(height: 24),
 
@@ -2722,94 +2814,20 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 28),
 
               // NSFW toggle
-              InkWell(
-                onTap: () =>
-                    setState(() => _quickNsfwEnabled = !_quickNsfwEnabled),
-                borderRadius: BorderRadius.circular(12),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _quickNsfwEnabled
-                        ? nsfwAccent.withValues(alpha: 0.08)
-                        : AppColors.surfaceContainerOf(context),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _quickNsfwEnabled
-                          ? nsfwAccent.withValues(alpha: 0.5)
-                          : AppColors.borderOf(context),
-                      width: _quickNsfwEnabled ? 2 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.local_fire_department,
-                        color: _quickNsfwEnabled
-                            ? nsfwAccent
-                            : AppColors.textTertiary(context),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'NSFW Content',
-                              style: TextStyle(
-                                color: _quickNsfwEnabled
-                                    ? nsfwAccent
-                                    : AppColors.textSecondary(context),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Enables adult themes in personality, lorebook, and greetings',
-                              style: TextStyle(
-                                color: _quickNsfwEnabled
-                                    ? nsfwAccent.withValues(alpha: 0.6)
-                                    : AppColors.textTertiary(context),
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch(
-                        value: _quickNsfwEnabled,
-                        onChanged: (v) => setState(() => _quickNsfwEnabled = v),
-                        activeThumbColor: nsfwAccent,
-                      ),
-                    ],
-                  ),
-                ),
+              NsfwToggle(
+                value: _quickNsfwEnabled,
+                accentColor: nsfwAccent,
+                title: 'NSFW Content',
+                subtitle: 'Enables adult themes in personality, lorebook, and greetings',
+                animated: true,
+                onChanged: (v) => setState(() => _quickNsfwEnabled = v),
               ),
               const SizedBox(height: 36),
 
               // Buttons
               Row(
                 children: [
-                  SizedBox(
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      onPressed: () => setState(() => _currentStep = 1),
-                      icon: Icon(Icons.arrow_back, size: 18),
-                      label: const Text('Back'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textSecondary(context),
-                        side: BorderSide(color: AppColors.textTertiary(context)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildBackButton(1),
                   const SizedBox(width: 16),
                   Expanded(
                     child: SizedBox(
@@ -2931,16 +2949,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     LLMService llmService;
     if (llmProvider.hasManagedProcess) {
-      final kobold = llmProvider.koboldService;
-      if (!kobold.isReady) {
+      final svc = llmProvider.activeService;
+      if (!svc.isReady) {
         setState(() {
           _generationStatus =
-              'Error: KoboldCpp is not running. Start it first.';
+              'Error: The backend is not running. Start it first.';
           _isGenerating = false;
         });
         return;
       }
-      llmService = kobold;
+      llmService = svc;
     } else if (_selectedModelId.isNotEmpty &&
         _selectedModelId != llmProvider.openRouterService.modelName) {
       llmService = OpenRouterService(
@@ -3563,66 +3581,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 16),
 
               // Name + randomizer
-              Row(
-                children: [
-                  _inputLabel('Character Name', required: true),
-                  const Spacer(),
-                  Tooltip(
-                    message: 'Generate a random name',
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.casino,
-                        color: Colors.amberAccent,
-                        size: 20,
-                      ),
-                      onPressed: _randomizeName,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _styledTextField(
+              CharacterNameInput(
                 controller: _nameController,
-                hint: 'e.g. Aria Blackwood, Captain Zara, Luna...',
-                maxLines: 1,
+                onRandomize: _randomizeName,
+                tooltip: 'Generate a random name',
+                onChanged: (_) {
+                  setState(() {});
+                  _saveState();
+                },
               ),
               const SizedBox(height: 16),
 
               // Age & Sex
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _inputLabel('Age', required: false),
-                        const SizedBox(height: 8),
-                        _styledTextField(
-                          controller: _ageController,
-                          hint: 'e.g. 25, Ancient...',
-                          maxLines: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _inputLabel('Gender', required: false),
-                        const SizedBox(height: 8),
-                        _styledTextField(
-                          controller: _sexController,
-                          hint: 'e.g. Female, Male...',
-                          maxLines: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              AgeGenderRow(
+                ageController: _ageController,
+                genderController: _sexController,
+                onChanged: () {
+                  setState(() {});
+                  _saveState();
+                },
               ),
               const SizedBox(height: 4),
 
@@ -3848,67 +3825,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 32),
 
               // NSFW toggle
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: _nsfwEnabled
-                      ? nsfwAccent.withValues(alpha: 0.08)
-                      : AppColors.surfaceContainerOf(context),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: _nsfwEnabled
-                        ? nsfwAccent.withValues(alpha: 0.4)
-                        : AppColors.borderOf(context),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.local_fire_department,
-                      color: _nsfwEnabled ? nsfwAccent : AppColors.textTertiary(context),
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Enable NSFW Options',
-                            style: TextStyle(
-                              color: _nsfwEnabled
-                                  ? nsfwAccent
-                                  : AppColors.textSecondary(context),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            'Unlock intimate character details',
-                            style: TextStyle(
-                              color: _nsfwEnabled
-                                  ? nsfwAccent.withValues(alpha: 0.6)
-                                  : AppColors.textTertiary(context),
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: _nsfwEnabled,
-                      activeTrackColor: nsfwAccent,
-                      onChanged: (val) {
-                        setState(() => _nsfwEnabled = val);
-                        _saveState();
-                      },
-                    ),
-                  ],
-                ),
+              NsfwToggle(
+                value: _nsfwEnabled,
+                accentColor: nsfwAccent,
+                subtitle: 'Unlock intimate character details',
+                onChanged: (val) {
+                  setState(() => _nsfwEnabled = val);
+                  _saveState();
+                },
               ),
 
               if (_nsfwEnabled)
@@ -4218,76 +4142,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
                   ),
                   const SizedBox(height: 8),
-                  Builder(
-                    builder: (context) {
-                      final personaService = Provider.of<UserPersonaService>(
-                        context,
-                      );
-                      final personas = personaService.personas;
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceContainerOf(context),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.borderOf(context)),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedPersonaId,
-                            isExpanded: true,
-                            dropdownColor: AppColors.surfaceContainerOf(context),
-                            style: TextStyle(
-                              color: AppColors.textPrimary(context),
-                              fontSize: 13,
-                            ),
-                            items: [
-                              DropdownMenuItem(
-                                value: '',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.person_off,
-                                      size: 16,
-                                      color: AppColors.textTertiary(context),
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'None (Blank Slate)',
-                                      style: TextStyle(color: AppColors.textSecondary(context)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              ...personas.map(
-                                (p) => DropdownMenuItem(
-                                  value: p.id,
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.person,
-                                        size: 16,
-                                        color: Colors.blueAccent,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Flexible(
-                                        child: Text(
-                                          p.displayLabel,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() => _selectedPersonaId = value ?? '');
-                              _saveState();
-                            },
-                          ),
-                        ),
-                      );
+                  PersonaSelectorDropdown(
+                    selectedPersonaId: _selectedPersonaId,
+                    onChanged: (value) {
+                      setState(() => _selectedPersonaId = value ?? '');
+                      _saveState();
                     },
                   ),
                   const SizedBox(height: 16),
@@ -4295,53 +4154,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   // Greeting tones
                   _inputLabel('Greeting Tones', required: false),
                   const SizedBox(height: 4),
-                  Text(
-                    _altGreetingCount == 0
-                        ? 'Tone for the first message.'
-                        : 'Select up to ${_altGreetingCount + 1} — one per greeting.',
-                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _greetingTones
-                        .where((tone) => tone != 'Spicy/NSFW' || _nsfwEnabled)
-                        .map((tone) {
-                          final isSelected = _selectedTones.contains(tone);
-                          final maxTones = _altGreetingCount + 1;
-                          final atLimit =
-                              _selectedTones.length >= maxTones && !isSelected;
-                          return FilterChip(
-                            label: Text(tone),
-                            selected: isSelected,
-                            onSelected: (selected) {
-                              setState(() {
-                                if (selected) {
-                                  if (atLimit)
-                                    _selectedTones.remove(_selectedTones.last);
-                                  _selectedTones.add(tone);
-                                } else if (_selectedTones.length > 1) {
-                                  _selectedTones.remove(tone);
-                                }
-                              });
-                              _saveState();
-                            },
-                            selectedColor: AppColors.resolve(context, const Color(0xFF1E40AF), Colors.blueAccent),
-                            backgroundColor: AppColors.surfaceContainerOf(context),
-                            checkmarkColor: AppColors.resolve(context, Colors.white, Colors.black87),
-                            labelStyle: TextStyle(
-                              color: isSelected ? AppColors.resolve(context, Colors.white, Colors.black87) : AppColors.textSecondary(context),
-                              fontSize: 13,
-                            ),
-                            side: BorderSide(
-                              color: isSelected
-                                  ? Colors.blueAccent
-                                  : AppColors.borderOf(context),
-                            ),
-                          );
-                        })
-                        .toList(),
+                  GreetingToneSelector(
+                    selectedTones: _selectedTones.toList(),
+                    greetingCount: _altGreetingCount,
+                    nsfwEnabled: _nsfwEnabled,
+                    accentColor: Colors.blueAccent,
+                    onChanged: (tones) {
+                      setState(() => _selectedTones = tones.toSet());
+                      _saveState();
+                    },
                   ),
                   const SizedBox(height: 16),
 
@@ -4358,40 +4179,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               required: false,
                             ),
                             const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.surfaceContainerOf(context),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: AppColors.borderOf(context)),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _greetingLength,
-                                  isExpanded: true,
-                                  dropdownColor: AppColors.surfaceContainerOf(context),
-                                  style: TextStyle(
-                                    color: AppColors.textPrimary(context),
-                                    fontSize: 13,
-                                  ),
-                                  items: _greetingLengths
-                                      .map(
-                                        (len) => DropdownMenuItem(
-                                          value: len,
-                                          child: Text(len),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (value) {
-                                    if (value != null) {
-                                      setState(() => _greetingLength = value);
-                                      _saveState();
-                                    }
-                                  },
-                                ),
-                              ),
+                            FirstMessageLengthDropdown(
+                              value: _greetingLength,
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _greetingLength = value);
+                                  _saveState();
+                                }
+                              },
                             ),
                           ],
                         ),
@@ -4403,43 +4198,21 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           children: [
                             _inputLabel('Alternate Greetings', required: false),
                             const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Slider(
-                                    value: _altGreetingCount.toDouble(),
-                                    min: 0,
-                                    max: 5,
-                                    divisions: 5,
-                                    activeColor: Colors.blueAccent,
-                                    inactiveColor: AppColors.borderOf(context),
-                                    label: '$_altGreetingCount',
-                                    onChanged: (val) {
-                                      setState(() {
-                                        _altGreetingCount = val.round();
-                                        final maxTones = _altGreetingCount + 1;
-                                        while (_selectedTones.length >
-                                            maxTones) {
-                                          _selectedTones.remove(
-                                            _selectedTones.last,
-                                          );
-                                        }
-                                      });
-                                      _saveState();
-                                    },
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 24,
-                                  child: Text(
-                                    '$_altGreetingCount',
-                                    style: TextStyle(
-                                      color: AppColors.textSecondary(context),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            AlternateGreetingsSlider(
+                              value: _altGreetingCount,
+                              accentColor: Colors.blueAccent,
+                              onChanged: (val) {
+                                setState(() {
+                                  _altGreetingCount = val;
+                                  final maxTones = _altGreetingCount + 1;
+                                  while (_selectedTones.length > maxTones) {
+                                    _selectedTones.remove(
+                                      _selectedTones.last,
+                                    );
+                                  }
+                                });
+                                _saveState();
+                              },
                             ),
                           ],
                         ),
@@ -4451,59 +4224,24 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   // Art style
                   _inputLabel('Avatar Art Style', required: false),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _artStyles.map((style) {
-                      final isSelected = _artStyle == style;
-                      return ChoiceChip(
-                        label: Text(style),
-                        selected: isSelected,
-                        onSelected: (_) => setState(() => _artStyle = style),
-                        selectedColor: Colors.blueAccent,
-                        backgroundColor: AppColors.surfaceContainerOf(context),
-                        labelStyle: TextStyle(
-                          color: isSelected ? AppColors.resolve(context, Colors.white, Colors.black87) : AppColors.textSecondary(context),
-                          fontSize: 13,
-                        ),
-                        side: BorderSide(
-                          color: isSelected
-                              ? Colors.blueAccent
-                              : AppColors.borderOf(context),
-                        ),
-                      );
-                    }).toList(),
+                  AvatarArtStyleSelector(
+                    selectedStyle: _artStyle,
+                    accentColor: Colors.blueAccent,
+                    onChanged: (style) => setState(() => _artStyle = style),
                   ),
                   const SizedBox(height: 16),
 
                   // Description detail
                   _inputLabel('Description Detail', required: false),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _generationDetailOptions.keys.map((label) {
-                      final isSelected = _generationDetail == label;
-                      return ChoiceChip(
-                        label: Text(label),
-                        selected: isSelected,
-                        onSelected: (_) {
-                          setState(() => _generationDetail = label);
-                          _saveState();
-                        },
-                        selectedColor: Colors.blueAccent,
-                        backgroundColor: AppColors.surfaceContainerOf(context),
-                        labelStyle: TextStyle(
-                          color: isSelected ? AppColors.resolve(context, Colors.white, Colors.black87) : AppColors.textSecondary(context),
-                          fontSize: 13,
-                        ),
-                        side: BorderSide(
-                          color: isSelected
-                              ? Colors.blueAccent
-                              : AppColors.borderOf(context),
-                        ),
-                      );
-                    }).toList(),
+                  DescriptionDetailChipRow(
+                    options: _generationDetailOptions.keys.toList(),
+                    selectedDetail: _generationDetail,
+                    accentColor: Colors.blueAccent,
+                    onChanged: (label) {
+                      setState(() => _generationDetail = label);
+                      _saveState();
+                    },
                   ),
                   const SizedBox(height: 16),
 
@@ -4641,24 +4379,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      height: 52,
-                      child: OutlinedButton.icon(
-                        onPressed: () => setState(() => _currentStep = 1),
-                        icon: Icon(Icons.arrow_back, size: 18),
-                        label: const Text(
-                          'Back',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textSecondary(context),
-                          side: BorderSide(color: AppColors.textTertiary(context)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
+                    _buildBackButton(1, fontSize: 14),
                     const SizedBox(width: 16),
                     SizedBox(
                       width: 240,
@@ -4890,66 +4611,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 24),
 
               // ── NSFW Toggle ──
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
+              NsfwToggle(
+                value: _nsfwEnabled,
+                accentColor: AppColors.resolve(
+                  context, const Color(0xFF9D174D), Colors.pinkAccent,
                 ),
-                decoration: BoxDecoration(
-                  color: _nsfwEnabled
-                      ? AppColors.resolve(context, Colors.pinkAccent.withValues(alpha: 0.15), Colors.pinkAccent.withValues(alpha: 0.08))
-                      : AppColors.surfaceContainerOf(context),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: _nsfwEnabled
-                        ? AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent).withValues(alpha: 0.5)
-                        : AppColors.borderOf(context),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.local_fire_department,
-                      color: _nsfwEnabled ? AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent) : AppColors.textTertiary(context),
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Enable NSFW Options',
-                            style: TextStyle(
-                              color: _nsfwEnabled
-                                  ? AppColors.resolve(context, Colors.pinkAccent, const Color(0xFF9D174D))
-                                  : AppColors.textSecondary(context),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            'Unlock spicy appearance & relationship options',
-                            style: TextStyle(
-                              color: _nsfwEnabled
-                                  ? AppColors.resolve(context, Colors.pinkAccent.withValues(alpha: 0.7), Colors.pinkAccent.withValues(alpha: 0.6))
-                                  : AppColors.textTertiary(context),
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: _nsfwEnabled,
-                      activeTrackColor: AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent),
-                      onChanged: (val) {
-                        setState(() => _nsfwEnabled = val);
-                        _saveState();
-                      },
-                    ),
-                  ],
-                ),
+                subtitle: 'Unlock spicy appearance & relationship options',
+                onChanged: (val) {
+                  setState(() => _nsfwEnabled = val);
+                  _saveState();
+                },
               ),
               const SizedBox(height: 16),
 
@@ -5051,66 +4722,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 24),
 
               // ── Name with Randomize ──
-              Row(
-                children: [
-                  _inputLabel('Character Name', required: true),
-                  const Spacer(),
-                  Tooltip(
-                    message: 'Generate a random character name',
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.casino,
-                        color: Colors.amberAccent,
-                        size: 20,
-                      ),
-                      onPressed: _randomizeName,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _styledTextField(
+              CharacterNameInput(
                 controller: _nameController,
-                hint: 'e.g. Aria Blackwood, Captain Zara, Luna...',
-                maxLines: 1,
+                onRandomize: _randomizeName,
+                tooltip: 'Generate a random character name',
+                onChanged: (_) {
+                  setState(() {});
+                  _saveState();
+                },
               ),
               const SizedBox(height: 16),
 
               // ── Age & Sex row (compact) ──
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _inputLabel('Age', required: false),
-                        const SizedBox(height: 8),
-                        _styledTextField(
-                          controller: _ageController,
-                          hint: 'e.g. 25, Ancient...',
-                          maxLines: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _inputLabel('Gender', required: false),
-                        const SizedBox(height: 8),
-                        _styledTextField(
-                          controller: _sexController,
-                          hint: 'e.g. Female, Male...',
-                          maxLines: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              AgeGenderRow(
+                ageController: _ageController,
+                genderController: _sexController,
+                onChanged: () {
+                  setState(() {});
+                  _saveState();
+                },
               ),
               const SizedBox(height: 24),
 
@@ -5588,34 +5218,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // Description detail level
               _inputLabel('Description Detail', required: false),
               const SizedBox(height: 4),
-              Text(
-                'Controls how detailed the character description will be',
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _generationDetailOptions.keys.map((label) {
-                  final isSelected = _generationDetail == label;
-                  return ChoiceChip(
-                    label: Text(label),
-                    selected: isSelected,
-                    onSelected: (_) {
-                      setState(() => _generationDetail = label);
-                      _saveState();
-                    },
-                    selectedColor: Colors.blueAccent,
-                    backgroundColor: AppColors.surfaceContainerOf(context),
-                    labelStyle: TextStyle(
-                      color: isSelected ? AppColors.resolve(context, Colors.white, Colors.black87) : AppColors.textSecondary(context),
-                      fontSize: 13,
-                    ),
-                    side: BorderSide(
-                      color: isSelected ? Colors.blueAccent : AppColors.borderOf(context),
-                    ),
-                  );
-                }).toList(),
+              DescriptionDetailChipRow(
+                options: _generationDetailOptions.keys.toList(),
+                selectedDetail: _generationDetail,
+                accentColor: Colors.blueAccent,
+                subtitle: 'Controls how detailed the character description will be',
+                onChanged: (label) {
+                  setState(() => _generationDetail = label);
+                  _saveState();
+                },
               ),
               const SizedBox(height: 24),
 
@@ -5886,76 +5497,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
               ),
               const SizedBox(height: 8),
-              Builder(
-                builder: (context) {
-                  final personaService = Provider.of<UserPersonaService>(
-                    context,
-                  );
-                  final personas = personaService.personas;
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerOf(context),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.borderOf(context)),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedPersonaId,
-                        isExpanded: true,
-                        dropdownColor: AppColors.surfaceContainerOf(context),
-                        style: TextStyle(
-                          color: AppColors.textPrimary(context),
-                          fontSize: 13,
-                        ),
-                        items: [
-                          DropdownMenuItem(
-                            value: '',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.person_off,
-                                  size: 16,
-                                  color: AppColors.textTertiary(context),
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'None (Blank Slate)',
-                                  style: TextStyle(color: AppColors.textSecondary(context)),
-                                ),
-                              ],
-                            ),
-                          ),
-                          ...personas.map(
-                            (p) => DropdownMenuItem(
-                              value: p.id,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.person,
-                                    size: 16,
-                                    color: Colors.blueAccent,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      p.displayLabel,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          setState(() => _selectedPersonaId = value ?? '');
-                          _saveState();
-                        },
-                      ),
-                    ),
-                  );
+              PersonaSelectorDropdown(
+                selectedPersonaId: _selectedPersonaId,
+                onChanged: (value) {
+                  setState(() => _selectedPersonaId = value ?? '');
+                  _saveState();
                 },
               ),
               const SizedBox(height: 24),
@@ -5963,55 +5509,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // Greeting tone (multi-select, capped to total greeting count)
               _inputLabel('Greeting Tones', required: false),
               const SizedBox(height: 4),
-              Text(
-                _altGreetingCount == 0
+              GreetingToneSelector(
+                selectedTones: _selectedTones.toList(),
+                greetingCount: _altGreetingCount,
+                nsfwEnabled: _nsfwEnabled,
+                accentColor: AppColors.resolve(
+                  context, const Color(0xFF1E40AF), Colors.blueAccent,
+                ),
+                subtitle: _altGreetingCount == 0
                     ? 'Tone for the first message.'
-                    : 'Select up to ${_altGreetingCount + 1} — one per greeting (first message + $_altGreetingCount alternate${_altGreetingCount == 1 ? '' : 's'}).',
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _greetingTones
-                    .where((tone) => tone != 'Spicy/NSFW' || _nsfwEnabled)
-                    .map((tone) {
-                      final isSelected = _selectedTones.contains(tone);
-                      final maxTones = _altGreetingCount + 1;
-                      final atLimit =
-                          _selectedTones.length >= maxTones && !isSelected;
-                      return FilterChip(
-                        label: Text(tone),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              if (atLimit) {
-                                // At limit — swap: remove the last tone and add this one
-                                _selectedTones.remove(_selectedTones.last);
-                              }
-                              _selectedTones.add(tone);
-                            } else if (_selectedTones.length > 1) {
-                              _selectedTones.remove(tone);
-                            }
-                          });
-                          _saveState();
-                        },
-                        selectedColor: AppColors.resolve(context, const Color(0xFF1E40AF), Colors.blueAccent),
-                        backgroundColor: AppColors.surfaceContainerOf(context),
-                        checkmarkColor: AppColors.resolve(context, Colors.white, Colors.black87),
-                        labelStyle: TextStyle(
-                          color: isSelected ? AppColors.resolve(context, Colors.white, Colors.black87) : AppColors.textSecondary(context),
-                          fontSize: 13,
-                        ),
-                        side: BorderSide(
-                          color: isSelected
-                              ? Colors.blueAccent
-                              : AppColors.borderOf(context),
-                        ),
-                      );
-                    })
-                    .toList(),
+                    : 'Select up to ${_altGreetingCount + 1} \u2014 '
+                        'one per greeting (first message + $_altGreetingCount '
+                        'alternate${_altGreetingCount == 1 ? '' : 's'}).',
+                onChanged: (tones) {
+                  setState(() => _selectedTones = tones.toSet());
+                  _saveState();
+                },
               ),
               const SizedBox(height: 24),
 
@@ -6026,38 +5539,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       children: [
                         _inputLabel('First Message Length', required: false),
                         const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceContainerOf(context),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.borderOf(context)),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _greetingLength,
-                              isExpanded: true,
-                              dropdownColor: AppColors.surfaceContainerOf(context),
-                              style: TextStyle(
-                                color: AppColors.textPrimary(context),
-                                fontSize: 13,
-                              ),
-                              items: _greetingLengths
-                                  .map(
-                                    (len) => DropdownMenuItem(
-                                      value: len,
-                                      child: Text(len),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _greetingLength = value);
-                                  _saveState();
-                                }
-                              },
-                            ),
-                          ),
+                        FirstMessageLengthDropdown(
+                          value: _greetingLength,
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() => _greetingLength = value);
+                              _saveState();
+                            }
+                          },
                         ),
                       ],
                     ),
@@ -6070,43 +5559,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       children: [
                         _inputLabel('Alternate Greetings', required: false),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Slider(
-                                value: _altGreetingCount.toDouble(),
-                                min: 0,
-                                max: 5,
-                                divisions: 5,
-                                activeColor: Colors.blueAccent,
-                                inactiveColor: AppColors.borderOf(context),
-                                label: '$_altGreetingCount',
-                                onChanged: (val) {
-                                  setState(() {
-                                    _altGreetingCount = val.round();
-                                    // Trim excess tones if count decreased
-                                    final maxTones = _altGreetingCount + 1;
-                                    while (_selectedTones.length > maxTones) {
-                                      _selectedTones.remove(
-                                        _selectedTones.last,
-                                      );
-                                    }
-                                  });
-                                  _saveState();
-                                },
-                              ),
-                            ),
-                            SizedBox(
-                              width: 24,
-                              child: Text(
-                                '$_altGreetingCount',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary(context),
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
+                        AlternateGreetingsSlider(
+                          value: _altGreetingCount,
+                          accentColor: Colors.blueAccent,
+                          onChanged: (val) {
+                            setState(() {
+                              _altGreetingCount = val;
+                              // Trim excess tones if count decreased
+                              final maxTones = _altGreetingCount + 1;
+                              while (_selectedTones.length > maxTones) {
+                                _selectedTones.remove(
+                                  _selectedTones.last,
+                                );
+                              }
+                            });
+                            _saveState();
+                          },
                         ),
                       ],
                     ),
@@ -6118,26 +5586,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               // Art style (last option)
               _inputLabel('Avatar Art Style', required: false),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _artStyles.map((style) {
-                  final isSelected = _artStyle == style;
-                  return ChoiceChip(
-                    label: Text(style),
-                    selected: isSelected,
-                    onSelected: (_) => setState(() => _artStyle = style),
-                    selectedColor: Colors.blueAccent,
-                    backgroundColor: AppColors.surfaceContainerOf(context),
-                    labelStyle: TextStyle(
-                      color: isSelected ? AppColors.resolve(context, Colors.white, Colors.black87) : AppColors.textSecondary(context),
-                      fontSize: 13,
-                    ),
-                    side: BorderSide(
-                      color: isSelected ? Colors.blueAccent : AppColors.borderOf(context),
-                    ),
-                  );
-                }).toList(),
+              AvatarArtStyleSelector(
+                selectedStyle: _artStyle,
+                accentColor: Colors.blueAccent,
+                onChanged: (style) => setState(() => _artStyle = style),
               ),
               const SizedBox(height: 32),
 
@@ -6151,24 +5603,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      height: 52,
-                      child: OutlinedButton.icon(
-                        onPressed: () => setState(() => _currentStep = 1),
-                        icon: Icon(Icons.arrow_back, size: 18),
-                        label: const Text(
-                          'Back',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textSecondary(context),
-                          side: BorderSide(color: AppColors.textTertiary(context)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
+                    _buildBackButton(1, fontSize: 14),
                     const SizedBox(width: 16),
                     SizedBox(
                       width: 240,
@@ -6402,6 +5837,27 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           ? Icon(Icons.check, size: 16, color: AppColors.resolve(context, const Color(0xFF60A5FA), Colors.blueAccent))
           : null,
       onTap: onTap,
+    );
+  }
+
+  Widget _buildBackButton(int targetStep, {double? fontSize}) {
+    return SizedBox(
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: () => setState(() => _currentStep = targetStep),
+        icon: const Icon(Icons.arrow_back, size: 18),
+        label: Text(
+          'Back',
+          style: fontSize != null ? TextStyle(fontSize: fontSize) : null,
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textSecondary(context),
+          side: BorderSide(color: AppColors.textTertiary(context)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
     );
   }
 
@@ -6668,30 +6124,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(
-                        height: 52,
-                        child: OutlinedButton.icon(
-                          onPressed: () => setState(() => _currentStep = 3),
-                          icon: Icon(Icons.arrow_back, size: 18),
-                          label: const Text(
-                            'Back',
-                            style: TextStyle(fontSize: 14),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.textSecondary(context),
-                            side: BorderSide(color: AppColors.textTertiary(context)),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      SizedBox(
-                        width: 280,
-                        height: 52,
-                        child: ElevatedButton.icon(
-                          onPressed: () => setState(() => _currentStep = 5),
+                    _buildBackButton(3, fontSize: 14),
+                    const SizedBox(width: 16),
+                    SizedBox(
+                      width: 280,
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: () => setState(() => _currentStep = 5),
                           icon: Icon(Icons.arrow_forward, size: 20),
                           label: const Text(
                             'Next: Review & Save',
@@ -7477,16 +6916,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     // Resolve LLM service — same logic as automated mode
     LLMService llmService;
     if (llmProvider.hasManagedProcess) {
-      final kobold = llmProvider.koboldService;
-      if (!kobold.isReady) {
+      final svc = llmProvider.activeService;
+      if (!svc.isReady) {
         setState(() {
           _generationStatus =
-              'Error: KoboldCpp is not running. Start it first.';
+              'Error: The backend is not running. Start it first.';
           _isGenerating = false;
         });
         return;
       }
-      llmService = kobold;
+      llmService = svc;
     } else if (_selectedModelId.isNotEmpty &&
         _selectedModelId != llmProvider.openRouterService.modelName) {
       llmService = OpenRouterService(
@@ -8053,8 +7492,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     LLMService? llmService;
     if (llmProvider.hasManagedProcess) {
-      final kobold = llmProvider.koboldService;
-      if (kobold.isReady) llmService = kobold;
+      final svc = llmProvider.activeService;
+      if (svc.isReady) llmService = svc;
     } else {
       if (_selectedModelId.isNotEmpty &&
           _selectedModelId != llmProvider.openRouterService.modelName) {
@@ -8108,17 +7547,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     // Create LLM service based on active backend
     LLMService llmService;
     if (llmProvider.hasManagedProcess) {
-      // KoboldCpp — use local backend directly
-      final kobold = llmProvider.koboldService;
-      if (!kobold.isReady) {
+      final svc = llmProvider.activeService;
+      if (!svc.isReady) {
         setState(() {
           _generationStatus =
-              'Error: KoboldCpp is not running. Start it first.';
+              'Error: The backend is not running. Start it first.';
           _isGenerating = false;
         });
         return;
       }
-      llmService = kobold;
+      llmService = svc;
     } else if (_selectedModelId.isNotEmpty &&
         _selectedModelId != llmProvider.openRouterService.modelName) {
       final tempService = OpenRouterService(

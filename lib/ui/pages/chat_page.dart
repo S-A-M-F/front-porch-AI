@@ -18,11 +18,8 @@
 
 import 'dart:async';
 import 'dart:ui';
-import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
-import 'package:drift/drift.dart' as drift;
-import 'package:front_porch_ai/database/database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -32,7 +29,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/models/character_card.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/ui/dialogs/character_avatars_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/edit_character_dialog.dart';
@@ -184,6 +180,9 @@ class _ChatPageState extends State<ChatPage> {
   bool _imageConsentChecked = false;
   TtsService? _ttsService;
   ChatService? _chatService;
+
+  // Slider drag tracking — store live value during drag, null on release
+  double? _dragDirectorDelay;
 
   /// Resolve a character [imagePath] (basename or full path) to a [File].
   /// Always use this instead of [File(imagePath)] directly.
@@ -1156,7 +1155,7 @@ class _ChatPageState extends State<ChatPage> {
     final arousalColor = _getGroupTierColor(arousalTier);
 
     final needs = chatService.getTopUrgentNeedsForGroupCharacter(character, count: 2);
-    final fixation = chatService.getFixationForGroupCharacter(character);
+    final fixation = chatService.getFixationForGroupCharacter(character); // I see it's likely WIP - and I like where it going.
 
     return Opacity(
       opacity: opacity,
@@ -2398,35 +2397,35 @@ class _ChatPageState extends State<ChatPage> {
     void Function(String path)? onAccept;
     if (mode == ImageGenMode.characterPortrait && character != null) {
       onAccept = (imagePath) async {
-        // Maintain full path in memory — CharacterRepository automatically extracts
-        // the basename when saving to the database for cross-platform safety.
-        character.imagePath = imagePath;
         final charRepo = Provider.of<CharacterRepository>(
           context,
           listen: false,
         );
-        await charRepo.updateCharacter(character);
+        await charRepo.setCharacterImagePath(character, imagePath);
 
-        // Embed V2 card data into the new avatar PNG
-        try {
-          final v2Service = V2CardService();
-          final card = CharacterCard(
-            name: character.name,
-            description: character.description,
-            personality: character.personality,
-            scenario: character.scenario,
-            firstMessage: character.firstMessage,
-            mesExample: character.mesExample,
-            systemPrompt: character.systemPrompt,
-            postHistoryInstructions: character.postHistoryInstructions,
-            alternateGreetings: character.alternateGreetings,
-            tags: character.tags,
-          );
-          await v2Service.saveCardAsPng(card, imagePath, imagePath);
-          debugPrint('Embedded V2 card data into avatar: $imagePath');
-        } catch (e) {
-          debugPrint('Failed to embed V2 card data: $e');
-        }
+        // Highly likely redundant — updateCharacter() (called by
+        // setCharacterImagePath) already writes V2 data via
+        // V2CardService.saveCardAsPng().  Keeping for reference.
+        //
+        // try {
+        //   final v2Service = V2CardService();
+        //   final card = CharacterCard(
+        //     name: character.name,
+        //     description: character.description,
+        //     personality: character.personality,
+        //     scenario: character.scenario,
+        //     firstMessage: character.firstMessage,
+        //     mesExample: character.mesExample,
+        //     systemPrompt: character.systemPrompt,
+        //     postHistoryInstructions: character.postHistoryInstructions,
+        //     alternateGreetings: character.alternateGreetings,
+        //     tags: character.tags,
+        //   );
+        //   await v2Service.saveCardAsPng(card, imagePath, imagePath);
+        //   debugPrint('Embedded V2 card data into avatar: $imagePath');
+        // } catch (e) {
+        //   debugPrint('Failed to embed V2 card data: $e');
+        // }
       };
     } else if (mode == ImageGenMode.chatBackground) {
       onAccept = (path) {
@@ -3216,9 +3215,15 @@ class _ChatPageState extends State<ChatPage> {
               if (fallbackWidget != null) return fallbackWidget;
               if (displayFile == null) return const SizedBox.shrink();
 
-              return SizedBox(
-                height: _sidebarWidth,
-                width: _sidebarWidth,
+              final avatarLocked =
+                  character.frontPorchExtensions?.avatarLocked ?? false;
+              final avatarSize = avatarLocked
+                  ? _sidebarWidth.clamp(0, 300).toDouble()
+                  : _sidebarWidth;
+
+              Widget avatar = SizedBox(
+                height: avatarSize,
+                width: avatarSize,
                 child: Stack(
                   children: [
                     AnimatedSwitcher(
@@ -3228,7 +3233,7 @@ class _ChatPageState extends State<ChatPage> {
                       child: Image.file(
                         displayFile,
                         key: ValueKey(expressionKey ?? 'default'),
-                        width: _sidebarWidth,
+                        width: avatarSize,
                         fit: BoxFit.cover,
                         alignment: Alignment.topCenter,
                         errorBuilder: (_, _, _) => Container(
@@ -3265,6 +3270,10 @@ class _ChatPageState extends State<ChatPage> {
                   ],
                 ),
               );
+              if (avatarLocked && _sidebarWidth > 300) {
+                avatar = Align(alignment: Alignment.topRight, child: avatar);
+              }
+              return avatar;
             },
           ),
 
@@ -3853,7 +3862,7 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                               const Spacer(),
                               Text(
-                                '${storage.directorDelay.toStringAsFixed(1)}s',
+                                '${(_dragDirectorDelay ?? storage.directorDelay).toStringAsFixed(1)}s',
                                 style: const TextStyle(
                                   color: Colors.amberAccent,
                                   fontSize: 11,
@@ -3870,13 +3879,17 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                             ),
                             child: Slider(
-                              value: storage.directorDelay,
+                              value: _dragDirectorDelay ?? storage.directorDelay,
                               min: 0.5,
                               max: 60.0,
                               divisions: 119,
                               activeColor: Colors.amberAccent,
                               inactiveColor: Colors.white12,
-                              onChanged: (val) => storage.setDirectorDelay(val),
+                              onChanged: (val) => setState(() => _dragDirectorDelay = val),
+                              onChangeEnd: (val) {
+                                _dragDirectorDelay = null;
+                                storage.setDirectorDelay(val);
+                              },
                             ),
                           ),
                         ],
@@ -4252,11 +4265,10 @@ class _ChatPageState extends State<ChatPage> {
                           alpha: 0.1,
                         ),
                         onTap: () {
-                          character.ttsVoice = null;
                           Provider.of<CharacterRepository>(
                             ctx,
                             listen: false,
-                          ).updateCharacter(character);
+                          ).setTtsVoice(character, null);
                           Navigator.pop(ctx);
                           setState(() {});
                         },
@@ -4304,11 +4316,10 @@ class _ChatPageState extends State<ChatPage> {
                             alpha: 0.1,
                           ),
                           onTap: () {
-                            character.ttsVoice = v.id;
                             Provider.of<CharacterRepository>(
                               ctx,
                               listen: false,
-                            ).updateCharacter(character);
+                            ).setTtsVoice(character, v.id);
                             Navigator.pop(ctx);
                             setState(() {});
                           },
@@ -6897,6 +6908,8 @@ class _SummarySectionState extends State<_SummarySection> {
   late TextEditingController _controller;
   bool _showSettings = false;
   bool _expanded = false;
+  double? _dragSummaryInterval;
+  double? _dragSummaryMaxWords;
 
   @override
   void initState() {
@@ -7172,7 +7185,7 @@ class _SummarySectionState extends State<_SummarySection> {
                           ),
                           const Spacer(),
                           Text(
-                            '${storage.summaryInterval} messages',
+                            '${(_dragSummaryInterval ?? storage.summaryInterval.toDouble()).round()} messages',
                             style: const TextStyle(
                               fontSize: 11,
                               color: Colors.tealAccent,
@@ -7189,14 +7202,17 @@ class _SummarySectionState extends State<_SummarySection> {
                           ),
                         ),
                         child: Slider(
-                          value: storage.summaryInterval.toDouble(),
+                          value: _dragSummaryInterval ?? storage.summaryInterval.toDouble(),
                           min: 3,
                           max: 50,
                           divisions: 47,
                           activeColor: Colors.tealAccent,
                           inactiveColor: Colors.white12,
-                          onChanged: (val) =>
-                              storage.setSummaryInterval(val.toInt()),
+                          onChanged: (val) => setState(() => _dragSummaryInterval = val),
+                          onChangeEnd: (val) {
+                            _dragSummaryInterval = null;
+                            storage.setSummaryInterval(val.toInt());
+                          },
                         ),
                       ),
                       // Max Words
@@ -7211,7 +7227,7 @@ class _SummarySectionState extends State<_SummarySection> {
                           ),
                           const Spacer(),
                           Text(
-                            '${storage.summaryMaxWords}',
+                            '${(_dragSummaryMaxWords ?? storage.summaryMaxWords.toDouble()).round()}',
                             style: const TextStyle(
                               fontSize: 11,
                               color: Colors.tealAccent,
@@ -7228,14 +7244,17 @@ class _SummarySectionState extends State<_SummarySection> {
                           ),
                         ),
                         child: Slider(
-                          value: storage.summaryMaxWords.toDouble(),
+                          value: _dragSummaryMaxWords ?? storage.summaryMaxWords.toDouble(),
                           min: 50,
                           max: 1000,
                           divisions: 19,
                           activeColor: Colors.tealAccent,
                           inactiveColor: Colors.white12,
-                          onChanged: (val) =>
-                              storage.setSummaryMaxWords(val.toInt()),
+                          onChanged: (val) => setState(() => _dragSummaryMaxWords = val),
+                          onChangeEnd: (val) {
+                            _dragSummaryMaxWords = null;
+                            storage.setSummaryMaxWords(val.toInt());
+                          },
                         ),
                       ),
                       // Summary Prompt
@@ -7350,6 +7369,10 @@ class _MemorySectionState extends State<_MemorySection> {
   bool _showSources = false;
   Set<String> _selectedSources = {};
   bool _sourcesLoaded = false;
+  double? _dragRagRetrievalCount;
+  double? _dragRagWindowSize;
+  double? _dragAutoPersonaInterval;
+  double? _dragEvolutionInterval;
 
   /// Derive the embedding ID for a character card (must match ChatService._getCharacterIdFromCard)
   String _embeddingId(CharacterCard card) {
@@ -7364,20 +7387,12 @@ class _MemorySectionState extends State<_MemorySection> {
     final activeChar = widget.chatService.activeCharacter;
     if (activeChar == null || activeChar.dbId == null) return;
     try {
-      final db = Provider.of<AppDatabase>(context, listen: false);
-      final dbChar = await db.getCharacterById(activeChar.dbId!);
-      final ms = dbChar.memorySources;
-      if (ms.isNotEmpty && ms != '[]') {
-        final decoded = List<String>.from(
-          (jsonDecode(ms) as List).map((e) => e.toString()),
-        );
-        setState(() {
-          _selectedSources = decoded.toSet();
-          _sourcesLoaded = true;
-        });
-      } else {
-        setState(() => _sourcesLoaded = true);
-      }
+      final repo = Provider.of<CharacterRepository>(context, listen: false);
+      final sources = await repo.getMemorySources(activeChar.dbId!);
+      setState(() {
+        _selectedSources = sources.toSet();
+        _sourcesLoaded = true;
+      });
     } catch (_) {
       setState(() => _sourcesLoaded = true);
     }
@@ -7388,14 +7403,8 @@ class _MemorySectionState extends State<_MemorySection> {
     final activeChar = widget.chatService.activeCharacter;
     if (activeChar == null || activeChar.dbId == null) return;
     try {
-      final db = Provider.of<AppDatabase>(context, listen: false);
-      await db.updateCharacter(
-        CharactersCompanion(
-          id: drift.Value(activeChar.dbId!),
-          memorySources: drift.Value(jsonEncode(_selectedSources.toList())),
-        ),
-      );
-      debugPrint('[RAG:UI] Saved memorySources: ${_selectedSources.toList()}');
+      final repo = Provider.of<CharacterRepository>(context, listen: false);
+      await repo.setMemorySources(activeChar.dbId!, _selectedSources.toList());
     } catch (e) {
       debugPrint('[RAG:UI] Failed to save memorySources: $e');
     }
@@ -7650,9 +7659,9 @@ class _MemorySectionState extends State<_MemorySection> {
                       ),
                       const Spacer(),
                       Text(
-                        storage.ragRetrievalCount == 0
+                        (_dragRagRetrievalCount ?? storage.ragRetrievalCount.toDouble()).round() == 0
                             ? 'All'
-                            : '${storage.ragRetrievalCount}',
+                            : '${(_dragRagRetrievalCount ?? storage.ragRetrievalCount.toDouble()).round()}',
                         style: const TextStyle(
                           color: Colors.purpleAccent,
                           fontSize: 11,
@@ -7669,14 +7678,17 @@ class _MemorySectionState extends State<_MemorySection> {
                       ),
                     ),
                     child: Slider(
-                      value: storage.ragRetrievalCount.toDouble(),
+                      value: _dragRagRetrievalCount ?? storage.ragRetrievalCount.toDouble(),
                       min: 0,
                       max: 50,
                       divisions: 50,
                       activeColor: Colors.purpleAccent,
                       inactiveColor: Colors.white12,
-                      onChanged: (val) =>
-                          storage.setRagRetrievalCount(val.round()),
+                      onChanged: (val) => setState(() => _dragRagRetrievalCount = val),
+                      onChangeEnd: (val) {
+                        _dragRagRetrievalCount = null;
+                        storage.setRagRetrievalCount(val.round());
+                      },
                     ),
                   ),
                   // Window size
@@ -7688,7 +7700,7 @@ class _MemorySectionState extends State<_MemorySection> {
                       ),
                       const Spacer(),
                       Text(
-                        '${storage.ragWindowSize}',
+                        '${(_dragRagWindowSize ?? storage.ragWindowSize.toDouble()).round()}',
                         style: const TextStyle(
                           color: Colors.purpleAccent,
                           fontSize: 11,
@@ -7705,13 +7717,17 @@ class _MemorySectionState extends State<_MemorySection> {
                       ),
                     ),
                     child: Slider(
-                      value: storage.ragWindowSize.toDouble(),
+                      value: _dragRagWindowSize ?? storage.ragWindowSize.toDouble(),
                       min: 3,
                       max: 10,
                       divisions: 7,
                       activeColor: Colors.purpleAccent,
                       inactiveColor: Colors.white12,
-                      onChanged: (val) => storage.setRagWindowSize(val.round()),
+                      onChanged: (val) => setState(() => _dragRagWindowSize = val),
+                      onChangeEnd: (val) {
+                        _dragRagWindowSize = null;
+                        storage.setRagWindowSize(val.round());
+                      },
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -7771,7 +7787,7 @@ class _MemorySectionState extends State<_MemorySection> {
                         ),
                         const Spacer(),
                         Text(
-                          '${storage.autoPersonaInterval} messages',
+                          '${(_dragAutoPersonaInterval ?? storage.autoPersonaInterval.toDouble()).round()} messages',
                           style: const TextStyle(
                             color: Colors.purpleAccent,
                             fontSize: 10,
@@ -7781,13 +7797,16 @@ class _MemorySectionState extends State<_MemorySection> {
                       ],
                     ),
                     Slider(
-                      value: storage.autoPersonaInterval.toDouble(),
+                      value: _dragAutoPersonaInterval ?? storage.autoPersonaInterval.toDouble(),
                       min: 5,
                       max: 50,
                       divisions: 9,
                       activeColor: Colors.purpleAccent,
-                      onChanged: (val) =>
-                          storage.setAutoPersonaInterval(val.round()),
+                      onChanged: (val) => setState(() => _dragAutoPersonaInterval = val),
+                      onChangeEnd: (val) {
+                        _dragAutoPersonaInterval = null;
+                        storage.setAutoPersonaInterval(val.round());
+                      },
                     ),
                     const Text(
                       'Extracts personal facts from your messages using the LLM. View facts in Persona settings.',
@@ -7834,7 +7853,7 @@ class _MemorySectionState extends State<_MemorySection> {
                         ),
                         const Spacer(),
                         Text(
-                          '${storage.evolutionInterval} messages',
+                          '${(_dragEvolutionInterval ?? storage.evolutionInterval.toDouble()).round()} messages',
                           style: const TextStyle(
                             color: Colors.tealAccent,
                             fontSize: 10,
@@ -7844,13 +7863,16 @@ class _MemorySectionState extends State<_MemorySection> {
                       ],
                     ),
                     Slider(
-                      value: storage.evolutionInterval.toDouble(),
+                      value: _dragEvolutionInterval ?? storage.evolutionInterval.toDouble(),
                       min: 10,
                       max: 50,
                       divisions: 8,
                       activeColor: Colors.tealAccent,
-                      onChanged: (val) =>
-                          storage.setEvolutionInterval(val.round()),
+                      onChanged: (val) => setState(() => _dragEvolutionInterval = val),
+                      onChangeEnd: (val) {
+                        _dragEvolutionInterval = null;
+                        storage.setEvolutionInterval(val.round());
+                      },
                     ),
                     Consumer<ChatService>(
                       builder: (context, chat, _) {
@@ -10576,6 +10598,7 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
   late final Animation<double> _pulse;
   late final Animation<double> _rotate;
   late final Animation<double> _fade;
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -10602,6 +10625,7 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
     _pulseController.dispose();
     _rotateController.dispose();
     _fadeController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -10895,19 +10919,27 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
                                       ],
                                     ),
                                     const SizedBox(height: 10),
-                                    Flexible(
-                                      child: SingleChildScrollView(
-                                        reverse: true,
-                                        child: Text(
-                                          widget
-                                              .chatService
-                                              .realismEvalStreamText,
-                                          style: TextStyle(
-                                            color: accentColor.withOpacity(0.8),
-                                            fontSize: 11.5,
-                                            fontFamily: 'monospace',
-                                            height: 1.65,
-                                            letterSpacing: 0.15,
+                                    Expanded(
+                                      child: SizedBox(
+                                        width: double.infinity,
+                                        child: Scrollbar(
+                                          controller: _scrollController,
+                                          thumbVisibility: true,
+                                          child: SingleChildScrollView(
+                                            controller: _scrollController,
+                                            reverse: true,
+                                            child: Text(
+                                              widget
+                                                  .chatService
+                                                  .realismEvalStreamText,
+                                              style: TextStyle(
+                                                color: accentColor.withOpacity(0.8),
+                                                fontSize: 11.5,
+                                                fontFamily: 'monospace',
+                                                height: 1.65,
+                                                letterSpacing: 0.15,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -10918,20 +10950,27 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
                             ),
                           ),
                           if (widget.chatService.isEvaluatingRealism || widget.chatService.isProcessingGreeting) ...[
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: ElevatedButton(
-                                onPressed: widget.chatService.isCancellingRealismEval
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                              child: Column(
+                                children: [
+                                  const SizedBox(height: 8),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: ElevatedButton(
+                                      onPressed: widget.chatService.isCancellingRealismEval
                                     ? null
                                     : () => widget.chatService.cancelRealismEval(),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.redAccent,
                                 ),
-                                child: const Text(
-                                  'Cancel Realism',
-                                  style: TextStyle(color: Colors.white),
-                                ),
+                                      child: const Text(
+                                        'Cancel Realism',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
