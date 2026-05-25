@@ -4050,14 +4050,6 @@ class ChatService extends ChangeNotifier {
         _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
         _pendingRealismMetadata!['realism_state'] = _captureRealismState();
 
-        // Attach needs deltas + reasons for UI chips (same pattern as bond/trust)
-        if (_needsSimEnabled) {
-          final needsDeltas = _computeNeedsDeltasWithReasons();
-          if (needsDeltas.isNotEmpty) {
-            _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
-          }
-        }
-
         debugPrint(
           '[Realism:Metadata] Synthesized metadata before generation: bond_delta=${_pendingRealismMetadata?['bond_delta']}, trust_delta=${_pendingRealismMetadata?['trust_delta']}, keys=${_pendingRealismMetadata?.keys.toList()}',
         );
@@ -4081,6 +4073,17 @@ class ChatService extends ChangeNotifier {
     }
 
     await _generateResponse(GenerationMode.normal);
+
+    // Compute needs_deltas AFTER generation so the post-generation checks
+    // (climax, sexual activity, daily activities, fulfillment) are reflected.
+    // This ensures UI chips show accurate deltas.
+    if (_needsSimEnabled) {
+      _pendingRealismMetadata ??= {};
+      final needsDeltas = _computeNeedsDeltasWithReasons();
+      if (needsDeltas.isNotEmpty) {
+        _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
+      }
+    }
   }
 
   /// Set observer mode on/off.
