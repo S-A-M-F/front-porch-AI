@@ -4321,15 +4321,16 @@ class ChatService extends ChangeNotifier {
           });
         }
 
+        // Record the (restored) needs baseline as the pre-turn vector BEFORE
+        // generation so the post-generation checks can compute proper deltas.
+        if (_needsSimEnabled && _needsVector.isNotEmpty) {
+          _pendingRealismMetadata ??= {};
+          _pendingRealismMetadata!['needs_pre_turn_vector'] =
+              Map<String, int>.from(_needsVector);
+        }
+
         if (_storageService.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
-          if (!_realismEvalCancelled &&
-              _needsSimEnabled &&
-              _needsVector.isNotEmpty) {
-            _pendingRealismMetadata ??= {};
-            _pendingRealismMetadata!['needs_pre_turn_vector'] =
-                Map<String, int>.from(_needsVector);
-          }
         } else {
           // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
           // HTTP requests being dropped before headers are received.
@@ -4342,29 +4343,6 @@ class ChatService extends ChangeNotifier {
           }
           if (!_realismEvalCancelled) {
             await _evaluateNarrativeCall(onChunk: handleChunk);
-          }
-
-          if (!_realismEvalCancelled) {
-            _pendingRealismMetadata ??= {};
-            _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-            _pendingRealismMetadata!['realism_state'] = _captureRealismState();
-
-            // Attach needs deltas + reasons for UI chips (regen path)
-            if (_needsSimEnabled) {
-              final needsDeltas = _computeNeedsDeltasWithReasons();
-              if (needsDeltas.isNotEmpty) {
-                _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
-              }
-            }
-
-            // Also record the (restored) needs baseline as the pre-turn vector
-            // for this regenerated response, so any future regen of *it* has
-            // a proper anchor even if the deeper historical snapshot is missing.
-            if (_needsSimEnabled && _needsVector.isNotEmpty) {
-              _pendingRealismMetadata!['needs_pre_turn_vector'] =
-                  Map<String, int>.from(_needsVector);
-            }
-            _saveChat();
           }
         }
 
@@ -4400,8 +4378,21 @@ class ChatService extends ChangeNotifier {
       _onnxExpressionLabel = null;
       _lastOnnxMessageText = null;
 
-      // Generate into a new message — it will be appended by _generateResponse
+      // Generate into a new message — it will be appended by _generateResponse.
+      // _generateResponse runs the post-generation needs checks (climax,
+      // sexual activity, daily activities, fulfillment) which modify the
+      // needs vector. We need to compute needs_deltas AFTER generation.
       await _generateResponse(GenerationMode.normal);
+
+      // Compute needs_deltas AFTER generation so the post-generation checks
+      // are reflected. This mirrors the normal generation path (line ~4053).
+      if (_needsSimEnabled) {
+        _pendingRealismMetadata ??= {};
+        final needsDeltas = _computeNeedsDeltasWithReasons();
+        if (needsDeltas.isNotEmpty) {
+          _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
+        }
+      }
 
       // After generation, merge the new response as a swipe on the original message
       if (_messages.isNotEmpty &&
