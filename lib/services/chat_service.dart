@@ -4018,37 +4018,17 @@ class ChatService extends ChangeNotifier {
           return;
         }
       } else {
-        final isLocalKobold = _llmProvider == null || _llmProvider!.isLocal;
-
-        if (isLocalKobold) {
-          if (_storageService.realismOneShotEval) {
-            await _evaluateOneShotCall(onChunk: handleChunk);
-          } else {
-            // KoboldCPP is single-threaded — run sequentially
-            await _evaluateRelationshipCall(onChunk: handleChunk);
-            if (!_realismEvalCancelled) {
-              await _evaluateEmotionalStateCall(onChunk: handleChunk);
-            }
-            if (!_realismEvalCancelled) {
-              await _evaluatePhysicalStateCall(onChunk: handleChunk);
-            }
-            if (!_realismEvalCancelled) {
-              await _evaluateNarrativeCall(onChunk: handleChunk);
-            }
-          }
+        // KoboldCpp has a native FIFO task scheduler that can batch multiple
+        // requests. Fire all evals concurrently and let the scheduler handle it.
+        if (_storageService.realismOneShotEval) {
+          await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
-          // API (Remote Backends)
-          if (_storageService.realismOneShotEval) {
-            await _evaluateOneShotCall(onChunk: handleChunk);
-          } else {
-            // API backends handle concurrent requests fine
-            await Future.wait([
-              _evaluateRelationshipCall(onChunk: handleChunk),
-              _evaluateEmotionalStateCall(onChunk: handleChunk),
-              _evaluatePhysicalStateCall(onChunk: handleChunk),
-              _evaluateNarrativeCall(onChunk: handleChunk),
-            ]);
-          }
+          await Future.wait([
+            _evaluateRelationshipCall(onChunk: handleChunk),
+            _evaluateEmotionalStateCall(onChunk: handleChunk),
+            _evaluatePhysicalStateCall(onChunk: handleChunk),
+            _evaluateNarrativeCall(onChunk: handleChunk),
+          ]);
         }
 
         // Check for cancellation after evals complete but before saving
@@ -8602,13 +8582,6 @@ class ChatService extends ChangeNotifier {
       }
       // After probe, if still not running the server genuinely isn't up.
       if (!kobold.isProcessRunning) return null;
-      // Ensure any previous generation is fully stopped server-side before
-      // starting a new one. KoboldCPP returns {"token":"","finish_reason":"stop"}
-      // immediately when busy — this await blocks until it is actually idle.
-      // Critical for thinking models that keep generating long after the socket drops.
-      debugPrint('[Realism:Eval] Waiting for KoboldCPP to become idle...');
-      await kobold.waitForIdle();
-      debugPrint('[Realism:Eval] KoboldCPP idle, starting eval request.');
     } else {
       if (!llm.isReady) return null;
     }

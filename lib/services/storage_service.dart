@@ -161,7 +161,7 @@ class StorageService extends ChangeNotifier {
   String _chatBackground = 'none';
   List<Map<String, String>> _customBackgrounds = [];
   List<Map<String, String>> _savedPrompts = [];
-  bool _displayBufferEnabled = true;
+  bool _displayBufferEnabled = false;
   double _targetDisplayTps = 6.0; // ~250 WPM average human reading speed
   double _bufferDurationSeconds =
       3.0; // How many seconds of tokens to buffer before draining
@@ -612,8 +612,9 @@ class StorageService extends ChangeNotifier {
         _customBackgrounds = [];
       }
     }
-    _displayBufferEnabled =
-        _prefs?.getBool(_k('display_buffer_enabled')) ?? true;
+    // Force token throttle OFF for all users (existing preference deleted)
+    _prefs?.remove(_k('display_buffer_enabled'));
+    _displayBufferEnabled = false;
     _targetDisplayTps = _prefs?.getDouble(_k('target_display_tps')) ?? 30.0;
     _bufferDurationSeconds =
         _prefs?.getDouble(_k('buffer_duration_seconds')) ?? 3.0;
