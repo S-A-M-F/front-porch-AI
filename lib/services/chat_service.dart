@@ -6079,8 +6079,12 @@ class ChatService extends ChangeNotifier {
           _checkSexualActivityInResponse(finalResponse); // fire-and-forget
         }
 
-        // Check for other daily activities that have cross-need effects (eating, sleeping, bathing)
-        if (_needsSimEnabled && _realismActiveThisMode) {
+        // Check for other daily activities that have cross-need effects (eating, sleeping, bathing).
+        // Gate this behind cooldown check so it doesn't run during/after sexual activity
+        // and incorrectly detect "bathing" from sex scene context (which would raise hygiene).
+        if (_needsSimEnabled &&
+            _realismActiveThisMode &&
+            _cooldownTurnsRemaining <= 0) {
           _checkDailyActivityEffects(finalResponse); // fire-and-forget
         }
 
@@ -6526,20 +6530,13 @@ class ChatService extends ChangeNotifier {
       final deletedMsg = _messages[index];
       _messages.removeAt(index);
 
-      // Time-travel rollback for realism when deleting the last message
-      if (isLastNode && _messages.isNotEmpty) {
-        _restoreRealismStateFromMessage(_messages.last);
-      } else if (_activeGroup != null && _messages.isNotEmpty) {
-        // Group mode: If we deleted a message from a specific character,
-        // try to restore that character's realism state from the new last message
-        // if it has a snapshot (best-effort per-character time travel).
-        // This helps when users delete a specific character's recent message.
-        final deletedSender = deletedMsg.sender;
+      // Time-travel rollback for realism when deleting a character message.
+      // Restore from the new last message if it has a snapshot, regardless
+      // of whether this was the last message. This ensures needs state
+      // (and all realism fields) reset to their previous saved values.
+      if (_messages.isNotEmpty) {
         final newLast = _messages.last;
-        if (newLast.sender == deletedSender ||
-            newLast.activeMetadata?.containsKey('realism_state') == true) {
-          _restoreRealismStateFromMessage(newLast);
-        }
+        _restoreRealismStateFromMessage(newLast);
       }
 
       await _saveChat();
@@ -11107,7 +11104,7 @@ class ChatService extends ChangeNotifier {
             'energy':
                 10, // was -7; now a noticeable rush (like caffeine/adrenaline)
             'hunger': -4,
-            'hygiene': -6,
+            'hygiene': -10, // cum/semen/sweat lowers cleanliness
           }, fromSexualActivity: true);
 
           // Delayed post-climax crash (lethargy). Only on confirmed physical orgasm.
@@ -11200,7 +11197,7 @@ class ChatService extends ChangeNotifier {
         'energy': (3 * strength)
             .round(), // was negative; now a mild boost (1-3 per turn)
         'hunger': (-3 * strength).round(),
-        'hygiene': (-4 * strength).round(),
+        'hygiene': (-6 * strength).round(), // sexual contact lowers cleanliness
       }, fromSexualActivity: true);
 
       debugPrint(
