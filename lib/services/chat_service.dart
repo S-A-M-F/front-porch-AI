@@ -4050,12 +4050,12 @@ class ChatService extends ChangeNotifier {
     // Compute needs_deltas AFTER generation so the post-generation checks
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
     // This ensures UI chips show accurate deltas.
-    // Apply directly to the message since _pendingRealismMetadata was consumed.
     if (_needsSimEnabled && _messages.isNotEmpty) {
       final needsDeltas = _computeNeedsDeltasWithReasons(preTurnVector);
       if (needsDeltas.isNotEmpty) {
         _messages.last.activeMetadata ??= {};
         _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
+        await _saveChat();
         notifyListeners();
       }
     }

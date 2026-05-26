@@ -4,6 +4,8 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🧠 **Needs chips now survive app restart** — The Energy / Hunger / Hygiene / Bladder / etc. delta chips under the last AI message are now persisted the same way the classic Bond / Trust / Emotion chips have always been. Closing and reopening the app no longer wipes the needs row while leaving the realism chips intact.
+
 - 🖋️ **Chat input "dialogue"/*action* colors stay consistent** — The live coloring for "quoted dialogue" (amber) and *actions* (blue) in the message input box no longer resets to plain text when the desktop spell checker activates or offers corrections.
 
 - 🧠 **Realism Engine speedup** — Removed duplicate code paths for KoboldCpp vs API backends. All realism evaluations (emotion, bond, trust, narrative) now run concurrently instead of sequentially, improving chat response times.
