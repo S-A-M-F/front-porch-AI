@@ -22,6 +22,8 @@ import 'dart:io';
 import 'dart:math';
 import 'package:path/path.dart' as path;
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
+
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
@@ -6901,7 +6903,7 @@ class ChatService extends ChangeNotifier {
         id: const Uuid().v4(),
         characterId: charId,
         objective: goal.trim(),
-        chatId: _currentSessionId,
+        chatId: drift.Value(_currentSessionId),
       ),
     );
 
