@@ -242,7 +242,11 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
 
   void _saveRemoteSettings() {
     final storage = Provider.of<StorageService>(context, listen: false);
-    storage.setRemoteApiUrl(_apiUrlController.text.trim());
+    final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+    // Never overwrite the user's remote API URL when oMLX is active (it uses a fixed localhost URL)
+    if (llmProvider.activeBackend != BackendType.omlx) {
+      storage.setRemoteApiUrl(_apiUrlController.text.trim());
+    }
     storage.setRemoteApiKey(_apiKeyController.text.trim());
     storage.setRemoteModelName(_modelNameController.text.trim());
     ScaffoldMessenger.of(context).showSnackBar(
@@ -254,9 +258,14 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     setState(() { _isTesting = true; _connectionStatus = null; });
     _saveRemoteSettings();
     final openRouter = Provider.of<OpenRouterService>(context, listen: false);
+    final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+    // Force oMLX localhost URL when oMLX backend is active (ignores whatever is in the URL field)
+    final apiUrl = llmProvider.activeBackend == BackendType.omlx
+        ? 'http://localhost:8000/v1'
+        : _apiUrlController.text.trim();
     // Ensure the service has the latest config
     openRouter.configure(
-      apiUrl: _apiUrlController.text.trim(),
+      apiUrl: apiUrl,
       apiKey: _apiKeyController.text.trim(),
       modelName: _modelNameController.text.trim(),
     );
@@ -267,10 +276,15 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   }
 
   Future<void> _showModelPicker() async {
-    // Ensure the service has the latest config before fetching
+    // Ensure the service has the latest config before fetching.
+    // Force localhost:8000/v1 when oMLX backend is selected (model picker is used for oMLX too).
     final openRouter = Provider.of<OpenRouterService>(context, listen: false);
+    final llmProvider = Provider.of<LLMProvider>(context, listen: false);
+    final apiUrl = llmProvider.activeBackend == BackendType.omlx
+        ? 'http://localhost:8000/v1'
+        : _apiUrlController.text.trim();
     openRouter.configure(
-      apiUrl: _apiUrlController.text.trim(),
+      apiUrl: apiUrl,
       apiKey: _apiKeyController.text.trim(),
       modelName: _modelNameController.text.trim(),
     );
@@ -456,9 +470,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                      ),
                    ),
                    Expanded(
-                    child: _buildToggleButton(
-                        label: 'Pseudo-Remote',
-                        icon: Icons.laptop,
+                     child: _buildToggleButton(
+                       label: 'Pseudo-Remote',
+                       icon: Icons.laptop,
                        isSelected: backend == BackendType.pseudoRemote,
                        onTap: () => llmProvider.setActiveBackend(BackendType.pseudoRemote),
                      ),
@@ -471,6 +485,15 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                        onTap: () => llmProvider.setActiveBackend(BackendType.openRouter),
                      ),
                    ),
+                   if (Platform.isMacOS)
+                     Expanded(
+                       child: _buildToggleButton(
+                         label: 'oMLX',
+                         icon: Icons.apple,
+                         isSelected: backend == BackendType.omlx,
+                         onTap: () => llmProvider.setActiveBackend(BackendType.omlx),
+                       ),
+                     ),
                  ],
                ),
              ),
@@ -483,7 +506,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                      ? _buildLocalSettings()
                      : backend == BackendType.pseudoRemote
                          ? _buildPseudoRemoteSettings()
-                         : _buildRemoteSettings(),
+                         : _buildRemoteSettings(isOmLx: backend == BackendType.omlx),
                ),
              ),
            ],
@@ -501,7 +524,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
         decoration: BoxDecoration(
           color: isSelected ? Colors.blueAccent : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
@@ -509,13 +532,14 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: isSelected ? Colors.white : AppColors.textSecondary(context)),
-            const SizedBox(width: 6),
+            Icon(icon, size: 14, color: isSelected ? Colors.white : AppColors.textSecondary(context)),
+            const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 color: isSelected ? Colors.white : AppColors.textSecondary(context),
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 12,
               ),
             ),
           ],
@@ -886,13 +910,38 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     );
   }
 
-  Widget _buildRemoteSettings() {
+  Widget _buildRemoteSettings({bool isOmLx = false}) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTextField(label: 'API URL', controller: _apiUrlController),
-        const SizedBox(height: 12),
+        if (isOmLx) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.apple, color: Colors.blueAccent, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'oMLX mode on Apple Silicon. URL fixed to http://localhost:8000/v1. oMLX must be running (`omlx serve`). Model name below is used for generation.',
+                    style: TextStyle(fontSize: 11, color: Colors.blueAccent),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (!isOmLx)
+          _buildTextField(label: 'API URL', controller: _apiUrlController),
+        if (!isOmLx) const SizedBox(height: 12),
         _buildTextField(label: 'API Key', controller: _apiKeyController, isObscured: true),
         const SizedBox(height: 12),
         // Model selector — tappable chip that opens a model picker dialog
