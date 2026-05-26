@@ -3918,14 +3918,16 @@ class ChatService extends ChangeNotifier {
     await _maybeCheckTaskCompletionSync();
 
     // Evaluate realism systems before generating response
+    // Capture pre-turn needs vector (before decay + fulfillment) so that
+    // regenerateLastMessage() and the post-generation delta computation
+    // can use the same delta-revert mechanism the classic realism fields
+    // (bond/trust/arousal) use.
+    Map<String, int>? preTurnVector;
     if (_realismActiveThisMode) {
-      // Capture pre-turn needs vector (before decay + fulfillment) so that
-      // regenerateLastMessage() can use the same delta-revert mechanism the
-      // classic realism fields (bond/trust/arousal) use.
       if (_needsSimEnabled && _needsVector.isNotEmpty) {
+        preTurnVector = Map<String, int>.from(_needsVector);
         _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['needs_pre_turn_vector'] =
-            Map<String, int>.from(_needsVector);
+        _pendingRealismMetadata!['needs_pre_turn_vector'] = preTurnVector;
       }
 
       _applyMoodDecay();
@@ -3970,7 +3972,8 @@ class ChatService extends ChangeNotifier {
           // latency to the pre-response realism phase.)
           _pendingRealismMetadata ??= {};
           _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-          _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+          _pendingRealismMetadata!['realism_state'] =
+              _captureRealismState(preTurn: preTurnVector);
           _saveChat();
         }
 
@@ -4017,7 +4020,8 @@ class ChatService extends ChangeNotifier {
         // Synthesize metadata after all evals complete
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-        _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+        _pendingRealismMetadata!['realism_state'] =
+            _captureRealismState(preTurn: preTurnVector);
 
         debugPrint(
           '[Realism:Metadata] Synthesized metadata before generation: bond_delta=${_pendingRealismMetadata?['bond_delta']}, trust_delta=${_pendingRealismMetadata?['trust_delta']}, keys=${_pendingRealismMetadata?.keys.toList()}',
@@ -4048,7 +4052,7 @@ class ChatService extends ChangeNotifier {
     // This ensures UI chips show accurate deltas.
     // Apply directly to the message since _pendingRealismMetadata was consumed.
     if (_needsSimEnabled && _messages.isNotEmpty) {
-      final needsDeltas = _computeNeedsDeltasWithReasons();
+      final needsDeltas = _computeNeedsDeltasWithReasons(preTurnVector);
       if (needsDeltas.isNotEmpty) {
         _messages.last.activeMetadata ??= {};
         _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
@@ -4295,6 +4299,15 @@ class ChatService extends ChangeNotifier {
           });
         }
 
+        // Apply decay and cooldown — mirrors the normal path (lines 3933-3937).
+        // This ensures _needsVector differs from the saved pre-turn vector
+        // so post-generation deltas are non-zero.
+        _applyMoodDecay();
+        _tickNeedsDecay();
+        if (_cooldownTurnsRemaining > 0) {
+          _cooldownTurnsRemaining--;
+        }
+
         // Record the (restored) needs baseline as the pre-turn vector BEFORE
         // generation so the post-generation checks can compute proper deltas.
         if (_needsSimEnabled && _needsVector.isNotEmpty) {
@@ -4341,6 +4354,11 @@ class ChatService extends ChangeNotifier {
         return;
       }
 
+      // Save pre-turn vector BEFORE _generateResponse (which clears
+      // _pendingRealismMetadata).
+      final regenPreTurn =
+          _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
+
       // Invalidate ONNX cache for the new response
       _onnxCachedForEmotion = null;
       _onnxExpressionLabel = null;
@@ -4356,8 +4374,8 @@ class ChatService extends ChangeNotifier {
       // are reflected. This mirrors the normal generation path (line ~4053).
       // Apply directly to the message since _pendingRealismMetadata was consumed.
       Map<String, dynamic>? needsDeltas = null;
-      if (_needsSimEnabled) {
-        needsDeltas = _computeNeedsDeltasWithReasons();
+      if (_needsSimEnabled && _needsVector.isNotEmpty) {
+        needsDeltas = _computeNeedsDeltasWithReasons(regenPreTurn);
       }
 
       // After generation, merge the new response as a swipe on the original message
@@ -6038,29 +6056,7 @@ class ChatService extends ChangeNotifier {
           _checkClimaxInResponse(finalResponse); // fire-and-forget
         }
 
-        // Check for non-climax sexual/intimate activity (heavy petting, oral, fingering, etc.)
-        // so sex still feels rewarding and triggers afterglow even without orgasm.
-        if (_needsSimEnabled && _realismActiveThisMode) {
-          _checkSexualActivityInResponse(finalResponse); // fire-and-forget
-        }
-
-        // Check for other daily activities that have cross-need effects (eating, sleeping, bathing).
-        // Gate this behind cooldown check so it doesn't run during/after sexual activity
-        // and incorrectly detect "bathing" from sex scene context (which would raise hygiene).
-        if (_needsSimEnabled &&
-            _realismActiveThisMode &&
-            _cooldownTurnsRemaining <= 0) {
-          _checkDailyActivityEffects(finalResponse); // fire-and-forget
-        }
-
-        // Needs fulfillment verification (post-response, fire-and-forget).
-        // Moved out of the pre-response realism eval path so the "Realism
-        // Engine processing" phase is never slowed by the needs system (even
-        // when the per-session flag is true due to old chat state or card
-        // defaults). The restore simply takes effect for the next turn.
-        if (_needsSimEnabled && _realismActiveThisMode) {
-          _verifyNeedFulfillmentCall(); // fire-and-forget, no chunk streaming needed
-        }
+        await _runPostGenNeedsChecks(finalResponse);
 
         // Check if summary needs updating (fire-and-forget)
         _maybeUpdateSummary();
@@ -10104,7 +10100,7 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  Map<String, dynamic> _captureRealismState() {
+  Map<String, dynamic> _captureRealismState({Map<String, int>? preTurn}) {
     final state = {
       'affectionScore': _affectionScore,
       'relationshipTier': _relationshipTier,
@@ -10145,7 +10141,7 @@ class ChatService extends ChangeNotifier {
 
       // Attach per-turn deltas + reasons for the beautiful Needs chips
       // (exactly parallel to bond_delta / trust_delta + reasons).
-      final needsDeltas = _computeNeedsDeltasWithReasons();
+      final needsDeltas = _computeNeedsDeltasWithReasons(preTurn);
       if (needsDeltas.isNotEmpty) {
         (state['needs'] as Map<String, dynamic>)['deltas'] = needsDeltas;
       }
@@ -10195,6 +10191,12 @@ class ChatService extends ChangeNotifier {
     _realismEvalStreamText = '';
     notifyListeners();
 
+    // Capture this speaker's pre-turn needs vector (before decay + eval)
+    Map<String, int>? preTurnVector;
+    if (_needsSimEnabled && _needsVector.isNotEmpty) {
+      preTurnVector = Map<String, int>.from(_needsVector);
+    }
+
     void handleChunk(String chunk) {
       _realismEvalStreamText += chunk;
       _evalChunkTimer?.cancel();
@@ -10242,10 +10244,11 @@ class ChatService extends ChangeNotifier {
       // Synthesize metadata for timeline / chips (best-effort, same as 1:1 path)
       _pendingRealismMetadata ??= {};
       _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-      _pendingRealismMetadata!['realism_state'] = _captureRealismState();
+      _pendingRealismMetadata!['realism_state'] =
+          _captureRealismState(preTurn: preTurnVector);
 
       if (_needsSimEnabled) {
-        final needsDeltas = _computeNeedsDeltasWithReasons();
+        final needsDeltas = _computeNeedsDeltasWithReasons(preTurnVector);
         if (needsDeltas.isNotEmpty) {
           _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
         }
@@ -10591,9 +10594,9 @@ class ChatService extends ChangeNotifier {
   /// Computes per-need deltas since the start of this turn and generates
   /// human-readable reasons. Used to power the Needs chips under bot messages
   /// (exactly like bond_delta / trust_delta + reasons for classic realism).
-  Map<String, Map<String, dynamic>> _computeNeedsDeltasWithReasons() {
-    final preTurn =
-        _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
+  Map<String, Map<String, dynamic>> _computeNeedsDeltasWithReasons(
+    Map<String, int>? preTurn,
+  ) {
     if (preTurn == null || preTurn.isEmpty) return {};
 
     final deltas = <String, Map<String, dynamic>>{};
@@ -10603,10 +10606,10 @@ class ChatService extends ChangeNotifier {
       final after = _needsVector[key] ?? before;
       final delta = after - before;
 
-      if (delta == 0) continue;
-
       String reason;
-      if (_postClimaxCrashTurnsRemaining > 0 &&
+      if (delta == 0) {
+        reason = 'Stable';
+      } else if (_postClimaxCrashTurnsRemaining > 0 &&
           _needsAfterglowTurnsRemaining == 0 &&
           _arousalSuppressionTurnsRemaining == 0) {
         reason = 'Post-orgasm exhaustion';
@@ -10928,6 +10931,36 @@ class ChatService extends ChangeNotifier {
     debugPrint(
       '[Realism] Engine state successfully rolled back to match timeline.',
     );
+  }
+
+  /// Runs all post-generation needs-related checks (climax, sexual activity,
+  /// daily activities, fulfillment). Used by _generateResponse as fire-and-forget,
+  /// and by the regen path when we need the results synchronously.
+  Future<void> _runPostGenNeedsChecks(String responseText) async {
+    // Climax check
+    if (_realismEnabled &&
+        _nsfwCooldownEnabled &&
+        _cooldownTurnsRemaining <= 0 &&
+        (_activeGroup == null || !_observerMode)) {
+      await _checkClimaxInResponse(responseText);
+    }
+
+    // Non-climax sexual/intimate activity
+    if (_needsSimEnabled && _realismActiveThisMode) {
+      await _checkSexualActivityInResponse(responseText);
+    }
+
+    // Daily activity effects
+    if (_needsSimEnabled &&
+        _realismActiveThisMode &&
+        _cooldownTurnsRemaining <= 0) {
+      await _checkDailyActivityEffects(responseText);
+    }
+
+    // Needs fulfillment verification
+    if (_needsSimEnabled && _realismActiveThisMode) {
+      await _verifyNeedFulfillmentCall();
+    }
   }
 
   /// Fired post-generation against the AI's completed response text.
