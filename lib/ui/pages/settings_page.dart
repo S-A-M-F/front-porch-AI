@@ -2493,9 +2493,8 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
 
-          // ── Remote API / oMLX Configuration ──
-          if (llmProvider.activeBackend == BackendType.openRouter ||
-              llmProvider.activeBackend == BackendType.omlx) ...[
+          // ── Remote API Configuration ──
+          if (llmProvider.activeBackend == BackendType.openRouter) ...[
             const SizedBox(height: 24),
             _buildSectionHeader('API Configuration', context),
             const SizedBox(height: 8),
@@ -2820,6 +2819,168 @@ class _SettingsPageState extends State<SettingsPage> {
                         Expanded(
                           child: Text(
                             'Works with OpenRouter, Nano-GPT, or any OpenAI-compatible endpoint.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // ── oMLX Configuration (macOS only, minimal) ──
+          if (llmProvider.activeBackend == BackendType.omlx) ...[
+            const SizedBox(height: 24),
+            _buildSectionHeader('oMLX Configuration', context),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Model picker
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Model', style: theme.textTheme.bodySmall),
+                      TextButton.icon(
+                        onPressed: _isFetchingModels
+                            ? null
+                            : () async {
+                                setState(() => _isFetchingModels = true);
+                                final openRouter =
+                                    Provider.of<OpenRouterService>(
+                                      context,
+                                      listen: false,
+                                    );
+                                openRouter.configure(
+                                  apiUrl: 'http://localhost:8000/v1',
+                                  apiKey: storageService.remoteApiKey,
+                                );
+                                final models = await openRouter
+                                    .fetchAvailableModels();
+                                if (mounted) {
+                                  setState(() {
+                                    _availableModels = models;
+                                    _isFetchingModels = false;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        models.isEmpty
+                                            ? 'No models found. Make sure oMLX is running and has models loaded.'
+                                            : 'Found ${models.length} available models.',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                        icon: _isFetchingModels
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh, size: 16),
+                        label: Text(
+                          _isFetchingModels ? 'Loading...' : 'Fetch Models',
+                        ),
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (_availableModels.isNotEmpty)
+                    InkWell(
+                      onTap: () =>
+                          _showModelSearchDialog(context, storageService),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.scaffoldBackgroundColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: theme.dividerColor),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                storageService.remoteModelName.isNotEmpty
+                                    ? storageService.remoteModelName
+                                    : 'Tap to select a model...',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color:
+                                      storageService.remoteModelName.isNotEmpty
+                                          ? null
+                                          : Colors.grey,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              color: Colors.grey[500],
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    TextFormField(
+                      initialValue: storageService.remoteModelName,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. mlx-community/Llama-3-8B-Instruct',
+                        filled: true,
+                        fillColor: theme.scaffoldBackgroundColor,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        suffixIcon: const Icon(Icons.smart_toy, size: 18),
+                      ),
+                      onChanged: (val) =>
+                          storageService.setRemoteModelName(val.trim()),
+                    ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.blue.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'oMLX runs locally on your Mac. Install via brew install jundot/omlx/omlx and run omlx serve.',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: Colors.blue,
                             ),
