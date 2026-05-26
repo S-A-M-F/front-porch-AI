@@ -211,38 +211,48 @@ class CharacterCardGrid extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.close),
                       tooltip: 'Cancel selection',
+                      visualDensity: VisualDensity.compact,
                       onPressed: onCancelSelection,
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      '${selectedCharacterIds.length} selected',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isOrganizing
-                                ? Colors.blueAccent
-                                : Colors.purpleAccent,
-                          ),
+                    Flexible(
+                      child: Text(
+                        '${selectedCharacterIds.length} selected',
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isOrganizing
+                                  ? Colors.blueAccent
+                                  : Colors.purpleAccent,
+                            ),
+                      ),
                     ),
                   ] else if (activeFolderId != null) ...[
                     IconButton(
                       icon: const Icon(Icons.arrow_back),
                       tooltip: 'Back to all characters',
+                      visualDensity: VisualDensity.compact,
                       onPressed: onFolderNavigateBack,
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      _getActiveFolderName(),
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                    Flexible(
+                      child: Text(
+                        _getActiveFolderName(),
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ] else
                     modeToggle,
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   if (!isSelecting && !isOrganizing)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
+                        horizontal: 8,
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
@@ -292,7 +302,7 @@ class CharacterCardGrid extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: SizedBox(
-                        width: 120,
+                        width: 100,
                         child: Row(
                         children: [
                           Icon(
@@ -346,6 +356,7 @@ class CharacterCardGrid extends StatelessWidget {
                         Icons.group_add,
                         color: Colors.purpleAccent,
                       ),
+                      visualDensity: VisualDensity.compact,
                       onPressed: onToggleSelectMode,
                     ),
                     IconButton(
@@ -354,6 +365,7 @@ class CharacterCardGrid extends StatelessWidget {
                         Icons.drive_file_move_outlined,
                         color: Colors.blueAccent,
                       ),
+                      visualDensity: VisualDensity.compact,
                       onPressed: onToggleOrganizeMode,
                     ),
                     if (activeFolderId == null)
@@ -362,6 +374,7 @@ class CharacterCardGrid extends StatelessWidget {
                         icon: const Icon(
                           Icons.create_new_folder_outlined,
                         ),
+                        visualDensity: VisualDensity.compact,
                         onPressed: () => onFolderDialogAction(
                           FolderDialogAction.create,
                         ),
@@ -373,15 +386,24 @@ class CharacterCardGrid extends StatelessWidget {
                           Icons.create_new_folder_outlined,
                           color: Colors.amberAccent,
                         ),
+                        visualDensity: VisualDensity.compact,
                         onPressed: () => onFolderDialogAction(
                           FolderDialogAction.create,
                           parentId: activeFolderId,
                         ),
                       ),
                     PopupMenuButton<String>(
-                      tooltip: 'Import Characters',
+                      tooltip: 'Import or discover characters',
                       icon: const Icon(Icons.download),
-                      onSelected: onImport,
+                      onSelected: (value) {
+                        if (value == 'browse_aicc') {
+                          onOpenBrowser('aicc');
+                        } else if (value == 'browse_chub') {
+                          onOpenBrowser('chub');
+                        } else {
+                          onImport(value);
+                        }
+                      },
                       itemBuilder: (_) => [
                         const PopupMenuItem(
                           value: 'cards',
@@ -407,23 +429,24 @@ class CharacterCardGrid extends StatelessWidget {
                             dense: true,
                           ),
                         ),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem(
+                          value: 'browse_aicc',
+                          child: ListTile(
+                            leading: Icon(Icons.public, color: Colors.blueAccent),
+                            title: Text('Browse AI Character Cards'),
+                            dense: true,
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'browse_chub',
+                          child: ListTile(
+                            leading: Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                            title: Text('Chub.ai (Caution)'),
+                            dense: true,
+                          ),
+                        ),
                       ],
-                    ),
-                    IconButton(
-                      tooltip: 'Browse AI Character Cards',
-                      icon: const Icon(
-                        Icons.public,
-                        color: Colors.blueAccent,
-                      ),
-                      onPressed: () => onOpenBrowser('aicc'),
-                    ),
-                    IconButton(
-                      tooltip: 'Chub.ai (Caution)',
-                      icon: const Icon(
-                        Icons.warning_amber_rounded,
-                        color: Colors.redAccent,
-                      ),
-                      onPressed: () => onOpenBrowser('chub'),
                     ),
                   ],
                 ],
