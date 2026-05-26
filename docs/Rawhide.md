@@ -20,3 +20,7 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 - 🎯 **Objectives no longer bleed between chats** — Quest/objective goals were previously stored per-character, so objectives created in one chat would appear in another chat with the same character. Fixed by scoping objectives to the chat session (same mechanism used for messages). Each conversation now has its own independent set of objectives.
 
+- 🎯 **Needs chips now render after regen** — Regenerating a message was stripping emotion_label from the metadata because the regen path never set it in `_pendingRealismMetadata` (the normal path does this after realism evals). Without emotion_label, the realism indicator early-return suppressed all chips. Fixed by adding the same `emotion_label` + `realism_state` synthesis into the regen path.
+
+- 💬 **Needs tooltips now show per-need reasons** — The needs chip tooltip was showing "Intimate / sexual activity" for every need (even hunger) whenever afterglow or lust haze was active. Now each need gets its own reason: "Afterglow buffer" (hunger/energy/social), "Arousal suppression (lust haze)" (under lust haze), "Post-orgasm exhaustion" (post-climax crash), "Scene action" (positive delta), or "Natural decay" (default).
+

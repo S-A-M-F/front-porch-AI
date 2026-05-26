@@ -10621,15 +10621,17 @@ class ChatService extends ChangeNotifier {
       String reason;
       if (delta == 0) {
         reason = 'Stable';
+      } else if (delta > 0) {
+        reason = 'Scene action';
       } else if (_postClimaxCrashTurnsRemaining > 0 &&
           _needsAfterglowTurnsRemaining == 0 &&
           _arousalSuppressionTurnsRemaining == 0) {
         reason = 'Post-orgasm exhaustion';
-      } else if (_needsAfterglowTurnsRemaining > 0 ||
-          _arousalSuppressionTurnsRemaining > 0) {
-        reason = 'Intimate / sexual activity';
-      } else if (delta > 0) {
-        reason = 'Scene action';
+      } else if (_needsAfterglowTurnsRemaining > 0 &&
+          (key == 'hunger' || key == 'energy' || key == 'social')) {
+        reason = 'Afterglow buffer';
+      } else if (_arousalSuppressionTurnsRemaining > 0) {
+        reason = 'Arousal suppression (lust haze)';
       } else {
         reason = 'Natural decay';
       }
