@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:front_porch_ai/app_version.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/services/database_merge_service.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
@@ -94,6 +95,13 @@ class CloudSyncService extends ChangeNotifier {
       _totalFiles > 0 ? (_processedFiles / _totalFiles).clamp(0.0, 1.0) : 0.0;
   int get totalFiles => _totalFiles;
   int get processedFiles => _processedFiles;
+
+  /// Rawhide / pre-release: /FrontPorchAI-Rawhide
+  /// This provides proper isolation between release channels.
+  String get _cloudRoot => isPreRelease ? '/FrontPorchAI-Rawhide' : '/FrontPorchAI';
+
+  /// Publicly exposed cloud root for UI / debugging.
+  String get cloudRoot => _cloudRoot;
 
   /// Set the active cloud storage provider.
   void setProvider(CloudStorageProvider? provider) {

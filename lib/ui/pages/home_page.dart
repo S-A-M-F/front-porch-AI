@@ -83,6 +83,12 @@ class _HomePageState extends State<HomePage> {
   // Scroll controller for the character grid (visible scrollbar)
   final ScrollController _gridScrollController = ScrollController();
 
+  // Keep strong reference to active InAppBrowser instances.
+  // The flutter_inappwebview package (especially on macOS/Windows desktop)
+  // requires the Dart InAppBrowser subclass to stay alive while the native
+  // browser window exists, otherwise closing the window can crash the app.
+  CharacterBrowser? _activeBrowser;
+
   @override
   void initState() {
     super.initState();
@@ -249,6 +255,12 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _searchController.dispose();
     _gridScrollController.dispose();
+
+    // Close any open character browser to avoid native window leaks / crashes
+    // on app exit while the inappwebview window is still visible.
+    _activeBrowser?.close();
+    _activeBrowser = null;
+
     super.dispose();
   }
 
@@ -2892,9 +2904,12 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      final browser = CharacterBrowser(onDownload: handleDownloadUrl);
+      _activeBrowser = CharacterBrowser(
+        onDownload: handleDownloadUrl,
+        onClosed: () => _activeBrowser = null,
+      );
 
-      await browser.openUrlRequest(
+      await _activeBrowser!.openUrlRequest(
         urlRequest: URLRequest(url: WebUri('https://aicharactercards.com/')),
         settings: InAppBrowserClassSettings(
           browserSettings: InAppBrowserSettings(
@@ -2993,9 +3008,12 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      final browser = CharacterBrowser(onDownload: handleChubDownload);
+      _activeBrowser = CharacterBrowser(
+        onDownload: handleChubDownload,
+        onClosed: () => _activeBrowser = null,
+      );
 
-      await browser.openUrlRequest(
+      await _activeBrowser!.openUrlRequest(
         urlRequest: URLRequest(url: WebUri('https://chub.ai/')),
         settings: InAppBrowserClassSettings(
           browserSettings: InAppBrowserSettings(
@@ -3196,8 +3214,12 @@ class _HomePageState extends State<HomePage> {
 // Custom InAppBrowser for character downloads
 class CharacterBrowser extends InAppBrowser {
   final Future<void> Function(String url) onDownload;
+  final VoidCallback? onClosed;
 
-  CharacterBrowser({required this.onDownload});
+  CharacterBrowser({
+    required this.onDownload,
+    this.onClosed,
+  });
 
   @override
   Future<NavigationActionPolicy>? shouldOverrideUrlLoading(
@@ -3225,6 +3247,8 @@ class CharacterBrowser extends InAppBrowser {
 
   @override
   void onExit() {
+    super.onExit(); // Required for proper internal cleanup in flutter_inappwebview
     debugPrint('AG_DEBUG: Browser closed');
+    onClosed?.call();
   }
 }
