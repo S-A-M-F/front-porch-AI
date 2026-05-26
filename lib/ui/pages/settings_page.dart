@@ -2414,6 +2414,51 @@ class _SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                     ),
+                    Expanded(
+                      child: RadioListTile<BackendType>(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Row(
+                          children: [
+                            Icon(
+                              Icons.apple,
+                              size: 18,
+                              color: Platform.isMacOS
+                                  ? theme.iconTheme.color
+                                  : Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'oMLX',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Platform.isMacOS
+                                    ? null
+                                    : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                        value: BackendType.omlx,
+                        groupValue: llmProvider.activeBackend,
+                        onChanged: Platform.isMacOS
+                            ? (val) async {
+                                if (val != null) {
+                                  await llmProvider.setActiveBackend(val);
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Switched to oMLX backend.',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
+                              }
+                            : null,
+                      ),
+                    ),
                   ],
                 ),
                 if (llmProvider.activeBackend == BackendType.kobold)
@@ -2430,6 +2475,13 @@ class _SettingsPageState extends State<SettingsPage> {
                       color: Colors.grey,
                     ),
                   )
+                else if (llmProvider.activeBackend == BackendType.omlx)
+                  Text(
+                    'Local LLM inference via oMLX on Apple Silicon. Requires oMLX running on port 8000.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
+                  )
                 else
                   Text(
                     'Connect to OpenRouter, Nano-GPT, or any OpenAI-compatible API.',
@@ -2441,8 +2493,9 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
 
-          // ── Remote API Configuration ──
-          if (llmProvider.activeBackend == BackendType.openRouter) ...[
+          // ── Remote API / oMLX Configuration ──
+          if (llmProvider.activeBackend == BackendType.openRouter ||
+              llmProvider.activeBackend == BackendType.omlx) ...[
             const SizedBox(height: 24),
             _buildSectionHeader('API Configuration', context),
             const SizedBox(height: 8),
@@ -2480,6 +2533,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         storageService: storageService,
                         context: context,
                       ),
+                      if (Platform.isMacOS)
+                        _buildApiPresetChip(
+                          label: '🍎 oMLX',
+                          url: 'http://localhost:8000/v1',
+                          storageService: storageService,
+                          context: context,
+                        ),
                     ],
                   ),
                   const SizedBox(height: 16),

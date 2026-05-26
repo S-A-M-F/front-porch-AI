@@ -16,11 +16,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/ui/widgets/slider_with_input.dart';
 
@@ -36,6 +39,8 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
   late final TextEditingController _bannedPhrasesController;
   late ChatGenerationSettings _gen;
   bool _initialised = false;
+  List<RemoteModelInfo> _omlxModels = [];
+  bool _isFetchingOmLxModels = false;
 
   @override
   void didChangeDependencies() {
@@ -259,6 +264,125 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                             ),
                           ),
                         ),
+                      const SizedBox(height: 8),
+                      const Divider(color: Colors.white10),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // oMLX Model Selection (macOS only)
+                    if (Platform.isMacOS &&
+                        llmProvider.activeBackend == BackendType.omlx) ...[
+                      const Text(
+                        'oMLX Model',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueAccent,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _omlxModels.isEmpty
+                                ? Text(
+                                    'No models loaded',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                      fontSize: 12,
+                                    ),
+                                  )
+                                : Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF374151),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: _gen.remoteModelName ??
+                                            storage.remoteModelName,
+                                        dropdownColor:
+                                            const Color(0xFF374151),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                        ),
+                                        isExpanded: true,
+                                        items: _omlxModels
+                                            .map((m) => DropdownMenuItem(
+                                                  value: m.id,
+                                                  child: Text(m.id),
+                                                ))
+                                            .toList(),
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            setState(
+                                              () => _gen.remoteModelName = val,
+                                            );
+                                            _save();
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: _isFetchingOmLxModels
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.refresh,
+                                    size: 20,
+                                    color: Colors.white70,
+                                  ),
+                            onPressed: _isFetchingOmLxModels
+                                ? null
+                                : () async {
+                                    setState(
+                                      () => _isFetchingOmLxModels = true,
+                                    );
+                                    final openRouter =
+                                        Provider.of<OpenRouterService>(
+                                      context,
+                                      listen: false,
+                                    );
+                                    openRouter.configure(
+                                      apiUrl: 'http://localhost:8000/v1',
+                                      apiKey: storage.remoteApiKey,
+                                    );
+                                    final models =
+                                        await openRouter.fetchAvailableModels();
+                                    if (mounted) {
+                                      setState(() {
+                                        _omlxModels = models;
+                                        _isFetchingOmLxModels = false;
+                                      });
+                                    }
+                                  },
+                            tooltip: 'Fetch models from oMLX',
+                          ),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'Select a model loaded in oMLX. Fetch models if the list is empty.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       const Divider(color: Colors.white10),
                       const SizedBox(height: 8),

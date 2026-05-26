@@ -4,6 +4,8 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🍎 **oMLX backend support (macOS Apple Silicon)** — New backend option for local LLM inference via oMLX (https://github.com/jundot/omlx). Select oMLX in Settings → Backend, then use the model picker to choose from your loaded oMLX models. Also available as a per-chat model override in Chat Settings. Install oMLX via `brew install jundot/omlx/omlx` and run `omlx serve`.
+
 - ⚡ **Faster KoboldCpp responses** — KoboldCpp has a built-in FIFO task scheduler that can batch multiple requests. The previous code used sequential `await` chains for realism evals and `waitForIdle()` before each eval, defeating KoboldCpp's built-in batching. Changed all 4 realism eval calls (relationship, emotional state, physical state, narrative) from sequential `await` to concurrent `Future.wait()`, and removed the `waitForIdle()` call before each eval. This improves chat response times by allowing KoboldCpp to batch multiple eval requests.
 
 - 📺 **Token throttle defaults to OFF** — The "Smooth Output Buffer" (token throttle) now defaults to OFF for all users — new and existing. Existing stored preference is deleted on startup so users get the full speed. Tokens display at raw GPU speed instead of artificially slowed down. Users can re-enable via UI if they prefer the smoother display.

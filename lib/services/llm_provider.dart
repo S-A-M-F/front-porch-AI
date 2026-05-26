@@ -24,7 +24,7 @@ import 'package:front_porch_ai/services/pseudo_remote_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 
 /// The available backend types.
-enum BackendType { kobold, openRouter, pseudoRemote }
+enum BackendType { kobold, openRouter, pseudoRemote, omlx }
 
 /// Manages switching between LLM backends (local KoboldCPP, Pseudo-Remote, remote APIs).
 ///
@@ -46,6 +46,7 @@ class LLMProvider extends ChangeNotifier {
       case BackendType.pseudoRemote:
         return _pseudoRemoteService;
       case BackendType.openRouter:
+      case BackendType.omlx:
         return _openRouterService;
     }
   }
@@ -101,15 +102,25 @@ class LLMProvider extends ChangeNotifier {
         newType = BackendType.pseudoRemote;
       case 'openRouter':
         newType = BackendType.openRouter;
+      case 'omlx':
+        newType = BackendType.omlx;
       default:
         newType = BackendType.kobold;
     }
 
-    _openRouterService.configure(
-      apiUrl: _storageService.remoteApiUrl,
-      apiKey: _storageService.remoteApiKey,
-      modelName: _storageService.remoteModelName,
-    );
+    if (newType == BackendType.omlx) {
+      _openRouterService.configure(
+        apiUrl: 'http://localhost:8000/v1',
+        apiKey: _storageService.remoteApiKey,
+        modelName: _storageService.remoteModelName,
+      );
+    } else {
+      _openRouterService.configure(
+        apiUrl: _storageService.remoteApiUrl,
+        apiKey: _storageService.remoteApiKey,
+        modelName: _storageService.remoteModelName,
+      );
+    }
     debugPrint(
       '[LLMProvider] Synced from storage: backend=$typeStr, URL=${_storageService.remoteApiUrl}',
     );
@@ -132,10 +143,22 @@ class LLMProvider extends ChangeNotifier {
         persistValue = 'pseudoRemote';
       case BackendType.openRouter:
         persistValue = 'openRouter';
+      case BackendType.omlx:
+        persistValue = 'omlx';
       case BackendType.kobold:
         persistValue = 'kobold';
     }
     await _storageService.setBackendType(persistValue);
+
+    // Auto-configure oMLX URL when switching to it
+    if (type == BackendType.omlx) {
+      _openRouterService.configure(
+        apiUrl: 'http://localhost:8000/v1',
+        apiKey: _storageService.remoteApiKey,
+        modelName: _storageService.remoteModelName,
+      );
+    }
+
     notifyListeners();
   }
 
@@ -169,6 +192,8 @@ class LLMProvider extends ChangeNotifier {
         );
       case BackendType.openRouter:
         throw Exception('Cannot start a process for the OpenRouter backend.');
+      case BackendType.omlx:
+        throw Exception('Cannot start a process for the oMLX backend.');
     }
   }
 }
