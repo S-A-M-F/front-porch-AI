@@ -2806,6 +2806,7 @@ class _ChatPageState extends State<ChatPage> {
                   minLines: _inputMinLines,
                   textInputAction: TextInputAction.newline,
                   style: TextStyle(color: AppColors.textPrimary(context)),
+                  spellCheckConfiguration: SpellCheckConfiguration.disabled(),
                   decoration: InputDecoration(
                     hintText: chatService.observerMode
                         ? 'Direct the scene...'
