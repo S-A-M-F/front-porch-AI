@@ -5560,8 +5560,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final timeSkipTo = metadata['time_skip_to'] as String? ?? '';
     final chanceTimeEvent = metadata['chance_time_event'] as String? ?? '';
     final timeReversal = metadata['time_reversal'] as bool? ?? false;
+    final needsDeltas = metadata['needs_deltas'] as Map<String, dynamic>?;
 
-    if (bondDelta == 0 &&
+    if ((needsDeltas == null || needsDeltas.isEmpty) &&
+        bondDelta == 0 &&
         emotionLabel.isEmpty &&
         arousalDelta == 0 &&
         trustDelta == 0 &&
@@ -5590,7 +5592,6 @@ class _MessageBubbleState extends State<_MessageBubble> {
 
     // ── Needs Simulation Chips (deltas + reasons) — built into a separate list
     // so we can render them on their own row underneath the classic realism chips.
-    final needsDeltas = metadata['needs_deltas'] as Map<String, dynamic>?;
     final List<Widget> needsChipList = [];
 
     if (needsDeltas != null && needsDeltas.isNotEmpty) {
