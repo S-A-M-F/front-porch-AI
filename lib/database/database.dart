@@ -335,6 +335,7 @@ class Objectives extends Table {
   TextColumn get id => text()();
   TextColumn get characterId =>
       text()(); // which character this objective belongs to
+  TextColumn get chatId => text().nullable()(); // session ID this objective belongs to
   TextColumn get objective => text()(); // the main goal
   TextColumn get tasks => text().withDefault(
     const Constant('[]'),
@@ -984,6 +985,14 @@ class AppDatabase extends _$AppDatabase {
         try {
           await customStatement(
             'ALTER TABLE sessions ADD COLUMN start_day_of_week INTEGER NOT NULL DEFAULT 0',
+          );
+        } catch (_) {}
+      }
+      if (from < 29) {
+        // v28→v29: scope objectives to chat sessions (fix bleeding between chats)
+        try {
+          await customStatement(
+            'ALTER TABLE objectives ADD COLUMN chat_id TEXT',
           );
         } catch (_) {}
       }
@@ -1815,9 +1824,17 @@ class AppDatabase extends _$AppDatabase {
 
   // ── Objectives ─────────────────────────────────────────────────────
 
-  Future<List<Objective>> getObjectivesForCharacter(String characterId) =>
+  Future<List<Objective>> getObjectivesForCharacter(
+    String characterId, {
+    String? chatId,
+  }) =>
       (select(objectives)
             ..where((o) => o.characterId.equals(characterId))
+            ..where(
+              (o) => chatId == null
+                  ? o.chatId.isNull()
+                  : o.chatId.equals(chatId),
+            )
             ..orderBy([
               (o) => OrderingTerm(
                 expression: o.createdAt,
@@ -1826,10 +1843,16 @@ class AppDatabase extends _$AppDatabase {
             ]))
           .get();
 
-  Future<List<Objective>> getActiveObjectives(String characterId) =>
+  Future<List<Objective>> getActiveObjectives(
+    String characterId, {
+    required String chatId,
+  }) =>
       (select(objectives)
             ..where(
-              (o) => o.characterId.equals(characterId) & o.active.equals(true),
+              (o) =>
+                  o.characterId.equals(characterId) &
+                  o.chatId.equals(chatId) &
+                  o.active.equals(true),
             )
             ..orderBy([
               (o) => OrderingTerm(
@@ -1856,6 +1879,10 @@ class AppDatabase extends _$AppDatabase {
   Future<int> deleteObjectivesForCharacter(String characterId) => (delete(
     objectives,
   )..where((o) => o.characterId.equals(characterId))).go();
+
+  Future<int> deleteObjectivesForChat(String chatId) => (delete(
+    objectives,
+  )..where((o) => o.chatId.equals(chatId))).go();
 
   // ── Story Project Queries ────────────────────────────────────────────
 

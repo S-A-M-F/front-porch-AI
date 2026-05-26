@@ -7947,6 +7947,15 @@ class $ObjectivesTable extends Objectives
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _chatIdMeta = const VerificationMeta('chatId');
+  @override
+  late final GeneratedColumn<String> chatId = GeneratedColumn<String>(
+    'chat_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _objectiveMeta = const VerificationMeta(
     'objective',
   );
@@ -8036,6 +8045,7 @@ class $ObjectivesTable extends Objectives
   List<GeneratedColumn> get $columns => [
     id,
     characterId,
+    chatId,
     objective,
     tasks,
     active,
@@ -8071,6 +8081,12 @@ class $ObjectivesTable extends Objectives
       );
     } else if (isInserting) {
       context.missing(_characterIdMeta);
+    }
+    if (data.containsKey('chat_id')) {
+      context.handle(
+        _chatIdMeta,
+        chatId.isAcceptableOrUnknown(data['chat_id']!, _chatIdMeta),
+      );
     }
     if (data.containsKey('objective')) {
       context.handle(
@@ -8139,6 +8155,10 @@ class $ObjectivesTable extends Objectives
         DriftSqlType.string,
         data['${effectivePrefix}character_id'],
       )!,
+      chatId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chat_id'],
+      ),
       objective: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}objective'],
@@ -8179,6 +8199,7 @@ class $ObjectivesTable extends Objectives
 class Objective extends DataClass implements Insertable<Objective> {
   final String id;
   final String characterId;
+  final String? chatId;
   final String objective;
   final String tasks;
   final bool active;
@@ -8189,6 +8210,7 @@ class Objective extends DataClass implements Insertable<Objective> {
   const Objective({
     required this.id,
     required this.characterId,
+    this.chatId,
     required this.objective,
     required this.tasks,
     required this.active,
@@ -8202,6 +8224,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['character_id'] = Variable<String>(characterId);
+    if (!nullToAbsent || chatId != null) {
+      map['chat_id'] = Variable<String>(chatId);
+    }
     map['objective'] = Variable<String>(objective);
     map['tasks'] = Variable<String>(tasks);
     map['active'] = Variable<bool>(active);
@@ -8216,6 +8241,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     return ObjectivesCompanion(
       id: Value(id),
       characterId: Value(characterId),
+      chatId: chatId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chatId),
       objective: Value(objective),
       tasks: Value(tasks),
       active: Value(active),
@@ -8234,6 +8262,7 @@ class Objective extends DataClass implements Insertable<Objective> {
     return Objective(
       id: serializer.fromJson<String>(json['id']),
       characterId: serializer.fromJson<String>(json['characterId']),
+      chatId: serializer.fromJson<String?>(json['chatId']),
       objective: serializer.fromJson<String>(json['objective']),
       tasks: serializer.fromJson<String>(json['tasks']),
       active: serializer.fromJson<bool>(json['active']),
@@ -8249,6 +8278,7 @@ class Objective extends DataClass implements Insertable<Objective> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'characterId': serializer.toJson<String>(characterId),
+      'chatId': serializer.toJson<String?>(chatId),
       'objective': serializer.toJson<String>(objective),
       'tasks': serializer.toJson<String>(tasks),
       'active': serializer.toJson<bool>(active),
@@ -8262,6 +8292,7 @@ class Objective extends DataClass implements Insertable<Objective> {
   Objective copyWith({
     String? id,
     String? characterId,
+    Value<String?> chatId = const Value.absent(),
     String? objective,
     String? tasks,
     bool? active,
@@ -8272,6 +8303,7 @@ class Objective extends DataClass implements Insertable<Objective> {
   }) => Objective(
     id: id ?? this.id,
     characterId: characterId ?? this.characterId,
+    chatId: chatId.present ? chatId.value : this.chatId,
     objective: objective ?? this.objective,
     tasks: tasks ?? this.tasks,
     active: active ?? this.active,
@@ -8286,6 +8318,7 @@ class Objective extends DataClass implements Insertable<Objective> {
       characterId: data.characterId.present
           ? data.characterId.value
           : this.characterId,
+      chatId: data.chatId.present ? data.chatId.value : this.chatId,
       objective: data.objective.present ? data.objective.value : this.objective,
       tasks: data.tasks.present ? data.tasks.value : this.tasks,
       active: data.active.present ? data.active.value : this.active,
@@ -8305,6 +8338,7 @@ class Objective extends DataClass implements Insertable<Objective> {
     return (StringBuffer('Objective(')
           ..write('id: $id, ')
           ..write('characterId: $characterId, ')
+          ..write('chatId: $chatId, ')
           ..write('objective: $objective, ')
           ..write('tasks: $tasks, ')
           ..write('active: $active, ')
@@ -8320,6 +8354,7 @@ class Objective extends DataClass implements Insertable<Objective> {
   int get hashCode => Object.hash(
     id,
     characterId,
+    chatId,
     objective,
     tasks,
     active,
@@ -8334,6 +8369,7 @@ class Objective extends DataClass implements Insertable<Objective> {
       (other is Objective &&
           other.id == this.id &&
           other.characterId == this.characterId &&
+          other.chatId == this.chatId &&
           other.objective == this.objective &&
           other.tasks == this.tasks &&
           other.active == this.active &&
@@ -8346,6 +8382,7 @@ class Objective extends DataClass implements Insertable<Objective> {
 class ObjectivesCompanion extends UpdateCompanion<Objective> {
   final Value<String> id;
   final Value<String> characterId;
+  final Value<String?> chatId;
   final Value<String> objective;
   final Value<String> tasks;
   final Value<bool> active;
@@ -8357,6 +8394,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   const ObjectivesCompanion({
     this.id = const Value.absent(),
     this.characterId = const Value.absent(),
+    this.chatId = const Value.absent(),
     this.objective = const Value.absent(),
     this.tasks = const Value.absent(),
     this.active = const Value.absent(),
@@ -8369,6 +8407,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   ObjectivesCompanion.insert({
     required String id,
     required String characterId,
+    this.chatId = const Value.absent(),
     required String objective,
     this.tasks = const Value.absent(),
     this.active = const Value.absent(),
@@ -8383,6 +8422,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   static Insertable<Objective> custom({
     Expression<String>? id,
     Expression<String>? characterId,
+    Expression<String>? chatId,
     Expression<String>? objective,
     Expression<String>? tasks,
     Expression<bool>? active,
@@ -8395,6 +8435,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (characterId != null) 'character_id': characterId,
+      if (chatId != null) 'chat_id': chatId,
       if (objective != null) 'objective': objective,
       if (tasks != null) 'tasks': tasks,
       if (active != null) 'active': active,
@@ -8409,6 +8450,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   ObjectivesCompanion copyWith({
     Value<String>? id,
     Value<String>? characterId,
+    Value<String?>? chatId,
     Value<String>? objective,
     Value<String>? tasks,
     Value<bool>? active,
@@ -8421,6 +8463,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     return ObjectivesCompanion(
       id: id ?? this.id,
       characterId: characterId ?? this.characterId,
+      chatId: chatId ?? this.chatId,
       objective: objective ?? this.objective,
       tasks: tasks ?? this.tasks,
       active: active ?? this.active,
@@ -8440,6 +8483,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     }
     if (characterId.present) {
       map['character_id'] = Variable<String>(characterId.value);
+    }
+    if (chatId.present) {
+      map['chat_id'] = Variable<String>(chatId.value);
     }
     if (objective.present) {
       map['objective'] = Variable<String>(objective.value);
@@ -8473,6 +8519,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     return (StringBuffer('ObjectivesCompanion(')
           ..write('id: $id, ')
           ..write('characterId: $characterId, ')
+          ..write('chatId: $chatId, ')
           ..write('objective: $objective, ')
           ..write('tasks: $tasks, ')
           ..write('active: $active, ')
@@ -13225,6 +13272,7 @@ typedef $$ObjectivesTableCreateCompanionBuilder =
     ObjectivesCompanion Function({
       required String id,
       required String characterId,
+      Value<String?> chatId,
       required String objective,
       Value<String> tasks,
       Value<bool> active,
@@ -13238,6 +13286,7 @@ typedef $$ObjectivesTableUpdateCompanionBuilder =
     ObjectivesCompanion Function({
       Value<String> id,
       Value<String> characterId,
+      Value<String?> chatId,
       Value<String> objective,
       Value<String> tasks,
       Value<bool> active,
@@ -13264,6 +13313,11 @@ class $$ObjectivesTableFilterComposer
 
   ColumnFilters<String> get characterId => $composableBuilder(
     column: $table.characterId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chatId => $composableBuilder(
+    column: $table.chatId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13322,6 +13376,11 @@ class $$ObjectivesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get chatId => $composableBuilder(
+    column: $table.chatId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get objective => $composableBuilder(
     column: $table.objective,
     builder: (column) => ColumnOrderings(column),
@@ -13374,6 +13433,9 @@ class $$ObjectivesTableAnnotationComposer
     column: $table.characterId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get chatId =>
+      $composableBuilder(column: $table.chatId, builder: (column) => column);
 
   GeneratedColumn<String> get objective =>
       $composableBuilder(column: $table.objective, builder: (column) => column);
@@ -13434,6 +13496,7 @@ class $$ObjectivesTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> characterId = const Value.absent(),
+                Value<String?> chatId = const Value.absent(),
                 Value<String> objective = const Value.absent(),
                 Value<String> tasks = const Value.absent(),
                 Value<bool> active = const Value.absent(),
@@ -13445,6 +13508,7 @@ class $$ObjectivesTableTableManager
               }) => ObjectivesCompanion(
                 id: id,
                 characterId: characterId,
+                chatId: chatId,
                 objective: objective,
                 tasks: tasks,
                 active: active,
@@ -13458,6 +13522,7 @@ class $$ObjectivesTableTableManager
               ({
                 required String id,
                 required String characterId,
+                Value<String?> chatId = const Value.absent(),
                 required String objective,
                 Value<String> tasks = const Value.absent(),
                 Value<bool> active = const Value.absent(),
@@ -13469,6 +13534,7 @@ class $$ObjectivesTableTableManager
               }) => ObjectivesCompanion.insert(
                 id: id,
                 characterId: characterId,
+                chatId: chatId,
                 objective: objective,
                 tasks: tasks,
                 active: active,

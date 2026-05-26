@@ -18,3 +18,5 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
   - **Hygiene no longer raises during sex** — Orgasm/sexual activity now properly lowers hygiene instead of potentially raising it. The daily activity check could incorrectly detect "bathing" during sex scenes and add +25 hygiene, overriding the -6 from climax. Fixed by gating the daily activity check behind cooldown and increasing the climax hygiene penalty.
   - **Needs chips show on regenerated messages** — Needs change chips now display when regenerating messages, not just on new messages. The needs_deltas were computed before `_generateResponse` ran, meaning the post-generation checks hadn't modified the needs vector yet. Moved the computation to after generation so chips show the actual delta.
 
+- 🎯 **Objectives no longer bleed between chats** — Quest/objective goals were previously stored per-character, so objectives created in one chat would appear in another chat with the same character. Fixed by scoping objectives to the chat session (same mechanism used for messages). Each conversation now has its own independent set of objectives.
+

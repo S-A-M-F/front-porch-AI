@@ -2250,8 +2250,6 @@ class ChatService extends ChangeNotifier {
       }
     }
 
-    // Load active objectives for this character
-    _loadActiveObjectives();
     // Note: evolved personality/scenario are now loaded inside _loadLastSession()
     // (which runs below) so they are scoped to the session, not the character.
     debugPrint(
@@ -2371,6 +2369,9 @@ class ChatService extends ChangeNotifier {
         _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
         await _saveChat();
       }
+      // Load active objectives for this session (must be after _loadLastSession
+      // so _currentSessionId is set)
+      _loadActiveObjectives();
     }
     _isLoadingSession = false;
     notifyListeners();
@@ -3505,20 +3506,17 @@ class ChatService extends ChangeNotifier {
     _isNewChat = true;
     debugPrint('[startNewChat] Marked as new chat - memories will be filtered');
 
+    // Save the current session (preserves objectives for this session)
+    if (_currentSessionId != null) {
+      await _saveChat();
+    }
+
     // Clear objectives for fresh session start
     _activeObjectives = [];
     _messagesSinceLastCheck = 0;
 
-    // Clear objectives from database for this character
-    if (_activeCharacter?.dbId != null) {
-      try {
-        final charId = _getCharacterIdFromCard(_activeCharacter!);
-        await _db.deleteObjectivesForCharacter(charId);
-        debugPrint('[startNewChat] Cleared objectives from DB for $charId');
-      } catch (e) {
-        debugPrint('[startNewChat] Failed to clear DB objectives: $e');
-      }
-    }
+    // Create new session ID for the new chat
+    _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
 
     // Clear memory sources to prevent old memories from being retrieved
     // Cross-character memory can still be re-selected by user after new chat starts
@@ -6731,15 +6729,18 @@ class ChatService extends ChangeNotifier {
 
   // ── Objective System ───────────────────────────────────────────────────
 
-  /// Load the active objectives for the current character from DB.
+  /// Load the active objectives for the current session from DB.
   Future<void> _loadActiveObjectives() async {
-    if (_activeCharacter == null) {
+    if (_activeCharacter == null || _currentSessionId == null) {
       _activeObjectives = [];
       return;
     }
     try {
       final charId = _getCharacterIdFromCard(_activeCharacter!);
-      _activeObjectives = await _db.getActiveObjectives(charId);
+      _activeObjectives = await _db.getActiveObjectives(
+        charId,
+        chatId: _currentSessionId!,
+      );
       for (final obj in _activeObjectives) {
         debugPrint(
           '[Objective] Loaded: ${obj.objective} (Primary: ${obj.isPrimary})',
@@ -6852,13 +6853,17 @@ class ChatService extends ChangeNotifier {
     return sb.toString();
   }
 
-  /// Set a new objective for the current character.
+  /// Set a new objective for the current session.
   Future<void> setObjective(String goal, {bool isPrimary = true}) async {
     if (_activeCharacter == null || goal.trim().isEmpty) return;
+    if (_currentSessionId == null) return;
     final charId = _getCharacterIdFromCard(_activeCharacter!);
 
     if (isPrimary) {
-      final existing = await _db.getObjectivesForCharacter(charId);
+      final existing = await _db.getObjectivesForCharacter(
+        charId,
+        chatId: _currentSessionId,
+      );
       for (final obj in existing) {
         if (obj.active && obj.isPrimary) {
           await _db.updateObjective(
@@ -6884,12 +6889,11 @@ class ChatService extends ChangeNotifier {
     }
 
     await _db.insertObjective(
-      ObjectivesCompanion(
-        characterId: drift.Value(charId),
-        objective: drift.Value(goal.trim()),
-        tasks: const drift.Value('[]'),
-        active: const drift.Value(true),
-        isPrimary: drift.Value(isPrimary),
+      ObjectivesCompanion.insert(
+        id: const Uuid().v4(),
+        characterId: charId,
+        objective: goal.trim(),
+        chatId: _currentSessionId,
       ),
     );
 
