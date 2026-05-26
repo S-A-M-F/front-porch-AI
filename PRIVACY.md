@@ -16,7 +16,6 @@ If you enable the optional **Cloud Sync** feature, Front Porch AI will upload yo
 
 - **Nextcloud / WebDAV** — Your self-hosted or third-party WebDAV server
 - **Google Drive** — Your personal Google account
-- **OneDrive** — Your personal Microsoft account
 
 **Important:**
 - Cloud Sync is **disabled by default** and must be explicitly enabled in Settings.

@@ -492,6 +492,38 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                   ),
                 ],
 
+                // Dev / Source build visibility — shows exactly which paths this session is using.
+                // Extremely useful when running `flutter run` for cloud sync testing and iteration.
+                if (syncService.isConnected) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.25)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Paths in use (helpful for dev builds)',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Local root: ${storageService.rootPath ?? "(default)"}',
+                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                        ),
+                        Text(
+                          'Remote cloud root: ${syncService.cloudRoot}',
+                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 // Action buttons
                 if (provider != 'none') ...[
                   const SizedBox(height: 16),

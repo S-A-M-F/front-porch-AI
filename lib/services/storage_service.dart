@@ -466,11 +466,23 @@ class StorageService extends ChangeNotifier {
   Future<void> _init() async {
     _prefs = await SharedPreferences.getInstance();
     final docsDir = await getApplicationDocumentsDirectory();
+
+    // For developers running from source (`flutter run`), allow forcing the
+    // exact same data directory as the packaged app via environment variable.
+    // This makes cloud sync testing from source behave identically to packaged builds.
+    String? devOverride;
+    if (isPreRelease) {
+      devOverride = Platform.environment['FRONT_PORCH_AI_DATA_DIR'];
+    }
+
     // Beta builds default to a completely separate data directory so they
     // never touch a stable user's characters, chats, or database.
     final defaultRootName = isPreRelease ? 'FrontPorchAI-Beta' : 'FrontPorchAI';
     final defaultRoot = path.join(docsDir.path, defaultRootName);
-    _rootPath = _prefs?.getString(_rootPathKey) ?? defaultRoot;
+    _rootPath = devOverride ?? _prefs?.getString(_rootPathKey) ?? defaultRoot;
+    if (devOverride != null) {
+      debugPrint('[Storage] Using dev override data directory: $_rootPath');
+    }
     _binDir = Directory(path.join(_rootPath!, 'koboldcpp_bin'));
 
     // Ensure directories exist

@@ -1787,9 +1787,13 @@ class _MyAppState extends State<MyApp> with WindowListener {
       await BackupService.createBackup();
       await BackupService.pruneBackups();
 
-      // Purge any accumulated soft-deleted rows before sync
+      // Purge any accumulated soft-deleted rows before sync.
+      // We skip characters + groups to protect recent soft-deletes (used by the
+      // new deletion + reconciliation system) so the deletion signal can propagate
+      // via the DB before being hard-purged. This is especially important within
+      // the same cloud namespace (e.g. Rawhide talking only to other Rawhide instances).
       final db = await AppDatabase.instance();
-      await db.purgeDeletedRows();
+      await db.purgeDeletedRows(skipTables: {'characters', 'groups'});
 
       await syncService.fullSync(chatsPath, charactersPath);
 

@@ -1229,7 +1229,12 @@ class AppDatabase extends _$AppDatabase {
   /// Hard-delete all soft-deleted rows from every table and VACUUM the database
   /// to reclaim disk space. Without this, deleted messages accumulate and bloat
   /// the DB (e.g. 59k deleted messages = 300+ MB of wasted space).
-  Future<int> purgeDeletedRows() async {
+  ///
+  /// [skipTables] — optional set of table names (lowercase, e.g. {'characters','groups'})
+  ///                whose soft-deleted rows should be left behind. Used before cloud
+  ///                sync so that recent character/group deletion flags survive long
+  ///                enough for the DB file + merge to propagate them to other devices.
+  Future<int> purgeDeletedRows({Set<String> skipTables = const {}}) async {
     int total = 0;
     for (final table in [
       'messages',
@@ -1240,6 +1245,10 @@ class AppDatabase extends _$AppDatabase {
       'personas',
       'worlds',
     ]) {
+      if (skipTables.contains(table)) {
+        debugPrint('[DB] Skipping purge of soft-deleted rows in $table (deletion signal protection for cloud sync)');
+        continue;
+      }
       final count = await customUpdate(
         'DELETE FROM $table WHERE deleted_at IS NOT NULL',
         updates: {},
@@ -1325,6 +1334,39 @@ class AppDatabase extends _$AppDatabase {
     final count = await (delete(
       characters,
     )..where((c) => c.id.equals(id))).go();
+    await bumpSyncVersion();
+    return count;
+  }
+
+  /// Soft-delete a character (sets deletedAt + updatedAt on the row) while
+  /// performing the same hard cascade delete of its dependent sessions and
+  /// messages. The soft-deleted row remains in the table (with the flag) so
+  /// that cloud DB sync + DatabaseMergeService can propagate the deletion
+  /// to other devices and prevent resurrection.
+  ///
+  /// This is the method that should be called from user-facing delete paths
+  /// (repositories) when cloud sync is active. The hard `deleteCharacterById`
+  /// is retained for internal purge/migration use.
+  Future<int> softDeleteCharacterById(String id) async {
+    // Hard cascade the child data (sessions + messages). These are not
+    // independently surfaced in the UI and do not need soft-delete flags
+    // for the character deletion propagation use case.
+    final charSessions = await (select(
+      sessions,
+    )..where((s) => s.characterId.equals(id))).get();
+    for (final s in charSessions) {
+      await (delete(messages)..where((m) => m.sessionId.equals(s.id))).go();
+    }
+    await (delete(sessions)..where((s) => s.characterId.equals(id))).go();
+
+    // Soft-delete the primary character row so the flag travels with the DB.
+    final now = DateTime.now();
+    final count = await (update(characters)..where((c) => c.id.equals(id))).write(
+      CharactersCompanion(
+        deletedAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
     await bumpSyncVersion();
     return count;
   }
@@ -1565,6 +1607,30 @@ class AppDatabase extends _$AppDatabase {
     }
     await (delete(sessions)..where((s) => s.groupId.equals(id))).go();
     final count = await (delete(groups)..where((g) => g.id.equals(id))).go();
+    await bumpSyncVersion();
+    return count;
+  }
+
+  /// Soft-delete a group (sets deletedAt + updatedAt) while hard-cascading its
+  /// dependent sessions and messages. The soft-deleted row stays so cloud DB
+  /// sync can propagate the deletion flag and the merge layer can prevent
+  /// resurrection on other devices.
+  Future<int> softDeleteGroupById(String id) async {
+    final groupSessions = await (select(
+      sessions,
+    )..where((s) => s.groupId.equals(id))).get();
+    for (final s in groupSessions) {
+      await (delete(messages)..where((m) => m.sessionId.equals(s.id))).go();
+    }
+    await (delete(sessions)..where((s) => s.groupId.equals(id))).go();
+
+    final now = DateTime.now();
+    final count = await (update(groups)..where((g) => g.id.equals(id))).write(
+      GroupsCompanion(
+        deletedAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
     await bumpSyncVersion();
     return count;
   }

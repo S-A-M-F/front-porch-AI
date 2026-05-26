@@ -137,8 +137,11 @@ class DatabaseMergeService {
         final localUpdatedAt = localRow.data[updatedAtColumn] as int? ?? 0;
         final localDeletedAt = localRow.data[deletedAtColumn] as int?;
 
-        if (remoteUpdatedAt > localUpdatedAt) {
-          // Remote is newer → UPDATE local
+        if (remoteUpdatedAt > localUpdatedAt && !(localDeletedAt != null && remoteDeletedAt == null)) {
+          // Remote is newer → UPDATE local.
+          // Guard: never let a remote *live* row resurrect a locally soft-deleted row
+          // (even on minor timestamp skew). The local deletion flag will travel when we
+          // upload the post-merge DB.
           await _updateRow(localDb, tableName, idColumn, remoteId, remoteRow);
           changed = true;
           debugPrint(
@@ -159,6 +162,11 @@ class DatabaseMergeService {
           );
           changed = true;
           debugPrint('[Merge] SOFT-DELETE $tableName $remoteId');
+        } else if (localDeletedAt != null && (remoteDeletedAt == null || remoteUpdatedAt < localUpdatedAt)) {
+          // Local soft-delete wins (remote is still live or older). No local change needed
+          // (the row we already have carries the flag), but note it for diagnostics.
+          // The subsequent upload of the local DB after merge will carry the deletion.
+          debugPrint('[Merge] LOCAL SOFT-DELETE $tableName $remoteId wins over remote (prevents resurrection)');
         }
       }
     }

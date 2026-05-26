@@ -1306,6 +1306,8 @@ class ChatService extends ChangeNotifier {
   bool get isCancellingRealismEval => _isCancellingRealismEval;
   bool get isProcessingGreeting => _isProcessingGreeting;
   String get realismEvalStreamText => _realismEvalStreamText;
+  /// Stream text with any  blocks stripped (for display).
+  String get realismEvalStreamTextClean => _stripThinkBlocks(_realismEvalStreamText);
   String get characterEmotion => _characterEmotion;
 
   String getCurrentEmotion() => _characterEmotion;
@@ -4044,11 +4046,13 @@ class ChatService extends ChangeNotifier {
     // Compute needs_deltas AFTER generation so the post-generation checks
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
     // This ensures UI chips show accurate deltas.
-    if (_needsSimEnabled) {
-      _pendingRealismMetadata ??= {};
+    // Apply directly to the message since _pendingRealismMetadata was consumed.
+    if (_needsSimEnabled && _messages.isNotEmpty) {
       final needsDeltas = _computeNeedsDeltasWithReasons();
       if (needsDeltas.isNotEmpty) {
-        _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
+        _messages.last.activeMetadata ??= {};
+        _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
+        notifyListeners();
       }
     }
   }
@@ -4350,12 +4354,10 @@ class ChatService extends ChangeNotifier {
 
       // Compute needs_deltas AFTER generation so the post-generation checks
       // are reflected. This mirrors the normal generation path (line ~4053).
+      // Apply directly to the message since _pendingRealismMetadata was consumed.
+      Map<String, dynamic>? needsDeltas = null;
       if (_needsSimEnabled) {
-        _pendingRealismMetadata ??= {};
-        final needsDeltas = _computeNeedsDeltasWithReasons();
-        if (needsDeltas.isNotEmpty) {
-          _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
-        }
+        needsDeltas = _computeNeedsDeltasWithReasons();
       }
 
       // After generation, merge the new response as a swipe on the original message
@@ -4367,7 +4369,15 @@ class ChatService extends ChangeNotifier {
         _messages.removeLast();
         lastMsg.swipes.add(newText);
         lastMsg.swipeIndex = lastMsg.swipes.length - 1;
-        lastMsg.activeMetadata = newMetadata;
+        // Merge needs_deltas into the swipe metadata
+        if (needsDeltas != null && needsDeltas.isNotEmpty) {
+          lastMsg.activeMetadata = {
+            ...(newMetadata ?? {}),
+            'needs_deltas': needsDeltas,
+          };
+        } else {
+          lastMsg.activeMetadata = newMetadata;
+        }
         _messages.add(lastMsg);
         await _saveChat();
         notifyListeners();

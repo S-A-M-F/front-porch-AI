@@ -10862,7 +10862,7 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
                         if (!isGreeting &&
                             widget
                                 .chatService
-                                .realismEvalStreamText
+                                .realismEvalStreamTextClean
                                 .isNotEmpty) ...[
                           Flexible(
                             child: Padding(
@@ -10931,7 +10931,7 @@ class _RealismProcessingOverlayState extends State<_RealismProcessingOverlay>
                                             child: Text(
                                               widget
                                                   .chatService
-                                                  .realismEvalStreamText,
+                                                  .realismEvalStreamTextClean,
                                               style: TextStyle(
                                                 color: accentColor.withOpacity(0.8),
                                                 fontSize: 11.5,

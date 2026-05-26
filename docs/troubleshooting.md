@@ -556,6 +556,10 @@ Always keep at least one local backup before enabling sync on a new device.
 
 This guarantees a beta tester never accidentally corrupts a stable user's characters, chats, or settings.
 
+**Rawhide / dev cloud sync isolation**:
+- Rawhide builds sync to their own remote namespace (`/FrontPorchAI-Rawhide`) instead of sharing `/FrontPorchAI` with Stable.
+- This prevents Rawhide changes (including deletions) from affecting Stable cloud data and vice versa.
+
 **Migration between them**:
 1. Close both apps.
 2. Copy the entire `FrontPorchAI-Beta` folder to `FrontPorchAI` (or vice-versa).

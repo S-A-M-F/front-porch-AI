@@ -2451,6 +2451,7 @@ class WebServerService extends ChangeNotifier {
       await _characterRepository!.deleteCharacter(
         character,
         chatsDir: _storageService.chatsDir,
+        cloudSyncService: _cloudSyncService, // enables soft-delete flag + reconcile-driven remote cleanup
       );
 
       return shelf.Response.ok(
@@ -2849,7 +2850,7 @@ class WebServerService extends ChangeNotifier {
       final body = jsonDecode(await request.readAsString());
       final id = body['id']?.toString() ?? '';
       if (id.isEmpty) return _errorResponse(400, 'Group id is required');
-      await _groupChatRepository!.delete(id);
+      await _groupChatRepository!.delete(id, cloudSyncService: _cloudSyncService); // enables deletion propagation via soft flag + reconcile
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
         headers: {'Content-Type': 'application/json'},

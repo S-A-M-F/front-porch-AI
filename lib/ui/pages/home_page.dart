@@ -996,7 +996,8 @@ class _HomePageState extends State<HomePage> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
+            onPressed: () async {
+              Navigator.of(ctx).pop();
               final groupRepo = Provider.of<GroupChatRepository>(
                 context,
                 listen: false,
@@ -1005,8 +1006,8 @@ class _HomePageState extends State<HomePage> {
                 context,
                 listen: false,
               );
-              groupRepo.delete(group.id, cloudSyncService: cloudSyncService);
-              Navigator.pop(ctx);
+              await groupRepo.delete(group.id, cloudSyncService: cloudSyncService);
+              // No post-delete snackbar for groups (character delete shows one via the outer context)
             },
             child: const Text('Delete'),
           ),

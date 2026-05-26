@@ -80,6 +80,8 @@ class CharacterRepository extends ChangeNotifier {
 
       _characters.clear();
 
+      final missingPngNames = <String>[];
+
       for (final c in dbChars) {
         final card = _characterFromRow(c);
 
@@ -117,9 +119,11 @@ class CharacterRepository extends ChangeNotifier {
               );
             }
           } catch (e) {
-            debugPrint(
-              '[CharacterRepository] Failed to load PNG for ${card.name}: $e',
-            );
+            if (e is PathNotFoundException || e.toString().contains('No such file')) {
+              missingPngNames.add(card.name);
+            } else {
+              debugPrint('[CharacterRepository] Failed to load PNG for ${card.name}: $e');
+            }
           }
         }
 
@@ -141,6 +145,14 @@ class CharacterRepository extends ChangeNotifier {
         }
 
         _characters.add(card);
+      }
+
+      // Summarize missing PNGs once (common when developing from source or after cloud deletes)
+      if (missingPngNames.isNotEmpty) {
+        debugPrint(
+          '[CharacterRepository] ${missingPngNames.length} characters have missing local PNG files '
+          '(they can be restored via Cloud Sync): ${missingPngNames.join(", ")}',
+        );
       }
     } catch (e) {
       print('Error loading characters from DB: $e');
@@ -189,6 +201,8 @@ class CharacterRepository extends ChangeNotifier {
       return 0;
     }
   }
+
+
 
   /// Convert a DB row into a CharacterCard model.
   CharacterCard _characterFromRow(Character c) {
@@ -283,9 +297,10 @@ class CharacterRepository extends ChangeNotifier {
     _characters.remove(character);
     notifyListeners();
 
-    // Delete from database
+    // Delete from database (soft-delete the character row so the deletion flag
+    // propagates through cloud DB sync + merge and prevents resurrection).
     if (character.dbId != null) {
-      await _db.deleteCharacterById(character.dbId!);
+      await _db.softDeleteCharacterById(character.dbId!);
     }
 
     // Delete the PNG file from disk
@@ -314,11 +329,13 @@ class CharacterRepository extends ChangeNotifier {
         }
       }
 
-      // Delete from cloud storage
+      // Delete from cloud storage (best-effort immediate cleanup while online).
+      // The authoritative cleanup happens later in CloudSyncService._reconcileDeletedAssets
+      // during the next fullSync, using the DB as source of truth.
       if (cloudSyncService != null) {
         final charId = p.basenameWithoutExtension(character.imagePath!);
         final pngName = p.basename(character.imagePath!);
-        cloudSyncService.deleteRemoteCharacter(charId, pngName);
+        await cloudSyncService.deleteRemoteCharacter(charId, pngName);
       }
     }
 
@@ -366,10 +383,23 @@ class CharacterRepository extends ChangeNotifier {
           .replaceAll(RegExp(r'[^\w\s\-]'), '')
           .replaceAll(' ', '_');
 
-      // Remove old PNG for same-named character to prevent duplicates
+      // Remove old PNG + soft-delete old DB row for same-named character to prevent duplicates.
+      // Soft-deleting the old row ensures the next cloud sync's _reconcileDeletedAssets
+      // will clean up any remote orphan PNG/chat folder for the old ID (and the row
+      // will be filtered from getAllCharacters / UI).
       final cardName = card.name;
       final existing = _characters.where((c) => c.name == cardName).toList();
       for (final oldChar in existing) {
+        if (oldChar.dbId != null) {
+          try {
+            await _db.softDeleteCharacterById(oldChar.dbId!);
+            debugPrint(
+              '[Import] Soft-deleted old character row for name collision: ${oldChar.name} (id=${oldChar.dbId})',
+            );
+          } catch (e) {
+            debugPrint('[Import] Could not soft-delete old character row: $e');
+          }
+        }
         if (oldChar.imagePath != null) {
           try {
             final oldFile = File(oldChar.imagePath!);
@@ -383,6 +413,8 @@ class CharacterRepository extends ChangeNotifier {
             debugPrint('[Import] Could not delete old PNG: $e');
           }
         }
+        // Remove from in-memory list so it doesn't linger with a dead path
+        _characters.remove(oldChar);
       }
 
       final destPath =
