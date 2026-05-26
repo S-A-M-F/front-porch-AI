@@ -3693,19 +3693,16 @@ class ChatService extends ChangeNotifier {
     _isProcessingGreeting = true;
     notifyListeners();
     try {
-      // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
-      // HTTP requests being dropped before headers are received.
-      await _evaluateEmotionalStateCall();
+      await Future.wait([
+        _evaluateEmotionalStateCall(),
+        _evaluateRelationshipCall(),
+      ]);
 
-      // Check for cancellation after each eval
       if (_realismEvalCancelled) {
         debugPrint('[Realism] Post-greeting eval cancelled');
-        _realismEvalCancelled =
-            false; // Reset the flag so future messages can proceed
+        _realismEvalCancelled = false;
         return;
       }
-
-      await _evaluateRelationshipCall();
 
       // Check for cancellation after each eval
       if (_realismEvalCancelled) {
@@ -3759,45 +3756,16 @@ class ChatService extends ChangeNotifier {
           return;
         }
       } else {
-        // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
-        // HTTP requests being dropped before headers are received.
-        await _evaluateRelationshipCall();
+        await Future.wait([
+          _evaluateRelationshipCall(),
+          _evaluateEmotionalStateCall(),
+          _evaluatePhysicalStateCall(),
+          _evaluateNarrativeCall(),
+        ]);
 
-        // Check for cancellation after each eval
         if (_realismEvalCancelled) {
           debugPrint('[Realism] Retroactive scan cancelled');
-          _realismEvalCancelled =
-              false; // Reset the flag so future messages can proceed
-          return;
-        }
-
-        await _evaluateEmotionalStateCall();
-
-        // Check for cancellation after each eval
-        if (_realismEvalCancelled) {
-          debugPrint('[Realism] Retroactive scan cancelled');
-          _realismEvalCancelled =
-              false; // Reset the flag so future messages can proceed
-          return;
-        }
-
-        await _evaluatePhysicalStateCall();
-
-        // Check for cancellation after each eval
-        if (_realismEvalCancelled) {
-          debugPrint('[Realism] Retroactive scan cancelled');
-          _realismEvalCancelled =
-              false; // Reset the flag so future messages can proceed
-          return;
-        }
-
-        await _evaluateNarrativeCall();
-
-        // Check for cancellation after each eval
-        if (_realismEvalCancelled) {
-          debugPrint('[Realism] Retroactive scan cancelled');
-          _realismEvalCancelled =
-              false; // Reset the flag so future messages can proceed
+          _realismEvalCancelled = false;
           return;
         }
       }
@@ -4018,8 +3986,7 @@ class ChatService extends ChangeNotifier {
           return;
         }
       } else {
-        // KoboldCpp has a native FIFO task scheduler that can batch multiple
-        // requests. Fire all evals concurrently and let the scheduler handle it.
+        // Fire all evals concurrently.
         if (_storageService.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
@@ -4335,18 +4302,12 @@ class ChatService extends ChangeNotifier {
         if (_storageService.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
-          // KoboldCPP is single-threaded — run evals sequentially to avoid concurrent
-          // HTTP requests being dropped before headers are received.
-          await _evaluateRelationshipCall(onChunk: handleChunk);
-          if (!_realismEvalCancelled) {
-            await _evaluateEmotionalStateCall(onChunk: handleChunk);
-          }
-          if (!_realismEvalCancelled) {
-            await _evaluatePhysicalStateCall(onChunk: handleChunk);
-          }
-          if (!_realismEvalCancelled) {
-            await _evaluateNarrativeCall(onChunk: handleChunk);
-          }
+          await Future.wait([
+            _evaluateRelationshipCall(onChunk: handleChunk),
+            _evaluateEmotionalStateCall(onChunk: handleChunk),
+            _evaluatePhysicalStateCall(onChunk: handleChunk),
+            _evaluateNarrativeCall(onChunk: handleChunk),
+          ]);
         }
 
         // Check for cancellation after evals complete
@@ -8577,62 +8538,18 @@ class ChatService extends ChangeNotifier {
       if (!llm.isReady) return null;
     }
 
-    // Thinking models (e.g. QwQ, Deepseek-R1 via KoboldCPP) output a
-    // <think>…</think> block before the JSON answer. That block contains
-    // countless '}' characters, so we must NOT use '}' as a stop sequence
-    // for thinking models — KoboldCPP would terminate the stream on the very
-    // first '}' inside the think block, returning an empty/truncated response
-    // before the JSON is ever produced. For thinking models we rely on the
-    // model's own EOS token + the max_length safety ceiling instead.
-    // Determine whether a thinking model is in use, per-backend:
-    //   • Local KoboldCPP → use the dedicated koboldThinkingModel flag
-    //     (the remote reasoningEnabled flag is irrelevant for local models)
-    //   • Remote API → use reasoningEnabled as before
-    // Getting this wrong causes two problems:
-    //   - Grammar sent to thinking model → model outputs 0 tokens (blocked)
-    //   - Stop sequences sent → stream terminates inside <think> block
-    final isThinkingModel = _llmProvider!.isLocal
-        ? _storageService.koboldThinkingModel
-        : _storageService.reasoningEnabled;
-    // KoboldCPP's stop_sequence handling is unreliable for short JSON evals —
-    // models enter repetition loops until maxLength is hit. Use a small ceiling
-    // (150 tokens) for non-thinking local evals since a JSON object is 10-30 tokens.
-    // Thinking models need ~2K tokens for their internal reasoning block before
-    // they produce the JSON answer, so they get a higher limit (2500).
-    // API backends get 4000 for thinking model runway.
-    final evalMaxLength = _llmProvider!.isLocal
-        ? (isThinkingModel ? 2500 : 150)
-        : 4000;
+    //     // Unified eval parameters — API-style works for all backends.
     final params = GenerationParams(
       prompt: prompt,
-      maxLength: evalMaxLength,
+      maxLength: 4000,
       temperature: 0.1,
-      // Prevent repetition loops at low temperature.
-      // Without this, non-grammar-constrained models (e.g. thinking models
-      // where grammar is disabled) can get stuck generating the same JSON
-      // key forever: "trust_reason": "...", "trust_reason": "...",  ...
       repeatPenalty: 1.15,
-      // Constrain token selection for reliable JSON structure.
       topP: 0.5,
-      // Disable XTC (Temperature Extinction) — its per-token coin-flip
-      // introduces non-determinism that corrupts JSON at low temperature.
       xtcProbability: 0.0,
       reasoningEnabled: false,
-      // Non-thinking models: stop the moment the JSON object closes.
-      // Thinking models: no '}' stops — the think block is full of them.
-      // For API/remote models, never use stop sequences — models like QwQ
-      // do internal reasoning even with reasoningEnabled=false, so JSON arrives late.
-      stopSequences: _llmProvider!.isLocal
-          ? (isThinkingModel ? [] : ['}\n', '}'])
-          : [],
-      // Thinking model KoboldCPP fixes:
-      //  banEosToken: prevents KoboldCPP from treating the chat template's
-      //    built-in stop tokens (<|im_end|> etc.) as EOS mid-generation —
-      //    without this, the very first SSE event is {"token":"","finish_reason":"stop"}
-      //  trimStop: false prevents KoboldCPP from silently trimming/swallowing
-      //    the first visible tokens when they happen to match a template stop
-      banEosToken: isThinkingModel && _llmProvider!.isLocal,
-      trimStop: !(isThinkingModel && _llmProvider!.isLocal),
+      stopSequences: [],
+      banEosToken: false,
+      trimStop: true,
     );
 
     String response = '';
@@ -10288,34 +10205,15 @@ class ChatService extends ChangeNotifier {
         return;
       }
 
-      final isLocalKobold = _llmProvider == null || _llmProvider!.isLocal;
-
-      if (isLocalKobold) {
-        if (_storageService.realismOneShotEval) {
-          await _evaluateOneShotCall(onChunk: handleChunk);
-        } else {
-          await _evaluateRelationshipCall(onChunk: handleChunk);
-          if (!_realismEvalCancelled) {
-            await _evaluateEmotionalStateCall(onChunk: handleChunk);
-          }
-          if (!_realismEvalCancelled) {
-            await _evaluatePhysicalStateCall(onChunk: handleChunk);
-          }
-          if (!_realismEvalCancelled) {
-            await _evaluateNarrativeCall(onChunk: handleChunk);
-          }
-        }
+      if (_storageService.realismOneShotEval) {
+        await _evaluateOneShotCall(onChunk: handleChunk);
       } else {
-        if (_storageService.realismOneShotEval) {
-          await _evaluateOneShotCall(onChunk: handleChunk);
-        } else {
-          await Future.wait([
-            _evaluateRelationshipCall(onChunk: handleChunk),
-            _evaluateEmotionalStateCall(onChunk: handleChunk),
-            _evaluatePhysicalStateCall(onChunk: handleChunk),
-            _evaluateNarrativeCall(onChunk: handleChunk),
-          ]);
-        }
+        await Future.wait([
+          _evaluateRelationshipCall(onChunk: handleChunk),
+          _evaluateEmotionalStateCall(onChunk: handleChunk),
+          _evaluatePhysicalStateCall(onChunk: handleChunk),
+          _evaluateNarrativeCall(onChunk: handleChunk),
+        ]);
       }
 
       // Handle cancellation after the eval calls
