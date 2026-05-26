@@ -5598,8 +5598,6 @@ class _MessageBubbleState extends State<_MessageBubble> {
         final delta = (data is Map) ? (data['delta'] as int? ?? 0) : 0;
         final reason = (data is Map) ? (data['reason'] as String? ?? '') : '';
 
-        if (delta == 0) return;
-
         IconData icon;
         Color color;
         String label = need[0].toUpperCase() + need.substring(1);

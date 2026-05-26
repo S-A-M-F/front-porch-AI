@@ -19,8 +19,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
@@ -37,6 +35,20 @@ class UiSettingsDialog extends StatefulWidget {
 }
 
 class _UiSettingsDialogState extends State<UiSettingsDialog> {
+  late ValueNotifier<CharacterCard?> _characterNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _characterNotifier = ValueNotifier<CharacterCard?>(widget.character);
+  }
+
+  @override
+  void dispose() {
+    _characterNotifier.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final storageService = Provider.of<StorageService>(context);
@@ -57,8 +69,8 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    widget.character != null
-                        ? '${widget.character!.name} - UI Settings'
+                    _characterNotifier.value != null
+                        ? '${_characterNotifier.value!.name} - UI Settings'
                         : 'UI Settings',
                     style: const TextStyle(
                       fontSize: 20,
@@ -100,7 +112,7 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
                 (val) => storageService.setTextScale(val),
                 divisions: 30,
               ),
-              if (widget.character != null) ...[
+              if (_characterNotifier.value != null) ...[
                 const SizedBox(height: 8),
                 _buildAvatarLockedToggle(context),
               ],
@@ -118,42 +130,42 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
               _buildColorRow(
                 context,
                 'User Bubble',
-                widget.character?.frontPorchExtensions?.userBubbleColor ??
+                _characterNotifier.value?.frontPorchExtensions?.userBubbleColor ??
                     storageService.globalUserBubbleColor,
                 (color) => _updateUserBubbleColor(context, color),
               ),
               _buildColorRow(
                 context,
                 'User Text',
-                widget.character?.frontPorchExtensions?.userTextColor ??
+                _characterNotifier.value?.frontPorchExtensions?.userTextColor ??
                     storageService.globalUserTextColor,
                 (color) => _updateUserTextColor(context, color),
               ),
               _buildColorRow(
                 context,
                 'AI Bubble',
-                widget.character?.frontPorchExtensions?.aiBubbleColor ??
+                _characterNotifier.value?.frontPorchExtensions?.aiBubbleColor ??
                     storageService.globalAiBubbleColor,
                 (color) => _updateAiBubbleColor(context, color),
               ),
               _buildColorRow(
                 context,
                 'AI Text',
-                widget.character?.frontPorchExtensions?.aiTextColor ??
+                _characterNotifier.value?.frontPorchExtensions?.aiTextColor ??
                     storageService.globalAiTextColor,
                 (color) => _updateAiTextColor(context, color),
               ),
               _buildColorRow(
                 context,
                 'Dialogue (Quoted)',
-                widget.character?.frontPorchExtensions?.dialogueColor ??
+                _characterNotifier.value?.frontPorchExtensions?.dialogueColor ??
                     storageService.globalDialogueColor,
                 (color) => _updateDialogueColor(context, color),
               ),
               _buildColorRow(
                 context,
                 'Actions (*text*)',
-                widget.character?.frontPorchExtensions?.actionColor ??
+                _characterNotifier.value?.frontPorchExtensions?.actionColor ??
                     storageService.globalActionColor,
                 (color) => _updateActionColor(context, color),
               ),
@@ -195,7 +207,7 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
   }
 
   Widget _buildAvatarLockedToggle(BuildContext context) {
-    final character = widget.character!;
+    final character = _characterNotifier.value!;
     final locked =
         character.frontPorchExtensions?.avatarLocked ?? false;
 
@@ -222,7 +234,9 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
         ),
         Switch(
           value: locked,
-          onChanged: (val) => _updateAvatarLocked(context, val),
+          onChanged: (val) async {
+            _updateAvatarLocked(context, val);
+          },
           activeTrackColor: Colors.blueAccent,
         ),
       ],
@@ -433,10 +447,9 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
 
   Future<void> _updateUserBubbleColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
-      // Update per-character setting (create extensions if null)
       final currentExtensions =
           character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
@@ -468,26 +481,19 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
             ? List.from(character.avatarImages!)
             : null,
       )..dbId = character.dbId;
-      // Save to database
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      // Reload from PNG to ensure extensions are persisted
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter((reloaded ?? updatedCharacter)..dbId = character.dbId);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
-      // Update global setting (no character selected)
       await storage.setGlobalUserBubbleColor(color);
-    }
-    // Refresh UI
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateUserTextColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
       final currentExtensions =
@@ -523,20 +529,17 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter((reloaded ?? updatedCharacter)..dbId = character.dbId);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalUserTextColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateAiBubbleColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
       final currentExtensions =
@@ -572,20 +575,17 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter((reloaded ?? updatedCharacter)..dbId = character.dbId);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalAiBubbleColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateAiTextColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
       final currentExtensions =
@@ -619,20 +619,17 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter((reloaded ?? updatedCharacter)..dbId = character.dbId);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalAiTextColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateDialogueColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
       final currentExtensions =
@@ -668,20 +665,17 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter((reloaded ?? updatedCharacter)..dbId = character.dbId);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalDialogueColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateActionColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
       final currentExtensions =
@@ -715,19 +709,16 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter((reloaded ?? updatedCharacter)..dbId = character.dbId);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalActionColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateAvatarLocked(BuildContext context, bool locked) async {
-    final character = widget.character;
+    final character = _characterNotifier.value;
     if (character == null) return;
 
     final currentExtensions =
@@ -763,11 +754,8 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       )..dbId = character.dbId;
     final charRepo = Provider.of<CharacterRepository>(context, listen: false);
     await charRepo.updateCharacter(updatedCharacter);
-    final reloaded = await V2CardService().readCard(character.imagePath!);
-    final chatService = Provider.of<ChatService>(context, listen: false);
-    await chatService.setActiveCharacter((reloaded ?? updatedCharacter)..dbId = character.dbId);
-    if (context.mounted) {
-      Navigator.pop(context);
-    }
+    setState(() {
+      _characterNotifier.value = updatedCharacter;
+    });
   }
 }
