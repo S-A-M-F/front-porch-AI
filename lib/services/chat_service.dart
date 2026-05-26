@@ -4345,17 +4345,25 @@ class ChatService extends ChangeNotifier {
         notifyListeners();
       }
 
+      // Save pre-turn vector BEFORE _generateResponse (which clears
+      // _pendingRealismMetadata).
+      final regenPreTurn =
+          _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
+
+      // Synthesize metadata after all regen evals complete — mirrors the
+      // normal path (line 4020) so emotion_label and realism_state are in
+      // _pendingRealismMetadata before _generateResponse consumes it.
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
+      _pendingRealismMetadata!['realism_state'] =
+          _captureRealismState(preTurn: regenPreTurn);
+
       // If cancellation was requested during realism evaluation, abort generation
       if (_realismEvalCancelled) {
         _realismEvalCancelled = false;
         notifyListeners();
         return;
       }
-
-      // Save pre-turn vector BEFORE _generateResponse (which clears
-      // _pendingRealismMetadata).
-      final regenPreTurn =
-          _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
 
       // Invalidate ONNX cache for the new response
       _onnxCachedForEmotion = null;
