@@ -111,6 +111,8 @@ A multi-component system spanning chat_service.dart and the LLM provider:
 
 **Known gotcha**: GBNF grammar constraints cause many KoboldCPP models to return empty eval responses. Evals use stop sequences + regex parsing (no grammar). Remote APIs work fine without grammar.
 
+**One-shot vs Normal Path Parity (strict)**: When `_storageService.realismOneShotEval` is true, `_evaluateOneShotCall` **must** produce 1:1 equivalent outputs for Bond/Trust/Emotion/Arousal/Fixation/Spatial Stance/Time/Needs deltas as the normal multi-call path (`_evaluateRelationshipCall` + `_evaluateEmotionalStateCall` + `_evaluatePhysicalStateCall` + `_evaluateNarrativeCall`). Differences in what gets evaluated or how deltas are computed between the two paths are bugs. The one-shot path exists purely for token/latency optimization — it must not change observable Realism or Needs behavior.
+
 ### Story Pipeline (Porch Stories)
 
 `StoryPipelineService` is created via `ChangeNotifierProxyProvider2` in `main.dart`. The `update` function must NOT return the previous instance early — it must recreate the service with `llmProvider.activeService` each time so backend switches (Kobold ↔ OpenRouter/Nano-GPT) take effect.

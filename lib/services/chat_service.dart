@@ -9079,8 +9079,27 @@ class ChatService extends ChangeNotifier {
   String _getNsfwCooldownInjection() {
     if (!_realismEnabled || !_nsfwCooldownEnabled) return '';
 
-    final charName = _activeCharacter?.name ?? 'the character';
+    String charName = _activeCharacter?.name ?? 'the character';
+    if (_activeGroup != null && !_observerMode) {
+      // Best-effort: try to resolve the current speaker in group mode for per-character
+      // refractory language. Falls back gracefully to the generic name.
+      final speakerId = _getCurrentSpeakerIdForRealism();
+      if (speakerId.isNotEmpty) {
+        final speakerChar = _groupCharacters.firstWhere(
+          (c) => _getCharacterIdFromCard(c) == speakerId,
+          orElse: () => _groupCharacters.isNotEmpty ? _groupCharacters.first : _activeCharacter!,
+        );
+        charName = speakerChar.name;
+      }
+    }
     String statePrompt = '[OOC Note regarding Physical State:\n';
+
+    // Protective window note for the newer layered systems
+    final bool protectiveWindowActive = _needsAfterglowTurnsRemaining > 0 || _arousalSuppressionTurnsRemaining > 0;
+    if (protectiveWindowActive && _cooldownTurnsRemaining > 0) {
+      statePrompt +=
+          ' $charName is currently inside a temporary protective afterglow/lust-haze window. Other physical and emotional needs (hunger, energy, social connection, the need to move or clean up) feel significantly muted or distant for the next few turns. This is not just emotional — it is a real dampening effect.\n';
+    }
 
     if (_cooldownTurnsRemaining > 0) {
       final total = _cooldownTurnsTotal > 0
@@ -9095,28 +9114,33 @@ class ChatService extends ChangeNotifier {
             ' waves of it, skin flushed and damp, pulse hammering, breath ragged. Everything'
             ' is oversensitive — even a light touch makes them flinch or gasp. The world'
             ' feels soft and liquid around the edges. They\'re physically spent and blissfully'
-            ' wrecked. If {{user}} tries to start something sexual again, $charName\'s body will'
-            ' not respond — they may laugh it off, gently push {{user}}\'s hand away, or pull'
-            ' them close for contact that isn\'t sexual. They need a moment to come back to earth.\n';
+            ' wrecked. Other physical needs (hunger, thirst, the urge to move or clean up) feel'
+            ' distant or unimportant right now. Their current physical position ($_spatialStance)'
+            ' strongly shapes how heavy, sensitive, and unwilling to move they feel. If {{user}} tries to start something sexual again,'
+            ' $charName\'s body will not respond — they may laugh it off, gently push {{user}}\'s hand'
+            ' away, or pull them close for contact that isn\'t sexual. They need a moment to come back to earth.\n';
       } else if (ratio > 0.33) {
-        // ── Phase 2: Warm afterglow (settling in) ──
+        // ── Phase 2: Warm afterglow (settling in) — protective window active ──
         statePrompt +=
             ' $charName is deep in the afterglow — that warm, heavy-limbed contentment where'
             ' everything feels good but nothing feels urgent. Their heartbeat has settled, skin'
             ' still tingling pleasantly. They feel closer to {{user}} than usual, more emotionally'
             ' open — the kind of mood where secrets slip out, where they want to be held, to murmur'
             ' into someone\'s neck, to trace lazy shapes on bare skin. The physical hunger has been'
-            ' thoroughly satisfied. If {{user}} pushes for more, $charName would rather savor this'
-            ' than rush back — a gentle deflection, a "not yet," a kiss on the forehead instead.\n';
+            ' thoroughly satisfied; other bodily needs feel softened or far away for a little while.'
+            ' If {{user}} pushes for more, $charName would rather savor this than rush back — a gentle'
+            ' deflection, a "not yet," a kiss on the forehead instead. The current physical position'
+            ' ($_spatialStance or lack thereof) colors how heavy and content their body feels.\n';
       } else {
-        // ── Phase 3: Late recovery (body starting to wake back up) ──
+        // ── Phase 3: Late recovery (body starting to wake back up) — protective window fading ──
         statePrompt +=
             ' $charName is coming out of the afterglow — body starting to feel like theirs again'
             ' rather than something boneless and floating. The deep satisfaction is still there, a'
             ' pleasant hum under the skin, but the total sensitivity has faded. They could be'
             ' tempted again if {{user}} plays it right, but they\'re not seeking it out — more'
             ' content to let things build naturally than to chase it. A suggestive touch might get'
-            ' a raised eyebrow and a half-smile rather than an immediate response.\n';
+            ' a raised eyebrow and a half-smile rather than an immediate response. Their current physical position ($_spatialStance) will make the coming tiredness feel either cozy and heavy or awkward and restless. A later wave of'
+            ' heavy, sated tiredness may still arrive once the glow fully fades.\n';
       }
 
       statePrompt +=
@@ -9168,6 +9192,20 @@ class ChatService extends ChangeNotifier {
       }
       if (arousalTier < 6) {
         statePrompt += ' $charName is currently $arousalDesc.\n';
+      }
+
+      // When the old refractory has ended but newer protective layers are still active
+      if (_needsAfterglowTurnsRemaining > 0 || _arousalSuppressionTurnsRemaining > 0) {
+        statePrompt +=
+            ' Even though the immediate refractory sensitivity has passed, $charName is still inside a lingering afterglow / lust-haze window. Other needs (hunger, energy, the desire to get up and do things) feel noticeably muted or unimportant for a while longer.\n';
+      }
+
+      // Explicit post-crash warning when the protective layers have expired
+      if (_postClimaxCrashTurnsRemaining > 0 &&
+          _needsAfterglowTurnsRemaining == 0 &&
+          _arousalSuppressionTurnsRemaining == 0) {
+        statePrompt +=
+            ' A delayed wave of heavy, sated physical exhaustion is now hitting $charName. They may become slow, sleepy, reluctant to move, and deeply content to stay exactly where they are ($_spatialStance). This is the classic post-orgasm crash — warm, heavy, and very real.\n';
       }
     }
 
@@ -9814,22 +9852,26 @@ class ChatService extends ChangeNotifier {
         '$relationshipCtx'
         'Reactions are subjective! Evaluate ALL changes through $charName\'s specific personality.\n\n'
         'Evaluate ALL of the following at once:\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-50 to +50)\n'
-        '   +50: Life-changing — fundamentally redefines the relationship\n'
-        '   +30: Profoundly moving — raw vulnerability, sacrifice, or devotion\n'
-        '   +20: Deeply touched — significant emotional breakthrough\n'
-        '   +10: Meaningfully warmed — clearly strengthens the connection\n'
-        '   +5: Moved | +2: Warmed up | +1: Mildly pleasant | 0: No change\n'
-        '   -1: Slightly put off | -2: Annoyed | -5: Hurt\n'
-        '   -10: Wounded | -20: Deeply hurt | -30: Devastated | -50: Devastating betrayal\n'
-        '   ⚠ Default to 0 for normal conversation.\n'
-        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-50 to +30)\n'
-        '   Trust is SUBJECTIVE to $charName\'s personality. What builds trust for one character may break it for another.\n'
-        '   +25 to +30: EXTRAORDINARY trust — selfless sacrifice, proving loyalty beyond doubt, protecting $charName at real personal cost\n'
-        '   +10 to +15: Meaningfully trustworthy — kept a hard promise, showed vulnerability, stood firm under pressure\n'
-        '   +5: Did what $charName craves or values | +2: acted respectably | 0: Neutral\n'
-        '   -5: acted in a way $charName finds personally untrustworthy | -15: deliberate betrayal | -50: unforgivable\n'
-        '   ⚠ Default to 0. If $charName is the one acting (e.g. $charName lied, felt guilty): always 0.\n'
+        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
+        '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
+        '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
+        '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
+        '   +5: Meaningfully warmed — a moment that clearly strengthens the connection\n'
+        '   +3: Moved | +2: Warmed up | +1: Mildly pleasant\n'
+        '   -1: Slightly put off | -2: Annoyed | -3: Hurt — a clearly unkind or dismissive moment\n'
+        '   -5: Wounded — a significant emotional injury\n'
+        '   -8: Deeply hurt — a cruel or callous act that damages the bond\n'
+        '   -10: Devastated — a severe betrayal of emotional trust\n'
+        '   -15: Devastating betrayal — a relationship-destroying act\n'
+        '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
+        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
+        '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
+        '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
+        '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
+        '   +5: $userName did exactly what $charName craves or values most | +2: acted authentically in a way $charName respects | 0: Neutral\n'
+        '   -5: $userName did something $charName finds personally untrustworthy given her personality | -30: deliberate deception or betrayal | -200: Unforgivable betrayal\n'
+        '   ⚠ Default to 0. Consider her personality — what one character finds threatening another may find attractive or trust-building.\n'
+        '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
         '3. "trust_reason": One brief in-character thought from $charName explaining the trust shift in $userName, or "none" if delta is 0.\n'
         '4. "emotion": $charName\'s overarching emotional state (one nuanced word).\n'
         '   NOT generic ("happy"/"sad") — find the specific texture: wistful not sad, flustered not happy, prickly not angry.\n'
@@ -9837,7 +9879,12 @@ class ChatService extends ChangeNotifier {
         '${_storageService.expressionEnabled ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
         '5. "emotion_intensity": mild, moderate, or strong\n'
         '6. "bond_reason": One brief in-character thought from $charName explaining the relationship shift, or "none" if delta is 0.\n'
-        '7. "posture": $charName\'s current physical position and location (brief grounded phrase), or "none". Match the current scene context — update if the setting changed, time passed, or scene broke. Maintain continuity only within the same scene.\n'
+        '7. "posture": $charName\'s current physical position and location (brief grounded phrase), or "none".\n'
+        '   - Match the posture to the current scene context and emotional state.\n'
+        '   - If the conversation implies a location or activity change, update accordingly.\n'
+        '   - Within the same scene, maintain natural continuity (don\'t jump locations).\n'
+        '   - Across scene breaks or time jumps, update to the new context.\n'
+        '   - If time advanced significantly or a new day started, characters naturally shift positions.\n'
         '$arousalInstr'
         '${primaryObjective != null ? '$objNum. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Triggered by a STRONG event THIS turn.\n   ⚠ Default to "none". 90% of turns should produce "none".\n' : '$objNum. "proposed_objective": A meaningful, emotionally-driven goal triggered by a strong event THIS turn. Default: "none". 90% of turns should produce "none".\n'}'
         '$fixNum. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — haunts them across scenes, not a temporary reaction. Default: "none".\n'
@@ -11000,9 +11047,14 @@ class ChatService extends ChangeNotifier {
       personalityInjection = 'Character Personality Traits:\n"$p"\n\n';
     }
 
+    final currentStance = _spatialStance.isNotEmpty
+        ? 'Current physical position/stance of $charName: "$_spatialStance". '
+        : '';
+
     final prompt =
         'Read the following character response and answer ONE question.\n\n'
         '$personalityInjection'
+        '$currentStance'
         'RESPONSE:\n$responseText\n\n'
         'Question: Did $charName (and ONLY $charName) PHYSICALLY reach climax/orgasm in this response? '
         'This must be an event actively occurring or just occurred in the text — '
@@ -11015,7 +11067,10 @@ class ChatService extends ChangeNotifier {
         'ONLY answer true if $charName\'s orgasm/climax is unambiguously depicted as actively happening.\n'
         'If true, ALSO estimate their "refractory_turns" (recovery time before they can be aroused again). '
         'A normal character might take 5-7 turns. A highly sexual/nympho character takes 1-2 turns. Use their personality traits to decide.\n\n'
-        'Respond with ONLY a JSON object: {"climax_detected": <true|false>, "refractory_turns": <number 1-8>, "reason": "<brief>"}';
+        'If climax_detected is true, ALSO provide realistic physical consequences for needs based on the described act AND the current physical stance:\n'
+        '- "hygiene_delta": integer (strongly negative when messy — internal cum, cum on tits/face/stomach/sheets, creampie, etc. Typical range -12 to -25. Use spatial stance to judge how contained or exposed the mess is).\n'
+        '- "bladder_delta": integer (usually small or zero from orgasm itself. Positive only if the scene explicitly shows them relieving themselves right after. Do not invent bathroom visits.)\n\n'
+        'Respond with ONLY a JSON object: {"climax_detected": <true|false>, "refractory_turns": <number 1-8>, "orgasm_intensity": <1-10>, "hygiene_delta": <int>, "bladder_delta": <int>, "reason": "<brief>"}';
 
     try {
       debugPrint('[Realism:Climax] Checking AI response for climax...');
@@ -11051,14 +11106,23 @@ class ChatService extends ChangeNotifier {
         // "shot of adrenaline / monster energy" effect) so characters stay
         // awake and engaged through intense scenes instead of collapsing.
         if (_needsSimEnabled) {
+          // Use LLM-provided grounded deltas when available. These take the
+          // current spatial stance into account (e.g. "sprawled in bed after creampie"
+          // produces a much harder hygiene hit than "in the shower").
+          final llmHygiene = _extractJsonInt(text, 'hygiene_delta');
+          final llmBladder = _extractJsonInt(text, 'bladder_delta');
+
+          final hygieneDelta = llmHygiene ?? -18; // Strong default — cumming is messy
+          final bladderDelta = llmBladder ?? 0;   // Orgasm itself does not fill the bladder
+
           _applyNeedsDeltas({
             'fun': 16,
             'social': 9,
-            'bladder': 8,
+            'bladder': bladderDelta,
             'energy':
                 10, // was -7; now a noticeable rush (like caffeine/adrenaline)
             'hunger': -4,
-            'hygiene': -10, // cum/semen/sweat lowers cleanliness
+            'hygiene': hygieneDelta,
           }, fromSexualActivity: true);
 
           // Delayed post-climax crash (lethargy). Only on confirmed physical orgasm.
@@ -11106,9 +11170,17 @@ class ChatService extends ChangeNotifier {
   Future<void> _checkSexualActivityInResponse(String responseText) async {
     if (responseText.trim().isEmpty) return;
     if (_activeCharacter == null) return;
-    if (_arousalLevel < 3) return; // only bother if there was real desire
 
-    // Avoid double-applying right after a climax (climax already handled full effects)
+    // NOTE: We intentionally no longer early-return on low _arousalLevel here.
+    // The check is now primarily content-driven (what the response text describes).
+    // This is required for correct needs deltas (including the new spatial-aware
+    // hygiene/bladder impacts) during message regeneration, where the restored
+    // historical state may have low arousal even if the new text is highly sexual.
+    // The LLM will still only report sexual_activity=true when the text clearly
+    // supports it.
+
+    // Still avoid double-applying immediately after a confirmed climax in the
+    // *current* state (climax handler already applied the strong effects).
     if (_cooldownTurnsRemaining > 0) return;
 
     if (_activeCharacter == null) {
@@ -11117,12 +11189,20 @@ class ChatService extends ChangeNotifier {
     }
     final charName = _activeCharacter!.name;
 
+    final currentStance = _spatialStance.isNotEmpty
+        ? 'Current physical position/stance of $charName: "$_spatialStance". '
+        : '';
+
     final prompt =
         'Read the following character response.\n\n'
+        '$currentStance'
         'RESPONSE:\n$responseText\n\n'
         'Did $charName engage in significant sexual or intimate physical activity '
-        '(kissing, touching, oral, fingering, grinding, heavy petting, etc.) even if they did not reach orgasm? '
-        'Answer ONLY with a JSON object: {"sexual_activity": true/false, "intensity": 1-10, "reason": "short"}';
+        '(kissing, touching, oral, fingering, grinding, heavy petting, titty fuck, creampie risk, etc.) even if they did not reach orgasm? '
+        'Answer ONLY with a JSON object: {"sexual_activity": true/false, "intensity": 1-10, "reason": "short"}. '
+        'If sexual_activity is true, ALSO include realistic physical consequences:\n'
+        '- "hygiene_delta": integer (negative when fluids are involved — especially if cum lands on body, face, tits, stomach, sheets, or inside during creampie/titty fuck/etc. Use a hard negative when the current stance makes the mess difficult to contain or clean up immediately).\n'
+        '- "bladder_delta": integer (almost always 0 or very small from sexual activity alone).';
 
     try {
       final raw = await _fireLLMEval(prompt);
@@ -11138,20 +11218,25 @@ class ChatService extends ChangeNotifier {
       final intensity = _extractJsonInt(text, 'intensity') ?? 5;
       final strength = (intensity / 10.0).clamp(0.4, 1.0);
 
-      // Milder deltas than full climax.
-      // Note: energy is now a *small positive* during sexual activity (like a
-      // stimulant/adrenaline/pleasure rush). This prevents characters from
-      // nodding off or passing out mid-sex in long erotic scenes (the classic
-      // "she fell asleep while I was going down on her" problem). The crash
-      // feeling can still arrive later via normal decay + night penalties.
+      // Use LLM-grounded deltas when available. These are informed by the
+      // described act + the character's current physical stance (spatial awareness).
+      // This prevents nonsense like positive bladder from cumming, and makes
+      // hygiene correctly punishing when things get messy (titty fuck, creampie,
+      // cum on sheets while cuddling, etc.).
+      final llmHygiene = _extractJsonInt(text, 'hygiene_delta');
+      final llmBladder = _extractJsonInt(text, 'bladder_delta');
+
+      final hygieneDelta = llmHygiene ?? (-8 * strength).round();
+      final bladderDelta = llmBladder ?? (2 * strength).round(); // very small by default
+
       _applyNeedsDeltas({
         'fun': (12 * strength).round(),
         'social': (7 * strength).round(),
-        'bladder': (5 * strength).round(),
+        'bladder': bladderDelta,
         'energy': (3 * strength)
             .round(), // was negative; now a mild boost (1-3 per turn)
         'hunger': (-3 * strength).round(),
-        'hygiene': (-6 * strength).round(), // sexual contact lowers cleanliness
+        'hygiene': hygieneDelta,
       }, fromSexualActivity: true);
 
       debugPrint(
