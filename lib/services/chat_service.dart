@@ -9912,13 +9912,16 @@ class ChatService extends ChangeNotifier {
       }
 
       if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        _pendingRealismMetadata = {
-          'bond_delta': bondDelta,
-          if (arousalDelta != 0) 'arousal_delta': arousalDelta,
-          if (trustDelta != 0) 'trust_delta': trustDelta,
-          if (bondReason.isNotEmpty) 'bond_reason': bondReason,
-          if (trustReason.isNotEmpty) 'trust_reason': trustReason,
-        };
+        _pendingRealismMetadata ??= {};
+        _pendingRealismMetadata!['bond_delta'] = bondDelta;
+        if (arousalDelta != 0)
+          _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
+        if (trustDelta != 0)
+          _pendingRealismMetadata!['trust_delta'] = trustDelta;
+        if (bondReason.isNotEmpty)
+          _pendingRealismMetadata!['bond_reason'] = bondReason;
+        if (trustReason.isNotEmpty)
+          _pendingRealismMetadata!['trust_reason'] = trustReason;
       } else if (bondReason.isNotEmpty || trustReason.isNotEmpty) {
         _pendingRealismMetadata ??= {};
         if (bondReason.isNotEmpty)
