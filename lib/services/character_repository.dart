@@ -30,6 +30,7 @@ import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/cloud_sync_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/database/database.dart';
+import 'package:image/image.dart' as img;
 
 class CharacterRepository extends ChangeNotifier {
   AppDatabase _db;
@@ -388,115 +389,139 @@ class CharacterRepository extends ChangeNotifier {
         );
       }
 
-      // Copy the file to the app's characters directory
-      final charDir = _storage.charactersDir;
-      if (!await charDir.exists()) {
-        await charDir.create(recursive: true);
-      }
-
-      // Use the character name for the filename, sanitized
-      final safeName = card.name
-          .replaceAll(RegExp(r'[^\w\s\-]'), '')
-          .replaceAll(' ', '_');
-
-      // Remove old PNG + soft-delete old DB row for same-named character to prevent duplicates.
-      // Soft-deleting the old row ensures the next cloud sync's _reconcileDeletedAssets
-      // will clean up any remote orphan PNG/chat folder for the old ID (and the row
-      // will be filtered from getAllCharacters / UI).
-      final cardName = card.name;
-      final existing = _characters.where((c) => c.name == cardName).toList();
-      for (final oldChar in existing) {
-        if (oldChar.dbId != null) {
-          try {
-            await _db.softDeleteCharacterById(oldChar.dbId!);
-            debugPrint(
-              '[Import] Soft-deleted old character row for name collision: ${oldChar.name} (id=${oldChar.dbId})',
-            );
-          } catch (e) {
-            debugPrint('[Import] Could not soft-delete old character row: $e');
-          }
-        }
-        if (oldChar.imagePath != null) {
-          try {
-            final oldFile = File(oldChar.imagePath!);
-            if (await oldFile.exists()) {
-              await oldFile.delete();
-              debugPrint(
-                '[Import] Deleted old PNG for ${card.name}: ${p.basename(oldChar.imagePath!)}',
-              );
-            }
-          } catch (e) {
-            debugPrint('[Import] Could not delete old PNG: $e');
-          }
-        }
-        // Remove from in-memory list so it doesn't linger with a dead path
-        _characters.remove(oldChar);
-      }
-
-      final destPath =
-          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
-      await file.copy(destPath);
-
-      final destFile = File(destPath);
-      if (!destFile.existsSync() || destFile.lengthSync() == 0) {
-        debugPrint(
-          '[Import] Copied file missing or empty: $destPath (source: ${file.path})',
-        );
-      }
-
-      // Update the imagePath to point to the local copy
-      card.imagePath = destPath;
-
-      // Insert into database
-      // Store basename only in DB for cross-platform portability
-      final dbImagePath = card.imagePath != null
-          ? _toBasename(card.imagePath!)
-          : null;
-      final dbId = await _db.insertCharacterReturningId(
-        CharactersCompanion(
-          name: Value(card.name),
-          description: Value(card.description),
-          personality: Value(card.personality),
-          scenario: Value(card.scenario),
-          firstMessage: Value(card.firstMessage),
-          mesExample: Value(card.mesExample),
-          systemPrompt: Value(card.systemPrompt),
-          postHistoryInstructions: Value(card.postHistoryInstructions),
-          alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
-          tags: Value(jsonEncode(card.tags)),
-          imagePath: Value(dbImagePath),
-          ttsVoice: Value(card.ttsVoice),
-          lorebook: Value(
-            card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null,
-          ),
-          worldNames: Value(jsonEncode(card.worldNames)),
-        ),
+      return await _persistImportedCharacterCard(
+        card,
+        sourceFileForCopy: file,
+        worldRepo: worldRepo,
       );
-      card.dbId = dbId;
-
-      // Auto-create a linked world if the card has a lorebook
-      if (card.lorebook != null &&
-          card.lorebook!.entries.isNotEmpty &&
-          worldRepo != null) {
-        final world = world_model.World(
-          avatarPath: card.imagePath,
-          name: "${card.name}'s world lore",
-          description: 'Auto-imported from character card: ${card.name}',
-          lorebook: Lorebook(entries: List.from(card.lorebook!.entries)),
-          linkedCharacterName: card.name,
-        );
-        await worldRepo.saveWorld(world);
-      }
-
-      // Add to in-memory list (already inserted into DB above — do NOT call addCharacter() which would insert again)
-      _characters.add(card);
-      return card;
     } catch (e) {
       rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Internal helper that persists an already-parsed CharacterCard (from file or from
+  /// embedded group card data). Handles collision soft-delete, PNG copy, DB insert,
+  /// linked world creation, and in-memory list update.
+  ///
+  /// When [sourceFileForCopy] is provided we copy from that file. Otherwise we expect
+  /// [card.imagePath] to already point at a valid PNG we can copy (used by group import).
+  Future<CharacterCard?> _persistImportedCharacterCard(
+    CharacterCard card, {
+    File? sourceFileForCopy,
+    WorldRepository? worldRepo,
+  }) async {
+    final charDir = _storage.charactersDir;
+    if (!await charDir.exists()) {
+      await charDir.create(recursive: true);
+    }
+
+    final safeName = card.name
+        .replaceAll(RegExp(r'[^\w\s\-]'), '')
+        .replaceAll(' ', '_');
+
+    // Collision handling (same logic as before)
+    final cardName = card.name;
+    final existing = _characters.where((c) => c.name == cardName).toList();
+    for (final oldChar in existing) {
+      if (oldChar.dbId != null) {
+        try {
+          await _db.softDeleteCharacterById(oldChar.dbId!);
+          debugPrint(
+            '[Import] Soft-deleted old character row for name collision: ${oldChar.name} (id=${oldChar.dbId})',
+          );
+        } catch (e) {
+          debugPrint('[Import] Could not soft-delete old character row: $e');
+        }
+      }
+      if (oldChar.imagePath != null) {
+        try {
+          final oldFile = File(oldChar.imagePath!);
+          if (await oldFile.exists()) {
+            await oldFile.delete();
+            debugPrint(
+              '[Import] Deleted old PNG for ${card.name}: ${p.basename(oldChar.imagePath!)}',
+            );
+          }
+        } catch (e) {
+          debugPrint('[Import] Could not delete old PNG: $e');
+        }
+      }
+      _characters.remove(oldChar);
+    }
+
+    String destPath;
+    if (sourceFileForCopy != null) {
+      destPath =
+          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+      await sourceFileForCopy.copy(destPath);
+    } else if (card.imagePath != null) {
+      // Already have a file (e.g. from group card member extraction)
+      final src = File(card.imagePath!);
+      destPath =
+          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+      await src.copy(destPath);
+    } else {
+      // No image at all — create a tiny placeholder
+      final placeholder = img.Image(width: 400, height: 600);
+      img.fill(placeholder, color: img.ColorRgb8(50, 50, 50));
+      destPath =
+          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+      await File(destPath).writeAsBytes(img.encodePng(placeholder));
+    }
+
+    final destFile = File(destPath);
+    if (!destFile.existsSync() || destFile.lengthSync() == 0) {
+      debugPrint(
+        '[Import] Copied file missing or empty: $destPath',
+      );
+    }
+
+    card.imagePath = destPath;
+
+    final dbImagePath = card.imagePath != null
+        ? _toBasename(card.imagePath!)
+        : null;
+
+    final dbId = await _db.insertCharacterReturningId(
+      CharactersCompanion(
+        name: Value(card.name),
+        description: Value(card.description),
+        personality: Value(card.personality),
+        scenario: Value(card.scenario),
+        firstMessage: Value(card.firstMessage),
+        mesExample: Value(card.mesExample),
+        systemPrompt: Value(card.systemPrompt),
+        postHistoryInstructions: Value(card.postHistoryInstructions),
+        alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
+        tags: Value(jsonEncode(card.tags)),
+        imagePath: Value(dbImagePath),
+        ttsVoice: Value(card.ttsVoice),
+        lorebook: Value(
+          card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null,
+        ),
+        worldNames: Value(jsonEncode(card.worldNames)),
+      ),
+    );
+    card.dbId = dbId;
+
+    if (card.lorebook != null &&
+        card.lorebook!.entries.isNotEmpty &&
+        worldRepo != null) {
+      final world = world_model.World(
+        avatarPath: card.imagePath,
+        name: "${card.name}'s world lore",
+        description: 'Auto-imported from character card: ${card.name}',
+        lorebook: Lorebook(entries: List.from(card.lorebook!.entries)),
+        linkedCharacterName: card.name,
+      );
+      await worldRepo.saveWorld(world);
+    }
+
+    _characters.add(card);
+    return card;
   }
 
   /// Bulk import multiple character PNG files.

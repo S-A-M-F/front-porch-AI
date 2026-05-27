@@ -38,6 +38,8 @@ class CharacterCardGrid extends StatelessWidget {
     required this.modeToggle,
     required this.onTapCharacter,
     required this.onTapGroup,
+    this.onExportGroup,
+    this.onExtractCharacters,
     required this.onToggleSelect,
     this.onToggleSelectMode,
     this.onToggleOrganizeMode,
@@ -80,6 +82,8 @@ class CharacterCardGrid extends StatelessWidget {
 
   final Future<void> Function(CharacterCard character) onTapCharacter;
   final Future<void> Function(GroupChat group) onTapGroup;
+  final void Function(GroupChat group)? onExportGroup;
+  final void Function(GroupChat group)? onExtractCharacters;
   final void Function(CharacterCard character) onToggleSelect;
   final VoidCallback? onToggleSelectMode;
   final VoidCallback? onToggleOrganizeMode;
@@ -793,7 +797,12 @@ class CharacterCardGrid extends StatelessWidget {
           }
           final groupOffset = index - folders.length;
           if (groupOffset < groups.length) {
-            return _buildGroupCard(context, groups[groupOffset]);
+            return _buildGroupCard(
+              context, 
+              groups[groupOffset], 
+              onExportGroup ?? (_) {}, 
+              onExtractCharacters ?? (_) {},
+            );
           }
           final character = displayCharacters[groupOffset - groups.length];
           return _buildCharacterCard(context, character);
@@ -1332,6 +1341,8 @@ class CharacterCardGrid extends StatelessWidget {
   Widget _buildGroupCard(
     BuildContext context,
     GroupChat group,
+    void Function(GroupChat group) onExportGroup,
+    void Function(GroupChat group) onExtractCharacters,
   ) {
     final characters = <CharacterCard>[];
     for (final id in group.characterIds) {
@@ -1492,21 +1503,63 @@ class CharacterCardGrid extends StatelessWidget {
             Positioned(
               top: 8,
               right: 8,
-              child: Material(
-                color: AppColors.resolve(context, Colors.black54, Colors.black12),
-                borderRadius: BorderRadius.circular(20),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => onDeleteGroup(group),
-                  child: const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Icon(
-                      Icons.delete,
-                      color: Colors.redAccent,
-                      size: 18,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Extract characters from this group as independent standalone characters
+                  // (especially useful after importing someone else's Group Card)
+                  Material(
+                    color: AppColors.resolve(context, Colors.black54, Colors.black12),
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => onExtractCharacters(group),
+                      child: const Padding(
+                        padding: EdgeInsets.all(6.0),
+                        child: Icon(
+                          Icons.call_split,
+                          color: Colors.tealAccent,
+                          size: 16,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 4),
+                  // Export group as PNG (novel Front Porch group card feature)
+                  Material(
+                    color: AppColors.resolve(context, Colors.black54, Colors.black12),
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => onExportGroup(group),
+                      child: const Padding(
+                        padding: EdgeInsets.all(6.0),
+                        child: Icon(
+                          Icons.download,
+                          color: Colors.lightBlueAccent,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Material(
+                    color: AppColors.resolve(context, Colors.black54, Colors.black12),
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => onDeleteGroup(group),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Icon(
+                          Icons.delete,
+                          color: Colors.redAccent,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

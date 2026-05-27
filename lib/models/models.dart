@@ -32,6 +32,7 @@ export 'character_card.dart';
 export 'chat_generation_settings.dart';
 export 'download_task.dart';
 export 'group_chat.dart';
+export 'group_card.dart';
 export 'hf_model.dart';
 export 'local_model_info.dart';
 export 'lorebook.dart';

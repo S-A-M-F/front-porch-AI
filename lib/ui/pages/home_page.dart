@@ -32,6 +32,12 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 // Barrel imports
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/group_card_service.dart'; // explicit for GroupCardService (also re-exported)
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
+import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 // Specific pages, dialogs, and internal services not in barrels
@@ -405,6 +411,8 @@ class _HomePageState extends State<HomePage> {
             modeToggle: _buildModeToggle(),
             onTapCharacter: _handleTapCharacter,
             onTapGroup: _handleTapGroup,
+            onExportGroup: _exportGroup,
+            onExtractCharacters: _extractCharactersFromGroup,
             onToggleSelect: _toggleSelect,
             onToggleSelectMode: _toggleSelectMode,
             onToggleOrganizeMode: _toggleOrganizeMode,
@@ -2457,10 +2465,20 @@ class _HomePageState extends State<HomePage> {
 
     if (files.isEmpty) return;
 
-    // Single file: use the original flow with tag dialog
+    // Single file: check if this is a Front Porch Group Card first (novel format)
     if (files.length == 1) {
       final file = files.first;
       try {
+        final groupService = GroupCardService();
+        final groupCard = await groupService.readGroupCard(file.path);
+
+        if (groupCard != null) {
+          // This is a Group Card PNG — do the special group import
+          await _importGroupCard(context, file, groupCard);
+          return;
+        }
+
+        // Normal character card
         final worldRepo = Provider.of<WorldRepository>(context, listen: false);
         final repo = Provider.of<CharacterRepository>(context, listen: false);
         final card = await repo.importCharacter(file, worldRepo: worldRepo);
@@ -2809,6 +2827,255 @@ class _HomePageState extends State<HomePage> {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+        }
+      }
+    }
+  }
+
+  /// Import a Group Card PNG (the novel Front Porch format).
+  /// Creates all member characters (with full collision handling) + the group.
+  Future<void> _importGroupCard(
+    BuildContext context,
+    File file,
+    GroupCard groupCard,
+  ) async {
+    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+    final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+    final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+
+    final importedMemberIds = <String>[];
+    int successCount = 0;
+    int failCount = 0;
+
+    // Use the high-fidelity raw member data when available
+    final rawMembers = groupCard.rawMemberData.isNotEmpty
+        ? groupCard.rawMemberData
+        : groupCard.members.map((c) => c.toJson()).toList();
+
+    for (final raw in rawMembers) {
+      File? tempPng;
+      try {
+        // Create a temporary valid character card PNG from the raw portable data
+        final memberJson = {
+          'spec': 'chara_card_v2',
+          'spec_version': '2.0',
+          'data': raw,
+        };
+        final jsonStr = jsonEncode(memberJson);
+        final b64 = base64Encode(utf8.encode(jsonStr));
+
+        final tempDir = await Directory.systemTemp.createTemp('fp_group_member_');
+
+        // Check if this member has an embedded avatar from a previous Group Card export
+        final avatarBase64 = raw['avatar_base64'] as String? ??
+            (raw['data'] as Map?)?['avatar_base64'] as String?;
+
+        if (avatarBase64 != null && avatarBase64.isNotEmpty) {
+          // Use the real avatar that was embedded on export
+          final avatarBytes = base64Decode(avatarBase64);
+          var avatarImg = img.decodePng(avatarBytes) ?? img.decodeImage(avatarBytes);
+
+          if (avatarImg != null) {
+            // Embed the character metadata into the real avatar image
+            avatarImg.textData ??= {};
+            avatarImg.textData!['chara'] = b64;
+
+            tempPng = File(p.join(tempDir.path, 'member_${DateTime.now().millisecondsSinceEpoch}.png'));
+            await tempPng.writeAsBytes(img.encodePng(avatarImg));
+          }
+        }
+
+        // Fallback: create a colored placeholder if no embedded avatar (foreign group cards, or old exports)
+        if (tempPng == null) {
+          final memberName = (raw['name'] ?? raw['data']?['name'] ?? 'Character').toString();
+
+          // Deterministic pleasant color from the name
+          final hash = memberName.codeUnits.fold(0, (a, b) => a + b);
+          final r = (80 + (hash % 120)).clamp(60, 200);
+          final g = (70 + ((hash * 7) % 130)).clamp(60, 200);
+          final b = (90 + ((hash * 13) % 110)).clamp(70, 190);
+
+          final placeholder = img.Image(width: 400, height: 600);
+          img.fill(placeholder, color: img.ColorRgb8(r, g, b));
+
+          placeholder.textData ??= {};
+          placeholder.textData!['chara'] = b64;
+
+          tempPng = File(p.join(tempDir.path, 'member_${DateTime.now().millisecondsSinceEpoch}.png'));
+          await tempPng.writeAsBytes(img.encodePng(placeholder));
+        }
+
+        final imported = await charRepo.importCharacter(tempPng, worldRepo: worldRepo);
+        if (imported != null && imported.imagePath != null) {
+          // Use the *stable* character ID (image basename) that the rest of the
+          // app (ChatService, group resolution, etc.) expects. Storing dbId was wrong.
+          final stableId = p.basenameWithoutExtension(imported.imagePath!);
+          importedMemberIds.add(stableId);
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (e) {
+        debugPrint('Failed to import one group member: $e');
+        failCount++;
+      } finally {
+        // Clean temp (best effort)
+        try {
+          if (tempPng != null && await tempPng.exists()) {
+            await tempPng.delete();
+            await tempPng.parent.delete(recursive: true);
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (importedMemberIds.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Group import failed — no members could be created.')),
+        );
+      }
+      return;
+    }
+
+    // Create the group itself
+    final newGroup = GroupChat(
+      id: 'group_${DateTime.now().millisecondsSinceEpoch}',
+      name: groupCard.name,
+      characterIds: importedMemberIds,
+      turnOrder: groupCard.turnOrder == 'random' ? TurnOrder.random : TurnOrder.roundRobin,
+      autoAdvance: groupCard.autoAdvance,
+      directorMode: groupCard.directorMode,
+      firstMessage: groupCard.firstMessage,
+      scenario: groupCard.scenario,
+      systemPrompt: groupCard.systemPrompt,
+    );
+
+    await groupRepo.save(newGroup);
+
+    if (context.mounted) {
+      final msg = failCount > 0
+          ? 'Imported group "${groupCard.name}" with $successCount members ($failCount failed).'
+          : 'Imported group "${groupCard.name}" with $successCount members!';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.purpleAccent.shade700,
+        ),
+      );
+    }
+  }
+
+  /// Extract all members of a group as independent standalone characters.
+  /// This creates fresh copies so you can use them in 1:1 chats, heavily customize
+  /// them, or put them in other groups — without affecting the original group.
+  ///
+  /// Especially valuable after importing someone else's Group Card.
+  Future<void> _extractCharactersFromGroup(GroupChat group) async {
+    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+
+    // Resolve current full CharacterCard objects for the members
+    final memberCards = charRepo.characters
+        .where((c) => group.characterIds.contains(_getCharacterIdFromCard(c)))
+        .toList();
+
+    if (memberCards.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No characters found in this group.')),
+        );
+      }
+      return;
+    }
+
+    int extracted = 0;
+    for (final member in memberCards) {
+      try {
+        await charRepo.duplicateCharacter(member);
+        extracted++;
+      } catch (e) {
+        debugPrint('Failed to extract ${member.name}: $e');
+      }
+    }
+
+    if (context.mounted) {
+      final msg = extracted == 1
+          ? 'Extracted 1 character as an individual.'
+          : 'Extracted $extracted characters as individuals.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.teal.shade700,
+        ),
+      );
+    }
+  }
+
+  /// Export a group as a single self-contained PNG "Group Card".
+  /// This is a Front Porch novel format (fpa_group chunk) that bundles every
+  /// member character (full data + lorebooks + extensions) plus group settings.
+  Future<void> _exportGroup(GroupChat group) async {
+    final context = this.context; // capture from StatefulWidget
+
+    // Resolve full CharacterCard objects for the members (for embedding + collage)
+    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+    final memberCards = <CharacterCard>[];
+    for (final id in group.characterIds) {
+      final match = charRepo.characters
+          .where((c) => _getCharacterIdFromCard(c) == id)
+          .firstOrNull;
+      if (match != null) memberCards.add(match);
+    }
+
+    if (memberCards.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot export empty group')),
+        );
+      }
+      return;
+    }
+
+    final safeName = group.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    String? outputFile = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export Group Card',
+      fileName: '$safeName.group.png',
+      type: FileType.custom,
+      allowedExtensions: ['png'],
+    );
+
+    if (outputFile != null) {
+      if (!outputFile.endsWith('.png')) {
+        outputFile += '.png';
+      }
+
+      try {
+        // Build the portable GroupCard (full member snapshots)
+        final portable = GroupCard(
+          name: group.name,
+          members: memberCards,
+          turnOrder: group.turnOrder.name,
+          autoAdvance: group.autoAdvance,
+          directorMode: group.directorMode,
+          firstMessage: group.firstMessage,
+          scenario: group.scenario,
+          systemPrompt: group.systemPrompt,
+        );
+
+        final service = GroupCardService();
+        // No custom source image → auto-collage from member avatars (the magic path)
+        await service.saveGroupCardAsPng(portable, outputFile);
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Group card exported to $outputFile')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Group export failed: $e')),
+          );
         }
       }
     }

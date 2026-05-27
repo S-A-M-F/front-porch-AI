@@ -34,6 +34,7 @@
 export 'storage_service.dart';
 export 'character_repository.dart';
 export 'group_chat_repository.dart';
+export 'group_card_service.dart';
 export 'world_repository.dart';
 export 'story_repository.dart';
 
@@ -64,3 +65,7 @@ export 'hardware_service.dart';
 export 'voice_manager.dart';
 export 'update_service.dart';
 export 'story_pipeline_service.dart';
+
+// Backup & generation tools (now used by web server + UI)
+export 'backup_service.dart';
+export 'character_gen_service.dart';

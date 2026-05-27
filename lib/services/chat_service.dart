@@ -2475,7 +2475,7 @@ class ChatService extends ChangeNotifier {
 
       if (group.firstMessage.isNotEmpty) {
         // Use custom group first message — attribute to "Narrator" or group name
-        greetingText = group.firstMessage;
+        greetingText = _applyUserReplacement(group.firstMessage);
         greetingSender = group.name;
         greetingCharId = null;
       } else {
@@ -3837,6 +3837,17 @@ class ChatService extends ChangeNotifier {
     );
   }
 
+  /// Applies {{user}} / <user> replacement using the current persona.
+  /// Used for group-level overrides (firstMessage, scenario, systemPrompt)
+  /// which are not tied to a specific CharacterCard.
+  String _applyUserReplacement(String text) {
+    if (text.isEmpty) return text;
+    final userName = _userPersonaService?.persona.name ?? 'You';
+    return text
+        .replaceAll(RegExp(r'\{\{user\}\}', caseSensitive: false), userName)
+        .replaceAll(RegExp(r'<user>', caseSensitive: false), userName);
+  }
+
   Future<void> sendMessage(String text) async {
     if ((_activeCharacter == null && _activeGroup == null) ||
         text.trim().isEmpty)
@@ -4504,7 +4515,7 @@ class ChatService extends ChangeNotifier {
       // Build prompt the same way _generateResponse does
       final String systemPrompt;
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _activeGroup!.systemPrompt;
+        systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
       } else if (_activeGroup != null) {
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
@@ -5120,7 +5131,7 @@ class ChatService extends ChangeNotifier {
       String systemPrompt;
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
         // User wrote a custom group system prompt — use it
-        systemPrompt = _activeGroup!.systemPrompt;
+        systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
       } else if (_activeGroup != null) {
         // Group mode, no custom prompt — use observer or default
         systemPrompt = _observerMode

@@ -21,6 +21,7 @@ import 'dart:io';
 import 'package:image/image.dart' as img;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/utils/png_metadata_utils.dart';
 
 class V2CardService {
   Future<void> saveCardAsPng(
@@ -70,8 +71,9 @@ class V2CardService {
     final bytes = await File(path).readAsBytes();
 
     // Manual PNG chunk parsing - the `image` package doesn't reliably
-    // extract tEXt/iTXt chunks from externally-created character cards
-    String? charaData = _extractCharaFromPng(bytes);
+    // extract tEXt/iTXt chunks from externally-created character cards.
+    // We use the shared utility so group cards and future card types also benefit.
+    String? charaData = PngMetadataUtils.extractTextChunk(bytes, 'chara');
 
     if (charaData == null) {
       // Fallback: try the image package approach
@@ -154,83 +156,4 @@ class V2CardService {
     }
   }
 
-  /// Manually parse PNG chunks to extract 'chara' tEXt or iTXt data.
-  /// PNG format: 8-byte signature, then chunks of [4-byte length][4-byte type][data][4-byte CRC]
-  String? _extractCharaFromPng(List<int> bytes) {
-    // Verify PNG signature
-    if (bytes.length < 8) return null;
-    final signature = [137, 80, 78, 71, 13, 10, 26, 10];
-    for (int i = 0; i < 8; i++) {
-      if (bytes[i] != signature[i]) return null;
-    }
-
-    int offset = 8; // Skip PNG signature
-
-    while (offset + 12 <= bytes.length) {
-      // Read chunk length (4 bytes, big-endian)
-      final length =
-          (bytes[offset] << 24) |
-          (bytes[offset + 1] << 16) |
-          (bytes[offset + 2] << 8) |
-          bytes[offset + 3];
-      offset += 4;
-
-      // Read chunk type (4 bytes ASCII)
-      final type = String.fromCharCodes(bytes.sublist(offset, offset + 4));
-      offset += 4;
-
-      final dataStart = offset;
-      final dataEnd = offset + length;
-
-      if (dataEnd + 4 > bytes.length) break; // Malformed PNG
-
-      if (type == 'tEXt') {
-        // tEXt: keyword\0text
-        final data = bytes.sublist(dataStart, dataEnd);
-        final nullIndex = data.indexOf(0);
-        if (nullIndex != -1) {
-          final keyword = String.fromCharCodes(data.sublist(0, nullIndex));
-          if (keyword == 'chara') {
-            return String.fromCharCodes(data.sublist(nullIndex + 1));
-          }
-        }
-      } else if (type == 'iTXt') {
-        // iTXt: keyword\0compressionFlag\0compressionMethod\0languageTag\0translatedKeyword\0text
-        final data = bytes.sublist(dataStart, dataEnd);
-        final nullIndex = data.indexOf(0);
-        if (nullIndex != -1) {
-          final keyword = String.fromCharCodes(data.sublist(0, nullIndex));
-          if (keyword == 'chara') {
-            // Skip: compressionFlag(1), compressionMethod(1), languageTag\0, translatedKeyword\0
-            int pos = nullIndex + 1;
-            if (pos + 2 <= data.length) {
-              pos += 2; // Skip compression flag and method
-              // Skip language tag (null-terminated)
-              while (pos < data.length && data[pos] != 0) {
-                pos++;
-              }
-              pos++; // Skip null
-              // Skip translated keyword (null-terminated)
-              while (pos < data.length && data[pos] != 0) {
-                pos++;
-              }
-              pos++; // Skip null
-              // Rest is the text
-              if (pos < data.length) {
-                return utf8.decode(data.sublist(pos));
-              }
-            }
-          }
-        }
-      }
-
-      // Move past data + CRC (4 bytes)
-      offset = dataEnd + 4;
-
-      // Stop at IEND
-      if (type == 'IEND') break;
-    }
-
-    return null;
-  }
 }
