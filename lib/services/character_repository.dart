@@ -50,6 +50,22 @@ class CharacterRepository extends ChangeNotifier {
     return sorted;
   }
 
+  /// Returns a CharacterCard by DB UUID (prefers in-memory list for freshness,
+  /// falls back to DB query + parse). Used by export flows.
+  Future<CharacterCard?> getCharacterCardById(String id) async {
+    // Prefer in-memory (may have unsaved edits in edge cases, though normally DB is authoritative)
+    for (final c in _characters) {
+      if (c.dbId == id) return c;
+    }
+    // Fallback: query DB and parse (keeps export working even during partial loads)
+    try {
+      final row = await _db.getCharacterById(id);
+      return _characterFromRow(row);
+    } catch (_) {
+      return null;
+    }
+  }
+
   CharacterRepository(this._db, this._storage) {
     loadCharacters();
   }

@@ -893,25 +893,32 @@ class WebServerService extends ChangeNotifier {
       final destPath = p.join(charDir.path, filename);
       await File(destPath).writeAsBytes(bytes);
 
-      // Embed V2 card data
+      // Embed V2 card data (use the repository-fetched card so lorebooks + extensions survive avatar replacement)
       try {
-        final card = CharacterCard(
-          name: character.name,
-          description: character.description,
-          personality: character.personality,
-          scenario: character.scenario,
-          firstMessage: character.firstMessage,
-          mesExample: character.mesExample,
-          systemPrompt: character.systemPrompt,
-          postHistoryInstructions: character.postHistoryInstructions,
-          alternateGreetings: character.alternateGreetings.isNotEmpty
-              ? List<String>.from(jsonDecode(character.alternateGreetings))
-              : [],
-          tags: character.tags.isNotEmpty
-              ? List<String>.from(jsonDecode(character.tags))
-              : [],
-        );
-        await V2CardService().saveCardAsPng(card, destPath, destPath);
+        CharacterCard? fullCard;
+        if (_characterRepository != null) {
+          fullCard = await _characterRepository!.getCharacterCardById(id);
+        }
+        if (fullCard == null) {
+          // Rare fallback
+          fullCard = CharacterCard(
+            name: character.name,
+            description: character.description,
+            personality: character.personality,
+            scenario: character.scenario,
+            firstMessage: character.firstMessage,
+            mesExample: character.mesExample,
+            systemPrompt: character.systemPrompt,
+            postHistoryInstructions: character.postHistoryInstructions,
+            alternateGreetings: character.alternateGreetings.isNotEmpty
+                ? List<String>.from(jsonDecode(character.alternateGreetings))
+                : [],
+            tags: character.tags.isNotEmpty
+                ? List<String>.from(jsonDecode(character.tags))
+                : [],
+          );
+        }
+        await V2CardService().saveCardAsPng(fullCard, destPath, destPath);
       } catch (e) {
         debugPrint('[WebServer] Failed to embed V2 card data: $e');
       }
@@ -2452,28 +2459,45 @@ class WebServerService extends ChangeNotifier {
   }
 
   /// GET /api/characters/:id/export.png — Export character as PNG with embedded card data.
+  /// Uses the proper CharacterCard model so that baked-in lorebooks (character_book),
+  /// V2.5 extensions, and all fields are serialized in standard portable form.
   Future<shelf.Response> _handleExportCharacterPng(
     shelf.Request request,
     String id,
   ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
     try {
-      final character = await _db!.getCharacterById(id);
+      // Prefer the repository path — this guarantees correct V2 shape + lorebook export
+      CharacterCard? card;
+      if (_characterRepository != null) {
+        card = await _characterRepository!.getCharacterCardById(id);
+      }
 
-      // Build V2 character card JSON
+      // Fallback to raw DB row only if repository is unavailable (still better than 500)
+      final dbCharacter = card == null
+          ? await _db!.getCharacterById(id)
+          : null;
+
+      // Build V2 character card JSON in the canonical portable shape
+      final Map<String, dynamic> data = card != null
+          ? card.toJson()
+          : dbCharacter!.toJson(); // raw shape is wrong but keeps server alive
+
       final v2Card = {
         'spec': 'chara_card_v2',
         'spec_version': '2.0',
-        'data': character.toJson(),
+        'data': data,
       };
       final charaJson = jsonEncode(v2Card);
       final charaB64 = base64Encode(utf8.encode(charaJson));
 
-      // Load avatar PNG or create placeholder
+      // Load avatar PNG or create placeholder (use whichever source we have)
+      final String displayName = card?.name ?? dbCharacter!.name;
+      final String? imagePath = card?.imagePath ?? dbCharacter!.imagePath;
+
       Uint8List pngBytes;
-      if (character.imagePath != null && character.imagePath!.isNotEmpty) {
-        // DB stores basename only — resolve to full local path
-        final imgBasename = p.basename(character.imagePath!);
+      if (imagePath != null && imagePath.isNotEmpty) {
+        final imgBasename = p.basename(imagePath);
         final imgFullPath = p.join(
           _storageService.charactersDir.path,
           imgBasename,
@@ -2482,15 +2506,15 @@ class WebServerService extends ChangeNotifier {
         if (file.existsSync()) {
           pngBytes = file.readAsBytesSync();
         } else {
-          pngBytes = _createPlaceholderPng(character.name);
+          pngBytes = _createPlaceholderPng(displayName);
         }
       } else {
-        pngBytes = _createPlaceholderPng(character.name);
+        pngBytes = _createPlaceholderPng(displayName);
       }
 
       // Embed character data as tEXt chunk
       final resultPng = _embedPngTextChunk(pngBytes, 'chara', charaB64);
-      final safeName = character.name.replaceAll(
+      final safeName = displayName.replaceAll(
         RegExp(r'[^a-zA-Z0-9_-]'),
         '_',
       );

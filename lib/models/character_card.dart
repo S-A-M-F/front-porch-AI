@@ -316,7 +316,7 @@ class CharacterCard {
       'post_history_instructions': postHistoryInstructions,
       'alternate_greetings': alternateGreetings,
       'tags': tags,
-      'character_book': lorebook?.toJson(),
+      'character_book': lorebook?.toCharacterBook(),
       'world_names': worldNames,
       if (ttsVoice != null) 'tts_voice': ttsVoice,
       'extensions': ?extensions,
