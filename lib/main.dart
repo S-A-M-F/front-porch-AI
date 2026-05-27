@@ -253,11 +253,12 @@ void main(List<String> args) async {
         ),
         ChangeNotifierProvider(create: (_) => OpenRouterService()),
         ChangeNotifierProvider(create: (_) => PseudoRemoteService()),
-        ChangeNotifierProxyProvider4<
+        ChangeNotifierProxyProvider5<
           KoboldService,
           OpenRouterService,
           PseudoRemoteService,
           StorageService,
+          BackendManager,
           LLMProvider
         >(
           create: (context) => LLMProvider(
@@ -265,11 +266,12 @@ void main(List<String> args) async {
             Provider.of<OpenRouterService>(context, listen: false),
             Provider.of<PseudoRemoteService>(context, listen: false),
             Provider.of<StorageService>(context, listen: false),
+            Provider.of<BackendManager>(context, listen: false),
           ),
-          update:
-              (context, kobold, openRouter, pseudoRemote, storage, previous) =>
-                  previous ??
-                  LLMProvider(kobold, openRouter, pseudoRemote, storage),
+          update: (context, kobold, openRouter, pseudoRemote, storage, backend,
+                  previous) =>
+              previous ??
+              LLMProvider(kobold, openRouter, pseudoRemote, storage, backend),
         ),
         ChangeNotifierProxyProvider4<
           KoboldService,

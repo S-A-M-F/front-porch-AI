@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/foundation.dart';
+import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
@@ -35,6 +36,7 @@ class LLMProvider extends ChangeNotifier {
   final OpenRouterService _openRouterService;
   final PseudoRemoteService _pseudoRemoteService;
   final StorageService _storageService;
+  final BackendManager _backendManager;
 
   BackendType _activeBackend = BackendType.kobold;
 
@@ -65,6 +67,59 @@ class LLMProvider extends ChangeNotifier {
   bool get hasAnyManagedProcessRunning =>
       _koboldService.isRunning || _pseudoRemoteService.isRunning;
 
+  /// Ensures that the simple local Kobold backend is running when the user
+  /// enters a chat.
+  ///
+  /// This provides a good "it just works" experience for normal users.
+  ///
+  /// We deliberately do **not** auto-start the Pseudo-Remote backend here.
+  /// Using .kcpps presets is an advanced/power-user feature and those users
+  /// are expected to start the backend manually.
+  ///
+  /// Safe to call repeatedly — it is a no-op if already running or if the
+  /// current backend is remote / oMLX / Pseudo-Remote.
+  Future<void> ensureManagedBackendIsRunning() async {
+    if (!hasManagedProcess || hasAnyManagedProcessRunning) return;
+
+    // Make sure we have the backend binary
+    if (_backendManager.backendPath == null) {
+      await _backendManager.checkBackendAvailability();
+      if (_backendManager.backendPath == null) {
+        // Binary not available (download may be needed). Let the user
+        // trigger it manually via Settings or the normal flow.
+        return;
+      }
+    }
+
+    try {
+      // Only auto-start the simple native Kobold backend.
+      // Pseudo-Remote (.kcpps) is an advanced feature — those users are
+      // expected to start the backend themselves.
+      if (_activeBackend == BackendType.kobold) {
+        final modelPath = _storageService.lastUsedModelPath;
+        final hasPresetWithModel =
+            _storageService.kcppsHasModel && _storageService.kcppsModelFileExists;
+
+        if (modelPath != null || hasPresetWithModel) {
+          await _koboldService.startKobold(
+            _backendManager.backendPath!,
+            modelPath ?? '',
+            kcppsPath: _storageService.activeKcppsPath,
+            gpuLayers: _storageService.gpuLayers,
+            contextSize: _storageService.contextSize,
+            useVulkan: _storageService.useVulkan ?? false,
+            useCublas: _storageService.useCublas ?? false,
+            useMetal: _storageService.useMetal ?? false,
+            useRocm: _storageService.useRocm ?? false,
+          );
+        }
+      }
+    } catch (e) {
+      // Never let an auto-start failure prevent the user from entering the chat.
+      debugPrint('[LLMProvider] ensureManagedBackendIsRunning failed: $e');
+    }
+  }
+
   /// Convenience getters for the underlying services (for UI that needs specifics).
   KoboldService get koboldService => _koboldService;
   OpenRouterService get openRouterService => _openRouterService;
@@ -75,6 +130,7 @@ class LLMProvider extends ChangeNotifier {
     this._openRouterService,
     this._pseudoRemoteService,
     this._storageService,
+    this._backendManager,
   ) {
     _syncFromStorage();
     _storageService.addListener(_syncFromStorage);

@@ -23,7 +23,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/download_manager.dart';
-import 'package:front_porch_ai/utils/gguf_parser.dart';
+import 'package:front_porch_ai/utils/gguf_parser.dart'; // for GGUFModelInfo + parser
 import 'package:front_porch_ai/models/hf_model.dart';
 import 'package:front_porch_ai/models/local_model_info.dart';
 import 'package:front_porch_ai/models/download_task.dart';
@@ -111,6 +111,33 @@ class ModelManager extends ChangeNotifier {
   /// Synchronous fetch for KV bytes from cache.
   int? getCachedKvBytesPerToken(String filePath) {
     return _kvBytesCache[filePath];
+  }
+
+  /// Cache for full GGUF architecture info (nLayers + kv bytes + helpers).
+  final Map<String, GGUFModelInfo> _ggufInfoCache = {};
+
+  /// Retrieves full architectural info (including real `nLayers` / block_count)
+  /// by parsing the GGUF file. Populates an internal cache for fast subsequent
+  /// calls (used by the layer solver / Auto-Configure).
+  Future<GGUFModelInfo?> getModelArchitectureInfo(String filePath) async {
+    if (_ggufInfoCache.containsKey(filePath)) {
+      return _ggufInfoCache[filePath];
+    }
+
+    try {
+      final info = await GGUFParser.getModelArchitectureInfo(filePath);
+      if (info != null) {
+        _ggufInfoCache[filePath] = info;
+      }
+      return info;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Synchronous fetch for full GGUF architecture info from cache.
+  GGUFModelInfo? getCachedModelArchitectureInfo(String filePath) {
+    return _ggufInfoCache[filePath];
   }
 
   @override

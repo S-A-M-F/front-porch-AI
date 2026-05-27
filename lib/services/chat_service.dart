@@ -275,6 +275,7 @@ class ChatService extends ChangeNotifier {
   int _tokensGenerated = 0;
   int _maxTokens = 0;
   DateTime? _generationStartTime;
+  double _lastGenerationDurationSeconds = 0.0;
   bool _isBuffering = false;
   GenerationPhase _generationPhase = GenerationPhase.idle;
   DateTime? _prefillStartTime; // When we entered prefill (for elapsed timer)
@@ -2231,6 +2232,10 @@ class ChatService extends ChangeNotifier {
 
     _activeCharacter = character;
 
+    // Auto-start local backend (Kobold or Pseudo-Remote) when entering a chat
+    // so the user never has to manually start it just to talk.
+    _llmProvider?.ensureManagedBackendIsRunning();
+
     // If extensions are missing (e.g., app was restarted after DB load that
     // didn't carry over PNG extensions), reload the PNG to get V2.5 card data.
     if (_activeCharacter != null &&
@@ -2403,6 +2408,10 @@ class ChatService extends ChangeNotifier {
 
     // Clear 1:1 mode
     _activeCharacter = null;
+
+    // Auto-start local backend when entering a group chat
+    _llmProvider?.ensureManagedBackendIsRunning();
+
     debugPrint(
       '[ChatService] 🟡 setActiveGroup: clearing messages '
       '(had ${_messages.length}) for group ${group.name}',
@@ -4046,6 +4055,14 @@ class ChatService extends ChangeNotifier {
     }
 
     await _generateResponse(GenerationMode.normal);
+
+    // If the generation took a very long real-world time (long prefill etc.),
+    // apply a small "real time passed" decay to needs. This prevents the
+    // "everything stayed exactly the same during a 20-minute generation" feeling
+    // that leads to zero-change chips.
+    if (_lastGenerationDurationSeconds > 300) { // > 5 minutes
+      _applyLongGenerationNeedsDecay();
+    }
 
     // Compute needs_deltas AFTER generation so the post-generation checks
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
@@ -5973,7 +5990,12 @@ class ChatService extends ChangeNotifier {
       _generationPhase = GenerationPhase.idle;
       _prefillStartTime = null;
       _prefillPromptTokens = 0;
+      if (_generationStartTime != null) {
+        _lastGenerationDurationSeconds =
+            DateTime.now().difference(_generationStartTime!).inMilliseconds / 1000.0;
+      }
       _generationStartTime = null;
+      _lastGenerationDurationSeconds = 0.0;
       _perfPoller?.cancel();
       _perfPoller = null;
 
@@ -6138,6 +6160,7 @@ class ChatService extends ChangeNotifier {
       _prefillStartTime = null;
       _prefillPromptTokens = 0;
       _generationStartTime = null;
+      _lastGenerationDurationSeconds = 0.0;
 
       // "Connection closed before full header was received" is thrown by the http package
       // when the HTTP client is closed mid-stream (either by abortGeneration() or a process
@@ -6533,12 +6556,11 @@ class ChatService extends ChangeNotifier {
 
   void editMessage(int index, String newText) async {
     if (index >= 0 && index < _messages.length) {
-      final old = _messages[index];
-      _messages[index] = ChatMessage(
-        text: newText,
-        sender: old.sender,
-        isUser: old.isUser,
-      );
+      final msg = _messages[index];
+      // Use the text setter so we only update the current swipe's text
+      // while preserving all realism metadata, swipes, swipeMetadata, durations, etc.
+      // This prevents chips (needs_deltas, bond/trust deltas, emotion, etc.) from disappearing on edit.
+      msg.text = newText;
       await _saveChat();
       notifyListeners();
     }
@@ -6745,8 +6767,8 @@ class ChatService extends ChangeNotifier {
       _activeObjectives = [];
       return;
     }
+    final charId = _getCharacterIdFromCard(_activeCharacter!);
     try {
-      final charId = _getCharacterIdFromCard(_activeCharacter!);
       _activeObjectives = await _db.getActiveObjectives(
         charId,
         chatId: _currentSessionId!,
@@ -6758,6 +6780,15 @@ class ChatService extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[Objective] Failed to load: $e');
+
+      // Very defensive fallback for users whose local database is on a schema
+      // older than the chat_id migration. We swallow the error completely and
+      // just run without objectives rather than letting the app be noisy/broken.
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('chat_id') || errStr.contains('no such column')) {
+        debugPrint('[Objective] Database schema too old for chat-scoped objectives. Running without objectives for this session.');
+        _activeObjectives = [];
+      }
     }
     notifyListeners();
   }
@@ -10658,6 +10689,37 @@ class ChatService extends ChangeNotifier {
   /// Computes per-need deltas since the start of this turn and generates
   /// human-readable reasons. Used to power the Needs chips under bot messages
   /// (exactly like bond_delta / trust_delta + reasons for classic realism).
+  /// Applies a small additional decay when a generation (especially the prefill)
+  /// took a very long real-world time. This gives the "time passed while the
+  /// model was thinking" a visible (but small) effect on needs, preventing the
+  /// all-zero chips feeling after 10-30+ minute generations.
+  void _applyLongGenerationNeedsDecay() {
+    if (!_needsSimEnabled || !_realismEnabled || _lastGenerationDurationSeconds < 300) {
+      return;
+    }
+
+    // Very conservative extra decay for long real-time waits.
+    // Only affects the most "physical" needs that make sense to decay over real hours.
+    final extraDecay = <String, int>{
+      'hunger': 2,
+      'bladder': 3,
+      'energy': 1,
+      'hygiene': 1,
+    };
+
+    for (final entry in extraDecay.entries) {
+      final key = entry.key;
+      final amount = entry.value;
+      if (_needsVector.containsKey(key)) {
+        final before = _needsVector[key]!;
+        _needsVector[key] = (before - amount).clamp(0, 100);
+        debugPrint(
+          '[Realism:Needs] Long generation extra decay: $key $before → ${_needsVector[key]} (took ${_lastGenerationDurationSeconds.toStringAsFixed(0)}s)',
+        );
+      }
+    }
+  }
+
   Map<String, Map<String, dynamic>> _computeNeedsDeltasWithReasons(
     Map<String, int>? preTurn,
   ) {

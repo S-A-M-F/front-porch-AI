@@ -124,9 +124,23 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     }
 
     final storage = Provider.of<StorageService>(context, listen: false);
+
+    // Respect whatever the user currently has in the context field (critical for
+    // the new accurate KoboldLayerSolver). Also try to get real kvBytesPerToken
+    // for the selected model so the solver can be precise.
+    final userContext = int.tryParse(_contextSizeController.text);
+    int? kvBytesPerToken;
+    if (_selectedModelPath != null) {
+      final modelManager = Provider.of<ModelManager>(context, listen: false);
+      kvBytesPerToken = modelManager.getCachedModelArchitectureInfo(_selectedModelPath!)?.kvBytesPerToken
+          ?? modelManager.getCachedKvBytesPerToken(_selectedModelPath!);
+    }
+
     final suggestion = OptimizationService.calculateSettings(
-      hardware, 
+      hardware,
       modelSizeMb: modelSize,
+      requestedContextSize: userContext,
+      kvBytesPerToken: kvBytesPerToken,
       kvQuantizationLevel: storage.kvQuantizationLevel,
     );
 
@@ -761,35 +775,6 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                   ),
                 ),
                 
-        const SizedBox(height: 12),
-        // Thinking model toggle — must be ON when using QwQ, Deepseek-R1,
-        // Qwen3, Precog, or any model that outputs <think>...</think> blocks.
-        Builder(builder: (ctx) {
-          final storage = Provider.of<StorageService>(ctx);
-          return Row(
-            children: [
-              const Icon(Icons.psychology, size: 16, color: Colors.purpleAccent),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('Thinking Model', style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context))),
-              ),
-              Switch(
-                value: storage.koboldThinkingModel,
-                onChanged: (val) => storage.setKoboldThinkingModel(val),
-                activeTrackColor: Colors.purpleAccent,
-              ),
-              const SizedBox(width: 4),
-              Tooltip(
-                message: 'Enable for QwQ, Deepseek-R1, Qwen3, Precog, or any model that\n'
-                    'outputs <think> blocks. Disables grammar constraints so the\n'
-                    'model can think freely before producing eval JSON.',
-                child: Icon(Icons.info_outline, size: 16, color: AppColors.iconSecondary(context)),
-              ),
-            ],
-          );
-        }),
-        const SizedBox(height: 16),
-                
                 IgnorePointer(
                   ignoring: isPresetActive,
                   child: Opacity(
@@ -804,78 +789,6 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               onPressed: _applyAutoConfiguration,
               icon: const Icon(Icons.auto_fix_high, color: Colors.amber),
               label: const Text('Auto-Configure', style: TextStyle(color: Colors.amber)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-         
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilterChip(
-              label: const Text('Use Vulkan'),
-              selected: _useVulkan,
-              onSelected: (val) {
-                setState(() {
-                  _useVulkan = val;
-                  if (val) { _useCublas = false; _useRocm = false; _useMetal = false; }
-                });
-              },
-            ),
-            Tooltip(
-              message: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasRocm == true ? 'Use ROCm for native AMD GPU acceleration' : 'Requires ROCm installation (AMD GPU)',
-              child: FilterChip(
-                label: const Text('Use ROCm (AMD)'),
-                selected: _useRocm,
-                onSelected: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasRocm == true
-                  ? (val) {
-                      setState(() {
-                        _useRocm = val;
-                        if (val) { _useVulkan = false; _useCublas = false; _useMetal = false; }
-                      });
-                    }
-                  : null,
-                avatar: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasRocm == true
-                  ? null
-                  : const Icon(Icons.block, size: 16),
-              ),
-            ),
-            Tooltip(
-              message: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.vendor == 'Nvidia' ? 'Use CUDA (NVIDIA only)' : 'Requires NVIDIA GPU',
-              child: FilterChip(
-                label: const Text('Use CuBLAS'),
-                selected: _useCublas,
-                onSelected: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.vendor == 'Nvidia' 
-                  ? (val) {
-                      setState(() {
-                        _useCublas = val;
-                        if (val) { _useVulkan = false; _useRocm = false; _useMetal = false; }
-                      });
-                    }
-                  : null, 
-                avatar: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.vendor == 'Nvidia' 
-                  ? null 
-                  : const Icon(Icons.block, size: 16),
-              ),
-            ),
-            Tooltip(
-              message: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasMetal == true ? 'Use Metal (Apple Silicon/Mac)' : 'Requires MacOS with Metal support',
-              child: FilterChip(
-                label: const Text('Use Metal'),
-                selected: _useMetal,
-                onSelected: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasMetal == true 
-                  ? (val) {
-                      setState(() {
-                        _useMetal = val;
-                        if (val) { _useVulkan = false; _useCublas = false; _useRocm = false; }
-                      });
-                    }
-                  : null, 
-                avatar: Provider.of<HardwareService>(context, listen: false).hardwareInfo?.hasMetal == true 
-                  ? null 
-                  : const Icon(Icons.block, size: 16),
-              ),
             ),
           ],
         ),
@@ -942,8 +855,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         if (!isOmLx)
           _buildTextField(label: 'API URL', controller: _apiUrlController),
         if (!isOmLx) const SizedBox(height: 12),
-        _buildTextField(label: 'API Key', controller: _apiKeyController, isObscured: true),
-        const SizedBox(height: 12),
+        if (!isOmLx)
+          _buildTextField(label: 'API Key', controller: _apiKeyController, isObscured: true),
+        if (!isOmLx) const SizedBox(height: 12),
         // Model selector — tappable chip that opens a model picker dialog
         InkWell(
           onTap: () => _showModelPicker(),
@@ -1041,74 +955,6 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             ),
           ],
         ),
-
-        const SizedBox(height: 16),
-        Divider(color: AppColors.borderOf(context)),
-        const SizedBox(height: 8),
-
-        // Reasoning toggle
-        Builder(builder: (context) {
-          final storage = Provider.of<StorageService>(context);
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.psychology, size: 18, color: Colors.blueAccent),
-                  const SizedBox(width: 8),
-                  Text('Request Reasoning', style: TextStyle(color: AppColors.textPrimary(context))),
-                  const Spacer(),
-                  Switch(
-                    value: storage.reasoningEnabled,
-                    onChanged: (val) => storage.setReasoningEnabled(val),
-                    activeTrackColor: Colors.blueAccent,
-                  ),
-                ],
-              ),
-              if (storage.reasoningEnabled)
-                Padding(
-                  padding: const EdgeInsets.only(left: 26, bottom: 4),
-                  child: Row(
-                    children: [
-                      Text('Effort', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13)),
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceContainerOf(context),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: storage.reasoningEffort,
-                            isDense: true,
-                            dropdownColor: AppColors.surfaceContainerOf(context),
-                            style: TextStyle(color: AppColors.textPrimary(context)),
-                            items: const [
-                              DropdownMenuItem(value: 'low', child: Text('Low')),
-                              DropdownMenuItem(value: 'medium', child: Text('Medium')),
-                              DropdownMenuItem(value: 'high', child: Text('High')),
-                            ],
-                            onChanged: (val) {
-                              if (val != null) storage.setReasoningEffort(val);
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              if (!storage.reasoningEnabled)
-                Padding(
-                  padding: const EdgeInsets.only(left: 26),
-                  child: Text(
-                    'Request thinking output from compatible models',
-                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
-                  ),
-                ),
-            ],
-          );
-        }),
       ],
     );
   }

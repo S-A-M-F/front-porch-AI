@@ -286,6 +286,9 @@ class _SettingsPageState extends State<SettingsPage> {
     // A non-zero persisted gpuLayers means the user or a previous
     // explicit auto-config set it — don't silently overwrite.
     if (_selectedModelPath != null && storage.gpuLayers == 0) {
+      // Warm before the silent auto-config so the solver gets good data on first run
+      final modelManager = Provider.of<ModelManager>(context, listen: false);
+      modelManager.getModelArchitectureInfo(_selectedModelPath!);
       _applyAutoConfiguration(silent: true);
     } else if (_selectedModelPath != null) {
       // Respect previously saved settings — just load them into the UI
@@ -2242,6 +2245,12 @@ class _SettingsPageState extends State<SettingsPage> {
       _selectedModelPath = modelManager.models.first.path;
     }
 
+    // Warm architecture info for the (possibly just auto-selected) model so
+    // the first Auto-Configure or gauge update in this section is accurate.
+    if (_selectedModelPath != null) {
+      modelManager.getModelArchitectureInfo(_selectedModelPath!); // fire-and-forget
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -3127,6 +3136,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   } else {
                     storageService.setActiveKcppsPath(null);
                   }
+
+                  // Eagerly warm the GGUF architecture + KV cache so that
+                  // Auto-Configure (and the live VRAM gauge) get accurate
+                  // nLayers / bytes-per-layer on the first click instead of
+                  // falling back to weaker heuristics.
+                  modelManager.getModelArchitectureInfo(val); // fire-and-forget
+
                   _applyAutoConfiguration(silent: true);
                 }
               },
@@ -3675,13 +3691,29 @@ class _SettingsPageState extends State<SettingsPage> {
 
                             final gpuLayers =
                                 int.tryParse(_gpuLayersController.text) ?? 0;
-                            // If GPU layers < 99, only part of model is on GPU
-                            final modelVramMb = gpuLayers >= 99
-                                ? modelSizeMb.toDouble()
-                                : (modelSizeMb * (gpuLayers / 40.0)).clamp(
-                                    0,
-                                    modelSizeMb.toDouble(),
-                                  );
+
+                            // Improved model VRAM estimate using real architecture data when available
+                            double modelVramMb;
+                            if (gpuLayers >= 99) {
+                              modelVramMb = modelSizeMb.toDouble();
+                            } else {
+                              final archInfo = _selectedModelPath != null
+                                  ? Provider.of<ModelManager>(context, listen: false)
+                                      .getCachedModelArchitectureInfo(_selectedModelPath!)
+                                  : null;
+                              if (archInfo != null && archInfo.nLayers > 0) {
+                                final bytesPerLayer = archInfo.estimateBytesPerLayer(
+                                  (modelSizeMb * 1024 * 1024).toInt(),
+                                );
+                                modelVramMb = (bytesPerLayer * gpuLayers / (1024 * 1024)).toDouble();
+                              } else {
+                                // Fallback to old heuristic only when we have no architecture data
+                                modelVramMb = (modelSizeMb * (gpuLayers / 40.0)).clamp(
+                                  0,
+                                  modelSizeMb.toDouble(),
+                                );
+                              }
+                            }
                             final usedVram = modelVramMb + contextVramMb;
                             final usedRatio = (usedVram / totalVram).clamp(
                               0.0,

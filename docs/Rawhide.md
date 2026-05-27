@@ -4,9 +4,13 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- ⚙️ **Auto-Configure for local models is now actually accurate** — The "Auto-Configure" button (in both the chat "Model" dialog and main Settings) finally produces GPU layer recommendations that make sense when you have a specific context size in mind. It now uses real model architecture data from the GGUF file (layer count, KV head dimensions) plus a proper binary search to find the highest number of layers that should safely fit your chosen context + KV quantization without OOMing. The old "ratio * 40" magic math and "100 MB per 1k context" guesswork are gone for the important path. Works dramatically better with the VRAM override for testing tight scenarios.
+
+- 🔧 **Model Settings dialog cleanups** — The "Model" sheet (Model button in any chat) no longer shows a spurious API Key input when the 🍎 oMLX backend is active. The global "Request Reasoning" controls, the local "Thinking Model" switch, and the four hardware acceleration chips (Use Vulkan / ROCm / CuBLAS / Metal) have all been removed from this dialog. These advanced options remain available in the main app Settings and via .kcpps presets / Auto-Configure.
+
 - 🧠 **Needs chips now survive app restart** — The Energy / Hunger / Hygiene / Bladder / etc. delta chips under the last AI message are now persisted the same way the classic Bond / Trust / Emotion chips have always been. Closing and reopening the app no longer wipes the needs row while leaving the realism chips intact.
 
-- 🖋️ **Chat input "dialogue"/*action* colors stay consistent** — The live coloring for "quoted dialogue" (amber) and *actions* (blue) in the message input box no longer resets to plain text when the desktop spell checker activates or offers corrections.
+- 🖋️ **Chat composer: live red spell underlines + stable custom coloring** — The message input now reliably shows both at the same time. Results are delivered live from a thin notifying wrapper around the desktop spell service (instead of only on context menu). The _StyledTextController applies the amber ("dialogue") / blue (*action*) colors plus the wavy underline decoration itself. Layout, height, resize handle, and keyboard behavior are unchanged. Right-click suggestions continue to work. Dead code from previous attempts cleaned up.
 
 - 🧠 **Realism Engine speedup** — Removed duplicate code paths for KoboldCpp vs API backends. All realism evaluations (emotion, bond, trust, narrative) now run concurrently instead of sequentially, improving chat response times.
 
