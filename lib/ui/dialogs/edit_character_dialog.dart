@@ -22,17 +22,16 @@ import 'package:flutter/material.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
-import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:path/path.dart' as p;
-import 'package:front_porch_ai/models/character_card.dart';
-import 'package:front_porch_ai/models/lorebook.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/world_repository.dart';
+
+// Barrel imports
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+// Specific dialogs not in barrels
+import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class EditCharacterDialog extends StatefulWidget {
   final CharacterCard character;

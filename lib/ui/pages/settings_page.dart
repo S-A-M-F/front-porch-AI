@@ -23,37 +23,21 @@ import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:front_porch_ai/services/kobold_service.dart';
-import 'package:front_porch_ai/services/backend_manager.dart';
-import 'package:front_porch_ai/services/model_manager.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
-import 'package:front_porch_ai/services/hardware_service.dart';
-import 'package:front_porch_ai/services/optimization_service.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
-import 'package:front_porch_ai/services/open_router_service.dart';
-import 'package:front_porch_ai/ui/widgets/log_view.dart';
-import 'package:front_porch_ai/services/pseudo_remote_service.dart';
-import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
-import 'package:front_porch_ai/ui/widgets/model_selector.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
-import 'package:front_porch_ai/services/update_service.dart';
-import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/stt_service.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/services/folder_service.dart';
+
+// Barrel imports (high-frequency services + widgets)
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+// Modules and dialogs not in the barrels (internal, low-frequency, or single-use)
 import 'package:front_porch_ai/database/database.dart';
-import 'package:front_porch_ai/services/user_persona_service.dart';
-import 'package:front_porch_ai/services/world_repository.dart';
-import 'package:front_porch_ai/ui/widgets/slider_with_input.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/web_server_service.dart';
+import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
-import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/ui/dialogs/image_gen_settings_dialog.dart';
-import 'package:front_porch_ai/services/expression_classifier.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});

@@ -233,11 +233,35 @@ Because the user has **no ability to read or evaluate Dart code**, the following
 - Prefer `final` over `var`
 - One class per file (except small related classes)
 - snake_case for file names
+- Use barrel files (`models/models.dart`, `services/services.dart`, etc.) for new or refactored code to reduce import boilerplate (see "Barrel files and long-term import hygiene" section below)
 
 ### Import order
 1. Dart SDK (`dart:*`)
 2. Packages (`package:*`)
 3. Local imports (`../`, `./`)
+
+### Barrel files and long-term import hygiene (policy)
+The project uses barrel files to reduce hundreds of repetitive intra-package imports:
+
+- `package:front_porch_ai/models/models.dart`
+- `package:front_porch_ai/utils/utils.dart`
+- `package:front_porch_ai/services/services.dart` (curated — only the high-frequency public surface)
+- `package:front_porch_ai/ui/widgets/widgets.dart`
+
+**Preferred style for new code and refactors** is to import the barrel(s) instead of many individual files.
+
+Direct imports of single files remain legal forever and are the correct choice for internal-only or one-off modules (e.g., grpc generated code, kokoro worker pools, a single niche dialog).
+
+**Long-term migration policy (opportunistic, no heroic PRs):**
+- There is **no** dedicated "import cleanup" effort or "import month".
+- When you open any file for a real reason (feature, bug, refactor), convert its imports to use barrels as part of the same change. This is low-friction because the file is already being touched.
+- Small dedicated hygiene PRs (5–8 files max) are allowed at most once per month when convenient, but only when the mechanical verification surface is tiny.
+- Mass automated find/replace across dozens of files is forbidden.
+- Files that are rarely edited may stay on direct imports indefinitely — this is acceptable.
+
+Because the human cannot review Dart code, all barrel-related changes rely on mechanical verification (`flutter analyze` clean, `dart fix`, import line counts, build) plus the project's existing Hygiene Summary requirement. Use the `/check` skill or a verification sub-agent for anything larger than a few files.
+
+When you add a new service or model that will be used from 3+ locations and is not purely internal, add the export to the appropriate barrel in the same PR.
 
 ### Riverpod patterns (for new code)
 - Use `AsyncNotifier` for async operations

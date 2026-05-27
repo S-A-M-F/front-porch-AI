@@ -16,38 +16,32 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'package:front_porch_ai/database/database.dart';
 import 'dart:io';
-import 'package:path/path.dart' as path;
+
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as path;
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/world_repository.dart';
-import 'package:front_porch_ai/services/folder_service.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/services/cloud_sync_service.dart';
-import 'package:front_porch_ai/services/kobold_service.dart';
-import 'package:front_porch_ai/services/byaf_service.dart';
-import 'package:front_porch_ai/ui/dialogs/byaf_import_dialog.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
-import 'package:front_porch_ai/models/group_chat.dart';
+
+// Barrel imports
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+// Specific pages, dialogs, and internal services not in barrels
 import 'package:front_porch_ai/ui/pages/chat_page.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
-import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/ui/pages/edit_character_page.dart';
 import 'package:front_porch_ai/ui/pages/character_creator_page.dart';
-import 'package:front_porch_ai/ui/dialogs/tag_dialog.dart';
-import 'package:front_porch_ai/models/character_card.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/ui/pages/story_home_view.dart';
-import 'package:front_porch_ai/ui/widgets/character_card_grid.dart';
+import 'package:front_porch_ai/ui/dialogs/byaf_import_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/tag_dialog.dart';
+import 'package:front_porch_ai/services/byaf_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});

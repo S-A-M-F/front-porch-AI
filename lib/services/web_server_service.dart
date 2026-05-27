@@ -29,35 +29,23 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
+// Barrel imports for high-frequency services and models
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+
+// Items not in the curated services barrel (internal, low-frequency, or sidecar)
+import 'package:front_porch_ai/app_version.dart';
+import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/services/web_chat_bridge.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
-import 'package:front_porch_ai/services/folder_service.dart';
-import 'package:front_porch_ai/services/tts_service.dart';
-import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/services/byaf_service.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/models/group_chat.dart';
-import 'package:front_porch_ai/services/llm_service.dart';
-import 'package:front_porch_ai/services/cloud_sync_service.dart';
+import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
-import 'package:front_porch_ai/services/backup_service.dart';
-import 'package:front_porch_ai/services/character_gen_service.dart';
-import 'package:front_porch_ai/services/image_gen_service.dart';
-import 'package:front_porch_ai/services/open_router_service.dart';
-import 'package:front_porch_ai/services/embedding_sidecar.dart';
-import 'package:front_porch_ai/services/story_repository.dart';
-import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/models/story_project.dart' as story_model;
+import 'package:drift/drift.dart' show Value;
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:front_porch_ai/database/database.dart';
-import 'package:front_porch_ai/models/character_card.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
-import 'package:drift/drift.dart' show Value;
 
 /// Embedded HTTP server that serves the web UI and REST API.
 ///

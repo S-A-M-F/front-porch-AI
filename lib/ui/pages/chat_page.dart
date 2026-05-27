@@ -27,39 +27,29 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/models/character_card.dart';
-import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
+import 'package:file_picker/file_picker.dart';
+
+// Barrel imports for high-frequency services, models, utils, and widgets
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/utils/utils.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+// Specific dialogs and modules not covered by the barrels (or intentionally direct)
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/ui/dialogs/character_avatars_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/edit_character_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/ui_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/chat_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/model_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
-import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/services/tts_service.dart';
-import 'package:front_porch_ai/services/stt_service.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/models/group_chat.dart';
-import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/ui/dialogs/group_settings_dialog.dart';
-import 'package:front_porch_ai/services/image_gen_service.dart';
-import 'package:front_porch_ai/services/world_repository.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/ui/dialogs/image_gen_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/data_bank_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/kobold_log_dialog.dart';
-import 'package:front_porch_ai/services/embedding_sidecar.dart';
-import 'package:front_porch_ai/ui/widgets/call_overlay.dart';
-import 'package:front_porch_ai/ui/widgets/chance_time_overlay.dart';
-import 'package:front_porch_ai/ui/widgets/onnx_download_overlay.dart';
-import 'package:front_porch_ai/services/expression_classifier.dart';
-import 'package:file_picker/file_picker.dart';
 
 /// Applies a Google Font to a base TextStyle dynamically.
 TextStyle _applyGoogleFont(String? fontFamily, TextStyle baseStyle) {

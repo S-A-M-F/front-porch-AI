@@ -29,50 +29,35 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/ui/layout/main_layout.dart'; // Keep original import for MainLayout
-import 'package:front_porch_ai/services/kobold_service.dart';
-import 'package:front_porch_ai/services/open_router_service.dart';
-import 'package:front_porch_ai/services/pseudo_remote_service.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/backend_manager.dart';
-import 'package:front_porch_ai/services/model_manager.dart';
-import 'package:front_porch_ai/services/download_manager.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/hardware_service.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/user_persona_service.dart';
-import 'package:front_porch_ai/services/world_repository.dart';
-import 'package:front_porch_ai/services/setup_service.dart';
-import 'package:front_porch_ai/services/folder_service.dart';
-import 'package:front_porch_ai/services/update_service.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/services/voice_manager.dart';
-import 'package:front_porch_ai/services/tts_service.dart';
-import 'package:front_porch_ai/services/stt_service.dart';
-import 'package:front_porch_ai/services/cloud_sync_service.dart';
-import 'package:front_porch_ai/services/image_gen_service.dart';
-import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
-import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
+import 'package:front_porch_ai/app_version.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/database/data_migration_service.dart';
+
+// Barrel imports for the most common services and widgets used directly in main.dart
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+// Services and modules not yet in the services barrel (internal, low-frequency, or side-effect heavy)
+import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/services/download_manager.dart';
+import 'package:front_porch_ai/services/setup_service.dart';
 import 'package:front_porch_ai/services/backup_service.dart';
 import 'package:front_porch_ai/services/db_reunification_service.dart';
 import 'package:front_porch_ai/services/embedding_service.dart';
 import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
-import 'package:front_porch_ai/services/story_repository.dart';
-import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/services/audiobook_generator_service.dart';
 import 'package:front_porch_ai/services/file_consolidation_service.dart';
-
-import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
-import 'package:front_porch_ai/ui/widgets/remote_lock_overlay.dart';
-import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
-import 'package:front_porch_ai/ui/dialogs/stable_db_import_dialog.dart';
 import 'package:front_porch_ai/services/web_server_service.dart';
 import 'package:front_porch_ai/services/web_chat_bridge.dart';
-import 'package:front_porch_ai/services/expression_classifier.dart';
-import 'package:front_porch_ai/app_version.dart';
+
+// Cloud provider implementations (not re-exported from the services barrel)
+import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
+import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
+
+// Dialogs and specific widgets used only in main.dart (direct imports are appropriate)
+import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/stable_db_import_dialog.dart';
 
 /// Prefix SharedPreferences keys for beta builds so window state is
 /// isolated from the stable installation.  Unchanged for stable builds.

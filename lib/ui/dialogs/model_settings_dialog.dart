@@ -20,18 +20,14 @@ import 'dart:io';
 import 'package:path/path.dart' as path_lib;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:front_porch_ai/services/kobold_service.dart';
-import 'package:front_porch_ai/services/backend_manager.dart';
+
+// Barrel imports
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+// Not in barrels (internal or low-frequency)
 import 'package:front_porch_ai/services/model_manager.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/hardware_service.dart';
 import 'package:front_porch_ai/services/optimization_service.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
-import 'package:front_porch_ai/services/open_router_service.dart';
-import 'package:front_porch_ai/services/pseudo_remote_service.dart';
-import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
-import 'package:front_porch_ai/ui/widgets/log_view.dart';
-import 'package:front_porch_ai/ui/widgets/model_selector.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class ModelSettingsDialog extends StatefulWidget {

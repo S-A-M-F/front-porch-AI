@@ -211,18 +211,33 @@ class TTSEngine {
 - Import order: Dart SDK, packages, local imports
 
 ### Import Style
+Use barrel files to reduce repetitive intra-package imports.
+
 ```dart
-// Good: Organized imports
+// Good: Modern barrel-aware imports (preferred for new/refactored code)
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/character.dart';
-import '../services/chat_service.dart';
-import 'message_bubble.dart';
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+import 'package:front_porch_ai/ui/dialogs/edit_character_dialog.dart'; // single-use dialog, direct import is fine
 ```
+
+Direct imports of individual files (`import 'package:front_porch_ai/services/storage_service.dart';`) remain fully supported and are the right choice for one-off or internal-only modules.
+
+Barrels currently exist for:
+- `lib/models/models.dart`
+- `lib/utils/utils.dart`
+- `lib/services/services.dart` (curated high-frequency surface only)
+- `lib/ui/widgets/widgets.dart`
+
+When adding a new public service or model used from 3+ locations, add it to the appropriate barrel as part of the same change.
+
+See CLAUDE.md for the long-term opportunistic migration policy (convert files when you touch them for other reasons; no heroic cleanup PRs).
 
 ### User-Facing Changelogs for the Update Dialog
 
