@@ -51,13 +51,18 @@ export 'package:flutter/material.dart' show SpellCheckConfiguration;
 /// This widget only injects [SpellCheckConfiguration] on macOS and Windows.
 /// All other platforms fall through to Flutter's native defaults.
 ///
-/// ## Opting out (technical inputs)
+/// ## Opting out or customizing visuals (technical or stylized inputs)
 ///
 /// API keys, URLs, host/port fields, model names, search bars, and other
 /// non-prose inputs should remain as a plain [TextField] **or** pass
 /// `spellCheckConfiguration: SpellCheckConfiguration.disabled()` explicitly.
-/// Keeping that intent visible at the call site makes it clear in code review
-/// that the omission is deliberate, not an oversight.
+///
+/// For inputs that have their own custom `TextSpan` coloring (e.g. chat message
+/// composer with "dialogue" / *action* styling), prefer
+/// `AppTextField.platformSpellCheck(showMisspellings: false)`. This keeps the
+/// native spell service and suggestion results active (context menu corrections
+/// still work) while suppressing the red underline style that would otherwise
+/// fight the custom colors.
 ///
 /// ## Drop-in replacement
 ///
@@ -227,22 +232,23 @@ class AppTextField extends StatelessWidget {
   /// | macOS    | Native NSSpellChecker via FlutterTextInputPlugin |
   /// | Windows  | Native Windows Spell Checking API                |
   /// | Others   | `null` — spell check disabled                   |
-  static SpellCheckConfiguration? platformSpellCheck() {
+  ///
+  /// [showMisspellings] controls whether the red wavy underline style is
+  /// applied. Set to false for fields with custom TextSpan styling (e.g. chat
+  /// input "dialogue"/ *action* coloring) where the misspelled style would
+  /// otherwise interfere. The spell check service and suggestion results
+  /// remain active either way, so context menu corrections still work.
+  static SpellCheckConfiguration? platformSpellCheck({bool showMisspellings = true}) {
     if (Platform.isMacOS || Platform.isWindows) {
-      // Route spell check through the native platform spell checkers
-      // (NSSpellChecker on macOS, ISpellChecker on Windows) via our custom plugin.
-      // Both [DefaultSpellCheckService] and the nativeSpellCheckServiceDefined path
-      // fail on desktop — the only reliable approach is direct platform API calls
-      // through method channels.
       return SpellCheckConfiguration(
         spellCheckService: DesktopSpellCheckService(),
-        misspelledTextStyle: TextStyle(
-          decoration: TextDecoration.underline,
-          decorationColor: Colors.redAccent.withOpacity(
-            0.6,
-          ), // Softer underline
-          decorationStyle: TextDecorationStyle.wavy,
-        ),
+        misspelledTextStyle: showMisspellings
+            ? TextStyle(
+                decoration: TextDecoration.underline,
+                decorationColor: Colors.redAccent.withOpacity(0.6),
+                decorationStyle: TextDecorationStyle.wavy,
+              )
+            : const TextStyle(), // no visual — preserves custom coloring
       );
     }
     return null;
