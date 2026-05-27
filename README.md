@@ -10,7 +10,18 @@
 
 **A privacy-first AI companion for Windows, Linux, and macOS.** Runs fully offline with local LLMs (KoboldCpp, etc.) by default, but also supports remote APIs like OpenRouter, Nano-GPT, and OpenAI with no lock-in when you want them.
 
-💬 **[Join the Discord](https://discord.gg/e4tET6rpdv)** — questions, feedback, and hanging out welcome. Also on **[Matrix](https://matrix.dreamersai.art)**.
+💬 **[Join the Discord](https://discord.gg/e4tET6rpdv)** — questions, feedback, and hanging out welcome.
+
+### 🌟 Community Showcase
+
+Front Porch is growing a small companion ecosystem. Big thanks to community members building tools that integrate deeply.
+
+**Character Card Forge** by [@FrozenKangaroo](https://github.com/FrozenKangaroo) — A companion editor with strong integration, including emotion image export and seeding initial Realism Engine state.
+
+[Check it out →](https://github.com/FrozenKangaroo/Character-Card-Forge)  
+If you use it, a star would mean a lot to the developer.
+
+> **Note:** This community tool uses direct database access for its advanced features. It can be impacted by future schema changes.
 
 <p align="center">
   <img src="docs/screenshots/home_new.png" width="800" alt="Front Porch AI — Character Library">
@@ -299,7 +310,6 @@ Starting with **v0.9.0**, this project is licensed under **AGPL-3.0** — meanin
 ## 💬 Community
 
 - **Discord**: [Join our server](https://discord.gg/e4tET6rpdv)
-- **Matrix**: [matrix.dreamersai.art](https://matrix.dreamersai.art)
 
 ---
 
