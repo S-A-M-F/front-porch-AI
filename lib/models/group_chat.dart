@@ -45,6 +45,18 @@ class GroupChat {
   /// Added in v30 (clean replacement for old hidden checkpoint system).
   String defaultMemberRealismState;
 
+  /// Per-character system prompt overrides that only apply inside *this* group.
+  /// Keyed by stable charId (image basename without extension, matching how
+  /// characterIds are stored).
+  /// These take precedence over the character's normal `systemPrompt` (from their card)
+  /// when that character speaks in this group, but sit "under" the group-level `systemPrompt`.
+  ///
+  /// For Path B (cleaner architecture, no spec bump): exposed as a first-class Map on the model.
+  /// Persisted during transition inside `defaultMemberRealismState` JSON under 'character_system_prompts'
+  /// (see GroupChatRepository). On Group Card import, legacy data from `realism_state` is promoted here.
+  /// See docs/characters.md "Prompt Priority in Groups" for the v1.0 hierarchy.
+  Map<String, String> characterSystemPrompts;
+
   GroupChat({
     required this.id,
     required this.name,
@@ -56,7 +68,8 @@ class GroupChat {
     this.scenario = '',
     this.systemPrompt = '',
     this.defaultMemberRealismState = '{}',
-  });
+    Map<String, String>? characterSystemPrompts,
+  }) : characterSystemPrompts = characterSystemPrompts ?? {};
 
   Map<String, dynamic> toJson() {
     return {
@@ -70,10 +83,16 @@ class GroupChat {
       'scenario': scenario,
       'system_prompt': systemPrompt,
       'default_member_realism_state': defaultMemberRealismState,
+      'character_system_prompts': characterSystemPrompts,
     };
   }
 
   factory GroupChat.fromJson(Map<String, dynamic> json) {
+    final rawCharPrompts = json['character_system_prompts'];
+    final charPrompts = (rawCharPrompts is Map)
+        ? rawCharPrompts.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()))
+        : <String, String>{};
+
     return GroupChat(
       id: json['id'] ?? '',
       name: json['name'] ?? 'Group Chat',
@@ -92,6 +111,7 @@ class GroupChat {
       scenario: json['scenario'] ?? '',
       systemPrompt: json['system_prompt'] ?? '',
       defaultMemberRealismState: json['default_member_realism_state'] ?? '{}',
+      characterSystemPrompts: charPrompts,
     );
   }
 }

@@ -2937,6 +2937,17 @@ class _HomePageState extends State<HomePage> {
     // Seed portable group realism/needs defaults from the imported card if present
     // (enables split-to-solo characters to inherit evolved bond/trust/emotion/etc from the group).
     final importedRealism = groupCard.extensions?['realism_state'];
+
+    // Path B compatibility: Prefer the new top-level `character_system_prompts` key in the Group Card.
+    // Fall back to promoting from the legacy location inside `realism_state` (for cards exported before this change).
+    Map<String, String> importedCharPrompts = groupCard.characterSystemPrompts;
+    if (importedCharPrompts.isEmpty && importedRealism is Map) {
+      final legacy = importedRealism['characterSystemPrompts'] ?? importedRealism['character_system_prompts'];
+      if (legacy is Map) {
+        importedCharPrompts = legacy.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
+      }
+    }
+
     final newGroup = GroupChat(
       id: 'group_${DateTime.now().millisecondsSinceEpoch}',
       name: groupCard.name,
@@ -2950,6 +2961,7 @@ class _HomePageState extends State<HomePage> {
       defaultMemberRealismState: importedRealism is Map
           ? jsonEncode(importedRealism)
           : '{}',
+      characterSystemPrompts: importedCharPrompts,
     );
 
     await groupRepo.save(newGroup);
@@ -3061,6 +3073,7 @@ class _HomePageState extends State<HomePage> {
           firstMessage: group.firstMessage,
           scenario: group.scenario,
           systemPrompt: group.systemPrompt,
+          characterSystemPrompts: group.characterSystemPrompts,
           extensions: (group.defaultMemberRealismState.isNotEmpty &&
                   group.defaultMemberRealismState != '{}')
               ? {'realism_state': jsonDecode(group.defaultMemberRealismState)}

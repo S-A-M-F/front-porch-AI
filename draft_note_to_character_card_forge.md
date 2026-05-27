@@ -117,4 +117,10 @@ Happy to stay in sync. The direct SQL integration you built is genuinely useful 
 
 Schema version is now 30. The migration is purely additive and uses `DEFAULT` so old rows are fine.
 
+**Path B update (per-character group system prompts):**
+We are moving per-character group system prompts to first-class storage on `GroupChat` (and top-level `character_system_prompts` in the Group Card `data` object at spec v1.0 — no version bump).
+- Legacy data inside `realism_state` is automatically promoted on import.
+- New recommended location for writers: top-level `character_system_prompts` in the Group Card JSON.
+- See the updated `docs/characters.md` (additive field + "Prompt Priority in Groups" section) and the dedicated Claude guide for exact shapes and migration rules.
+
 Let me know if you need the raw migration SQL or a sample DB file.

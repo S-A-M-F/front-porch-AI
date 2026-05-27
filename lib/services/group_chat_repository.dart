@@ -53,6 +53,23 @@ class GroupChatRepository extends ChangeNotifier {
           charIds = List<String>.from(jsonDecode(g.characterIds));
         } catch (_) {}
 
+        // Path B transition: extract per-char system prompts from the realism JSON if present
+        Map<String, String> charPrompts = {};
+        String realismJsonForModel = g.defaultMemberRealismState;
+        try {
+          final decoded = jsonDecode(g.defaultMemberRealismState);
+          if (decoded is Map && decoded.containsKey('character_system_prompts')) {
+            final promptsRaw = decoded['character_system_prompts'];
+            if (promptsRaw is Map) {
+              charPrompts = promptsRaw.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
+            }
+            // Remove the key from the realism blob for the model (it will be re-merged on save if needed)
+            final mutable = Map<String, dynamic>.from(decoded);
+            mutable.remove('character_system_prompts');
+            realismJsonForModel = jsonEncode(mutable);
+          }
+        } catch (_) {}
+
         _groups.add(
           GroupChat(
             id: g.id,
@@ -67,7 +84,8 @@ class GroupChatRepository extends ChangeNotifier {
             firstMessage: g.firstMessage,
             scenario: g.scenario,
             systemPrompt: g.systemPrompt,
-            defaultMemberRealismState: g.defaultMemberRealismState,
+            defaultMemberRealismState: realismJsonForModel,
+            characterSystemPrompts: charPrompts,
           ),
         );
       }
@@ -86,6 +104,24 @@ class GroupChatRepository extends ChangeNotifier {
   Future<void> save(GroupChat group) async {
     // Save to database
     final existing = await _db.getGroupById(group.id);
+
+    // Path B transition: merge characterSystemPrompts into the realism JSON
+    // under 'character_system_prompts' so we don't need a new DB column yet.
+    String realismToStore = group.defaultMemberRealismState;
+    if (group.characterSystemPrompts.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(group.defaultMemberRealismState);
+        final mutable = (decoded is Map)
+            ? Map<String, dynamic>.from(decoded)
+            : <String, dynamic>{};
+        mutable['character_system_prompts'] = group.characterSystemPrompts;
+        realismToStore = jsonEncode(mutable);
+      } catch (_) {
+        // If the realism JSON is invalid or empty, just store the prompts
+        realismToStore = jsonEncode({'character_system_prompts': group.characterSystemPrompts});
+      }
+    }
+
     final companion = GroupsCompanion(
       id: Value(group.id),
       name: Value(group.name),
@@ -96,7 +132,7 @@ class GroupChatRepository extends ChangeNotifier {
       firstMessage: Value(group.firstMessage),
       scenario: Value(group.scenario),
       systemPrompt: Value(group.systemPrompt),
-      defaultMemberRealismState: Value(group.defaultMemberRealismState),
+      defaultMemberRealismState: Value(realismToStore),
     );
 
     if (existing != null) {
@@ -113,7 +149,7 @@ class GroupChatRepository extends ChangeNotifier {
           firstMessage: Value(group.firstMessage),
           scenario: Value(group.scenario),
           systemPrompt: Value(group.systemPrompt),
-          defaultMemberRealismState: Value(group.defaultMemberRealismState),
+          defaultMemberRealismState: Value(realismToStore),
         ),
       );
     }

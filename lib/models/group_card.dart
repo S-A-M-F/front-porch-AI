@@ -43,6 +43,16 @@ class GroupCard {
   final String scenario;
   final String systemPrompt;
 
+  /// Per-character system prompt overrides scoped to this group only.
+  /// Keyed by stable charId. These are separate from the characters' normal
+  /// card system prompts and from the group-level systemPrompt.
+  ///
+  /// Stored at the top level of `data` in the Group Card JSON (additive in spec v1.0).
+  /// For backward compatibility, importers also check the legacy location inside
+  /// `realism_state.characterSystemPrompts` / `character_system_prompts` and promote the data.
+  /// See docs/characters.md for the exact v1.0 rules (no spec version bump).
+  final Map<String, String> characterSystemPrompts;
+
   /// Future extension point for group-level Front Porch features
   /// (e.g. shared realism defaults, group-wide needs simulation, etc.).
   final Map<String, dynamic>? extensions;
@@ -57,8 +67,10 @@ class GroupCard {
     this.firstMessage = '',
     this.scenario = '',
     this.systemPrompt = '',
+    Map<String, String>? characterSystemPrompts,
     this.extensions,
-  }) : rawMemberData = rawMemberData ?? members.map((c) => c.toJson()).toList();
+  })  : rawMemberData = rawMemberData ?? members.map((c) => c.toJson()).toList(),
+        characterSystemPrompts = characterSystemPrompts ?? {};
 
   Map<String, dynamic> toJson() {
     final result = <String, dynamic>{
@@ -71,6 +83,9 @@ class GroupCard {
       'scenario': scenario,
       'system_prompt': systemPrompt,
     };
+    if (characterSystemPrompts.isNotEmpty) {
+      result['character_system_prompts'] = characterSystemPrompts;
+    }
     if (extensions != null && extensions!.isNotEmpty) {
       result['extensions'] = extensions;
       // Promote realism_state to top-level for the Group Card standard (portable defaults)
@@ -108,6 +123,11 @@ class GroupCard {
       );
     }).toList();
 
+    final rawCharPrompts = json['character_system_prompts'];
+    final charPrompts = (rawCharPrompts is Map)
+        ? rawCharPrompts.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()))
+        : <String, String>{};
+
     return GroupCard(
       name: json['name'] ?? 'Group',
       members: members,
@@ -118,6 +138,7 @@ class GroupCard {
       firstMessage: json['first_message'] ?? '',
       scenario: json['scenario'] ?? '',
       systemPrompt: json['system_prompt'] ?? '',
+      characterSystemPrompts: charPrompts,
       extensions: json['extensions'] is Map
           ? Map<String, dynamic>.from(json['extensions'])
           : (json['realism_state'] is Map

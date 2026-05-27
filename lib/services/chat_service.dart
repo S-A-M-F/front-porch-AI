@@ -2395,6 +2395,9 @@ class ChatService extends ChangeNotifier {
     _groupMemoryBudgetPercent = 10.0;
     _groupCharacterRAGPriorities = {};
 
+    // Path B: Load per-character group system prompts from the clean model field
+    _groupCharacterSystemPrompts = Map<String, String>.from(group.characterSystemPrompts);
+
     if (_characterRepository == null) return;
 
     // Clear 1:1 mode
@@ -4622,6 +4625,7 @@ class ChatService extends ChangeNotifier {
       }
 
       // Build prompt the same way _generateResponse does
+      // Path B clean hierarchy (same as the main generation path)
       final String systemPrompt;
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
         systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
@@ -4638,6 +4642,17 @@ class ChatService extends ChangeNotifier {
         systemPrompt = isApi
             ? defaultApiSystemPrompt
             : defaultKoboldSystemPrompt;
+      }
+
+      if (_activeGroup != null) {
+        final groupCharPrompt = getSystemPromptForGroupCharacter(speakingCharacter).trim();
+        if (groupCharPrompt.isNotEmpty) {
+          systemPrompt +=
+              '\n\n[Group-specific instructions for ${speakingCharacter.name}]\n$groupCharPrompt';
+        } else if (speakingCharacter.systemPrompt.isNotEmpty) {
+          systemPrompt +=
+              '\n\n[Specific instructions for ${speakingCharacter.name}]\n${speakingCharacter.systemPrompt.trim()}';
+        }
       }
 
       // Lorebook
@@ -5102,46 +5117,40 @@ class ChatService extends ChangeNotifier {
         await _evaluateRealismForUpcomingGroupSpeaker(speakingCharacter);
       }
 
-      // ── System prompt selection ──
-      // Priority: group custom > group default > character > user global > backend default
+      // ── System prompt selection (Path B clean hierarchy) ──
+      // 1. Group-level system prompt (if set) — base for the whole group.
+      // 2. Per-character group override (if set for the speaker in this group) — appended.
+      // 3. Character's normal card system prompt (fallback if no group override for them).
+      // 4. (Later) Per-character Author's Note is injected separately with its own strength.
       String systemPrompt;
+
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        // User wrote a custom group system prompt — use it
         systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
       } else if (_activeGroup != null) {
-        // Group mode, no custom prompt — use observer or default
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
             : defaultGroupSystemPrompt;
+      } else if (speakingCharacter.systemPrompt.isNotEmpty) {
+        systemPrompt = speakingCharacter.systemPrompt;
+      } else if (_storageService.systemPrompt.isNotEmpty) {
+        systemPrompt = _storageService.systemPrompt;
+      } else {
+        final isApi = _llmProvider != null && !_llmProvider!.isLocal;
+        systemPrompt = isApi ? defaultApiSystemPrompt : defaultKoboldSystemPrompt;
+      }
 
-        // Per-character system prompt for this group (takes precedence over the
-        // character's normal card-level systemPrompt when inside this group).
-        final groupCharPrompt = getSystemPromptForGroupCharacter(
-          speakingCharacter,
-        ).trim();
+      // Path B: When in a group, always attempt to layer the per-character group override
+      // (and card fallback) on top. A group prompt no longer completely hides per-char instructions.
+      if (_activeGroup != null) {
+        final groupCharPrompt = getSystemPromptForGroupCharacter(speakingCharacter).trim();
         if (groupCharPrompt.isNotEmpty) {
           systemPrompt +=
               '\n\n[Group-specific instructions for ${speakingCharacter.name}]\n$groupCharPrompt';
-        } else {
-          // Fall back to the character's normal (1:1) system prompt, if any.
-          final charSpecific = speakingCharacter.systemPrompt.trim();
-          if (charSpecific.isNotEmpty) {
-            systemPrompt +=
-                '\n\n[Specific instructions for ${speakingCharacter.name}]\n$charSpecific';
-          }
+        } else if (speakingCharacter.systemPrompt.isNotEmpty) {
+          // Fallback to the character's own card prompt only if no group-specific override
+          systemPrompt +=
+              '\n\n[Specific instructions for ${speakingCharacter.name}]\n${speakingCharacter.systemPrompt.trim()}';
         }
-      } else if (speakingCharacter.systemPrompt.isNotEmpty) {
-        // Character has its own system prompt — use it
-        systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.systemPrompt.isNotEmpty) {
-        // Single-char mode with a user-defined global prompt — respect it
-        systemPrompt = _storageService.systemPrompt;
-      } else {
-        // Single-char mode, no user prompt — pick default based on backend
-        final isApi = _llmProvider != null && !_llmProvider!.isLocal;
-        systemPrompt = isApi
-            ? defaultApiSystemPrompt
-            : defaultKoboldSystemPrompt;
       }
 
       // In call mode, inject voice-specific instructions for natural conversation
