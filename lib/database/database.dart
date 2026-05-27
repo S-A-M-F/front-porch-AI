@@ -186,6 +186,13 @@ class Sessions extends Table {
   // User persona linked to this session (v25)
   TextColumn get userPersonaId => text().nullable()();
 
+  /// Live per-character realism/needs state for group sessions.
+  /// JSON map: { charId: { emotion, needs, affection, trust, fixation, relationships, ... } }
+  /// Replaces the old hidden __group_state__ checkpoint message system (clean break in v30).
+  /// Only populated for sessions where groupId is not null.
+  TextColumn get groupRealismState =>
+      text().withDefault(const Constant('{}'))();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
@@ -229,6 +236,16 @@ class Groups extends Table {
   TextColumn get firstMessage => text().withDefault(const Constant(''))();
   TextColumn get scenario => text().withDefault(const Constant(''))();
   TextColumn get systemPrompt => text().withDefault(const Constant(''))();
+
+  /// Portable default realism/needs state for this group definition.
+  /// JSON: { charId: { emotion, needs, affection, trust, fixation, relationships, ... } }
+  /// Used for Group Card export/import and as seed when starting new group sessions
+  /// or splitting group members to solo characters.
+  /// Added in schema v30 as part of proper DB-backed group realism (clean break from
+  /// old hidden __group_state__ checkpoint messages).
+  TextColumn get defaultMemberRealismState =>
+      text().withDefault(const Constant('{}'))();
+
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
 
@@ -543,7 +560,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 29;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -996,8 +1013,21 @@ class AppDatabase extends _$AppDatabase {
           );
         } catch (_) {}
       }
-      // Note: RAG settings for groups are now stored in the hidden __group_state__ checkpoint
-      // (no schema change on the groups table).
+      if (from < 30) {
+        // v29→v30: Proper DB-backed group realism/needs storage (clean break — no support
+        // for old hidden __group_state__ checkpoint messages). Added with explicit dev
+        // authorization. External direct-SQL tools will need to adapt.
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN default_member_realism_state TEXT NOT NULL DEFAULT "{}"',
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN group_realism_state TEXT NOT NULL DEFAULT "{}"',
+          );
+        } catch (_) {}
+      }
     },
   );
 

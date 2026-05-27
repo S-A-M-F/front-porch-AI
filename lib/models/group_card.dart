@@ -61,7 +61,7 @@ class GroupCard {
   }) : rawMemberData = rawMemberData ?? members.map((c) => c.toJson()).toList();
 
   Map<String, dynamic> toJson() {
-    return {
+    final result = <String, dynamic>{
       'name': name,
       'members': members.map((c) => c.toJson()).toList(),
       'turn_order': turnOrder,
@@ -70,8 +70,15 @@ class GroupCard {
       'first_message': firstMessage,
       'scenario': scenario,
       'system_prompt': systemPrompt,
-      if (extensions != null && extensions!.isNotEmpty) 'extensions': extensions,
     };
+    if (extensions != null && extensions!.isNotEmpty) {
+      result['extensions'] = extensions;
+      // Promote realism_state to top-level for the Group Card standard (portable defaults)
+      if (extensions!.containsKey('realism_state')) {
+        result['realism_state'] = extensions!['realism_state'];
+      }
+    }
+    return result;
   }
 
   factory GroupCard.fromJson(Map<String, dynamic> json) {
@@ -113,7 +120,9 @@ class GroupCard {
       systemPrompt: json['system_prompt'] ?? '',
       extensions: json['extensions'] is Map
           ? Map<String, dynamic>.from(json['extensions'])
-          : null,
+          : (json['realism_state'] is Map
+              ? {'realism_state': Map<String, dynamic>.from(json['realism_state'] as Map)}
+              : null),
     );
   }
 }

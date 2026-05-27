@@ -1866,6 +1866,19 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _groupRealismStateMeta = const VerificationMeta(
+    'groupRealismState',
+  );
+  @override
+  late final GeneratedColumn<String> groupRealismState =
+      GeneratedColumn<String>(
+        'group_realism_state',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1948,6 +1961,7 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     groupEvolvedScenarios,
     generationSettings,
     userPersonaId,
+    groupRealismState,
     createdAt,
     updatedAt,
     deletedAt,
@@ -2341,6 +2355,15 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         ),
       );
     }
+    if (data.containsKey('group_realism_state')) {
+      context.handle(
+        _groupRealismStateMeta,
+        groupRealismState.isAcceptableOrUnknown(
+          data['group_realism_state']!,
+          _groupRealismStateMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -2548,6 +2571,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.string,
         data['${effectivePrefix}user_persona_id'],
       ),
+      groupRealismState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_realism_state'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2615,6 +2642,12 @@ class Session extends DataClass implements Insertable<Session> {
   final String groupEvolvedScenarios;
   final String? generationSettings;
   final String? userPersonaId;
+
+  /// Live per-character realism/needs state for group sessions.
+  /// JSON map: { charId: { emotion, needs, affection, trust, fixation, relationships, ... } }
+  /// Replaces the old hidden __group_state__ checkpoint message system (clean break in v30).
+  /// Only populated for sessions where groupId is not null.
+  final String groupRealismState;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -2664,6 +2697,7 @@ class Session extends DataClass implements Insertable<Session> {
     required this.groupEvolvedScenarios,
     this.generationSettings,
     this.userPersonaId,
+    required this.groupRealismState,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -2740,6 +2774,7 @@ class Session extends DataClass implements Insertable<Session> {
     if (!nullToAbsent || userPersonaId != null) {
       map['user_persona_id'] = Variable<String>(userPersonaId);
     }
+    map['group_realism_state'] = Variable<String>(groupRealismState);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -2815,6 +2850,7 @@ class Session extends DataClass implements Insertable<Session> {
       userPersonaId: userPersonaId == null && nullToAbsent
           ? const Value.absent()
           : Value(userPersonaId),
+      groupRealismState: Value(groupRealismState),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -2892,6 +2928,7 @@ class Session extends DataClass implements Insertable<Session> {
         json['generationSettings'],
       ),
       userPersonaId: serializer.fromJson<String?>(json['userPersonaId']),
+      groupRealismState: serializer.fromJson<String>(json['groupRealismState']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -2950,6 +2987,7 @@ class Session extends DataClass implements Insertable<Session> {
       'groupEvolvedScenarios': serializer.toJson<String>(groupEvolvedScenarios),
       'generationSettings': serializer.toJson<String?>(generationSettings),
       'userPersonaId': serializer.toJson<String?>(userPersonaId),
+      'groupRealismState': serializer.toJson<String>(groupRealismState),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -3002,6 +3040,7 @@ class Session extends DataClass implements Insertable<Session> {
     String? groupEvolvedScenarios,
     Value<String?> generationSettings = const Value.absent(),
     Value<String?> userPersonaId = const Value.absent(),
+    String? groupRealismState,
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
@@ -3063,6 +3102,7 @@ class Session extends DataClass implements Insertable<Session> {
     userPersonaId: userPersonaId.present
         ? userPersonaId.value
         : this.userPersonaId,
+    groupRealismState: groupRealismState ?? this.groupRealismState,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -3190,6 +3230,9 @@ class Session extends DataClass implements Insertable<Session> {
       userPersonaId: data.userPersonaId.present
           ? data.userPersonaId.value
           : this.userPersonaId,
+      groupRealismState: data.groupRealismState.present
+          ? data.groupRealismState.value
+          : this.groupRealismState,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -3244,6 +3287,7 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('groupEvolvedScenarios: $groupEvolvedScenarios, ')
           ..write('generationSettings: $generationSettings, ')
           ..write('userPersonaId: $userPersonaId, ')
+          ..write('groupRealismState: $groupRealismState, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -3298,6 +3342,7 @@ class Session extends DataClass implements Insertable<Session> {
     groupEvolvedScenarios,
     generationSettings,
     userPersonaId,
+    groupRealismState,
     createdAt,
     updatedAt,
     deletedAt,
@@ -3351,6 +3396,7 @@ class Session extends DataClass implements Insertable<Session> {
           other.groupEvolvedScenarios == this.groupEvolvedScenarios &&
           other.generationSettings == this.generationSettings &&
           other.userPersonaId == this.userPersonaId &&
+          other.groupRealismState == this.groupRealismState &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -3402,6 +3448,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<String> groupEvolvedScenarios;
   final Value<String?> generationSettings;
   final Value<String?> userPersonaId;
+  final Value<String> groupRealismState;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -3452,6 +3499,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.groupEvolvedScenarios = const Value.absent(),
     this.generationSettings = const Value.absent(),
     this.userPersonaId = const Value.absent(),
+    this.groupRealismState = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3503,6 +3551,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.groupEvolvedScenarios = const Value.absent(),
     this.generationSettings = const Value.absent(),
     this.userPersonaId = const Value.absent(),
+    this.groupRealismState = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3554,6 +3603,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<String>? groupEvolvedScenarios,
     Expression<String>? generationSettings,
     Expression<String>? userPersonaId,
+    Expression<String>? groupRealismState,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -3613,6 +3663,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
         'group_evolved_scenarios': groupEvolvedScenarios,
       if (generationSettings != null) 'generation_settings': generationSettings,
       if (userPersonaId != null) 'user_persona_id': userPersonaId,
+      if (groupRealismState != null) 'group_realism_state': groupRealismState,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -3666,6 +3717,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<String>? groupEvolvedScenarios,
     Value<String?>? generationSettings,
     Value<String?>? userPersonaId,
+    Value<String>? groupRealismState,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
@@ -3722,6 +3774,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           groupEvolvedScenarios ?? this.groupEvolvedScenarios,
       generationSettings: generationSettings ?? this.generationSettings,
       userPersonaId: userPersonaId ?? this.userPersonaId,
+      groupRealismState: groupRealismState ?? this.groupRealismState,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -3879,6 +3932,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (userPersonaId.present) {
       map['user_persona_id'] = Variable<String>(userPersonaId.value);
     }
+    if (groupRealismState.present) {
+      map['group_realism_state'] = Variable<String>(groupRealismState.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3942,6 +3998,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('groupEvolvedScenarios: $groupEvolvedScenarios, ')
           ..write('generationSettings: $generationSettings, ')
           ..write('userPersonaId: $userPersonaId, ')
+          ..write('groupRealismState: $groupRealismState, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -4827,6 +4884,18 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _defaultMemberRealismStateMeta =
+      const VerificationMeta('defaultMemberRealismState');
+  @override
+  late final GeneratedColumn<String> defaultMemberRealismState =
+      GeneratedColumn<String>(
+        'default_member_realism_state',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -4861,6 +4930,7 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
     firstMessage,
     scenario,
     systemPrompt,
+    defaultMemberRealismState,
     updatedAt,
     deletedAt,
   ];
@@ -4946,6 +5016,15 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
         ),
       );
     }
+    if (data.containsKey('default_member_realism_state')) {
+      context.handle(
+        _defaultMemberRealismStateMeta,
+        defaultMemberRealismState.isAcceptableOrUnknown(
+          data['default_member_realism_state']!,
+          _defaultMemberRealismStateMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -5003,6 +5082,10 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
         DriftSqlType.string,
         data['${effectivePrefix}system_prompt'],
       )!,
+      defaultMemberRealismState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}default_member_realism_state'],
+      )!,
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -5030,6 +5113,14 @@ class Group extends DataClass implements Insertable<Group> {
   final String firstMessage;
   final String scenario;
   final String systemPrompt;
+
+  /// Portable default realism/needs state for this group definition.
+  /// JSON: { charId: { emotion, needs, affection, trust, fixation, relationships, ... } }
+  /// Used for Group Card export/import and as seed when starting new group sessions
+  /// or splitting group members to solo characters.
+  /// Added in schema v30 as part of proper DB-backed group realism (clean break from
+  /// old hidden __group_state__ checkpoint messages).
+  final String defaultMemberRealismState;
   final DateTime updatedAt;
   final DateTime? deletedAt;
   const Group({
@@ -5042,6 +5133,7 @@ class Group extends DataClass implements Insertable<Group> {
     required this.firstMessage,
     required this.scenario,
     required this.systemPrompt,
+    required this.defaultMemberRealismState,
     required this.updatedAt,
     this.deletedAt,
   });
@@ -5057,6 +5149,9 @@ class Group extends DataClass implements Insertable<Group> {
     map['first_message'] = Variable<String>(firstMessage);
     map['scenario'] = Variable<String>(scenario);
     map['system_prompt'] = Variable<String>(systemPrompt);
+    map['default_member_realism_state'] = Variable<String>(
+      defaultMemberRealismState,
+    );
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
@@ -5075,6 +5170,7 @@ class Group extends DataClass implements Insertable<Group> {
       firstMessage: Value(firstMessage),
       scenario: Value(scenario),
       systemPrompt: Value(systemPrompt),
+      defaultMemberRealismState: Value(defaultMemberRealismState),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
@@ -5097,6 +5193,9 @@ class Group extends DataClass implements Insertable<Group> {
       firstMessage: serializer.fromJson<String>(json['firstMessage']),
       scenario: serializer.fromJson<String>(json['scenario']),
       systemPrompt: serializer.fromJson<String>(json['systemPrompt']),
+      defaultMemberRealismState: serializer.fromJson<String>(
+        json['defaultMemberRealismState'],
+      ),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
@@ -5114,6 +5213,9 @@ class Group extends DataClass implements Insertable<Group> {
       'firstMessage': serializer.toJson<String>(firstMessage),
       'scenario': serializer.toJson<String>(scenario),
       'systemPrompt': serializer.toJson<String>(systemPrompt),
+      'defaultMemberRealismState': serializer.toJson<String>(
+        defaultMemberRealismState,
+      ),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
@@ -5129,6 +5231,7 @@ class Group extends DataClass implements Insertable<Group> {
     String? firstMessage,
     String? scenario,
     String? systemPrompt,
+    String? defaultMemberRealismState,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
   }) => Group(
@@ -5141,6 +5244,8 @@ class Group extends DataClass implements Insertable<Group> {
     firstMessage: firstMessage ?? this.firstMessage,
     scenario: scenario ?? this.scenario,
     systemPrompt: systemPrompt ?? this.systemPrompt,
+    defaultMemberRealismState:
+        defaultMemberRealismState ?? this.defaultMemberRealismState,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
@@ -5165,6 +5270,9 @@ class Group extends DataClass implements Insertable<Group> {
       systemPrompt: data.systemPrompt.present
           ? data.systemPrompt.value
           : this.systemPrompt,
+      defaultMemberRealismState: data.defaultMemberRealismState.present
+          ? data.defaultMemberRealismState.value
+          : this.defaultMemberRealismState,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
@@ -5182,6 +5290,7 @@ class Group extends DataClass implements Insertable<Group> {
           ..write('firstMessage: $firstMessage, ')
           ..write('scenario: $scenario, ')
           ..write('systemPrompt: $systemPrompt, ')
+          ..write('defaultMemberRealismState: $defaultMemberRealismState, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
           ..write(')'))
@@ -5199,6 +5308,7 @@ class Group extends DataClass implements Insertable<Group> {
     firstMessage,
     scenario,
     systemPrompt,
+    defaultMemberRealismState,
     updatedAt,
     deletedAt,
   );
@@ -5215,6 +5325,7 @@ class Group extends DataClass implements Insertable<Group> {
           other.firstMessage == this.firstMessage &&
           other.scenario == this.scenario &&
           other.systemPrompt == this.systemPrompt &&
+          other.defaultMemberRealismState == this.defaultMemberRealismState &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
 }
@@ -5229,6 +5340,7 @@ class GroupsCompanion extends UpdateCompanion<Group> {
   final Value<String> firstMessage;
   final Value<String> scenario;
   final Value<String> systemPrompt;
+  final Value<String> defaultMemberRealismState;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
   final Value<int> rowid;
@@ -5242,6 +5354,7 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     this.firstMessage = const Value.absent(),
     this.scenario = const Value.absent(),
     this.systemPrompt = const Value.absent(),
+    this.defaultMemberRealismState = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5256,6 +5369,7 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     this.firstMessage = const Value.absent(),
     this.scenario = const Value.absent(),
     this.systemPrompt = const Value.absent(),
+    this.defaultMemberRealismState = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5271,6 +5385,7 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     Expression<String>? firstMessage,
     Expression<String>? scenario,
     Expression<String>? systemPrompt,
+    Expression<String>? defaultMemberRealismState,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
     Expression<int>? rowid,
@@ -5285,6 +5400,8 @@ class GroupsCompanion extends UpdateCompanion<Group> {
       if (firstMessage != null) 'first_message': firstMessage,
       if (scenario != null) 'scenario': scenario,
       if (systemPrompt != null) 'system_prompt': systemPrompt,
+      if (defaultMemberRealismState != null)
+        'default_member_realism_state': defaultMemberRealismState,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (rowid != null) 'rowid': rowid,
@@ -5301,6 +5418,7 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     Value<String>? firstMessage,
     Value<String>? scenario,
     Value<String>? systemPrompt,
+    Value<String>? defaultMemberRealismState,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
     Value<int>? rowid,
@@ -5315,6 +5433,8 @@ class GroupsCompanion extends UpdateCompanion<Group> {
       firstMessage: firstMessage ?? this.firstMessage,
       scenario: scenario ?? this.scenario,
       systemPrompt: systemPrompt ?? this.systemPrompt,
+      defaultMemberRealismState:
+          defaultMemberRealismState ?? this.defaultMemberRealismState,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
@@ -5351,6 +5471,11 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     if (systemPrompt.present) {
       map['system_prompt'] = Variable<String>(systemPrompt.value);
     }
+    if (defaultMemberRealismState.present) {
+      map['default_member_realism_state'] = Variable<String>(
+        defaultMemberRealismState.value,
+      );
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -5375,6 +5500,7 @@ class GroupsCompanion extends UpdateCompanion<Group> {
           ..write('firstMessage: $firstMessage, ')
           ..write('scenario: $scenario, ')
           ..write('systemPrompt: $systemPrompt, ')
+          ..write('defaultMemberRealismState: $defaultMemberRealismState, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
@@ -10271,6 +10397,7 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<String> groupEvolvedScenarios,
       Value<String?> generationSettings,
       Value<String?> userPersonaId,
+      Value<String> groupRealismState,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -10323,6 +10450,7 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<String> groupEvolvedScenarios,
       Value<String?> generationSettings,
       Value<String?> userPersonaId,
+      Value<String> groupRealismState,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -10560,6 +10688,11 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<String> get userPersonaId => $composableBuilder(
     column: $table.userPersonaId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupRealismState => $composableBuilder(
+    column: $table.groupRealismState,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10813,6 +10946,11 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get groupRealismState => $composableBuilder(
+    column: $table.groupRealismState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -11049,6 +11187,11 @@ class $$SessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get groupRealismState => $composableBuilder(
+    column: $table.groupRealismState,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -11132,6 +11275,7 @@ class $$SessionsTableTableManager
                 Value<String> groupEvolvedScenarios = const Value.absent(),
                 Value<String?> generationSettings = const Value.absent(),
                 Value<String?> userPersonaId = const Value.absent(),
+                Value<String> groupRealismState = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -11182,6 +11326,7 @@ class $$SessionsTableTableManager
                 groupEvolvedScenarios: groupEvolvedScenarios,
                 generationSettings: generationSettings,
                 userPersonaId: userPersonaId,
+                groupRealismState: groupRealismState,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -11234,6 +11379,7 @@ class $$SessionsTableTableManager
                 Value<String> groupEvolvedScenarios = const Value.absent(),
                 Value<String?> generationSettings = const Value.absent(),
                 Value<String?> userPersonaId = const Value.absent(),
+                Value<String> groupRealismState = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -11284,6 +11430,7 @@ class $$SessionsTableTableManager
                 groupEvolvedScenarios: groupEvolvedScenarios,
                 generationSettings: generationSettings,
                 userPersonaId: userPersonaId,
+                groupRealismState: groupRealismState,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -11676,6 +11823,7 @@ typedef $$GroupsTableCreateCompanionBuilder =
       Value<String> firstMessage,
       Value<String> scenario,
       Value<String> systemPrompt,
+      Value<String> defaultMemberRealismState,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
       Value<int> rowid,
@@ -11691,6 +11839,7 @@ typedef $$GroupsTableUpdateCompanionBuilder =
       Value<String> firstMessage,
       Value<String> scenario,
       Value<String> systemPrompt,
+      Value<String> defaultMemberRealismState,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
       Value<int> rowid,
@@ -11747,6 +11896,11 @@ class $$GroupsTableFilterComposer
 
   ColumnFilters<String> get systemPrompt => $composableBuilder(
     column: $table.systemPrompt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get defaultMemberRealismState => $composableBuilder(
+    column: $table.defaultMemberRealismState,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11815,6 +11969,11 @@ class $$GroupsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get defaultMemberRealismState => $composableBuilder(
+    column: $table.defaultMemberRealismState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -11872,6 +12031,11 @@ class $$GroupsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get defaultMemberRealismState => $composableBuilder(
+    column: $table.defaultMemberRealismState,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
@@ -11916,6 +12080,7 @@ class $$GroupsTableTableManager
                 Value<String> firstMessage = const Value.absent(),
                 Value<String> scenario = const Value.absent(),
                 Value<String> systemPrompt = const Value.absent(),
+                Value<String> defaultMemberRealismState = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11929,6 +12094,7 @@ class $$GroupsTableTableManager
                 firstMessage: firstMessage,
                 scenario: scenario,
                 systemPrompt: systemPrompt,
+                defaultMemberRealismState: defaultMemberRealismState,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 rowid: rowid,
@@ -11944,6 +12110,7 @@ class $$GroupsTableTableManager
                 Value<String> firstMessage = const Value.absent(),
                 Value<String> scenario = const Value.absent(),
                 Value<String> systemPrompt = const Value.absent(),
+                Value<String> defaultMemberRealismState = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11957,6 +12124,7 @@ class $$GroupsTableTableManager
                 firstMessage: firstMessage,
                 scenario: scenario,
                 systemPrompt: systemPrompt,
+                defaultMemberRealismState: defaultMemberRealismState,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 rowid: rowid,

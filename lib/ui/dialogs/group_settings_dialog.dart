@@ -270,7 +270,7 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
       group.systemPrompt = _groupSystemController.text.trim();
     }
 
-    // 2. Group-level Author's Note + strength (persists via public API + checkpoint)
+    // 2. Group-level Author's Note + strength (persists via session save)
     cs.setAuthorNote(
       _groupAuthorNoteController.text,
       strength: _groupAuthorNoteStrength,
@@ -758,8 +758,7 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
 
     _chars = widget.chatService.groupCharacters;
 
-    // Load live values from the checkpoint-backed ChatService state.
-    // These persist across sessions via the hidden __group_state__ message.
+    // Load live values from ChatService (persisted in sessions.group_realism_state v30).
     _groupRagEnabled = widget.chatService.groupRagEnabled;
     _retrievalCount = widget.chatService.groupRetrievalCount;
     _memoryBudgetPercent = widget.chatService.groupMemoryBudgetPercent;
@@ -820,7 +819,7 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
     final group = widget.chatService.activeGroup;
     if (group == null) return;
 
-    // Apply via ChatService (which now persists via the hidden checkpoint)
+    // Apply via ChatService (persists via sessions.group_realism_state)
     widget.chatService.setGroupRAGEnabled(_groupRagEnabled);
     widget.chatService.setGroupRetrievalCount(_retrievalCount);
     widget.chatService.setGroupMemoryBudgetPercent(_memoryBudgetPercent);

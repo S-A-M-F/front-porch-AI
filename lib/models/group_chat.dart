@@ -39,6 +39,12 @@ class GroupChat {
   String
   systemPrompt; // group-level system prompt override (empty = use global)
 
+  /// Portable default realism/needs state for this group (definition-level).
+  /// JSON map of charId → realism blob. Travels with Group Cards and is used
+  /// as the seed when starting new group sessions or splitting members to solo.
+  /// Added in v30 (clean replacement for old hidden checkpoint system).
+  String defaultMemberRealismState;
+
   GroupChat({
     required this.id,
     required this.name,
@@ -49,6 +55,7 @@ class GroupChat {
     this.firstMessage = '',
     this.scenario = '',
     this.systemPrompt = '',
+    this.defaultMemberRealismState = '{}',
   });
 
   Map<String, dynamic> toJson() {
@@ -62,6 +69,7 @@ class GroupChat {
       'first_message': firstMessage,
       'scenario': scenario,
       'system_prompt': systemPrompt,
+      'default_member_realism_state': defaultMemberRealismState,
     };
   }
 
@@ -83,6 +91,7 @@ class GroupChat {
       firstMessage: json['first_message'] ?? '',
       scenario: json['scenario'] ?? '',
       systemPrompt: json['system_prompt'] ?? '',
+      defaultMemberRealismState: json['default_member_realism_state'] ?? '{}',
     );
   }
 }

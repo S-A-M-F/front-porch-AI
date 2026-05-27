@@ -36,12 +36,13 @@ import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
+import 'package:front_porch_ai/models/avatar_image.dart' show AvatarImage;
 import 'package:front_porch_ai/services/group_turn_manager.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/cloud_sync_service.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
-import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
 import 'package:drift/drift.dart' as drift;
@@ -345,7 +346,7 @@ class ChatService extends ChangeNotifier {
 
   /// Per-character Author's Notes for group chats (independent of group-level _authorNote).
   /// Keyed by stable charId (from _getCharacterIdFromCard). Populated from the
-  /// hidden `__group_state__` checkpoint so they survive forks, sync, and restarts.
+  /// (legacy comment — now persisted via sessions.group_realism_state column)
   Map<String, String> _groupAuthorNotes = {};
   Map<String, int> _groupAuthorNoteStrengths = {};
 
@@ -353,7 +354,7 @@ class ChatService extends ChangeNotifier {
   /// These are completely independent of each character's normal `systemPrompt`
   /// (the one used in 1:1 chats). When present and non-empty for the speaking
   /// character, they take full precedence over the character's card-level prompt
-  /// inside this group. Stored in the hidden `__group_state__` checkpoint.
+  /// inside this group. Now persisted via the sessions.group_realism_state column.
   Map<String, String> _groupCharacterSystemPrompts = {};
 
   // RAG settings for the active group (stored in the hidden checkpoint, no DB schema change)
@@ -361,16 +362,6 @@ class ChatService extends ChangeNotifier {
   int _groupRetrievalCount = 8;
   double _groupMemoryBudgetPercent = 10.0;
   Map<String, double> _groupCharacterRAGPriorities = {};
-
-  // ── Group realism checkpoint sentinel (DB-free per-char state) ──
-  // These messages are stored in the chat history for durability across
-  // forks, cloud sync, and restarts, but are *never* shown to the user or
-  // sent to the LLM / embedding service.
-  static const String kGroupStateSender = '__group_state__';
-  static const String kGroupStateCharId = '__meta__';
-
-  bool _isGroupStateMessage(ChatMessage m) =>
-      m.characterId == kGroupStateCharId || m.sender == kGroupStateSender;
 
   // Director Mode state is now owned by _groupManager when active.
   // The public getters below delegate to it.
@@ -896,7 +887,7 @@ class ChatService extends ChangeNotifier {
 
   CharacterCard? get activeCharacter => _activeCharacter;
   List<ChatMessage> get messages =>
-      List.unmodifiable(_messages.where((m) => !_isGroupStateMessage(m)));
+      List.unmodifiable(_messages);
   bool get isGenerating => _isGenerating;
   bool get isLoadingSession => _isLoadingSession;
   String? get currentSessionId => _currentSessionId;
@@ -944,34 +935,34 @@ class ChatService extends ChangeNotifier {
   void setGroupRAGEnabled(bool value) {
     if (_activeGroup == null) return;
     _groupRagEnabled = value;
-    _ensureGroupRealismCheckpoint();
+    // (old checkpoint call removed in v30)
     notifyListeners();
   }
 
   void setGroupRetrievalCount(int value) {
     if (_activeGroup == null) return;
     _groupRetrievalCount = value;
-    _ensureGroupRealismCheckpoint();
+    // (old checkpoint call removed in v30)
     notifyListeners();
   }
 
   void setGroupMemoryBudgetPercent(double value) {
     if (_activeGroup == null) return;
     _groupMemoryBudgetPercent = value;
-    _ensureGroupRealismCheckpoint();
+    // (old checkpoint call removed in v30)
     notifyListeners();
   }
 
   void setCharacterRAGPriority(String charId, double priority) {
     if (_activeGroup == null) return;
     _groupCharacterRAGPriorities[charId] = priority;
-    _ensureGroupRealismCheckpoint();
+    // (old checkpoint call removed in v30)
     notifyListeners();
   }
 
   void clearCharacterRAGPriority(String charId) {
     _groupCharacterRAGPriorities.remove(charId);
-    _ensureGroupRealismCheckpoint();
+    // (old checkpoint call removed in v30)
     notifyListeners();
   }
 
@@ -1147,7 +1138,7 @@ class ChatService extends ChangeNotifier {
       _groupRealism.remove(
         id,
       ); // also clears hidden 'relationships' toward other group members
-      _ensureGroupRealismCheckpoint();
+      // (old checkpoint call removed in v30)
       debugPrint('[GroupRealism] Reset per-character state for $id');
       notifyListeners();
     }
@@ -1232,7 +1223,7 @@ class ChatService extends ChangeNotifier {
       _groupAuthorNoteStrengths[id] = effectiveStrength;
     }
 
-    _ensureGroupRealismCheckpoint();
+    // (old checkpoint call removed in v30)
     _saveChat();
     notifyListeners();
   }
@@ -1266,7 +1257,7 @@ class ChatService extends ChangeNotifier {
       _groupCharacterSystemPrompts[id] = trimmed;
     }
 
-    _ensureGroupRealismCheckpoint();
+    // (old checkpoint call removed in v30)
     _saveChat();
     notifyListeners();
   }
@@ -2019,13 +2010,13 @@ class ChatService extends ChangeNotifier {
 
     final label = currentExpressionLabel;
     if (label == null) {
-      return avatars
+      return (avatars
               .where((a) => a.displayOrder + 1 == character.primeAvatarIndex)
               .isEmpty
           ? avatars.first
           : avatars.firstWhere(
               (a) => a.displayOrder + 1 == character.primeAvatarIndex,
-            );
+            )) as AvatarImage?;
     }
 
     // Find all avatars matching the current emotion label
@@ -2039,19 +2030,19 @@ class ChatService extends ChangeNotifier {
           .where((a) => a.label?.toLowerCase() == 'neutral')
           .toList();
       if (neutral.isNotEmpty) {
-        return neutral.first;
+        return neutral.first as AvatarImage?;
       }
-      return avatars
+      return (avatars
               .where((a) => a.displayOrder + 1 == character.primeAvatarIndex)
               .isEmpty
           ? avatars.first
           : avatars.firstWhere(
               (a) => a.displayOrder + 1 == character.primeAvatarIndex,
-            );
+            )) as AvatarImage?;
     }
 
     if (matches.length == 1) {
-      return matches.first;
+      return matches.first as AvatarImage?;
     }
 
     // Multiple matches — pick randomly, optionally avoiding the last one shown
@@ -2062,13 +2053,13 @@ class ChatService extends ChangeNotifier {
       if (different.isNotEmpty) {
         final picked = different[_expressionRandom.nextInt(different.length)];
         _lastExpressionAvatarId = picked.id;
-        return picked;
+        return picked as AvatarImage?;
       }
     }
 
     final picked = matches[_expressionRandom.nextInt(matches.length)];
     _lastExpressionAvatarId = picked.id;
-    return picked;
+    return picked as AvatarImage?;
   }
 
   /// Manually set an expression label (e.g., from /expression-set command).
@@ -2439,6 +2430,12 @@ class ChatService extends ChangeNotifier {
       startInDirectorMode: group.directorMode,
     );
 
+    // v30: For newly created group sessions (no prior state), seed from the group's default realism data.
+    // (The actual load of any prior session state happens in _loadLastSession below.)
+    if (_messages.isEmpty && _activeGroup != null && _groupRealism.isEmpty) {
+      _loadGroupRealismStateFromSession(null);
+    }
+
     // Reset all lorebook triggers (skip constant entries — they're always active)
     for (final ch in _groupCharacters) {
       if (ch.lorebook != null) {
@@ -2686,7 +2683,7 @@ class ChatService extends ChangeNotifier {
     _groupCharacterSystemPrompts.remove(charId);
     _groupCharacterRAGPriorities.remove(charId);
     if (_activeGroup != null) {
-      _ensureGroupRealismCheckpoint();
+      // (old checkpoint call removed in v30)
     }
 
     // Re-resolve and hand to the turn manager
@@ -2745,6 +2742,100 @@ class ChatService extends ChangeNotifier {
     return {};
   }
 
+  // v30: Load per-character group realism/needs state.
+  // Priority:
+  // 1. Live state from the current session's group_realism_state column (if present and non-empty).
+  // 2. Default state from the group's default_member_realism_state (important for Group Card imports and new sessions).
+  //
+  // Pass null for `session` to force-load from group defaults only (used for brand-new group chats).
+  void _loadGroupRealismStateFromSession(Session? session) {
+    if (_activeGroup == null) return;
+
+    String? stateJson = session?.groupRealismState;
+
+    // Fall back to group definition defaults (crucial for imported Group Cards and split-to-solo)
+    if (stateJson == null || stateJson.isEmpty || stateJson == '{}') {
+      stateJson = _activeGroup!.defaultMemberRealismState;
+    }
+
+    _groupRealism = {};
+    _groupAuthorNotes = {};
+    _groupAuthorNoteStrengths = {};
+    _groupCharacterSystemPrompts = {};
+    _groupCharacterRAGPriorities = {};
+
+    if (stateJson != null && stateJson.isNotEmpty && stateJson != '{}') {
+      try {
+        final decoded = jsonDecode(stateJson);
+        if (decoded is Map) {
+          final map = Map<String, dynamic>.from(decoded);
+
+          // Main per-character realism data (needs, emotion, bond, trust, fixation, relationships, arousal, etc.)
+          final perChar = map['perChar'] ?? map; // support both wrapped and direct formats during transition
+          if (perChar is Map) {
+            _groupRealism = perChar.map(
+              (k, v) => MapEntry(
+                k.toString(),
+                Map<String, dynamic>.from(v as Map),
+              ),
+            );
+          }
+
+          // Per-char author notes (scoped to this group)
+          final notes = map['authorNotes'];
+          if (notes is Map) {
+            _groupAuthorNotes = notes.map(
+              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+            );
+          }
+
+          final strengths = map['authorNoteStrengths'];
+          if (strengths is Map) {
+            _groupAuthorNoteStrengths = strengths.map(
+              (k, v) => MapEntry(
+                k.toString(),
+                (v as num?)?.toInt() ?? _authorNoteStrength,
+              ),
+            );
+          }
+
+          final sysPrompts = map['characterSystemPrompts'];
+          if (sysPrompts is Map) {
+            _groupCharacterSystemPrompts = sysPrompts.map(
+              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+            );
+          }
+
+          // RAG settings (now also in the column)
+          if (map.containsKey('ragEnabled')) {
+            _groupRagEnabled = map['ragEnabled'] as bool? ?? true;
+          }
+          if (map.containsKey('retrievalCount')) {
+            _groupRetrievalCount = (map['retrievalCount'] as num?)?.toInt() ?? 8;
+          }
+          if (map.containsKey('memoryBudgetPercent')) {
+            _groupMemoryBudgetPercent = (map['memoryBudgetPercent'] as num?)?.toDouble() ?? 10.0;
+          }
+
+          final ragPrios = map['characterRAGPriorities'];
+          if (ragPrios is Map) {
+            _groupCharacterRAGPriorities = ragPrios.map(
+              (k, v) => MapEntry(k.toString(), (v as num).toDouble()),
+            );
+          }
+
+          debugPrint(
+            '[GroupState v30] Loaded realism state for ${_groupRealism.length} characters '
+            '(session + group defaults) for group ${_activeGroup!.name}',
+          );
+        }
+      } catch (e) {
+        debugPrint('[GroupState v30] Failed to parse group realism state JSON: $e');
+        _groupRealism = {};
+      }
+    }
+  }
+
   Future<void> _saveChat() async {
     if ((_activeCharacter == null && _activeGroup == null) ||
         _currentSessionId == null)
@@ -2761,11 +2852,21 @@ class ChatService extends ChangeNotifier {
       return;
     }
 
-    // For group chats, ensure the hidden `__group_state__` checkpoint (realism data
-    // + per-character Author's Notes) is present in the snapshot we are about to
-    // persist. This is the DB-free persistence mechanism for per-char group state.
+    // v30: For group chats, serialize current per-character realism state into the
+    // new group_realism_state column (clean replacement for hidden checkpoint).
+    String groupRealismJson = '{}';
     if (_activeGroup != null) {
-      _ensureGroupRealismCheckpoint();
+      groupRealismJson = jsonEncode({
+        'perChar': _groupRealism,
+        'authorNotes': _groupAuthorNotes,
+        'authorNoteStrengths': _groupAuthorNoteStrengths,
+        'characterSystemPrompts': _groupCharacterSystemPrompts,
+        'ragEnabled': _groupRagEnabled,
+        'retrievalCount': _groupRetrievalCount,
+        'memoryBudgetPercent': _groupMemoryBudgetPercent,
+        'characterRAGPriorities': _groupCharacterRAGPriorities,
+        'savedAt': DateTime.now().toIso8601String(),
+      });
     }
 
     // Snapshot messages at the start so async gaps can't see a mutated list.
@@ -2820,6 +2921,7 @@ class ChatService extends ChangeNotifier {
         nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
         needsSimEnabled: drift.Value(_needsSimEnabled),
         needsVector: drift.Value(_needsSimEnabled ? _serializeNeeds() : null),
+        groupRealismState: drift.Value(groupRealismJson),
         arousalLevel: drift.Value(_arousalLevel),
         cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
         trustLevel: drift.Value(_trustLevel),
@@ -2969,6 +3071,13 @@ class ChatService extends ChangeNotifier {
       debugPrint(
         '[Realism] Legacy session migrated to REv2 scales (loadLast).',
       );
+    }
+
+    // v30: Load live per-character group realism/needs (bond/trust/emotion/fixation/arousal/relationships/needs)
+    // from the session column (or fall back to group defaults). Must happen for group entry paths
+    // so that _groupRealism is populated before any eval, prompt injection, or UI read.
+    if (_activeGroup != null) {
+      _loadGroupRealismStateFromSession(lastSession);
     }
 
     // Load per-session evolution (1:1 mode only — group is handled by _loadGroupEvolvedFields)
@@ -3167,7 +3276,7 @@ class ChatService extends ChangeNotifier {
       // ── Hydrate hidden group state checkpoint (DB-free: realism + per-char notes) ──
       // The sentinel is stored as the last message for durability but must be
       // stripped from the in-memory list so the UI and prompt builders never see it.
-      _hydrateGroupRealismCheckpointIfPresent();
+      // (v30: _hydrateGroupRealismCheckpointIfPresent removed — state now loads from DB column)
 
       _currentSessionId = sessionId;
       _authorNote = session.authorNote;
@@ -4788,99 +4897,6 @@ class ChatService extends ChangeNotifier {
     return _groupManager!.pickNextSpeaker();
   }
 
-  /// Looks for a hidden `__group_state__` / `__meta__` checkpoint message,
-  /// hydrates `_groupRealism` and `_groupAuthorNotes` from it (if present and
-  /// we are in a group), then removes the sentinel from the in-memory message
-  /// list so it is never rendered or sent to the LLM.
-  void _hydrateGroupRealismCheckpointIfPresent() {
-    if (_activeGroup == null || _messages.isEmpty) return;
-
-    final idx = _messages.lastIndexWhere(_isGroupStateMessage);
-    if (idx < 0) return;
-
-    try {
-      final raw = _messages[idx].text;
-      if (raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map) {
-          final map = Map<String, dynamic>.from(decoded);
-
-          final perChar = map['perChar'];
-          if (perChar is Map) {
-            _groupRealism = perChar.map(
-              (k, v) =>
-                  MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)),
-            );
-          } else {
-            _groupRealism = {};
-          }
-
-          final notes = map['authorNotes'];
-          if (notes is Map) {
-            _groupAuthorNotes = notes.map(
-              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
-            );
-          } else {
-            _groupAuthorNotes = {};
-          }
-
-          final strengths = map['authorNoteStrengths'];
-          if (strengths is Map) {
-            _groupAuthorNoteStrengths = strengths.map(
-              (k, v) => MapEntry(
-                k.toString(),
-                (v as num?)?.toInt() ?? _authorNoteStrength,
-              ),
-            );
-          } else {
-            _groupAuthorNoteStrengths = {};
-          }
-
-          final sysPrompts = map['characterSystemPrompts'];
-          if (sysPrompts is Map) {
-            _groupCharacterSystemPrompts = sysPrompts.map(
-              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
-            );
-          } else {
-            _groupCharacterSystemPrompts = {};
-          }
-
-          // RAG settings
-          _groupRagEnabled = map['ragEnabled'] as bool? ?? true;
-          _groupRetrievalCount = (map['retrievalCount'] as num?)?.toInt() ?? 8;
-          _groupMemoryBudgetPercent =
-              (map['memoryBudgetPercent'] as num?)?.toDouble() ?? 10.0;
-
-          final ragPrios = map['characterRAGPriorities'];
-          if (ragPrios is Map) {
-            _groupCharacterRAGPriorities = ragPrios.map(
-              (k, v) => MapEntry(k.toString(), (v as num).toDouble()),
-            );
-          } else {
-            _groupCharacterRAGPriorities = {};
-          }
-
-          debugPrint(
-            '[GroupState] Hydrated checkpoint for ${_groupRealism.length} realism + '
-            '${_groupAuthorNotes.length} author note(s) + '
-            '${_groupCharacterSystemPrompts.length} per-char system prompt(s) '
-            'in group ${_activeGroup!.name}',
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint(
-        '[GroupState] Failed to parse checkpoint: $e — starting fresh',
-      );
-      _groupRealism = {};
-      _groupAuthorNotes = {};
-      _groupCharacterSystemPrompts = {};
-    }
-
-    // Remove the sentinel so the rest of the app never sees it
-    _messages.removeAt(idx);
-  }
-
   /// Returns the stable charId of the character whose realism state should be
   /// read/written for the current turn. In group mode this is the speaker
   /// we are about to generate for (or just generated for).
@@ -5042,46 +5058,6 @@ class ChatService extends ChangeNotifier {
         '[Realism:Group] Updated hidden inter-char feelings for $speakerId from recent exchange',
       );
     }
-  }
-
-  /// Ensures a fresh hidden group state checkpoint message exists as the
-  /// last item in `_messages`. Now used for both per-char realism (when enabled)
-  /// *and* per-character Author's Notes (always, for groups). The message is
-  /// filtered out everywhere that matters (prompts, RAG, UI, display).
-  /// This is the DB-free persistence mechanism for per-char group data.
-  void _ensureGroupRealismCheckpoint() {
-    if (_activeGroup == null) return;
-    // No longer gated on realism/needs: per-char Author's Notes must persist
-    // for all groups. Empty maps are harmless.
-
-    // Remove any previous checkpoint so we don't accumulate many
-    _messages.removeWhere(_isGroupStateMessage);
-
-    final checkpoint = <String, dynamic>{
-      'version': 1,
-      'perChar': _groupRealism,
-      'authorNotes': _groupAuthorNotes,
-      'authorNoteStrengths': _groupAuthorNoteStrengths,
-      'characterSystemPrompts': _groupCharacterSystemPrompts,
-      // RAG settings (stored in checkpoint to avoid schema changes)
-      'ragEnabled': _groupRagEnabled,
-      'retrievalCount': _groupRetrievalCount,
-      'memoryBudgetPercent': _groupMemoryBudgetPercent,
-      'characterRAGPriorities': _groupCharacterRAGPriorities,
-      // Note: per-character maps inside 'perChar' may contain 'relationships'
-      // (hidden inter-char feelings). This key is additive and safe for old saves.
-      'savedAt': DateTime.now().toIso8601String(),
-    };
-
-    _messages.add(
-      ChatMessage(
-        text: jsonEncode(checkpoint),
-        sender: kGroupStateSender,
-        isUser: false,
-        characterId: kGroupStateCharId,
-        metadata: const {'type': 'group_realism_checkpoint_v1'},
-      ),
-    );
   }
 
   Future<void> _generateResponse(GenerationMode mode) async {
@@ -6084,7 +6060,7 @@ class ChatService extends ChangeNotifier {
           final speakerId = _getCharacterIdFromCard(speakerCard);
           if (speakerId.isNotEmpty) {
             _updateInterCharacterFeelingsFromRecentExchange(speakerId);
-            _ensureGroupRealismCheckpoint(); // persist the hidden relationship changes
+            // (old checkpoint call removed in v30) // persist the hidden relationship changes
           }
         }
 
@@ -6406,7 +6382,7 @@ class ChatService extends ChangeNotifier {
   }
 
   String _buildChatHistory() {
-    final lines = _messages.where((m) => !_isGroupStateMessage(m)).map((m) {
+    final lines = _messages.map((m) {
       // Director notes get bracketed so the AI treats them as instructions
       if (m.characterId == '__director__') {
         return '[Director: ${m.text}]';
@@ -6424,7 +6400,7 @@ class ChatService extends ChangeNotifier {
     if (_messages.isEmpty) return (history: '', droppedCount: 0, tokenCount: 0);
 
     // Format all messages, skipping hidden group realism checkpoints
-    final formatted = _messages.where((m) => !_isGroupStateMessage(m)).map((m) {
+    final formatted = _messages.map((m) {
       if (m.characterId == '__director__') {
         return '[Director: ${m.text}]';
       }
@@ -6628,7 +6604,7 @@ class ChatService extends ChangeNotifier {
     final characterId = _getCharacterId();
 
     // Format messages for embedding (skip hidden group state checkpoints)
-    final formatted = _messages.where((m) => !_isGroupStateMessage(m)).map((m) {
+    final formatted = _messages.map((m) {
       if (m.characterId == '__director__') {
         return '[Director: ${m.text}]';
       }
@@ -8431,7 +8407,7 @@ class ChatService extends ChangeNotifier {
       final historyLines = <String>[];
       for (final m in _messages) {
         if (m.characterId == '__director__') continue;
-        if (_isGroupStateMessage(m)) continue;
+        // (v30: no more sentinel messages to skip)
         // Strip thinking blocks from display text for summarization
         historyLines.add('${m.sender}: ${m.displayText}');
       }

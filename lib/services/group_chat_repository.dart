@@ -67,6 +67,7 @@ class GroupChatRepository extends ChangeNotifier {
             firstMessage: g.firstMessage,
             scenario: g.scenario,
             systemPrompt: g.systemPrompt,
+            defaultMemberRealismState: g.defaultMemberRealismState,
           ),
         );
       }
@@ -95,6 +96,7 @@ class GroupChatRepository extends ChangeNotifier {
       firstMessage: Value(group.firstMessage),
       scenario: Value(group.scenario),
       systemPrompt: Value(group.systemPrompt),
+      defaultMemberRealismState: Value(group.defaultMemberRealismState),
     );
 
     if (existing != null) {
@@ -111,6 +113,7 @@ class GroupChatRepository extends ChangeNotifier {
           firstMessage: Value(group.firstMessage),
           scenario: Value(group.scenario),
           systemPrompt: Value(group.systemPrompt),
+          defaultMemberRealismState: Value(group.defaultMemberRealismState),
         ),
       );
     }

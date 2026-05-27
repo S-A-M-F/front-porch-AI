@@ -257,3 +257,48 @@ When in doubt, the **Test Card** flow in the character editor or simply starting
 ---
 
 *This document is kept in sync with the implementation in `lib/services/v2_card_service.dart`, `lib/services/character_repository.dart`, `lib/ui/dialogs/edit_character_dialog.dart`, `lib/ui/pages/create_character_page.dart`, and `lib/ui/pages/home_page.dart` (import/export flows).*
+
+---
+
+## Group Cards (fpa_group format)
+
+Front Porch supports exporting an entire **group chat** as a single portable PNG file (`.group.png`). This is a Front Porch innovation — there is no equivalent single-file group format in SillyTavern as of 2026.
+
+### Container
+
+- The file is a normal PNG.
+- All group data lives in a private `fpa_group` tEXt chunk (base64-encoded JSON).
+- The chunk is deliberately invisible to SillyTavern, Risu, Agnai, Chub, etc. so they treat the file as an ordinary image.
+
+### Top-level envelope
+
+```json
+{
+  "spec": "front_porch_group_card",
+  "spec_version": "1.0",
+  "data": { ... GroupCard object ... }
+}
+```
+
+### The `data` object (GroupCard)
+
+- `name`, `turn_order`, `auto_advance`, `director_mode`
+- `first_message`, `scenario`, `system_prompt` (group-level)
+- `members`: array of full V2.5 character card objects (with `avatar_base64` when present for high-fidelity round-tripping)
+- `realism_state`: **optional** — the group-level per-character realism + needs snapshot (same shape stored in `groups.default_member_realism_state` and `sessions.group_realism_state`).
+
+When `realism_state` is present, importing the Group Card seeds `groups.default_member_realism_state` so that:
+- New chats start with the exported realism values.
+- Splitting a member out of the group into a solo character preserves bond/trust/emotion/needs/fixation/relationships from the group session.
+
+### Why this matters for direct-SQL tools
+
+If you ever add Group Card read/write support to Character Card Forge, you must:
+1. Look for the `fpa_group` tEXt chunk (not `chara`).
+2. Parse the envelope above.
+3. When writing groups/sessions, populate the two v30 realism columns (or at minimum the `realism_state` inside the exported Group Card) if you want realism state to survive export → import → split.
+
+The columns and the `realism_state` key inside Group Cards were added precisely so that group-evolved state is no longer trapped in hidden chat messages.
+
+See `lib/services/group_card_service.dart`, `lib/models/group_card.dart`, and the v30 columns in `lib/database/database.dart` for the canonical implementation.
+

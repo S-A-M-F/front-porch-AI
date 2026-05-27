@@ -17,27 +17,22 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:io';
-
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image/image.dart' as img;
 
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
-// Barrel imports
+// Barrel imports (preferred during major refactor per project guidelines)
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/services/group_card_service.dart'; // explicit for GroupCardService (also re-exported)
-import 'dart:convert';
-import 'dart:math' as math;
-import 'dart:typed_data';
-import 'package:image/image.dart' as img;
-import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 // Specific pages, dialogs, and internal services not in barrels
@@ -2880,7 +2875,7 @@ class _HomePageState extends State<HomePage> {
             avatarImg.textData ??= {};
             avatarImg.textData!['chara'] = b64;
 
-            tempPng = File(p.join(tempDir.path, 'member_${DateTime.now().millisecondsSinceEpoch}.png'));
+            tempPng = File(path.join(tempDir.path, 'member_${DateTime.now().millisecondsSinceEpoch}.png'));
             await tempPng.writeAsBytes(img.encodePng(avatarImg));
           }
         }
@@ -2901,7 +2896,7 @@ class _HomePageState extends State<HomePage> {
           placeholder.textData ??= {};
           placeholder.textData!['chara'] = b64;
 
-          tempPng = File(p.join(tempDir.path, 'member_${DateTime.now().millisecondsSinceEpoch}.png'));
+          tempPng = File(path.join(tempDir.path, 'member_${DateTime.now().millisecondsSinceEpoch}.png'));
           await tempPng.writeAsBytes(img.encodePng(placeholder));
         }
 
@@ -2909,7 +2904,7 @@ class _HomePageState extends State<HomePage> {
         if (imported != null && imported.imagePath != null) {
           // Use the *stable* character ID (image basename) that the rest of the
           // app (ChatService, group resolution, etc.) expects. Storing dbId was wrong.
-          final stableId = p.basenameWithoutExtension(imported.imagePath!);
+          final stableId = path.basenameWithoutExtension(imported.imagePath!);
           importedMemberIds.add(stableId);
           successCount++;
         } else {
@@ -2939,6 +2934,9 @@ class _HomePageState extends State<HomePage> {
     }
 
     // Create the group itself
+    // Seed portable group realism/needs defaults from the imported card if present
+    // (enables split-to-solo characters to inherit evolved bond/trust/emotion/etc from the group).
+    final importedRealism = groupCard.extensions?['realism_state'];
     final newGroup = GroupChat(
       id: 'group_${DateTime.now().millisecondsSinceEpoch}',
       name: groupCard.name,
@@ -2949,6 +2947,9 @@ class _HomePageState extends State<HomePage> {
       firstMessage: groupCard.firstMessage,
       scenario: groupCard.scenario,
       systemPrompt: groupCard.systemPrompt,
+      defaultMemberRealismState: importedRealism is Map
+          ? jsonEncode(importedRealism)
+          : '{}',
     );
 
     await groupRepo.save(newGroup);
@@ -3060,6 +3061,10 @@ class _HomePageState extends State<HomePage> {
           firstMessage: group.firstMessage,
           scenario: group.scenario,
           systemPrompt: group.systemPrompt,
+          extensions: (group.defaultMemberRealismState.isNotEmpty &&
+                  group.defaultMemberRealismState != '{}')
+              ? {'realism_state': jsonDecode(group.defaultMemberRealismState)}
+              : null,
         );
 
         final service = GroupCardService();

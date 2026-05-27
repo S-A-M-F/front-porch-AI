@@ -121,7 +121,7 @@ class _GroupRealismStub {
     _groupRealism.remove(charId);
   }
 
-  // Simulates the checkpoint serialization used by _ensureGroupRealismCheckpoint
+  // Serializes the current _groupRealism map (shape matches the v30 DB column JSON)
   Map<String, dynamic> serializeCheckpoint() {
     return {
       'version': 1,
