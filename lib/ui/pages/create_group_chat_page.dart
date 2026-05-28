@@ -593,7 +593,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Group "$name" created!'),
-          backgroundColor: const Color(0xFF7C3AED),
+          backgroundColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)),
         ),
       );
     }
@@ -836,7 +836,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             subtitle: const Text('Characters respond one after another automatically'),
             value: _autoAdvance,
             onChanged: (v) => setState(() => _autoAdvance = v),
-            activeThumbColor: const Color(0xFF7C3AED),
+            activeThumbColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)),
           ),
           SwitchListTile(
             title: Row(children: const [Icon(Icons.movie_creation, color: Colors.amberAccent, size: 18), SizedBox(width: 6), Text('Director Mode')]),
@@ -1025,9 +1025,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFF111827),
+              color: AppColors.cardOf(context),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white12),
+              border: Border.all(color: AppColors.borderOf(context)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1052,7 +1052,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 const SizedBox(height: 6),
                 const Text(
                   'Random narrative events during roleplay. Can include NSFW events when enabled.',
-                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
                 ),
                 if (_chaosModeEnabled) ...[
                   const SizedBox(height: 10),
@@ -1077,9 +1077,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFF111827),
+              color: AppColors.cardOf(context),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white12),
+              border: Border.all(color: AppColors.borderOf(context)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1104,21 +1104,21 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 const SizedBox(height: 6),
                 const Text(
                   'Tracks emotions, short/long-term bond, trust, arousal, fixation, and needs simulation for every member. Only takes effect when not in Director Mode.',
-                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
                 ),
                 if (!_realismEnabled)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
                     child: Text(
                       'All realism features (bond, trust, emotion, needs, fixation, chaos pressure, etc.) are disabled for this group while the master toggle is off.',
-                      style: TextStyle(fontSize: 11, color: Colors.white38, fontStyle: FontStyle.italic),
+                      style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context), fontStyle: FontStyle.italic),
                     ),
                   ),
 
                 // Needs Simulation gated under Realism
                 if (_realismEnabled) ...[
                   const SizedBox(height: 14),
-                  Divider(color: Colors.white12, height: 1),
+                  Divider(color: AppColors.borderOf(context), height: 1),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -1140,7 +1140,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                   const SizedBox(height: 4),
                   const Text(
                     'Hunger, bladder, energy, social, fun, hygiene, comfort. Only relevant when Realism is enabled.',
-                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context)),
                   ),
                 ],
               ],
@@ -1162,9 +1162,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF111827),
+                color: AppColors.cardOf(context),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white12),
+                border: Border.all(color: AppColors.borderOf(context)),
               ),
               child: Row(
                 children: [
@@ -1177,7 +1177,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                         DropdownButton<String>(
                           value: _globalTimeOfDay,
                           isExpanded: true,
-                          dropdownColor: const Color(0xFF1F2937),
+                          dropdownColor: AppColors.surfaceContainerOf(context),
                           onChanged: (v) => setState(() => _globalTimeOfDay = v!),
                           items: const [
                             DropdownMenuItem(value: 'dawn', child: Text('Dawn')),
@@ -1299,12 +1299,12 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF111827),
+                color: AppColors.cardOf(context),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
+              child: Text(
                 'Realism is disabled for this group. No bond, trust, emotion, needs, or fixation tracking will occur.',
-                style: TextStyle(fontSize: 13, color: Colors.white54),
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context)),
               ),
             ),
           ],
@@ -1338,7 +1338,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 if (_directorMode) const Text('Director Mode', style: TextStyle(color: Colors.amberAccent)),
                 Text(
                   _realismEnabled ? 'Realism Engine: Enabled for group' : 'Realism Engine: Disabled for group',
-                  style: TextStyle(color: _realismEnabled ? Colors.tealAccent : Colors.white54),
+                  style: TextStyle(color: _realismEnabled ? Colors.tealAccent : AppColors.textSecondary(context)),
                 ),
               ],
             ),
@@ -1346,7 +1346,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: _createGroup,
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7C3AED), minimumSize: const Size.fromHeight(52)),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)), minimumSize: const Size.fromHeight(52)),
             icon: const Icon(Icons.check),
             label: const Text('Create Group & Enter Chat', style: TextStyle(fontSize: 16)),
           ),
@@ -1391,7 +1391,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final isCurrent = _currentStep == step;
 
     final dotColor = isActive
-        ? const Color(0xFF7C3AED)
+        ? AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9))
         : AppColors.surfaceContainerOf(context);
 
     final borderColor = isCurrent
@@ -1516,7 +1516,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 ),
                 label: Text(nextText, style: const TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7C3AED),
+                  backgroundColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   disabledBackgroundColor: AppColors.borderOf(context),

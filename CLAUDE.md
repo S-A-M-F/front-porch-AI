@@ -119,9 +119,40 @@ A multi-component system spanning chat_service.dart and the LLM provider:
 
 ## Branch Workflow
 
-- **PRs target `dev`**, never `main`
-- `main` is stable releases only
-- Beta branches use `0.9.x-Beta` naming with isolated data directories
+This project uses a branching model designed to keep rapid development moving while providing stable channels for maintenance and release stabilization:
+
+### Rawhide (Primary Development Branch)
+- `Rawhide` is the main rolling development branch.
+- **All new features, UI changes, major refactors, and experimental work must target Rawhide.**
+- Rawhide is always moving forward. It represents the current state of ongoing development.
+
+### dev (Current Stable Maintenance)
+- `dev` is used exclusively for **bug fixes** targeting the current stable release.
+- When no beta branch is active, bug fixes for the latest released version should be submitted against `dev`.
+
+### Beta Branches (Release Stabilization)
+- Beta branches are named using the pattern `0.9.x-Beta` (e.g., `0.9.8-Beta`).
+- A beta branch is created when we begin the stabilization process for an upcoming release.
+- **While a beta branch is active, only bug fixes for that specific beta build are accepted on the beta branch.**
+- New features are not permitted on active beta branches. Any feature work must be developed against Rawhide.
+- Beta branches exist to polish and stabilize the next release without blocking forward progress on Rawhide.
+
+### main (Stable Releases Only)
+- `main` contains only final, tagged stable releases.
+- Direct PRs to `main` are almost never accepted.
+
+### Summary of Where Changes Should Target
+
+| Change Type                    | Target Branch          |
+|--------------------------------|------------------------|
+| New features & experiments     | `Rawhide`              |
+| Bug fixes for current stable   | `dev`                  |
+| Bug fixes for active beta      | The active `*-Beta` branch |
+| Release tagging                | `main`                 |
+
+When a new release cycle begins, a beta branch is typically created from the current state of Rawhide. From that point on, Rawhide continues to receive new development, while the beta branch is reserved strictly for stabilization work. Once the stable release ships, ongoing maintenance for that version moves to `dev`.
+
+This structure ensures Rawhide remains the fast-moving line for new work, while still providing focused stabilization periods before each release.
 
 ## Important Constraints
 
@@ -177,6 +208,13 @@ Because the user has **no ability to read or evaluate Dart code**, the following
   - After any deletion of methods, large refactors, changes to `home_page.dart`, `main.dart`, service initialization, widget trees with many braces, or anything that touches build-time structure, you **must** run a full `flutter analyze` (and ideally `flutter build macos` or `flutter run -d macos` on the host) **before** claiming the task is complete.
   - "It looks good" or "the logic is correct" is not sufficient. If the app does not compile cleanly for the user on `flutter run`, the work is not done.
   - You are responsible for leaving the tree in a runnable state. Repeated "build failed with 20 errors, please fix" follow-ups are unacceptable. Run the build yourself as part of verification.
+
+- **All widgets, dialogs, menus, toggles, cards, and surfaces must honor the AppColors system** (non-negotiable):
+  - Use `AppColors` from `lib/ui/theme/app_colors.dart` exclusively for colors.
+  - Prefer the helper methods: `AppColors.backgroundOf(context)`, `cardOf(context)`, `surfaceOf(context)`, `surfaceContainerOf(context)`, `textPrimary/Secondary/Tertiary(context)`, `iconPrimary/Secondary(context)`, `borderOf(context)`.
+  - Use `AppColors.resolve(context, darkColor, lightColor)` for any custom accent or state colors.
+  - Hard-coded `Color(0xFF...)` values or raw `Colors.whiteXX` / `Colors.blackXX` are forbidden in new or refactored UI (except for a small number of semantic accent constants that already have light variants defined in AppColors).
+  - This rule applies especially to creation wizards, settings dialogs, menus, and any new widget.
 
 - **Destructive git operations on files are forbidden without explicit approval** (data loss risk):
   - You **must never** run `git checkout -- <file>`, `git restore <file>`, `git checkout HEAD -- <file>`, `git checkout <commit> -- <file>`, or any similar command that discards uncommitted local changes to a file.

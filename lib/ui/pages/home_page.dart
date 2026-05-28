@@ -58,7 +58,7 @@ class _HomePageState extends State<HomePage> {
   SearchScope _searchScope = SearchScope.currentFolder;
   final _searchController = TextEditingController();
 
-  // Multi-select for group creation
+  // Multi-select mode (used for organizing into folders, bulk actions, etc.)
   bool _isSelecting = false;
   // Multi-select for folder organization
   bool _isOrganizing = false;
@@ -419,7 +419,7 @@ class _HomePageState extends State<HomePage> {
             onFolderTap: _handleFolderTap,
             onFolderNavigateBack: _handleFolderNavigateBack,
             onCancelSelection: _cancelSelection,
-            onCreateGroup: _handleCreateGroup,
+            // onCreateGroup no longer wired — old select-for-group path deprecated.
             onMoveToFolder: _handleMoveToFolder,
             onSortChanged: _handleSortChanged,
             onGridScaleChanged: _handleGridScaleChanged,
@@ -937,13 +937,6 @@ class _HomePageState extends State<HomePage> {
         _activeFolderId = null;
       }
     });
-  }
-
-  // Group chat creation is now exclusively via the dedicated CreateGroupChatPage
-  // (persistent sidebar button, first-class menu-driven experience).
-  // The old monolithic dialog + bottom-bar selection path has been removed.
-  void _handleCreateGroup(Set<String> selectedIds) {
-    // No-op.
   }
 
   void _handleMoveToFolder(Set<String> selectedIds) {

@@ -51,7 +51,6 @@ class CharacterCardGrid extends StatelessWidget {
     required this.onFolderTap,
     required this.onFolderNavigateBack,
     required this.onCancelSelection,
-    required this.onCreateGroup,
     required this.onMoveToFolder,
     required this.onSortChanged,
     required this.onGridScaleChanged,
@@ -95,7 +94,7 @@ class CharacterCardGrid extends StatelessWidget {
   final void Function(CharacterFolder folder) onFolderTap;
   final VoidCallback onFolderNavigateBack;
   final VoidCallback onCancelSelection;
-  final void Function(Set<String> selectedIds) onCreateGroup;
+  // onCreateGroup removed — group creation is now exclusively via the sidebar "Create Group Chat" button.
   final void Function(Set<String> selectedIds) onMoveToFolder;
   final void Function(String mode) onSortChanged;
   final void Function(double scale) onGridScaleChanged;
@@ -355,11 +354,8 @@ class CharacterCardGrid extends StatelessWidget {
                   const Spacer(),
                   if (!isSelecting && !isOrganizing) ...[
                     IconButton(
-                      tooltip: 'Select characters for group chat',
-                      icon: const Icon(
-                        Icons.group_add,
-                        color: Colors.purpleAccent,
-                      ),
+                      tooltip: 'Multi-select characters (for organizing, moving, etc.)',
+                      icon: const Icon(Icons.check_box_outlined),
                       visualDensity: VisualDensity.compact,
                       onPressed: onToggleSelectMode,
                     ),
@@ -635,8 +631,8 @@ class CharacterCardGrid extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // "Create Group" button removed — group creation is now a first-class
-                  // sidebar action (CreateGroupChatPage) with full modern feature support.
+                  // Old "Create Group" action removed. Group creation is now exclusively
+                  // via the persistent left sidebar button ("Create Group Chat").
                 ],
               ),
             ),
