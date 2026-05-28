@@ -19,21 +19,23 @@
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
-/// Purple-themed fixation indicator matching the 1:1 sidebar treatment.
+/// Purple-themed fixation indicator matching the 1:1 sidebar treatment exactly.
 ///
-/// Compact variant for group member lists (single line + turns).
-/// Expanded/rich variant for the focused speaker card (full card with clear button).
+/// Compact variant for group member lists (single line + turns remaining).
+/// Expanded/rich variant for the focused speaker card (read-only, same as 1:1).
+///
+/// Fixations are intrusive thoughts controlled exclusively by the Realism Engine
+/// (LLM narrative eval + natural 3-turn lifespan decay). They are deliberately
+/// not user-clearable in either 1:1 or group mode.
 class FixationChip extends StatelessWidget {
   final String topic;
   final int? lifespan;
-  final VoidCallback? onClear;
   final bool compact;
 
   const FixationChip({
     super.key,
     required this.topic,
     this.lifespan,
-    this.onClear,
     this.compact = false,
   });
 
@@ -79,17 +81,6 @@ class FixationChip extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (onClear != null) ...[
-              const SizedBox(width: 2),
-              GestureDetector(
-                onTap: onClear,
-                child: Icon(
-                  Icons.close,
-                  size: 10,
-                  color: AppColors.resolve(context, Colors.purpleAccent, Colors.purple.shade700),
-                ),
-              ),
-            ],
           ],
         ),
       );
@@ -147,15 +138,6 @@ class FixationChip extends StatelessWidget {
               ],
             ),
           ),
-          if (onClear != null)
-            IconButton(
-              icon: const Icon(Icons.close, size: 16),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              onPressed: onClear,
-              color: AppColors.resolve(context, Colors.purpleAccent, Colors.purple.shade700),
-              tooltip: 'Clear fixation',
-            ),
         ],
       ),
     );

@@ -3564,22 +3564,21 @@ class _ChatPageState extends State<ChatPage> {
             child: _AuthorNoteSection(chatService: chatService),
           ),
 
-          // ── Summary ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: _SummarySection(chatService: chatService),
-          ),
-
           // ── Chaos Mode (global for the group chat) ──
           Consumer<ChatService>(
-            builder: (context, chat, _) => _ChaosModeSection(
-              chat: chat,
-              onSpinRequested: () => _showChanceTimeOverlay(context),
+            builder: (context, chat, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ChaosModeSection(
+                  chat: chat,
+                  onSpinRequested: () => _showChanceTimeOverlay(context),
+                ),
+                // Scene time tracker (day of week + time of day + nudges + dots)
+                // Placed here with Chaos as they are both global/scene-level state.
+                _SceneTimeSection(chat: chat),
+              ],
             ),
           ),
-
-          // ── Lorebook Triggers (group context) ──
-          _GroupLorebookSection(chatService: chatService),
 
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -3678,6 +3677,16 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               ),
             ),
+          ),
+
+          // ── Lorebook Triggers & Chat Summary moved below the character list
+          // (global sections that apply to the whole group scene).
+          const SizedBox(height: 8),
+          _GroupLorebookSection(chatService: chatService),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: _SummarySection(chatService: chatService),
           ),
         ],
       ),
@@ -6145,6 +6154,177 @@ class _LorebookSectionState extends State<_LorebookSection> {
         ],
       ],
     );
+  }
+}
+
+/// Scene-level time of day + narrative day tracker (used in both 1:1 and group sidebars).
+/// Displays current period (with emoji), weekday abbreviation + day count,
+/// manual nudge chevrons (when realism is enabled), and the 6 period indicator dots.
+class _SceneTimeSection extends StatelessWidget {
+  final ChatService chat;
+
+  const _SceneTimeSection({required this.chat});
+
+  @override
+  Widget build(BuildContext context) {
+    final time = chat.timeOfDay;
+    final day = chat.dayCount;
+    final weekday = chat.narrativeWeekday;
+    final canNudge = chat.realismEnabled && !chat.isGenerating;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                _timeEmoji(time),
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                _timeLabel(time),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary(context),
+                ),
+              ),
+              const Spacer(),
+              if (canNudge)
+                GestureDetector(
+                  onTap: () => chat.nudgeTimePeriod(-1),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      Icons.chevron_left,
+                      size: 16,
+                      color: AppColors.iconSecondary(context),
+                    ),
+                  ),
+                ),
+              Text(
+                '${weekday.substring(0, 3)} · Day $day',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary(context),
+                ),
+              ),
+              if (canNudge)
+                GestureDetector(
+                  onTap: () => chat.nudgeTimePeriod(1),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: AppColors.iconSecondary(context),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          // Time period dots
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (final period in const [
+                'dawn',
+                'morning',
+                'late_morning',
+                'afternoon',
+                'evening',
+                'night',
+              ])
+                Column(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: time == period
+                            ? AppColors.resolve(context, Colors.amber, Colors.amber.shade700)
+                            : AppColors.borderOf(context).withValues(alpha: 0.25),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _timeDotLabel(period),
+                      style: TextStyle(
+                        fontSize: 8,
+                        color: time == period
+                            ? AppColors.resolve(context, Colors.amber, Colors.amber.shade800)
+                            : AppColors.textTertiary(context),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _timeEmoji(String time) {
+    switch (time) {
+      case 'dawn':
+        return '🌅';
+      case 'morning':
+        return '☀️';
+      case 'late_morning':
+        return '🌤️';
+      case 'afternoon':
+        return '☀️';
+      case 'evening':
+        return '🌇';
+      case 'night':
+        return '🌙';
+      default:
+        return '🕐';
+    }
+  }
+
+  String _timeLabel(String time) {
+    switch (time) {
+      case 'dawn':
+        return 'Dawn';
+      case 'morning':
+        return 'Morning';
+      case 'late_morning':
+        return 'Late Morning';
+      case 'afternoon':
+        return 'Afternoon';
+      case 'evening':
+        return 'Evening';
+      case 'night':
+        return 'Night';
+      default:
+        return time;
+    }
+  }
+
+  String _timeDotLabel(String period) {
+    switch (period) {
+      case 'dawn':
+        return 'D';
+      case 'morning':
+        return 'M';
+      case 'late_morning':
+        return 'LM';
+      case 'afternoon':
+        return 'A';
+      case 'evening':
+        return 'E';
+      case 'night':
+        return 'N';
+      default:
+        return '';
+    }
   }
 }
 

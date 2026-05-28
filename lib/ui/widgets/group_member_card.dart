@@ -283,7 +283,6 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
                     FixationChip(
                       topic: fixation,
                       lifespan: fixationLife,
-                      onClear: () => chat.clearFixationForGroupCharacter(widget.character),
                       compact: false,
                     ),
 

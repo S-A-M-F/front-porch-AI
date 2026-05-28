@@ -168,6 +168,23 @@ Because the user has **no ability to read or evaluate Dart code**, the following
   - `dart fix --dry-run` (apply safe fixes where appropriate)
   - Grep/search for recently added methods to verify older similar methods are not now dead
 
+- **UI consistency for creation wizards** (mandatory):
+  - All "Create X" flows (character creator, group chat creator, world creator, etc.) must use the **same top-bar step indicator pattern** and linear step progression as `create_character_page.dart`.
+  - Do not invent new side menus, tab bars, or free-jumping section lists for creation wizards. Use the horizontal step dots + labels + connecting lines in the AppBar, `AnimatedSwitcher` driven by a simple `_currentStep` int, and `_buildNavButtons` at the bottom of each step.
+  - This prevents the painful inconsistency the user has repeatedly called out.
+
+- **Compilation gate after any structural change or major refactor** (non-negotiable):
+  - After any deletion of methods, large refactors, changes to `home_page.dart`, `main.dart`, service initialization, widget trees with many braces, or anything that touches build-time structure, you **must** run a full `flutter analyze` (and ideally `flutter build macos` or `flutter run -d macos` on the host) **before** claiming the task is complete.
+  - "It looks good" or "the logic is correct" is not sufficient. If the app does not compile cleanly for the user on `flutter run`, the work is not done.
+  - You are responsible for leaving the tree in a runnable state. Repeated "build failed with 20 errors, please fix" follow-ups are unacceptable. Run the build yourself as part of verification.
+
+- **Destructive git operations on files are forbidden without explicit approval** (data loss risk):
+  - You **must never** run `git checkout -- <file>`, `git restore <file>`, `git checkout HEAD -- <file>`, `git checkout <commit> -- <file>`, or any similar command that discards uncommitted local changes to a file.
+  - Work is frequently done to files (by the human or other agents) without immediate commits. These commands will **silently and permanently destroy** that uncommitted work.
+  - Such operations are only allowed if the human has **explicitly authorized the exact command in the current conversation** (e.g., "yes, run `git checkout -- lib/ui/pages/home_page.dart` right now").
+  - Safer alternatives you must prefer: `git diff`, `git diff -- <file>`, saving a patch with `git diff > /tmp/backup.patch`, asking the user for help, using `git stash push -m "temp" -- <file>` only when the user has confirmed it is safe, or simply working around the problem without reverting the file.
+  - If you ever believe a file is in a bad state and the only recovery seems to be a destructive checkout, **stop** and ask the user instead of acting. Data loss from an AI agent is unacceptable.
+
 **Hygiene Summary Requirement**: At the end of any response involving non-trivial changes, include a short "Hygiene Summary" covering:
 - New private methods added (list them)
 - Methods deleted (list them)
@@ -191,7 +208,7 @@ Because the user has **no ability to read or evaluate Dart code**, the following
 
 ### Task Completion Rules
 - **No skeleton or partial implementations are allowed.** Never create stub files, placeholder methods containing only TODO comments, incomplete classes, or "skeleton" functionality with the intention of finishing it in a later turn.
-- **All tasks must be completed in full during the turn they are started.** If a request (or sub-task) cannot be fully implemented, tested via `flutter analyze`, grepped for dead code, and manually verified as working within a single interaction, do not begin writing the code. Ask the user to clarify scope or break the work into smaller, independently completable pieces instead.
+- **All tasks must be completed in full during the turn they are started.** If a request (or sub-task) cannot be fully implemented, tested via `flutter analyze` (0 errors on changed files), grepped for dead code, **the app actually compiles and launches** (`flutter run -d macos` or equivalent succeeds with no red exceptions at startup), and manually verified as working within a single interaction, do not begin writing the code. Ask the user to clarify scope or break the work into smaller, independently completable pieces instead.
 - This rule takes precedence over "getting something started." Partial progress that leaves the codebase in a broken or misleading state is not acceptable.
 - Only mark a task complete after it is fully functional and all verification steps (analyze + grep + manual review) have passed.
 

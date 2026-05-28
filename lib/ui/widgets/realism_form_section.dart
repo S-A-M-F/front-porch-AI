@@ -52,6 +52,13 @@ class RealismFormSection extends StatelessWidget {
   final String currentTask;
   final ValueChanged<String> onCurrentTaskChanged;
 
+  // Visibility controls (for group creator where some features are global only)
+  final bool showNsfwCooldownToggle;
+  final bool showChaosToggle;
+  final bool showNeedsToggle;
+  final bool showTimeAndDay;
+  final bool showMasterEnabledToggle;
+
   const RealismFormSection({
     super.key,
     required this.enabled,
@@ -80,6 +87,11 @@ class RealismFormSection extends StatelessWidget {
     required this.onEnjoysLowHygieneChanged,
     required this.currentTask,
     required this.onCurrentTaskChanged,
+    this.showNsfwCooldownToggle = true,
+    this.showChaosToggle = true,
+    this.showNeedsToggle = true,
+    this.showTimeAndDay = true,
+    this.showMasterEnabledToggle = true,
   });
 
   static const _timeOptions = [
@@ -162,77 +174,79 @@ class RealismFormSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Master Toggle ──
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.cardOf(context),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: enabled
-                  ? Colors.blueAccent.withValues(alpha: 0.4)
-                  : AppColors.borderOf(context),
+        // ── Master Toggle (can be hidden in group creator where the group-level toggle controls it) ──
+        if (showMasterEnabledToggle)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: enabled
+                    ? Colors.blueAccent.withValues(alpha: 0.4)
+                    : AppColors.borderOf(context),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: enabled
+                        ? Colors.blueAccent.withValues(alpha: 0.2)
+                        : AppColors.surfaceContainerOf(context).withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.psychology,
+                    color: enabled ? Colors.blueAccent : AppColors.iconSecondary(context),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Enable Realism Engine',
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        enabled
+                            ? 'Character will start with pre-configured state'
+                            : 'Realism Engine will use default values',
+                        style: TextStyle(
+                          color: enabled ? Colors.blueAccent : AppColors.textTertiary(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: enabled,
+                  onChanged: onEnabledChanged,
+                  activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
+                  activeThumbColor: Colors.blueAccent,
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: enabled
-                      ? Colors.blueAccent.withValues(alpha: 0.2)
-                      : AppColors.surfaceContainerOf(context).withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.psychology,
-                  color: enabled ? Colors.blueAccent : AppColors.iconSecondary(context),
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Enable Realism Engine',
-                      style: TextStyle(
-                        color: AppColors.textPrimary(context),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      enabled
-                          ? 'Character will start with pre-configured state'
-                          : 'Realism Engine will use default values',
-                      style: TextStyle(
-                        color: enabled ? Colors.blueAccent : AppColors.textTertiary(context),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                value: enabled,
-                onChanged: onEnabledChanged,
-                activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
-                activeThumbColor: Colors.blueAccent,
-              ),
-            ],
-          ),
-        ),
 
         // ── Configuration Form (only when enabled) ──
         if (enabled) ...[
           const SizedBox(height: 20),
 
-          // Time & Day Section
-          _sectionHeader(Icons.schedule, 'Time & Day', Colors.amberAccent),
+          if (showTimeAndDay) ...[
+            // Time & Day Section
+            _sectionHeader(Icons.schedule, 'Time & Day', Colors.amberAccent),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
@@ -332,6 +346,7 @@ class RealismFormSection extends StatelessWidget {
               ],
             ),
           ),
+          ], // end showTimeAndDay
           const SizedBox(height: 20),
 
           // Relationship Section
@@ -498,34 +513,45 @@ class RealismFormSection extends StatelessWidget {
             ),
             child: Column(
               children: [
-                _toggleRow(
-                  icon: Icons.thermostat,
-                  label: 'NSFW Cooldown System',
-                  subtitle: 'Realistic arousal/refractory mechanics',
-                  value: nsfwCooldownEnabled,
-                  onChanged: onNsfwCooldownChanged,
-                  context: context,
-                ),
-                Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4), height: 24),
-                _toggleRow(
-                  icon: Icons.casino,
-                  label: 'Chaos Mode (Chance Time)',
-                  subtitle: 'Random narrative events during roleplay',
-                  value: chaosModeEnabled,
-                  onChanged: onChaosModeChanged,
-                  context: context,
-                ),
-                Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4), height: 24),
-                _toggleRow(
-                  icon: Icons.battery_std,
-                  label: 'Needs Simulation',
-                  subtitle:
-                      'Hunger, bladder, energy, social, fun, hygiene, comfort — influences prompts & behavior',
-                  value: needsSimEnabled,
-                  onChanged: onNeedsSimChanged,
-                  context: context,
-                ),
-                if (needsSimEnabled) ...[
+                if (showNsfwCooldownToggle) ...[
+                  _toggleRow(
+                    icon: Icons.thermostat,
+                    label: 'NSFW Cooldown System',
+                    subtitle: 'Realistic arousal/refractory mechanics',
+                    value: nsfwCooldownEnabled,
+                    onChanged: onNsfwCooldownChanged,
+                    context: context,
+                  ),
+                  if (showChaosToggle || showNeedsToggle)
+                    Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4), height: 24),
+                ],
+                if (showChaosToggle) ...[
+                  _toggleRow(
+                    icon: Icons.casino,
+                    label: 'Chaos Mode (Chance Time)',
+                    subtitle: 'Random narrative events during roleplay',
+                    value: chaosModeEnabled,
+                    onChanged: onChaosModeChanged,
+                    context: context,
+                  ),
+                  if (showNeedsToggle)
+                    Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4), height: 24),
+                ],
+                if (showNeedsToggle) ...[
+                  _toggleRow(
+                    icon: Icons.battery_std,
+                    label: 'Needs Simulation',
+                    subtitle:
+                        'Hunger, bladder, energy, social, fun, hygiene, comfort — influences prompts & behavior',
+                    value: needsSimEnabled,
+                    onChanged: onNeedsSimChanged,
+                    context: context,
+                  ),
+                ],
+
+                // Enjoys low hygiene can appear under Optional Features even if we hide the Needs master row
+                // (used in group creator where Needs is a global toggle).
+                if (needsSimEnabled && !showNeedsToggle) ...[
                   const SizedBox(height: 8),
                   _toggleRow(
                     icon: Icons.water_drop_outlined,

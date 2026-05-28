@@ -1140,21 +1140,6 @@ class ChatService extends ChangeNotifier {
     return raw?.toInt();
   }
 
-  /// Clears the fixation (and its lifespan) for a specific character in the current
-  /// group chat. No-op outside group realism mode. Triggers a UI update immediately.
-  void clearFixationForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return;
-    final id = _getCharacterIdFromCard(character);
-    if (id.isEmpty) return;
-
-    final map = _groupRealism[id];
-    if (map != null) {
-      map['fixation'] = '';
-      map['fixationLifespan'] = 0;
-    }
-    notifyListeners();
-  }
-
   /// Returns the top N most urgent needs (lowest value first) for the character,
   /// as a list of (needName, value) pairs.
   List<(String, int)> getTopUrgentNeedsForGroupCharacter(
@@ -4380,8 +4365,19 @@ class ChatService extends ChangeNotifier {
       final lastMsg = _messages.removeLast();
       notifyListeners();
 
+      // In group mode, force the turn manager to the *original* speaker of the
+      // removed message before generation. This prevents regen from picking a
+      // different character (the core of the "speaker changed after regen" bug).
+      if (_activeGroup != null) {
+        final originalSpeaker = _groupCharacters.firstWhere(
+          (c) => c.name == lastMsg.sender,
+          orElse: () => _groupCharacters.first,
+        );
+        _groupManager?.setNextSpeaker(originalSpeaker);
+      }
+
       // Revert realism state from the rejected swipe and re-evaluate
-      if (_realismEnabled) {
+      if (_realismEnabled && _activeGroup == null) {
         // CRITICAL FIX: Find the baseline realism state from the previous accepted message.
         // We want to use the final state of the LAST ACCEPTED character message as our baseline,
         // not just blindly revert deltas and re-evaluate from scratch.
@@ -4602,24 +4598,31 @@ class ChatService extends ChangeNotifier {
         notifyListeners();
       }
 
-      // Save pre-turn vector BEFORE _generateResponse (which clears
-      // _pendingRealismMetadata).
-      final regenPreTurn =
-          _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
+      // In group mode the per-speaker realism eval (and its metadata / needs deltas)
+      // happens inside _generateResponse via _evaluateRealismForUpcomingGroupSpeaker
+      // for the correctly-forced speaker. Skip the 1:1 scalar synthesis here.
+      Map<String, int>? regenPreTurn;
+      Map<String, dynamic>? needsDeltas;
+      if (_activeGroup == null) {
+        // Save pre-turn vector BEFORE _generateResponse (which clears
+        // _pendingRealismMetadata).
+        regenPreTurn =
+            _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
 
-      // Synthesize metadata after all regen evals complete — mirrors the
-      // normal path (line 4020) so emotion_label and realism_state are in
-      // _pendingRealismMetadata before _generateResponse consumes it.
-      _pendingRealismMetadata ??= {};
-      _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-      _pendingRealismMetadata!['realism_state'] =
-          _captureRealismState(preTurn: regenPreTurn);
+        // Synthesize metadata after all regen evals complete — mirrors the
+        // normal path (line 4020) so emotion_label and realism_state are in
+        // _pendingRealismMetadata before _generateResponse consumes it.
+        _pendingRealismMetadata ??= {};
+        _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
+        _pendingRealismMetadata!['realism_state'] =
+            _captureRealismState(preTurn: regenPreTurn);
 
-      // If cancellation was requested during realism evaluation, abort generation
-      if (_realismEvalCancelled) {
-        _realismEvalCancelled = false;
-        notifyListeners();
-        return;
+        // If cancellation was requested during realism evaluation, abort generation
+        if (_realismEvalCancelled) {
+          _realismEvalCancelled = false;
+          notifyListeners();
+          return;
+        }
       }
 
       // Invalidate ONNX cache for the new response
@@ -4636,8 +4639,11 @@ class ChatService extends ChangeNotifier {
       // Compute needs_deltas AFTER generation so the post-generation checks
       // are reflected. This mirrors the normal generation path (line ~4053).
       // Apply directly to the message since _pendingRealismMetadata was consumed.
-      Map<String, dynamic>? needsDeltas;
-      if (_needsSimEnabled && _needsVector.isNotEmpty) {
+      // (For groups, the per-speaker path inside generate already attached the
+      // correct per-character needs_deltas; we only compute scalar here for 1:1.)
+      if (_activeGroup == null &&
+          _needsSimEnabled &&
+          _needsVector.isNotEmpty) {
         needsDeltas = _computeNeedsDeltasWithReasons(regenPreTurn);
       }
 
@@ -4662,6 +4668,17 @@ class ChatService extends ChangeNotifier {
         _messages.add(lastMsg);
         await _saveChat();
         notifyListeners();
+
+        // In group mode, advance the turn pointer past the regenerated speaker
+        // so the next natural generation continues the correct rotation instead
+        // of repeating the same character.
+        if (_activeGroup != null) {
+          final originalSpeaker = _groupCharacters.firstWhere(
+            (c) => c.name == lastMsg.sender,
+            orElse: () => _groupCharacters.first,
+          );
+          _groupManager?.advanceAfterRegeneration(originalSpeaker);
+        }
       }
     }
   }

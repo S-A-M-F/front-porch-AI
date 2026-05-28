@@ -24,6 +24,7 @@ import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 import 'package:front_porch_ai/ui/pages/character_creator_page.dart';
+import 'package:front_porch_ai/ui/pages/create_group_chat_page.dart';
 
 class Sidebar extends StatelessWidget {
   const Sidebar({super.key});
@@ -104,6 +105,46 @@ class Sidebar extends StatelessWidget {
             label: 'Create Character',
             isSelected: appState.selectedIndex == 1,
             onTap: () => appState.setIndex(1),
+          ),
+          InkWell(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CreateGroupChatPage()),
+            ),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(
+                vertical: 12.0,
+                horizontal: 12.0,
+              ),
+              margin: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 4.0,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.group_add,
+                    color: const Color(0xFF7C3AED),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      'Create Group Chat',
+                      style: TextStyle(
+                        color: const Color(0xFF7C3AED),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           _SidebarItem(
             icon: Icons.dns_outlined,

@@ -635,22 +635,8 @@ class CharacterCardGrid extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: selectedCharacterIds.length >= 2
-                        ? () => onCreateGroup(selectedCharacterIds)
-                        : null,
-                    icon: const Icon(Icons.group_add),
-                    label: const Text('Create Group'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purpleAccent,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: AppColors.resolve(
-                        context,
-                        Colors.white10,
-                        Colors.black12,
-                      ),
-                    ),
-                  ),
+                  // "Create Group" button removed — group creation is now a first-class
+                  // sidebar action (CreateGroupChatPage) with full modern feature support.
                 ],
               ),
             ),

@@ -107,6 +107,19 @@ class GroupTurnManager extends ChangeNotifier {
     }
   }
 
+  /// Advance the round-robin turn pointer (if applicable) as if the given
+  /// character has just completed their turn. Used after a regeneration to
+  /// ensure the next natural speaker is the correct subsequent character
+  /// rather than repeating the regenerated speaker.
+  /// Safe no-op for random turn order or non-round-robin groups.
+  void advanceAfterRegeneration(CharacterCard character) {
+    if (!isActive || _characters.isEmpty) return;
+    final idx = _characters.indexWhere((c) => c.name == character.name);
+    if (idx < 0) return;
+    _turnIndex = (idx + 1) % _characters.length;
+    notifyListeners();
+  }
+
   /// Resets the round-robin pointer and any forced speaker.
   /// Used when a new greeting is sent or the conversation is reset.
   void resetTurnState() {

@@ -255,6 +255,15 @@ The Update Available dialog shows a friendly, non-technical "What's New" section
 
 Never mix notes across branches in a single file.
 
+## Git Safety Rules (Critical — Data Loss Prevention)
+
+- **Destructive file reversion is forbidden** without explicit, current human approval.
+  - Never run `git checkout -- <file>`, `git restore <file>`, `git checkout HEAD -- <file>`, `git checkout <sha> -- <file>`, or equivalent commands that discard uncommitted changes.
+  - The human (and other agents) frequently edit files without committing immediately. These commands cause **permanent, silent data loss**.
+  - Such operations are only permitted when the human has said something like "yes, run `git checkout -- lib/ui/pages/home_page.dart` right now" in the active conversation.
+  - Safer patterns: `git diff`, `git diff -- <file> > /tmp/backup.patch`, asking the human, or finding a non-destructive workaround.
+  - If you think a file is corrupted and the only fix appears to require a destructive checkout, **stop and ask the human** instead of acting.
+
 ## Files/Areas Requiring Discussion
 
 ### Never Touch Without Discussion
