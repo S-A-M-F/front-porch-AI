@@ -51,7 +51,15 @@ class CreateGroupChatPage extends StatefulWidget {
 
 
 class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
-  int _currentStep = 0; // 0 = Members, 1 = Identity, 2 = Opening, 3 = Prompts, 4 = Lore, 5 = Realism, 6 = Review
+  int _currentStep = 0;
+  // 0 = Members
+  // 1 = Identity
+  // 2 = Opening
+  // 3 = Prompts
+  // 4 = Lore
+  // 5 = Realism
+  // 6 = Group Dynamics (only for groups of 4 or fewer)
+  // 7 = Review
 
   // ── Core State ─────────────────────────────────────────────────────
   final List<CharacterCard> _members = [];
@@ -169,6 +177,46 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
   bool get _canLeaveMembersStep => _members.length >= 2;
 
+  List<String> get _stepLabels {
+    final labels = [
+      'Members',
+      'Identity',
+      'Opening',
+      'Prompts',
+      'Lore',
+      'Realism',
+    ];
+    if (_members.length <= 4) {
+      labels.add('Group Dynamics');
+    }
+    labels.add('Review');
+    return labels;
+  }
+
+  int? _getEffectiveNextStep(int current) {
+    int next = current + 1;
+
+    // Skip Group Dynamics (step 6) if group is too large
+    if (next == 6 && _members.length > 4) {
+      next = 7;
+    }
+
+    if (next > 7) return null; // beyond Review
+    return next;
+  }
+
+  void _goToPreviousStep(int current) {
+    int prev = current - 1;
+
+    // If we are coming back from Review and skipped Dynamics, go to Realism instead
+    if (current == 7 && _members.length > 4) {
+      prev = 5;
+    }
+
+    if (prev < 0) prev = 0;
+    setState(() => _currentStep = prev);
+  }
+
   // ── MEMBER MANAGEMENT (heart of the experience) ────────────────────
 
   void _addMember(CharacterCard card) {
@@ -180,6 +228,13 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       if (!_memberRealismSeeds.containsKey(id)) {
         _memberRealismSeeds[id] = _defaultRealismSeedFor(card);
       }
+
+      // Initialize empty relationships map for small groups
+      if (_members.length <= 4) {
+        final seed = _memberRealismSeeds[id]!;
+        seed['relationships'] ??= <String, int>{};
+      }
+
       if (_nameController.text.trim().isEmpty) {
         _nameController.text = _members.map((c) => c.name).join(' & ');
       }
@@ -193,6 +248,15 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       _characterVoices.remove(id);
       _characterSystemPrompts.remove(id);
       _memberRealismSeeds.remove(id);
+
+      // Clean up any references to this member from other characters' relationship maps
+      for (final seed in _memberRealismSeeds.values) {
+        final rels = seed['relationships'];
+        if (rels is Map) {
+          rels.remove(id);
+        }
+      }
+
       if (_members.isNotEmpty && _nameController.text.trim().isEmpty) {
         _nameController.text = _members.map((c) => c.name).join(' & ');
       }
@@ -232,6 +296,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         'bladder': 85,
       },
       'enjoysLowHygiene': false,
+      'relationships': <String, int>{}, // seeded in Group Dynamics step for small groups
     };
   }
 
@@ -643,6 +708,8 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 ? _buildLoreStep()
                 : _currentStep == 5
                 ? _buildRealismStep()
+                : _currentStep == 6
+                ? (_members.length <= 4 ? _buildGroupDynamicsStep() : _buildGroupDynamicsDisabledStep())
                 : _buildReviewStep(),
           ),
         ],
@@ -1050,7 +1117,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Random narrative events during roleplay. Can include NSFW events when enabled.',
                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
                 ),
@@ -1102,13 +1169,13 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Tracks emotions, short/long-term bond, trust, arousal, fixation, and needs simulation for every member. Only takes effect when not in Director Mode.',
                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
                 ),
                 if (!_realismEnabled)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       'All realism features (bond, trust, emotion, needs, fixation, chaos pressure, etc.) are disabled for this group while the master toggle is off.',
                       style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context), fontStyle: FontStyle.italic),
@@ -1138,7 +1205,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Hunger, bladder, energy, social, fun, hygiene, comfort. Only relevant when Realism is enabled.',
                     style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context)),
                   ),
@@ -1315,6 +1382,220 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     );
   }
 
+  // ── Group Dynamics (Intra-group relationships) ──────────────────────
+
+  Widget _buildGroupDynamicsDisabledStep() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.people_alt, size: 64, color: AppColors.textTertiary(context)),
+            const SizedBox(height: 16),
+            Text(
+              'Group Dynamics',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary(context)),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Intra-group relationship seeding is only available for groups with 4 or fewer members.\n\n'
+              'Your current group has ${_members.length} members.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textSecondary(context)),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Larger groups use different social dynamics modeling.',
+              style: TextStyle(color: AppColors.textTertiary(context), fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupDynamicsStep() {
+    // This should only be called when _members.length <= 4
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Group Dynamics',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary(context)),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Pre-seed hidden intra-group relationship scores (same -300..+300 raw scale as Long-Term Bond in Realism). Only available for groups of 4 or fewer per engine limits. These private feelings (never shown in UI) influence how members treat each other in prompts and behavior when the Realism Engine is active. Values persist in the Group Card export and round-trip on split-to-solo.',
+                preferBelow: false,
+                child: Icon(Icons.info_outline, size: 18, color: AppColors.textTertiary(context)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Pre-seed how the characters feel toward each other. These hidden relationships influence behavior in small groups (4 or fewer members).',
+            style: TextStyle(color: AppColors.textSecondary(context)),
+          ),
+          const SizedBox(height: 24),
+
+          ..._members.map((source) {
+            final sourceId = _stableId(source);
+            final relationships = (_memberRealismSeeds[sourceId]?['relationships'] as Map?)?.cast<String, int>() ?? {};
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _avatar(source, radius: 20),
+                        const SizedBox(width: 12),
+                        Text(
+                          'How ${source.name} feels about others',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    ..._members.where((target) => _stableId(target) != sourceId).map((target) {
+                      final targetId = _stableId(target);
+                      final currentValue = relationships[targetId] ?? 0;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                _avatar(target, radius: 16),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(target.name)),
+                                Tooltip(
+                                  message: 'Hidden relationship score on the same -300..+300 scale as Long-Term Bond. Positive values mean the source character privately feels warmly toward the target.',
+                                  child: Text(
+                                    currentValue > 0 ? '+$currentValue' : currentValue.toString(),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: _getRelationshipColor(currentValue),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SliderTheme(
+                              data: SliderThemeData(
+                                activeTrackColor: _getRelationshipColor(currentValue),
+                                inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.3),
+                                thumbColor: _getRelationshipColor(currentValue),
+                                trackHeight: 4,
+                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                              ),
+                              child: Slider(
+                                value: currentValue.toDouble().clamp(-300, 300),
+                                min: -300,
+                                max: 300,
+                                divisions: 120,
+                                label: currentValue.toString(),
+                                onChanged: (v) {
+                                  _updateRelationship(sourceId, targetId, v.round());
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Tooltip(
+                              message: 'Starting hidden feeling of ${source.name} toward ${target.name}. Matches the Long-Term Bond tier system used in the 1:1 Realism creator and runtime evaluations. These scores only affect groups of 4 or fewer and drive realistic intra-group behavior when Realism is enabled.',
+                              child: Text(
+                                _getRelationshipTierName(currentValue),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _getRelationshipColor(currentValue),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            );
+          }),
+
+          const SizedBox(height: 16),
+          Text(
+            'These values are private to the group and affect how characters treat each other when Realism is active.',
+            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+          ),
+
+          _buildNavButtons(currentStep: 6),
+        ],
+      ),
+    );
+  }
+
+  void _updateRelationship(String fromId, String toId, int value) {
+    setState(() {
+      final seed = _memberRealismSeeds[fromId] ??= _defaultRealismSeedFor(
+        _members.firstWhere((c) => _stableId(c) == fromId),
+      );
+
+      final rels = (seed['relationships'] as Map<String, int>?)?.cast<String, int>() ?? {};
+      rels[toId] = value;
+      seed['relationships'] = rels;
+    });
+  }
+
+  // ── Group Dynamics Helpers ──────────────────────────────────────────
+
+  String _getRelationshipTierName(int value) {
+    // Aligned with Long-Term Bond tiers from RealismFormSection and chat_service longTermTierName semantics (raw -300..+300 scale).
+    if (value >= 80) return 'Soulbound';
+    if (value >= 50) return 'Deep Bond';
+    if (value >= 20) return 'Close';
+    if (value >= 5) return 'Familiar';
+    if (value >= -4) return 'Acquaintance';
+    if (value >= -19) return 'Uneasy';
+    if (value >= -49) return 'Estranged';
+    if (value >= -79) return 'Broken';
+    return 'Nemesis';
+  }
+
+  Color _getRelationshipColor(int value) {
+    // Granular valence coloring (green=positive, red=negative) for visual feedback.
+    // Thresholds kept close to tier boundaries for consistency with existing bond/trust color logic.
+    if (value >= 80) {
+      return Colors.greenAccent.shade200;
+    } else if (value >= 50) {
+      return Colors.greenAccent.shade400;
+    } else if (value >= 20) {
+      return Colors.greenAccent.shade700;
+    } else if (value >= 5) {
+      return Colors.lightGreen;
+    } else if (value >= -4) {
+      return AppColors.textSecondary(context);
+    } else if (value >= -19) {
+      return Colors.orangeAccent;
+    } else if (value >= -49) {
+      return Colors.deepOrangeAccent;
+    } else if (value >= -79) {
+      return Colors.redAccent;
+    } else {
+      return Colors.red.shade700;
+    }
+  }
+
   Widget _buildReviewStep() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32),
@@ -1366,33 +1647,39 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildStepIndicator() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _stepDot(0, 'Members'),
-        _stepLine(),
-        _stepDot(1, 'Identity'),
-        _stepLine(),
-        _stepDot(2, 'Opening'),
-        _stepLine(),
-        _stepDot(3, 'Prompts'),
-        _stepLine(),
-        _stepDot(4, 'Lore'),
-        _stepLine(),
-        _stepDot(5, 'Realism'),
-        _stepLine(),
-        _stepDot(6, 'Review'),
-      ],
-    );
+    final labels = [
+      'Members',
+      'Identity',
+      'Opening',
+      'Prompts',
+      'Lore',
+      'Realism',
+      'Group Dynamics',
+      'Review',
+    ];
+
+    final children = <Widget>[];
+    for (int i = 0; i < labels.length; i++) {
+      final isDynamicsStep = (i == 6);
+      final isAvailable = !isDynamicsStep || _members.length <= 4;
+
+      children.add(_stepDot(i, labels[i], available: isAvailable));
+      if (i < labels.length - 1) {
+        children.add(_stepLine());
+      }
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: children);
   }
 
-  Widget _stepDot(int step, String label) {
-    final isActive = _currentStep >= step;
+  Widget _stepDot(int step, String label, {bool available = true}) {
+    final isActive = available && _currentStep >= step;
     final isCurrent = _currentStep == step;
 
-    final dotColor = isActive
-        ? AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9))
-        : AppColors.surfaceContainerOf(context);
+    final dotColor = !available
+        ? AppColors.surfaceContainerOf(context).withValues(alpha: 0.5)
+        : (isActive
+            ? AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9))
+            : AppColors.surfaceContainerOf(context));
 
     final borderColor = isCurrent
         ? AppColors.textPrimary(context)
@@ -1402,9 +1689,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         ? Colors.white
         : AppColors.textTertiary(context);
 
-    final labelColor = isActive
-        ? AppColors.textSecondary(context)
-        : AppColors.textTertiary(context);
+    final labelColor = !available
+        ? AppColors.textTertiary(context).withValues(alpha: 0.6)
+        : (isActive ? AppColors.textSecondary(context) : AppColors.textTertiary(context));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1457,18 +1744,17 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildNavButtons({required int currentStep}) {
-    final nextLabels = [
-      'Identity & Behavior',
-      'Opening Scene',
-      'Prompt Engineering',
-      'Lorebooks & Worlds',
-      'Realism & Chaos',
-      'Review & Create',
-    ];
+    final effectiveNextStep = _getEffectiveNextStep(currentStep);
+    final isLastStep = effectiveNextStep == null;
 
-    final nextText = currentStep < nextLabels.length
-        ? 'Next: ${nextLabels[currentStep]}'
-        : 'Create Group';
+    String nextText;
+    if (isLastStep) {
+      nextText = 'Create Group';
+    } else if (effectiveNextStep == 6 && _members.length > 4) {
+      nextText = 'Skip to Review';
+    } else {
+      nextText = 'Next';
+    }
 
     final canGoNext = _canAdvanceFromStep(currentStep);
 
@@ -1482,7 +1768,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
               SizedBox(
                 height: 52,
                 child: OutlinedButton.icon(
-                  onPressed: () => setState(() => _currentStep = currentStep - 1),
+                  onPressed: () => _goToPreviousStep(currentStep),
                   icon: const Icon(Icons.arrow_back, size: 18),
                   label: const Text('Back', style: TextStyle(fontSize: 14)),
                   style: OutlinedButton.styleFrom(
@@ -1503,15 +1789,15 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                           _showSnack('A group needs at least 2 characters.');
                           return;
                         }
-                        if (currentStep < 6) {
-                          setState(() => _currentStep = currentStep + 1);
-                        } else {
+                        if (isLastStep) {
                           _createGroup();
+                        } else {
+                          setState(() => _currentStep = effectiveNextStep!);
                         }
                       }
                     : null,
                 icon: Icon(
-                  currentStep >= 5 ? Icons.check : Icons.arrow_forward,
+                  isLastStep ? Icons.check : Icons.arrow_forward,
                   size: 20,
                 ),
                 label: Text(nextText, style: const TextStyle(fontSize: 16)),
