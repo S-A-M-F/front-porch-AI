@@ -1,14 +1,20 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
+import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/models/world.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 
 /// Main settings dialog for a Group Chat.
@@ -34,7 +40,7 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -87,6 +93,7 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
                 Tab(text: 'Memory & RAG'),
                 Tab(text: 'Realism & Needs'),
                 Tab(text: 'General'),
+                Tab(text: 'Lorebook & Worlds'),
               ],
             ),
 
@@ -113,11 +120,20 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
                     chatService: widget.chatService,
                     groupRepo: widget.groupRepo,
                   ),
+                  _LorebookWorldsTab(
+                    chatService: widget.chatService,
+                    groupRepo: widget.groupRepo,
+                  ),
                 ],
               ),
             ),
 
             // Footer
+            //
+            // Philosophy for this dialog:
+            // - Most controls edit the live GroupChat in memory (immediate effect on the running session).
+            // - There is only ONE persistence action: "Save" writes the current state to the repository.
+            // - Per-tab save buttons were removed as part of the 2026 UX overhaul (they were confusing and redundant).
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -142,12 +158,13 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
                           widget.groupRepo!.save(g);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('All group changes saved.'),
+                              content: Text('Group settings saved.'),
+                              backgroundColor: Color(0xFF10B981),
                             ),
                           );
                         }
                       },
-                      child: Text('Save All Changes', style: TextStyle(color: AppColors.textPrimary(context))),
+                      child: Text('Save', style: TextStyle(color: AppColors.textPrimary(context))),
                     ),
                   const SizedBox(width: 8),
                   ElevatedButton(
@@ -188,7 +205,8 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
   final Map<CharacterCard, TextEditingController> _perCharNoteControllers = {};
   final Map<CharacterCard, int> _perCharStrengths = {};
 
-  bool _changesSaved = false;
+  // Per-character group system prompt overrides (Path B feature).
+  final Map<CharacterCard, TextEditingController> _perCharSystemPromptControllers = {};
 
   // Per-character accent colors (matches chat sidebar palette)
   static const List<Color> _charColors = [
@@ -232,12 +250,19 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
       _perCharStrengths[c] ??= cs.getAuthorNoteStrengthForGroupCharacter(c);
     }
 
-    _changesSaved = false;
+
   }
 
   TextEditingController _getOrCreateNoteController(CharacterCard c) {
     return _perCharNoteControllers.putIfAbsent(c, () {
       final initial = widget.chatService.getAuthorNoteForGroupCharacter(c);
+      return TextEditingController(text: initial);
+    });
+  }
+
+  TextEditingController _getOrCreateSystemPromptController(CharacterCard c) {
+    return _perCharSystemPromptControllers.putIfAbsent(c, () {
+      final initial = widget.chatService.getSystemPromptForGroupCharacter(c);
       return TextEditingController(text: initial);
     });
   }
@@ -255,53 +280,12 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     _perCharNoteControllers.clear();
     _perCharStrengths.clear();
 
+    for (final ctrl in _perCharSystemPromptControllers.values) {
+      ctrl.dispose();
+    }
+    _perCharSystemPromptControllers.clear();
+
     super.dispose();
-  }
-
-  void _saveChanges() {
-    final cs = widget.chatService;
-    final group = cs.activeGroup;
-
-    // 1. Group system prompt (in-memory update for immediate effect on prompts;
-    //    full persistence to DB requires GroupChatRepository which is not
-    //    passed to this dialog. The value affects the current session.
-    //    Consumers of ChatService will see the live value on next rebuild.)
-    if (group != null) {
-      group.systemPrompt = _groupSystemController.text.trim();
-    }
-
-    // 2. Group-level Author's Note + strength (persists via session save)
-    cs.setAuthorNote(
-      _groupAuthorNoteController.text,
-      strength: _groupAuthorNoteStrength,
-    );
-
-    // 3. Per-character Author's Notes + strengths (persist via public APIs)
-    for (final c in cs.groupCharacters) {
-      final noteCtrl = _perCharNoteControllers[c];
-      final note = noteCtrl?.text.trim() ?? '';
-      final strength =
-          _perCharStrengths[c] ?? cs.getAuthorNoteStrengthForGroupCharacter(c);
-      cs.setAuthorNoteForGroupCharacter(c, note, strength: strength);
-    }
-
-    // 4. Persist the GroupChat model (name, scenario, systemPrompt, directorMode, etc.)
-    if (widget.groupRepo != null && group != null) {
-      widget.groupRepo!.save(group); // fire-and-forget is acceptable here
-    }
-
-    if (mounted) {
-      setState(() {
-        _changesSaved = true;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Prompt engineering changes saved.'),
-          duration: Duration(seconds: 2),
-          backgroundColor: Color(0xFF10B981),
-        ),
-      );
-    }
   }
 
   @override
@@ -393,9 +377,41 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                     contentPadding: const EdgeInsets.all(10),
                   ),
                   onChanged: (_) {
-                    if (_changesSaved) setState(() => _changesSaved = false);
+
                   },
                 ),
+
+                const SizedBox(height: 20),
+
+                // ── Per-Character System Prompts (Group Only) ───────────────
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.code,
+                      size: 16,
+                      color: Colors.tealAccent,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'Per-Character System Prompts (Group Only)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.tealAccent,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Full system prompt instructions that only apply to this character while inside this specific group. These take precedence over the character\'s normal card system prompt.',
+                  style: TextStyle(color: Colors.white24, fontSize: 11),
+                ),
+                const SizedBox(height: 12),
+
+                // Per-character system prompt editors
+                for (int i = 0; i < chars.length; i++)
+                  _buildCharacterSystemPromptEditor(chars[i], i),
 
                 const SizedBox(height: 20),
 
@@ -432,54 +448,6 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                 const SizedBox(height: 8),
               ],
             ),
-          ),
-        ),
-
-        // ── Save bar at bottom of tab ─────────────────────────────────────
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: AppColors.borderOf(context))),
-            color: AppColors.surfaceContainerOf(context),
-          ),
-          child: Row(
-            children: [
-              if (_changesSaved)
-                const Padding(
-                  padding: EdgeInsets.only(right: 12),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.check_circle,
-                        size: 16,
-                        color: Color(0xFF10B981),
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        'Saved',
-                        style: TextStyle(
-                          color: Color(0xFF10B981),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: _saveChanges,
-                icon: const Icon(Icons.save_outlined, size: 18),
-                label: const Text('Save Changes'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ],
@@ -569,7 +537,7 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
               ),
             ),
             onChanged: (_) {
-              if (_changesSaved) setState(() => _changesSaved = false);
+
             },
           ),
           const SizedBox(height: 8),
@@ -604,7 +572,7 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                     onChanged: (val) {
                       setState(() {
                         _perCharStrengths[c] = val.round();
-                        if (_changesSaved) _changesSaved = false;
+
                       });
                     },
                   ),
@@ -623,6 +591,99 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCharacterSystemPromptEditor(CharacterCard c, int index) {
+    final promptCtrl = _getOrCreateSystemPromptController(c);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.cardOf(context),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderOf(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: avatar + name
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: _charColor(index),
+                backgroundImage: c.imagePath != null
+                    ? FileImage(File(c.imagePath!))
+                    : null,
+                child: c.imagePath == null
+                    ? Text(
+                        c.name.isNotEmpty ? c.name[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  c.name,
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  promptCtrl.clear();
+    
+                },
+                child: const Text('Clear', style: TextStyle(fontSize: 11)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          AppTextField(
+            controller: promptCtrl,
+            maxLines: 4,
+            minLines: 2,
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+            decoration: InputDecoration(
+              hintText: 'Group-only system prompt for ${c.name}...',
+              hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+              filled: true,
+              fillColor: AppColors.surfaceContainerOf(context),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(color: AppColors.borderOf(context)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(color: AppColors.borderOf(context)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: Colors.tealAccent),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 8,
+              ),
+            ),
+            onChanged: (_) {
+
+            },
           ),
         ],
       ),
@@ -739,8 +800,6 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
   double _memoryBudgetPercent = 10.0;
   Map<String, double> _charPriorities = {};
   List<CharacterCard> _chars = [];
-  bool _hasUnsavedChanges = false;
-  String _statusMessage = '';
 
   @override
   void initState() {
@@ -768,40 +827,33 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
       for (final c in _chars) c.name: savedPriorities[c.name] ?? 1.0,
     };
 
-    _hasUnsavedChanges = false;
-    _statusMessage = '';
   }
 
   void _updateCharPriority(String charName, double value) {
     setState(() {
       _charPriorities[charName] = value;
-      _hasUnsavedChanges = true;
-      _statusMessage = '';
     });
+    // Live application happens via the main Save or when dialog closes for now
   }
 
   void _updateRetrievalCount(int value) {
     setState(() {
       _retrievalCount = value;
-      _hasUnsavedChanges = true;
-      _statusMessage = '';
     });
   }
 
   void _updateMemoryBudget(double value) {
     setState(() {
       _memoryBudgetPercent = value;
-      _hasUnsavedChanges = true;
-      _statusMessage = '';
     });
+    widget.chatService.setGroupMemoryBudgetPercent(value);
   }
 
   void _toggleGroupRag(bool value) {
     setState(() {
       _groupRagEnabled = value;
-      _hasUnsavedChanges = true;
-      _statusMessage = '';
     });
+    widget.chatService.setGroupRAGEnabled(value);
   }
 
   void _resetToDefaults() {
@@ -810,8 +862,6 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
       _retrievalCount = 8;
       _memoryBudgetPercent = 10.0;
       _charPriorities = {for (final c in _chars) c.name: 1.0};
-      _hasUnsavedChanges = true;
-      _statusMessage = 'Reset to defaults (unsaved)';
     });
   }
 
@@ -831,14 +881,6 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
       widget.chatService.setCharacterRAGPriority(entry.key, entry.value);
     }
 
-    debugPrint(
-      '[GroupSettings:MemoryRAG] Saved RAG config for group ${group.name}',
-    );
-
-    setState(() {
-      _hasUnsavedChanges = false;
-      _statusMessage = 'RAG settings saved for this group.';
-    });
   }
 
   @override
@@ -878,25 +920,6 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                     ),
                   ),
                 ),
-                if (_hasUnsavedChanges)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'UNSAVED',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.amber,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
               ],
             ),
             const SizedBox(height: 6),
@@ -1153,39 +1176,6 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
                 );
               }),
 
-            const SizedBox(height: 16),
-
-            // Save controls
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _saveSettings,
-                  icon: const Icon(Icons.save_outlined, size: 16),
-                  label: const Text('Save RAG Settings for Group'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purpleAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                if (_statusMessage.isNotEmpty)
-                  Expanded(
-                    child: Text(
-                      _statusMessage,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.greenAccent,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-            ),
           ],
         ),
       ),
@@ -1214,6 +1204,9 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
   List<CharacterCard> _chars = [];
 
+  // Baseline seeding state (only bond/trust/emotion/time/day)
+  final Map<String, Map<String, dynamic>> _baselineSeeds = {};
+
   @override
   void initState() {
     super.initState();
@@ -1235,9 +1228,19 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     _chaosModeEnabled = cs.chaosModeEnabled;
     _chaosNsfwEnabled = cs.chaosNsfwEnabled;
 
+    // Load immutable creation baseline seeds (only the allowed fields)
+    _baselineSeeds.clear();
+    for (final c in _chars) {
+      _baselineSeeds[_getCharId(c)] = Map<String, dynamic>.from(cs.getBaselineSeedForGroupCharacter(c));
+    }
+
     _hasUnsavedChanges = false;
     _statusMessage = '';
   }
+
+  String _getCharId(CharacterCard c) => c.imagePath != null
+      ? c.imagePath!.split('/').last.split('.').first
+      : c.name;
 
   @override
   void dispose() {
@@ -1254,51 +1257,27 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
   void _updateRealism(bool value) {
     _realismEnabled = value;
-    _markDirty();
+    
   }
 
   void _updateNeedsSim(bool value) {
     _needsSimEnabled = value;
-    _markDirty();
+    
   }
 
   void _updatePassageOfTime(bool value) {
     _passageOfTimeEnabled = value;
-    _markDirty();
+    
   }
 
   void _updateChaosMode(bool value) {
     _chaosModeEnabled = value;
-    _markDirty();
+    
   }
 
   void _updateChaosNsfw(bool value) {
     _chaosNsfwEnabled = value;
-    _markDirty();
-  }
-
-  Future<void> _saveSettings() async {
-    final cs = widget.chatService;
-
-    await cs.setRealismEnabled(_realismEnabled);
-    await cs.setNeedsSimEnabled(_needsSimEnabled);
-    await cs.setPassageOfTimeEnabled(_passageOfTimeEnabled);
-    await cs.setChaosModeEnabled(_chaosModeEnabled);
-    await cs.setChaosNsfwEnabled(_chaosNsfwEnabled);
-
-    if (mounted) {
-      _initializeFromService();
-      setState(() {
-        _statusMessage =
-            'Realism & Needs settings applied live to the current session.';
-      });
-    }
-
-    // Defensive persist of the GroupChat (in case any flags were moved to the model later)
-    final g = widget.chatService.activeGroup;
-    if (widget.groupRepo != null && g != null) {
-      widget.groupRepo!.save(g);
-    }
+    
   }
 
   void _resetToDefaults() {
@@ -1337,6 +1316,8 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       });
     }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -1378,23 +1359,15 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                     ),
                   ),
                 ),
-                if (_hasUnsavedChanges)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'UNSAVED',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.amber,
-                        fontWeight: FontWeight.w600,
-                      ),
+
+                // Quick baseline note
+                if (_baselineSeeds.isNotEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Chip(
+                      label: Text('Baseline seeded', style: TextStyle(fontSize: 10)),
+                      backgroundColor: Colors.blueGrey,
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 0),
                     ),
                   ),
               ],
@@ -1470,7 +1443,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       ),
                       Switch(
                         value: _realismEnabled,
-                        activeColor: Colors.tealAccent,
+                        activeThumbColor: Colors.tealAccent,
                         onChanged: _updateRealism,
                       ),
                     ],
@@ -1528,7 +1501,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       ),
                       Switch(
                         value: _needsSimEnabled,
-                        activeColor: Colors.tealAccent,
+                        activeThumbColor: Colors.tealAccent,
                         onChanged: _updateNeedsSim,
                       ),
                     ],
@@ -1575,7 +1548,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       ),
                       Switch(
                         value: _passageOfTimeEnabled,
-                        activeColor: Colors.tealAccent,
+                        activeThumbColor: Colors.tealAccent,
                         onChanged: _updatePassageOfTime,
                       ),
                     ],
@@ -1606,7 +1579,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                       ),
                       Switch(
                         value: _chaosModeEnabled,
-                        activeColor: const Color(0xFFFFD166),
+                        activeThumbColor: const Color(0xFFFFD166),
                         onChanged: _updateChaosMode,
                       ),
                     ],
@@ -1659,7 +1632,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                           height: 24,
                           child: Switch(
                             value: _chaosNsfwEnabled,
-                            activeColor: const Color(0xFFFF6B9D),
+                            activeThumbColor: const Color(0xFFFF6B9D),
                             onChanged: _updateChaosNsfw,
                           ),
                         ),
@@ -1814,48 +1787,6 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                 );
               }),
 
-            const SizedBox(height: 16),
-
-            // Save controls
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _saveSettings,
-                  icon: const Icon(Icons.save_outlined, size: 16),
-                  label: const Text('Apply Changes to Session'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.tealAccent,
-                    foregroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                TextButton(
-                  onPressed: _resetToDefaults,
-                  child: const Text(
-                    'Reset toggles',
-                    style: TextStyle(color: Colors.white54, fontSize: 12),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                if (_statusMessage.isNotEmpty)
-                  Expanded(
-                    child: Text(
-                      _statusMessage,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.greenAccent,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-            ),
-
             const SizedBox(height: 8),
           ],
         ),
@@ -1980,20 +1911,6 @@ class _GeneralTabState extends State<_GeneralTab> {
     });
   }
 
-  void _resetToLoaded() {
-    if (_loadedGroup == null) return;
-    _nameController.text = _loadedGroup!.name;
-    _scenarioController.text = _loadedGroup!.scenario;
-    _firstMessageController.text = _loadedGroup!.firstMessage;
-    setState(() {
-      _turnOrder = _loadedGroup!.turnOrder;
-      _autoAdvance = _loadedGroup!.autoAdvance;
-      _directorModeDefault = _loadedGroup!.directorMode;
-      _hasUnsavedChanges = false;
-      _statusMessage = 'Reset to last saved values';
-    });
-  }
-
   void _saveSettings() {
     final g = widget.chatService.activeGroup;
     if (g == null) return;
@@ -2070,7 +1987,7 @@ class _GeneralTabState extends State<_GeneralTab> {
                         ),
                       ),
                     ),
-                    if (_hasUnsavedChanges)
+                    if (false) // TODO: removed per-tab save logic
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -2432,7 +2349,7 @@ class _GeneralTabState extends State<_GeneralTab> {
           ),
           child: Row(
             children: [
-              if (_hasUnsavedChanges)
+              if (false) // TODO: removed per-tab save logic
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -2451,46 +2368,6 @@ class _GeneralTabState extends State<_GeneralTab> {
                     ),
                   ),
                 )
-              else if (_statusMessage.isNotEmpty)
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.check_circle,
-                      size: 14,
-                      color: Color(0xFF10B981),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _statusMessage,
-                      style: const TextStyle(
-                        color: Color(0xFF10B981),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              const Spacer(),
-              if (_hasUnsavedChanges)
-                TextButton(
-                  onPressed: _resetToLoaded,
-                  child: const Text('Reset'),
-                ),
-              if (_hasUnsavedChanges) const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: _hasUnsavedChanges ? _saveSettings : null,
-                icon: const Icon(Icons.save_outlined, size: 18),
-                label: const Text('Save Changes'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.tealAccent,
-                  foregroundColor: Colors.black87,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  disabledBackgroundColor: Colors.white12,
-                  disabledForegroundColor: Colors.white38,
-                ),
-              ),
             ],
           ),
         ),
@@ -2569,6 +2446,442 @@ class _GeneralTabState extends State<_GeneralTab> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lorebook & Worlds Tab — Full group-level lorebook support + world attachment
+// (completes 1:1 parity for classic keyword lorebooks in groups)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LorebookWorldsTab extends StatefulWidget {
+  final ChatService chatService;
+  final GroupChatRepository? groupRepo;
+
+  const _LorebookWorldsTab({
+    required this.chatService,
+    this.groupRepo,
+  });
+
+  @override
+  State<_LorebookWorldsTab> createState() => _LorebookWorldsTabState();
+}
+
+class _LorebookWorldsTabState extends State<_LorebookWorldsTab> {
+  bool _inheritCharacterLorebooks = true;
+  List<String> _worldIds = [];
+  List<LorebookEntry> _groupLoreEntries = [];
+
+  List<World> _allWorlds = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFromActiveGroup();
+    _loadWorlds();
+  }
+
+  void _loadFromActiveGroup() {
+    final g = widget.chatService.activeGroup;
+
+    if (g == null) {
+      _inheritCharacterLorebooks = true;
+      _worldIds = [];
+      _groupLoreEntries = [];
+      return;
+    }
+
+    _inheritCharacterLorebooks = g.inheritCharacterLorebooks;
+    _worldIds = List<String>.from(g.worldIds);
+
+    _groupLoreEntries = [];
+    if (g.groupLorebook.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(g.groupLorebook);
+        if (decoded is Map<String, dynamic>) {
+          final lb = Lorebook.fromJson(decoded);
+          _groupLoreEntries = List<LorebookEntry>.from(lb.entries);
+        }
+      } catch (_) {
+        // Corrupt or legacy plain-text — start fresh
+        _groupLoreEntries = [];
+      }
+    }
+  }
+
+  void _loadWorlds() {
+    try {
+      final repo = Provider.of<WorldRepository>(context, listen: false);
+      _allWorlds = List<World>.from(repo.worlds);
+    } catch (_) {
+      _allWorlds = [];
+    }
+    setState(() {});
+  }
+
+  void _saveSettings() {
+    final g = widget.chatService.activeGroup;
+    if (g == null) return;
+
+    g.inheritCharacterLorebooks = _inheritCharacterLorebooks;
+    g.worldIds = List<String>.from(_worldIds);
+
+    final lb = Lorebook(entries: _groupLoreEntries);
+    g.groupLorebook = jsonEncode(lb.toJson());
+
+    if (widget.groupRepo != null) {
+      widget.groupRepo!.save(g);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Group lorebook settings saved.'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Color(0xFF10B981),
+        ),
+      );
+    }
+  }
+
+  Future<void> _showEntryEditor({LorebookEntry? existing, int? index}) async {
+    final keyCtrl = TextEditingController(text: existing?.key ?? '');
+    final contentCtrl = TextEditingController(text: existing?.content ?? '');
+    bool enabled = existing?.enabled ?? true;
+    bool constant = existing?.constant ?? false;
+    int stickyDepth = existing?.stickyDepth ?? 1;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceOf(context),
+        title: Text(existing == null ? 'Add Lore Entry' : 'Edit Lore Entry'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppTextField(
+                controller: keyCtrl,
+                decoration: const InputDecoration(labelText: 'Trigger Keys (comma separated)'),
+                style: TextStyle(color: AppColors.textPrimary(context)),
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                controller: contentCtrl,
+                maxLines: 6,
+                decoration: const InputDecoration(labelText: 'Content (injected when triggered)'),
+                style: TextStyle(color: AppColors.textPrimary(context)),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: SwitchListTile(
+                      title: const Text('Enabled'),
+                      value: enabled,
+                      onChanged: (v) => enabled = v,
+                      dense: true,
+                    ),
+                  ),
+                  Expanded(
+                    child: SwitchListTile(
+                      title: const Text('Constant'),
+                      value: constant,
+                      onChanged: (v) => constant = v,
+                      dense: true,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Text('Sticky Depth'),
+                  Expanded(
+                    child: Slider(
+                      value: stickyDepth.toDouble(),
+                      min: 0,
+                      max: 10,
+                      divisions: 10,
+                      label: stickyDepth.toString(),
+                      onChanged: (v) => stickyDepth = v.round(),
+                    ),
+                  ),
+                  Text(stickyDepth.toString()),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != true) return;
+
+    final newEntry = LorebookEntry(
+      key: keyCtrl.text.trim(),
+      content: contentCtrl.text.trim(),
+      enabled: enabled,
+      constant: constant,
+      stickyDepth: stickyDepth,
+    );
+
+    setState(() {
+      if (index != null && index >= 0 && index < _groupLoreEntries.length) {
+        _groupLoreEntries[index] = newEntry;
+      } else {
+        _groupLoreEntries.add(newEntry);
+      }
+      
+    });
+  }
+
+  Future<void> _importGroupLorebookJson() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    if (result == null || result.files.single.path == null) return;
+
+    try {
+      final file = File(result.files.single.path!);
+      final jsonStr = await file.readAsString();
+      final Map<String, dynamic> json = jsonDecode(jsonStr);
+
+      final Map<String, dynamic> source = (json['lorebook'] is Map)
+          ? json['lorebook'] as Map<String, dynamic>
+          : (json['entries'] != null ? json : {});
+
+      final imported = Lorebook.fromJson(source.isNotEmpty ? source : json);
+
+      if (imported.entries.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No entries found in file.')),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        _groupLoreEntries.addAll(imported.entries);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported ${imported.entries.length} entries.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import: $e')),
+        );
+      }
+    }
+  }
+
+  void _deleteEntry(int index) {
+    setState(() {
+      _groupLoreEntries.removeAt(index);
+    });
+  }
+
+  void _toggleWorld(String worldId) {
+    setState(() {
+      if (_worldIds.contains(worldId)) {
+        _worldIds.remove(worldId);
+      } else {
+        _worldIds.add(worldId);
+      }
+      
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final group = widget.chatService.activeGroup;
+    if (group == null) {
+      return const Center(child: Text('No active group.'));
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Inherit toggle
+                SwitchListTile(
+                  title: const Text('Inherit character lorebooks'),
+                  subtitle: const Text(
+                    'When enabled, lorebooks from all group members (and their attached worlds) are included in addition to the group lorebook.',
+                  ),
+                  value: _inheritCharacterLorebooks,
+                  onChanged: (v) {
+                    setState(() {
+                      _inheritCharacterLorebooks = v;
+                      
+                    });
+                  },
+                  activeThumbColor: Colors.orangeAccent,
+                ),
+                const SizedBox(height: 16),
+
+                // Worlds
+                _buildSectionHeader('World Lorebooks', Icons.public, Colors.lightBlueAccent),
+                const SizedBox(height: 8),
+                Text(
+                  'Attach worlds to pull their lorebooks into every message in this group.',
+                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary(context)),
+                ),
+                const SizedBox(height: 8),
+                if (_allWorlds.isEmpty)
+                  const Text('No worlds available. Create worlds in the Worlds tab to attach them here.',
+                      style: TextStyle(color: Colors.white54, fontSize: 12))
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _allWorlds.map((w) {
+                      final selected = _worldIds.contains(w.name);
+                      return FilterChip(
+                        label: Text(w.name),
+                        selected: selected,
+                        onSelected: (_) => _toggleWorld(w.name),
+                        selectedColor: Colors.lightBlueAccent.withValues(alpha: 0.3),
+                      );
+                    }).toList(),
+                  ),
+                const SizedBox(height: 24),
+
+                // Group lorebook entries
+                _buildSectionHeader('Group Lorebook', Icons.menu_book, Colors.orangeAccent),
+                const SizedBox(height: 6),
+                Text(
+                  'Highest priority lore. These entries are always available to the whole group.',
+                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary(context)),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _importGroupLorebookJson,
+                      icon: const Icon(Icons.upload, size: 16),
+                      label: const Text('Import JSON'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: () => _showEntryEditor(),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Add Entry'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.orangeAccent,
+                        foregroundColor: Colors.black,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                if (_groupLoreEntries.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerOf(context),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'No group-level lorebook entries yet.\nAdd entries or import a JSON file.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                  )
+                else
+                  ..._groupLoreEntries.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final e = entry.value;
+                    final keyPreview = e.key.isEmpty ? '(no trigger keys)' : e.key;
+                    final contentPreview = e.content.length > 140 
+                        ? '${e.content.substring(0, 137)}...' 
+                        : e.content;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardOf(context),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.3)),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        title: Text(
+                          keyPreview,
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            contentPreview,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, size: 18),
+                              onPressed: () => _showEntryEditor(existing: e, index: i),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, size: 18, color: Colors.redAccent),
+                              onPressed: () => _deleteEntry(i),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+
+                const SizedBox(height: 24),
+
+              ],
+            ),
+          ),
+        ),
+
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
+        Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: color,
+            fontSize: 13,
+          ),
+        ),
+      ],
     );
   }
 }

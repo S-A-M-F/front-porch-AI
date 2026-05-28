@@ -104,8 +104,9 @@ enum QuantType {
     if (upper.contains('I2_S')) return i2S;
     if (upper.contains('I3_S')) return i3S;
     if (upper.contains('I4_') ||
-        (upper.contains('I4') && !upper.contains('I4_')))
+        (upper.contains('I4') && !upper.contains('I4_'))) {
       return i4;
+    }
     if (upper.contains('I8')) return i8;
 
     // Standard types (check these after variants)

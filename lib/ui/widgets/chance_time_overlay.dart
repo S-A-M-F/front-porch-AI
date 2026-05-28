@@ -65,7 +65,10 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
       svc.consumeChanceTimeTrigger();
       setState(() {
         _segments = svc.spinWheelEvents();
-        _charName = svc.activeCharacter?.name ?? 'Character';
+        // In group mode, use the current/next speaker so the event text is attributed
+        // to the character who will actually respond (as per group turn order).
+        // Falls back gracefully for 1:1 or when no next speaker is selected.
+        _charName = svc.nextCharacter?.name ?? svc.activeCharacter?.name ?? 'Character';
       });
     });
   }

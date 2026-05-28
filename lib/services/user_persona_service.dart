@@ -821,34 +821,39 @@ class UserPersonaService extends ChangeNotifier {
     if (RegExp(
       r'^(walks|runs|looks|says|said|goes|went|came|sat|stood|turned|moved|grabbed|took|pulled|pushed|kissed|hugged|touched|smiled|laughed|nodded|sighed|whispered|moaned|gasped)\b',
       caseSensitive: false,
-    ).hasMatch(f))
+    ).hasMatch(f)) {
       return true;
+    }
     // Meta-commentary
     if (RegExp(
       r'^(no new facts|none|n/a|nothing|unknown|unclear|not sure|i don.?t know)',
       caseSensitive: false,
-    ).hasMatch(f))
+    ).hasMatch(f)) {
       return true;
+    }
     // Too generic
     if (RegExp(
       r'^(is nice|is good|is bad|likes things|does stuff|is a person|is human|exists)',
       caseSensitive: false,
-    ).hasMatch(f))
+    ).hasMatch(f)) {
       return true;
+    }
     // JSON artifacts
     if (RegExp(r'[\[\]{}]').hasMatch(f)) return true;
     // Repeated punctuation / encoding garbage
     if (RegExp(
       r'[.!?]{3,}|\\[nrt]|&#|%[0-9a-f]{2}',
       caseSensitive: false,
-    ).hasMatch(f))
+    ).hasMatch(f)) {
       return true;
+    }
     // Third-person narrator voice
     if (RegExp(
       r'^(the user|the player|they|he|she)\s+(is|was|had|has|did|does|went|walked|said|looked|seemed|appeared)\b',
       caseSensitive: false,
-    ).hasMatch(f))
+    ).hasMatch(f)) {
       return true;
+    }
     return false;
   }
 }

@@ -1783,8 +1783,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             : () async {
                                 setState(() => _koboldStatus = 'Stopping...');
                                 await llmProvider.koboldService.stopKobold();
-                                if (mounted)
+                                if (mounted) {
                                   setState(() => _koboldStatus = 'Stopped');
+                                }
                               },
                         icon: Icon(Icons.stop, size: 16),
                         label: const Text('Stop KoboldCpp'),
@@ -2992,8 +2993,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       if (persona != null) {
         final parts = <String>[];
         if (persona.name.isNotEmpty) parts.add('Name: ${persona.name}');
-        if (persona.persona.isNotEmpty)
+        if (persona.persona.isNotEmpty) {
           parts.add('Persona: ${persona.persona}');
+        }
         userPersonaContext = parts.join('\n');
       }
     }
@@ -4946,8 +4948,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 children: _relationshipPresets
                     .where((rel) {
                       // Hide NSFW chips if toggle is off
-                      if (!_nsfwEnabled && _nsfwRelationships.contains(rel))
+                      if (!_nsfwEnabled && _nsfwRelationships.contains(rel)) {
                         return false;
+                      }
                       return true;
                     })
                     .map((rel) {
@@ -6712,55 +6715,75 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       final details = <String>[];
       final name = _nameController.text.trim();
       if (name.isNotEmpty) details.add('Name: $name');
-      if (_ageController.text.trim().isNotEmpty)
+      if (_ageController.text.trim().isNotEmpty) {
         details.add('Age: ${_ageController.text.trim()}');
-      if (_sexController.text.trim().isNotEmpty)
+      }
+      if (_sexController.text.trim().isNotEmpty) {
         details.add('Sex: ${_sexController.text.trim()}');
-      if (_guidedAppearanceController.text.trim().isNotEmpty)
+      }
+      if (_guidedAppearanceController.text.trim().isNotEmpty) {
         details.add('Build/Body: ${_guidedAppearanceController.text.trim()}');
-      if (_guidedHairController.text.trim().isNotEmpty)
+      }
+      if (_guidedHairController.text.trim().isNotEmpty) {
         details.add('Hair: ${_guidedHairController.text.trim()}');
-      if (_guidedFeaturesController.text.trim().isNotEmpty)
+      }
+      if (_guidedFeaturesController.text.trim().isNotEmpty) {
         details.add('Features: ${_guidedFeaturesController.text.trim()}');
-      if (_guidedRaceController.text.trim().isNotEmpty)
+      }
+      if (_guidedRaceController.text.trim().isNotEmpty) {
         details.add('Race/Species: ${_guidedRaceController.text.trim()}');
-      if (_guidedPersonalityController.text.trim().isNotEmpty)
+      }
+      if (_guidedPersonalityController.text.trim().isNotEmpty) {
         details.add('Personality: ${_guidedPersonalityController.text.trim()}');
-      if (_guidedSpeechController.text.trim().isNotEmpty)
+      }
+      if (_guidedSpeechController.text.trim().isNotEmpty) {
         details.add('Speech style: ${_guidedSpeechController.text.trim()}');
-      if (_guidedSecretController.text.trim().isNotEmpty)
+      }
+      if (_guidedSecretController.text.trim().isNotEmpty) {
         details.add('Hidden depth: ${_guidedSecretController.text.trim()}');
-      if (_guidedOriginController.text.trim().isNotEmpty)
+      }
+      if (_guidedOriginController.text.trim().isNotEmpty) {
         details.add('Background: ${_guidedOriginController.text.trim()}');
-      if (_guidedSettingController.text.trim().isNotEmpty)
+      }
+      if (_guidedSettingController.text.trim().isNotEmpty) {
         details.add('Setting: ${_guidedSettingController.text.trim()}');
-      if (_guidedToneController.text.trim().isNotEmpty)
+      }
+      if (_guidedToneController.text.trim().isNotEmpty) {
         details.add('Tone: ${_guidedToneController.text.trim()}');
-      if (_guidedRelDynamicController.text.trim().isNotEmpty)
+      }
+      if (_guidedRelDynamicController.text.trim().isNotEmpty) {
         details.add(
           'Relationship to {{user}}: ${_guidedRelDynamicController.text.trim()}',
         );
-      if (_guidedRelScenarioController.text.trim().isNotEmpty)
+      }
+      if (_guidedRelScenarioController.text.trim().isNotEmpty) {
         details.add(
           'Opening scenario: ${_guidedRelScenarioController.text.trim()}',
         );
+      }
       if (_nsfwEnabled) {
-        if (_guidedNsfwBodyController.text.trim().isNotEmpty)
+        if (_guidedNsfwBodyController.text.trim().isNotEmpty) {
           details.add(
             'Intimate body: ${_guidedNsfwBodyController.text.trim()}',
           );
-        if (_guidedNsfwExpController.text.trim().isNotEmpty)
+        }
+        if (_guidedNsfwExpController.text.trim().isNotEmpty) {
           details.add('Experience: ${_guidedNsfwExpController.text.trim()}');
-        if (_guidedNsfwDomController.text.trim().isNotEmpty)
+        }
+        if (_guidedNsfwDomController.text.trim().isNotEmpty) {
           details.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
-        if (_guidedNsfwKinksController.text.trim().isNotEmpty)
+        }
+        if (_guidedNsfwKinksController.text.trim().isNotEmpty) {
           details.add('Kinks: ${_guidedNsfwKinksController.text.trim()}');
-        if (_guidedNsfwClothingController.text.trim().isNotEmpty)
+        }
+        if (_guidedNsfwClothingController.text.trim().isNotEmpty) {
           details.add('Clothing: ${_guidedNsfwClothingController.text.trim()}');
-        if (_guidedNsfwPersonalityController.text.trim().isNotEmpty)
+        }
+        if (_guidedNsfwPersonalityController.text.trim().isNotEmpty) {
           details.add(
             'Sexual personality: ${_guidedNsfwPersonalityController.text.trim()}',
           );
+        }
       }
 
       final userVision = _guidedVisionController.text.trim();
@@ -6958,10 +6981,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           .firstOrNull;
       if (selectedPersona != null) {
         final parts = <String>[];
-        if (selectedPersona.name.isNotEmpty)
+        if (selectedPersona.name.isNotEmpty) {
           parts.add('Name: ${selectedPersona.name}');
-        if (selectedPersona.persona.isNotEmpty)
+        }
+        if (selectedPersona.persona.isNotEmpty) {
           parts.add('Persona: ${selectedPersona.persona}');
+        }
         userPersonaContext = parts.join('\n');
       }
     }
@@ -7017,28 +7042,34 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     // NSFW parts
     if (_nsfwEnabled) {
-      if (_guidedNsfwBodyController.text.trim().isNotEmpty)
+      if (_guidedNsfwBodyController.text.trim().isNotEmpty) {
         conceptParts.add(
           'Intimate body details: ${_guidedNsfwBodyController.text.trim()}',
         );
-      if (_guidedNsfwExpController.text.trim().isNotEmpty)
+      }
+      if (_guidedNsfwExpController.text.trim().isNotEmpty) {
         conceptParts.add(
           'Sexual experience: ${_guidedNsfwExpController.text.trim()}',
         );
-      if (_guidedNsfwDomController.text.trim().isNotEmpty)
+      }
+      if (_guidedNsfwDomController.text.trim().isNotEmpty) {
         conceptParts.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
-      if (_guidedNsfwKinksController.text.trim().isNotEmpty)
+      }
+      if (_guidedNsfwKinksController.text.trim().isNotEmpty) {
         conceptParts.add(
           'Turn-ons/kinks: ${_guidedNsfwKinksController.text.trim()}',
         );
-      if (_guidedNsfwClothingController.text.trim().isNotEmpty)
+      }
+      if (_guidedNsfwClothingController.text.trim().isNotEmpty) {
         conceptParts.add(
           'Clothing aesthetic: ${_guidedNsfwClothingController.text.trim()}',
         );
-      if (_guidedNsfwPersonalityController.text.trim().isNotEmpty)
+      }
+      if (_guidedNsfwPersonalityController.text.trim().isNotEmpty) {
         conceptParts.add(
           'Sexual personality: ${_guidedNsfwPersonalityController.text.trim()}',
         );
+      }
     }
 
     final enrichedConcept = conceptParts.join('. ');
@@ -7046,38 +7077,51 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     // ── Build character context for the generator ──
     final contextParts = <String>[];
-    if (_ageController.text.trim().isNotEmpty)
+    if (_ageController.text.trim().isNotEmpty) {
       contextParts.add('Age: ${_ageController.text.trim()}');
-    if (_sexController.text.trim().isNotEmpty)
+    }
+    if (_sexController.text.trim().isNotEmpty) {
       contextParts.add('Sex: ${_sexController.text.trim()}');
-    if (_guidedAppearanceController.text.trim().isNotEmpty)
+    }
+    if (_guidedAppearanceController.text.trim().isNotEmpty) {
       contextParts.add(
         'Appearance: ${_guidedAppearanceController.text.trim()}',
       );
-    if (_guidedHairController.text.trim().isNotEmpty)
+    }
+    if (_guidedHairController.text.trim().isNotEmpty) {
       contextParts.add('Hair: ${_guidedHairController.text.trim()}');
-    if (_guidedFeaturesController.text.trim().isNotEmpty)
+    }
+    if (_guidedFeaturesController.text.trim().isNotEmpty) {
       contextParts.add('Features: ${_guidedFeaturesController.text.trim()}');
-    if (_guidedRaceController.text.trim().isNotEmpty)
+    }
+    if (_guidedRaceController.text.trim().isNotEmpty) {
       contextParts.add('Race/Species: ${_guidedRaceController.text.trim()}');
-    if (_guidedRelDynamicController.text.trim().isNotEmpty)
+    }
+    if (_guidedRelDynamicController.text.trim().isNotEmpty) {
       contextParts.add(
         'Relationship to {{user}}: ${_guidedRelDynamicController.text.trim()}',
       );
-    if (_guidedOriginController.text.trim().isNotEmpty)
+    }
+    if (_guidedOriginController.text.trim().isNotEmpty) {
       contextParts.add('Backstory: ${_guidedOriginController.text.trim()}');
-    if (_guidedSettingController.text.trim().isNotEmpty)
+    }
+    if (_guidedSettingController.text.trim().isNotEmpty) {
       contextParts.add('Setting: ${_guidedSettingController.text.trim()}');
-    if (_guidedToneController.text.trim().isNotEmpty)
+    }
+    if (_guidedToneController.text.trim().isNotEmpty) {
       contextParts.add('Tone: ${_guidedToneController.text.trim()}');
+    }
     if (_nsfwEnabled) {
       final nsfwContext = <String>[];
-      if (_guidedNsfwExpController.text.trim().isNotEmpty)
+      if (_guidedNsfwExpController.text.trim().isNotEmpty) {
         nsfwContext.add('Experience: ${_guidedNsfwExpController.text.trim()}');
-      if (_guidedNsfwDomController.text.trim().isNotEmpty)
+      }
+      if (_guidedNsfwDomController.text.trim().isNotEmpty) {
         nsfwContext.add('Dominance: ${_guidedNsfwDomController.text.trim()}');
-      if (_guidedNsfwKinksController.text.trim().isNotEmpty)
+      }
+      if (_guidedNsfwKinksController.text.trim().isNotEmpty) {
         nsfwContext.add('Kinks: ${_guidedNsfwKinksController.text.trim()}');
+      }
       if (nsfwContext.isNotEmpty) contextParts.add(nsfwContext.join(', '));
     }
 
@@ -7229,21 +7273,27 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
       // Build context from all selections
       final contextParts = <String>[];
-      if (_selectedArchetype.isNotEmpty)
+      if (_selectedArchetype.isNotEmpty) {
         contextParts.add('Archetype: $_selectedArchetype');
-      if (_nameController.text.trim().isNotEmpty)
+      }
+      if (_nameController.text.trim().isNotEmpty) {
         contextParts.add('Name: ${_nameController.text.trim()}');
-      if (_keywordsController.text.trim().isNotEmpty)
+      }
+      if (_keywordsController.text.trim().isNotEmpty) {
         contextParts.add('Personality: ${_keywordsController.text.trim()}');
-      if (_ageController.text.trim().isNotEmpty)
+      }
+      if (_ageController.text.trim().isNotEmpty) {
         contextParts.add('Age: ${_ageController.text.trim()}');
-      if (_sexController.text.trim().isNotEmpty)
+      }
+      if (_sexController.text.trim().isNotEmpty) {
         contextParts.add('Sex: ${_sexController.text.trim()}');
+      }
       final effectiveRace = _customRaceController.text.trim().isNotEmpty
           ? _customRaceController.text.trim()
           : _race;
-      if (effectiveRace.isNotEmpty)
+      if (effectiveRace.isNotEmpty) {
         contextParts.add('Race/species: $effectiveRace');
+      }
       if (_bodyType.isNotEmpty) contextParts.add('Body type: $_bodyType');
       if (_hairLength.isNotEmpty || _hairStyle.isNotEmpty) {
         contextParts.add(
@@ -7251,30 +7301,39 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         );
       }
       if (_skinTone.isNotEmpty) contextParts.add('Skin tone: $_skinTone');
-      if (_notableFeatures.isNotEmpty)
+      if (_notableFeatures.isNotEmpty) {
         contextParts.add('Notable features: ${_notableFeatures.join(", ")}');
-      if (_selectedRelationships.isNotEmpty)
+      }
+      if (_selectedRelationships.isNotEmpty) {
         contextParts.add(
           'Relationship to user: ${_selectedRelationships.join(", ")}',
         );
-      if (_backstoryOrigin.isNotEmpty)
+      }
+      if (_backstoryOrigin.isNotEmpty) {
         contextParts.add('Backstory origin: $_backstoryOrigin');
-      if (_backstoryTone.isNotEmpty)
+      }
+      if (_backstoryTone.isNotEmpty) {
         contextParts.add('Backstory tone: $_backstoryTone');
-      if (_backstoryEra.isNotEmpty)
+      }
+      if (_backstoryEra.isNotEmpty) {
         contextParts.add('Era/setting: $_backstoryEra');
-      if (_backstoryNotesController.text.trim().isNotEmpty)
+      }
+      if (_backstoryNotesController.text.trim().isNotEmpty) {
         contextParts.add(
           'Backstory notes: ${_backstoryNotesController.text.trim()}',
         );
+      }
       if (_nsfwEnabled) {
-        if (_experience.isNotEmpty)
+        if (_experience.isNotEmpty) {
           contextParts.add('Experience: $_experience');
+        }
         if (_dominance.isNotEmpty) contextParts.add('Dominance: $_dominance');
-        if (_selectedKinks.isNotEmpty)
+        if (_selectedKinks.isNotEmpty) {
           contextParts.add('Kinks: ${_selectedKinks.join(", ")}');
-        if (_outfitVibe.isNotEmpty)
+        }
+        if (_outfitVibe.isNotEmpty) {
           contextParts.add('Outfit vibe: $_outfitVibe');
+        }
       }
 
       final contextStr = contextParts.isNotEmpty
@@ -7601,10 +7660,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           .firstOrNull;
       if (selectedPersona != null) {
         final parts = <String>[];
-        if (selectedPersona.name.isNotEmpty)
+        if (selectedPersona.name.isNotEmpty) {
           parts.add('Name: ${selectedPersona.name}');
-        if (selectedPersona.persona.isNotEmpty)
+        }
+        if (selectedPersona.persona.isNotEmpty) {
           parts.add('Persona: ${selectedPersona.persona}');
+        }
         userPersonaContext = parts.join('\n');
       }
     }
@@ -7620,8 +7681,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     final effectiveRace = _customRaceController.text.trim().isNotEmpty
         ? _customRaceController.text.trim()
         : _race;
-    if (effectiveRace.isNotEmpty)
+    if (effectiveRace.isNotEmpty) {
       appearanceParts.add('$effectiveRace race/species');
+    }
     if (_bodyType.isNotEmpty) appearanceParts.add('$_bodyType build');
     if (_hairLength.isNotEmpty) appearanceParts.add('$_hairLength hair');
     if (_hairStyle.isNotEmpty) appearanceParts.add('$_hairStyle hair style');
@@ -7639,15 +7701,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     final nsfwParts = <String>[];
     if (_nsfwEnabled) {
-      if (_experience.isNotEmpty)
+      if (_experience.isNotEmpty) {
         nsfwParts.add('Sexual experience: $_experience');
+      }
       if (_dominance.isNotEmpty) nsfwParts.add('Dominance: $_dominance');
-      if (_selectedKinks.isNotEmpty)
+      if (_selectedKinks.isNotEmpty) {
         nsfwParts.add('Kinks: ${_selectedKinks.join(", ")}');
-      if (_customKinksController.text.trim().isNotEmpty)
+      }
+      if (_customKinksController.text.trim().isNotEmpty) {
         nsfwParts.add('Also into: ${_customKinksController.text.trim()}');
-      if (_outfitVibe.isNotEmpty)
+      }
+      if (_outfitVibe.isNotEmpty) {
         nsfwParts.add('Typical outfit vibe: $_outfitVibe');
+      }
     }
 
     String enrichedConcept = concept;
@@ -7817,8 +7883,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               .replaceAll(RegExp(r',\s*,'), ',')
               .replaceAll(RegExp(r'\s{2,}'), ' ')
               .trim();
-          if (cleanPrompt.startsWith(','))
+          if (cleanPrompt.startsWith(',')) {
             cleanPrompt = cleanPrompt.substring(1).trim();
+          }
         }
         // Append art style as a tag, not a sentence
         prompt = '$cleanPrompt, $_artStyle style';
@@ -7830,14 +7897,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         if (sex.isNotEmpty) tags.add(sex.toLowerCase());
         if (age.isNotEmpty) tags.add('$age years old');
         // Pull visual details from guided appearance fields if available
-        if (_guidedAppearanceController.text.trim().isNotEmpty)
+        if (_guidedAppearanceController.text.trim().isNotEmpty) {
           tags.add(_guidedAppearanceController.text.trim());
-        if (_guidedHairController.text.trim().isNotEmpty)
+        }
+        if (_guidedHairController.text.trim().isNotEmpty) {
           tags.add(_guidedHairController.text.trim());
-        if (_guidedFeaturesController.text.trim().isNotEmpty)
+        }
+        if (_guidedFeaturesController.text.trim().isNotEmpty) {
           tags.add(_guidedFeaturesController.text.trim());
-        if (_guidedRaceController.text.trim().isNotEmpty)
+        }
+        if (_guidedRaceController.text.trim().isNotEmpty) {
           tags.add(_guidedRaceController.text.trim());
+        }
         // If no guided fields, extract a brief snippet from description (first 150 chars max)
         if (tags.length <= 4 && _descController.text.trim().isNotEmpty) {
           final descSnippet = _descController.text.trim();

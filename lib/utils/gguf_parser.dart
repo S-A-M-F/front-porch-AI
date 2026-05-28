@@ -319,8 +319,9 @@ class GGUFParser {
               }
             } else {
               int size = 0;
-              if (arrType == 0 || arrType == 1 || arrType == 7) size = 1;
-              else if (arrType == 2 || arrType == 3) size = 2;
+              if (arrType == 0 || arrType == 1 || arrType == 7) {
+                size = 1;
+              } else if (arrType == 2 || arrType == 3) size = 2;
               else if (arrType >= 4 && arrType <= 6) size = 4;
               else if (arrType >= 10 && arrType <= 12) size = 8;
               offset += arrLen * size;

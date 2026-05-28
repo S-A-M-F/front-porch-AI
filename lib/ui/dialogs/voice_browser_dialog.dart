@@ -277,10 +277,12 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
         // Filter catalog
         var filtered = vm.catalog.where((v) {
           if (_selectedLanguage != 'All' &&
-              v.languageEnglish != _selectedLanguage)
+              v.languageEnglish != _selectedLanguage) {
             return false;
-          if (_selectedQuality != 'All' && v.quality != _selectedQuality)
+          }
+          if (_selectedQuality != 'All' && v.quality != _selectedQuality) {
             return false;
+          }
           if (_searchQuery.isNotEmpty) {
             final searchable =
                 '${v.name} ${v.languageEnglish} ${v.countryEnglish} ${v.key}'

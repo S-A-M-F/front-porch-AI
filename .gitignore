@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Hermes JS engine (React Native / build cache)
+.hermes/
+
 # Symbolication related
 app.*.symbols
 

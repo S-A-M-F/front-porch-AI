@@ -330,8 +330,9 @@ class ONNXExpressionClassifier implements ExpressionClassifier {
 
   @override
   Future<EmotionResult> classify(String text) async {
-    if (_isStopping)
+    if (_isStopping) {
       return const EmotionResult(emotion: 'neutral', confidence: 0.0);
+    }
 
     // Ensure the sidecar process is running
     final started = await _ensureProcessStarted();

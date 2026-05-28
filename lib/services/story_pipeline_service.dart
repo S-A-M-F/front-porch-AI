@@ -352,12 +352,15 @@ class StoryPipelineService extends ChangeNotifier {
   String _getUserPrefsBlock(StoryProject project) {
     final parts = <String>[];
     parts.add('POV: ${project.pov}');
-    if (project.selectedGenres.isNotEmpty)
+    if (project.selectedGenres.isNotEmpty) {
       parts.add('Genre: ${project.selectedGenres.join(", ")}');
-    if (project.selectedMoods.isNotEmpty)
+    }
+    if (project.selectedMoods.isNotEmpty) {
       parts.add('Mood: ${project.selectedMoods.join(", ")}');
-    if (project.writingStyle.isNotEmpty)
+    }
+    if (project.writingStyle.isNotEmpty) {
       parts.add('Writing Style: ${project.writingStyle}');
+    }
     parts.add('Prose Length: ${project.proseLength}');
     parts.add('Narrative Pace: ${project.narrativePace}');
     parts.add('Dialogue Density: ${project.dialogueDensity}');

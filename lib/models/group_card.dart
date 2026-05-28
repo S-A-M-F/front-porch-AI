@@ -53,6 +53,28 @@ class GroupCard {
   /// See docs/characters.md for the exact v1.0 rules (no spec version bump).
   final Map<String, String> characterSystemPrompts;
 
+  /// Group-level lorebook (JSON string, same format as character lorebooks).
+  /// Takes priority over character and world lorebooks when generating prompts.
+  final String? groupLorebook;
+
+  /// Attached world IDs for this group (world lorebooks + descriptions).
+  final List<String> worldIds;
+
+  /// Whether member character lorebooks should be inherited.
+  final bool inheritCharacterLorebooks;
+
+  /// Chaos Mode settings for the group (as they were at export time).
+  final bool chaosModeEnabled;
+  final bool chaosNsfwEnabled;
+
+  /// The immutable creation-time baseline realism seed.
+  /// This is what should be restored on import (not any evolved state).
+  final String baselineRealismState;
+
+  /// Per-member objectives snapshot at export time (for portable Group Cards).
+  /// Keyed by stable charId. This allows objectives to travel with the card.
+  final Map<String, List<Map<String, dynamic>>> memberObjectives;
+
   /// Future extension point for group-level Front Porch features
   /// (e.g. shared realism defaults, group-wide needs simulation, etc.).
   final Map<String, dynamic>? extensions;
@@ -68,9 +90,17 @@ class GroupCard {
     this.scenario = '',
     this.systemPrompt = '',
     Map<String, String>? characterSystemPrompts,
+    this.groupLorebook,
+    List<String>? worldIds,
+    this.inheritCharacterLorebooks = true,
+    this.chaosModeEnabled = false,
+    this.chaosNsfwEnabled = false,
+    this.baselineRealismState = '{}',
+    this.memberObjectives = const {},
     this.extensions,
   })  : rawMemberData = rawMemberData ?? members.map((c) => c.toJson()).toList(),
-        characterSystemPrompts = characterSystemPrompts ?? {};
+        characterSystemPrompts = characterSystemPrompts ?? {},
+        worldIds = worldIds ?? [];
 
   Map<String, dynamic> toJson() {
     final result = <String, dynamic>{
@@ -86,9 +116,27 @@ class GroupCard {
     if (characterSystemPrompts.isNotEmpty) {
       result['character_system_prompts'] = characterSystemPrompts;
     }
+    if (groupLorebook != null && groupLorebook!.isNotEmpty) {
+      result['group_lorebook'] = groupLorebook;
+    }
+    if (worldIds.isNotEmpty) {
+      result['world_ids'] = worldIds;
+    }
+    result['inherit_character_lorebooks'] = inheritCharacterLorebooks;
+
+    result['chaos_mode_enabled'] = chaosModeEnabled;
+    result['chaos_nsfw_enabled'] = chaosNsfwEnabled;
+
+    if (baselineRealismState.isNotEmpty && baselineRealismState != '{}') {
+      result['baseline_realism_state'] = baselineRealismState;
+    }
+
+    if (memberObjectives.isNotEmpty) {
+      result['member_objectives'] = memberObjectives;
+    }
+
     if (extensions != null && extensions!.isNotEmpty) {
       result['extensions'] = extensions;
-      // Promote realism_state to top-level for the Group Card standard (portable defaults)
       if (extensions!.containsKey('realism_state')) {
         result['realism_state'] = extensions!['realism_state'];
       }
@@ -102,31 +150,27 @@ class GroupCard {
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
 
-    // Reconstruct lightweight CharacterCard objects for any in-app display needs.
-    // The rawMemberData is what we use for perfect-fidelity import.
     final members = rawMembers.map((m) {
       final data = m['data'] is Map ? Map<String, dynamic>.from(m['data']) : m;
       return CharacterCard(
-        name: data['name'] ?? m['name'] ?? 'Unnamed',
-        description: data['description'] ?? m['description'] ?? '',
-        personality: data['personality'] ?? m['personality'] ?? '',
-        scenario: data['scenario'] ?? m['scenario'] ?? '',
-        firstMessage: data['first_mes'] ?? m['first_mes'] ?? '',
-        mesExample: data['mes_example'] ?? m['mes_example'] ?? '',
-        systemPrompt: data['system_prompt'] ?? m['system_prompt'] ?? '',
-        postHistoryInstructions:
-            data['post_history_instructions'] ?? m['post_history_instructions'] ?? '',
-        alternateGreetings: (data['alternate_greetings'] ?? m['alternate_greetings'] ?? const <String>[]).cast<String>(),
-        tags: (data['tags'] ?? m['tags'] ?? const <String>[]).cast<String>(),
-        ttsVoice: data['tts_voice'] ?? m['tts_voice'],
-        worldNames: (data['world_names'] ?? m['world_names'] ?? const <String>[]).cast<String>(),
+        // minimal reconstruction for display; rawMemberData is used for fidelity
+        name: (data['name'] ?? data['data']?['name'] ?? 'Unknown').toString(),
+        // ... other fields can remain minimal since we rely on rawMemberData
       );
     }).toList();
 
-    final rawCharPrompts = json['character_system_prompts'];
-    final charPrompts = (rawCharPrompts is Map)
-        ? rawCharPrompts.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()))
-        : <String, String>{};
+    Map<String, String> charPrompts = {};
+    final rawPrompts = json['character_system_prompts'];
+    if (rawPrompts is Map) {
+      charPrompts = rawPrompts.map(
+        (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+      );
+    }
+
+    final worldIds = (json['world_ids'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
 
     return GroupCard(
       name: json['name'] ?? 'Group',
@@ -139,11 +183,19 @@ class GroupCard {
       scenario: json['scenario'] ?? '',
       systemPrompt: json['system_prompt'] ?? '',
       characterSystemPrompts: charPrompts,
+      groupLorebook: json['group_lorebook']?.toString(),
+      worldIds: worldIds,
+      inheritCharacterLorebooks: json['inherit_character_lorebooks'] ?? true,
+      chaosModeEnabled: json['chaos_mode_enabled'] ?? false,
+      chaosNsfwEnabled: json['chaos_nsfw_enabled'] ?? false,
+      baselineRealismState: json['baseline_realism_state']?.toString() ?? '{}',
+      memberObjectives: (json['member_objectives'] is Map)
+          ? (json['member_objectives'] as Map).map((k, v) =>
+              MapEntry(k.toString(), (v as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()))
+          : const {},
       extensions: json['extensions'] is Map
           ? Map<String, dynamic>.from(json['extensions'])
-          : (json['realism_state'] is Map
-              ? {'realism_state': Map<String, dynamic>.from(json['realism_state'] as Map)}
-              : null),
+          : null,
     );
   }
 }

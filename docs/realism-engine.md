@@ -220,7 +220,7 @@ Chaos Mode (also called "Chance Time") is an optional drama engine that injects 
 
 **How it works:**
 
-- Every user turn, `checkAndTickChaosPressure()` runs (only in 1:1 chats).
+- Every user turn, `checkAndTickChaosPressure()` runs (now works in regular group chats; disabled in Director Mode).
 - Pressure starts at 0 and grows by **5** each turn (capped at 100).
 - Effective trigger chance = `5% + current pressure`.
 - When it fires, `sendMessage` pauses, a `Completer` is created, and the UI shows the Chance Time wheel overlay (`_chanceTimePendingTrigger`).
@@ -328,7 +328,7 @@ Urgent threshold: ≤ 35. Critical: ≤ 20. Only the most pressing need(s) gener
   - **Delayed post-climax crash** (2–5 turns, intensity-scaled): Elevated energy/fun/social decay that only activates *after* both protective windows expire — the classic "we just fucked for hours and now I'm dead" feeling.
 - **Snapshots for history navigation**: The live vector is captured inside every message's `realism_state['needs']['vector']` (see `_captureRealismState`). Restore logic in `_restoreRealismStateFromMessage`, `_syncRealismStateForSwipe`, regen, and fork paths replays the correct historical values — but only while the session flag remains true (old snapshots cannot re-enable a toggled-off sim).
 - **Prompt injection**: `_getNeedsInjection()` adds a concise OOC directive when any need is urgent. The character never sees numeric values or the word "needs simulation."
-- Works only in 1:1 chats. Adds at most one extra short eval call per turn (only when needs are below the fulfillment scan threshold).
+- **Group chat support**: Needs Simulation works in regular participatory group chats (each character maintains their own needs vector). It is deliberately disabled in Director/Observer Mode. The current speaker's needs are used for injection and updated after their turn.
 
 ### UI
 

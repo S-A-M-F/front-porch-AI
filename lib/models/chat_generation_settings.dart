@@ -119,12 +119,14 @@ class ChatGenerationSettings {
     if (temperature != null) map['temperature'] = temperature;
     if (minP != null) map['min_p'] = minP;
     if (repeatPenalty != null) map['repeat_penalty'] = repeatPenalty;
-    if (repeatPenaltyTokens != null)
+    if (repeatPenaltyTokens != null) {
       map['rep_pen_tokens'] = repeatPenaltyTokens;
+    }
     if (xtcThreshold != null) map['xtc_threshold'] = xtcThreshold;
     if (xtcProbability != null) map['xtc_probability'] = xtcProbability;
-    if (dynamicTempEnabled != null)
+    if (dynamicTempEnabled != null) {
       map['dynatemp_enabled'] = dynamicTempEnabled;
+    }
     if (dynamicTempRange != null) map['dynatemp_range'] = dynamicTempRange;
     if (maxLength != null) map['max_length'] = maxLength;
     if (minLength != null) map['min_length'] = minLength;

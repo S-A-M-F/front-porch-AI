@@ -2100,6 +2100,9 @@ class _HomePageState extends State<HomePage> {
                   firstMessage: firstMessageController.text.trim(),
                   scenario: scenarioController.text.trim(),
                   systemPrompt: systemPromptController.text.trim(),
+                  // v31: explicit columns. baseline starts empty; seeding UI (if used)
+                  // can populate it before save.
+                  baselineRealismState: '{}',
                 );
 
                 final groupRepo = Provider.of<GroupChatRepository>(
@@ -2958,11 +2961,32 @@ class _HomePageState extends State<HomePage> {
       firstMessage: groupCard.firstMessage,
       scenario: groupCard.scenario,
       systemPrompt: groupCard.systemPrompt,
-      defaultMemberRealismState: importedRealism is Map
-          ? jsonEncode(importedRealism)
+      // Full v31/v32 + baseline support: restore exactly what was exported.
+      // We deliberately restore the *baseline* seed here (not evolved state).
+      groupLorebook: groupCard.groupLorebook ?? '',
+      worldIds: groupCard.worldIds,
+      inheritCharacterLorebooks: groupCard.inheritCharacterLorebooks,
+      chaosModeEnabled: groupCard.chaosModeEnabled,
+      chaosNsfwEnabled: groupCard.chaosNsfwEnabled,
+      baselineRealismState: groupCard.baselineRealismState.isNotEmpty
+          ? groupCard.baselineRealismState
           : '{}',
       characterSystemPrompts: importedCharPrompts,
     );
+
+    // Carry per-char objectives from the imported Group Card for first-load seeding.
+    if (groupCard.memberObjectives.isNotEmpty) {
+      // Store in the group's state so ChatService can seed the objectives table
+      // the first time the imported group is entered (one-time).
+      try {
+        final currentState = jsonDecode(newGroup.defaultMemberRealismState);
+        final mutable = (currentState is Map)
+            ? Map<String, dynamic>.from(currentState)
+            : <String, dynamic>{};
+        mutable['imported_member_objectives'] = groupCard.memberObjectives;
+        newGroup.defaultMemberRealismState = jsonEncode(mutable);
+      } catch (_) {}
+    }
 
     await groupRepo.save(newGroup);
 
@@ -3049,6 +3073,50 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    // Embed current avatar images as base64 for perfect roundtrip fidelity
+    // (mirrors the logic the import side already uses).
+    final rawMembersWithAvatars = <Map<String, dynamic>>[];
+
+    // Snapshot per-character objectives for portable Group Card
+    final memberObjectives = <String, List<Map<String, dynamic>>>{};
+    try {
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      for (final card in memberCards) {
+        final charId = _getCharacterIdFromCard(card);
+        final objs = await db.getObjectivesForCharacter(charId);
+        if (objs.isNotEmpty) {
+          memberObjectives[charId] = objs.map((o) => {
+            'objective': o.objective,
+            'tasks': o.tasks,
+            'isPrimary': o.isPrimary,
+            'active': o.active,
+            'checkFrequency': o.checkFrequency,
+            'injectionDepth': o.injectionDepth,
+          }).toList();
+        }
+      }
+    } catch (_) {
+      // Best effort for objectives snapshot
+    }
+
+    for (final card in memberCards) {
+      final raw = Map<String, dynamic>.from(card.toJson());
+
+      if (card.imagePath != null && card.imagePath!.isNotEmpty) {
+        try {
+          final imageFile = File(card.imagePath!);
+          if (await imageFile.exists()) {
+            final bytes = await imageFile.readAsBytes();
+            raw['avatar_base64'] = base64Encode(bytes);
+          }
+        } catch (_) {
+          // Best effort — don't fail the whole export over one avatar.
+        }
+      }
+
+      rawMembersWithAvatars.add(raw);
+    }
+
     final safeName = group.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     String? outputFile = await FilePicker.platform.saveFile(
       dialogTitle: 'Export Group Card',
@@ -3064,9 +3132,12 @@ class _HomePageState extends State<HomePage> {
 
       try {
         // Build the portable GroupCard (full member snapshots)
+        // Critical: For the realism snapshot we send the *immutable baseline seed*,
+        // not the evolved state from chatting.
         final portable = GroupCard(
           name: group.name,
           members: memberCards,
+          rawMemberData: rawMembersWithAvatars, // includes avatar_base64 for fidelity
           turnOrder: group.turnOrder.name,
           autoAdvance: group.autoAdvance,
           directorMode: group.directorMode,
@@ -3074,9 +3145,16 @@ class _HomePageState extends State<HomePage> {
           scenario: group.scenario,
           systemPrompt: group.systemPrompt,
           characterSystemPrompts: group.characterSystemPrompts,
-          extensions: (group.defaultMemberRealismState.isNotEmpty &&
-                  group.defaultMemberRealismState != '{}')
-              ? {'realism_state': jsonDecode(group.defaultMemberRealismState)}
+          chaosModeEnabled: group.chaosModeEnabled,
+          chaosNsfwEnabled: group.chaosNsfwEnabled,
+          groupLorebook: group.groupLorebook,
+          worldIds: group.worldIds,
+          inheritCharacterLorebooks: group.inheritCharacterLorebooks,
+          baselineRealismState: group.baselineRealismState,
+          memberObjectives: memberObjectives,
+          extensions: (group.baselineRealismState.isNotEmpty &&
+                  group.baselineRealismState != '{}')
+              ? {'realism_state': jsonDecode(group.baselineRealismState)}
               : null,
         );
 

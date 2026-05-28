@@ -153,8 +153,9 @@ class OneDriveProvider extends CloudStorageProvider {
       },
     );
 
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw Exception('Token refresh failed: ${response.body}');
+    }
 
     final data = jsonDecode(response.body);
     _accessToken = data['access_token'];
@@ -203,8 +204,9 @@ class OneDriveProvider extends CloudStorageProvider {
     final response = await http.get(Uri.parse(url), headers: headers);
 
     if (response.statusCode == 404) return result; // folder doesn't exist
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw Exception('OneDrive list error: ${response.body}');
+    }
 
     final data = jsonDecode(response.body);
     final items = data['value'] as List? ?? [];

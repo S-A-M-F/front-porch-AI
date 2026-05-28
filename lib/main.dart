@@ -41,7 +41,6 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
 import 'package:front_porch_ai/services/download_manager.dart';
 import 'package:front_porch_ai/services/setup_service.dart';
-import 'package:front_porch_ai/services/backup_service.dart';
 import 'package:front_porch_ai/services/db_reunification_service.dart';
 import 'package:front_porch_ai/services/embedding_service.dart';
 import 'package:front_porch_ai/services/embedding_sidecar.dart';
@@ -1739,10 +1738,6 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
     final syncService = Provider.of<CloudSyncService>(context, listen: false);
 
-    // Wire cloud sync service into ChatService
-    final chatService = Provider.of<ChatService>(context, listen: false);
-    chatService.setCloudSyncService(syncService);
-
     // Create and connect the appropriate provider
     CloudStorageProvider provider;
     switch (storage.cloudSyncProvider) {
@@ -1865,6 +1860,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
           personaService.updateDatabase(newDb);
           groupRepo.updateDatabase(newDb);
           worldRepo.updateDatabase(newDb);
+          final chatService = Provider.of<ChatService>(context, listen: false);
           chatService.updateDatabase(newDb);
           await charRepo.loadCharacters();
           await charRepo.cleanOrphanedPngs();
@@ -1978,6 +1974,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
           personaService.updateDatabase(newDb);
           groupRepo.updateDatabase(newDb);
           worldRepo.updateDatabase(newDb);
+          final chatService = Provider.of<ChatService>(context, listen: false);
           chatService.updateDatabase(newDb);
 
           // Now reload all data from the new DB

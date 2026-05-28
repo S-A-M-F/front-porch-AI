@@ -53,23 +53,28 @@ class GroupChatRepository extends ChangeNotifier {
           charIds = List<String>.from(jsonDecode(g.characterIds));
         } catch (_) {}
 
-        // Path B transition: extract per-char system prompts from the realism JSON if present
+        // characterSystemPrompts is now stored in its own first-class column (v32).
+        // Full deprecation of the previous Path B blob hack inside defaultMemberRealismState.
         Map<String, String> charPrompts = {};
-        String realismJsonForModel = g.defaultMemberRealismState;
         try {
-          final decoded = jsonDecode(g.defaultMemberRealismState);
-          if (decoded is Map && decoded.containsKey('character_system_prompts')) {
-            final promptsRaw = decoded['character_system_prompts'];
-            if (promptsRaw is Map) {
-              charPrompts = promptsRaw.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
-            }
-            // Remove the key from the realism blob for the model (it will be re-merged on save if needed)
-            final mutable = Map<String, dynamic>.from(decoded);
-            mutable.remove('character_system_prompts');
-            realismJsonForModel = jsonEncode(mutable);
+          final decoded = jsonDecode(g.characterSystemPrompts);
+          if (decoded is Map) {
+            charPrompts = decoded.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
           }
         } catch (_) {}
 
+        // Parse worldIds (JSON array) — safe default to empty list on any decode error.
+        List<String> worldIdList = [];
+        try {
+          final decodedWorlds = jsonDecode(g.worldIds);
+          if (decodedWorlds is List) {
+            worldIdList = decodedWorlds.map((e) => e.toString()).toList();
+          }
+        } catch (_) {}
+
+        // Construct GroupChat using *real column values* from the v31 schema additions.
+        // Old groups receive the DB column defaults (false, '', '[]', true, '{}') which
+        // preserve previous behavior and require no one-time promotion logic here.
         _groups.add(
           GroupChat(
             id: g.id,
@@ -84,8 +89,15 @@ class GroupChatRepository extends ChangeNotifier {
             firstMessage: g.firstMessage,
             scenario: g.scenario,
             systemPrompt: g.systemPrompt,
-            defaultMemberRealismState: realismJsonForModel,
+            defaultMemberRealismState: g.defaultMemberRealismState,
             characterSystemPrompts: charPrompts,
+            // v31 first-class columns (read directly; no longer silently defaulting):
+            chaosModeEnabled: g.chaosModeEnabled,
+            chaosNsfwEnabled: g.chaosNsfwEnabled,
+            groupLorebook: g.groupLorebook,
+            worldIds: worldIdList,
+            inheritCharacterLorebooks: g.inheritCharacterLorebooks,
+            baselineRealismState: g.baselineRealismState,
           ),
         );
       }
@@ -105,23 +117,9 @@ class GroupChatRepository extends ChangeNotifier {
     // Save to database
     final existing = await _db.getGroupById(group.id);
 
-    // Path B transition: merge characterSystemPrompts into the realism JSON
-    // under 'character_system_prompts' so we don't need a new DB column yet.
-    String realismToStore = group.defaultMemberRealismState;
-    if (group.characterSystemPrompts.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(group.defaultMemberRealismState);
-        final mutable = (decoded is Map)
-            ? Map<String, dynamic>.from(decoded)
-            : <String, dynamic>{};
-        mutable['character_system_prompts'] = group.characterSystemPrompts;
-        realismToStore = jsonEncode(mutable);
-      } catch (_) {
-        // If the realism JSON is invalid or empty, just store the prompts
-        realismToStore = jsonEncode({'character_system_prompts': group.characterSystemPrompts});
-      }
-    }
-
+    // characterSystemPrompts is now persisted in its own dedicated column (v32).
+    // Full removal of the previous Path B transitional blob logic that merged it
+    // into defaultMemberRealismState. defaultMemberRealismState is written as-is.
     final companion = GroupsCompanion(
       id: Value(group.id),
       name: Value(group.name),
@@ -132,7 +130,14 @@ class GroupChatRepository extends ChangeNotifier {
       firstMessage: Value(group.firstMessage),
       scenario: Value(group.scenario),
       systemPrompt: Value(group.systemPrompt),
-      defaultMemberRealismState: Value(realismToStore),
+      defaultMemberRealismState: Value(group.defaultMemberRealismState),
+      characterSystemPrompts: Value(jsonEncode(group.characterSystemPrompts)),
+      chaosModeEnabled: Value(group.chaosModeEnabled),
+      chaosNsfwEnabled: Value(group.chaosNsfwEnabled),
+      groupLorebook: Value(group.groupLorebook),
+      worldIds: Value(jsonEncode(group.worldIds)),
+      inheritCharacterLorebooks: Value(group.inheritCharacterLorebooks),
+      baselineRealismState: Value(group.baselineRealismState),
     );
 
     if (existing != null) {
@@ -149,11 +154,20 @@ class GroupChatRepository extends ChangeNotifier {
           firstMessage: Value(group.firstMessage),
           scenario: Value(group.scenario),
           systemPrompt: Value(group.systemPrompt),
-          defaultMemberRealismState: Value(realismToStore),
+          defaultMemberRealismState: Value(group.defaultMemberRealismState),
+          characterSystemPrompts: Value(jsonEncode(group.characterSystemPrompts)),
+          chaosModeEnabled: Value(group.chaosModeEnabled),
+          chaosNsfwEnabled: Value(group.chaosNsfwEnabled),
+          groupLorebook: Value(group.groupLorebook),
+          worldIds: Value(jsonEncode(group.worldIds)),
+          inheritCharacterLorebooks: Value(group.inheritCharacterLorebooks),
+          baselineRealismState: Value(group.baselineRealismState),
         ),
       );
     }
 
+    // Replace in the in-memory list so subsequent reads see the saved state.
+    // We replace the whole object (the caller owns the instance we were given).
     final idx = _groups.indexWhere((g) => g.id == group.id);
     if (idx >= 0) {
       _groups[idx] = group;

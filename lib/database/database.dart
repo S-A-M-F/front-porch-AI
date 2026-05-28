@@ -246,6 +246,45 @@ class Groups extends Table {
   TextColumn get defaultMemberRealismState =>
       text().withDefault(const Constant('{}'))();
 
+  // v31: Group-level config columns stored as first-class typed Drift columns (Bool/Text)
+  // rather than inside JSON blobs or overloaded existing fields. This follows the v30
+  // precedent of surfacing hidden state (the old __group_state__ messages) into explicit,
+  // queryable, self-documenting columns. Explicit columns improve type safety, allow
+  // simpler direct SQL from external tools, and make Group Card round-tripping obvious.
+  // External direct-SQL writers (e.g. Character Card Forge) must supply values or rely
+  // on the NOT NULL DEFAULTs when INSERTing into groups.
+  BoolColumn get chaosModeEnabled =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get chaosNsfwEnabled =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get groupLorebook => text().withDefault(const Constant(''))();
+  TextColumn get worldIds =>
+      text().withDefault(const Constant('[]'))(); // JSON array of world IDs for scoping
+  BoolColumn get inheritCharacterLorebooks =>
+      boolean().withDefault(const Constant(true))();
+
+  /// Immutable creation-time baseline realism/needs seed for this group definition.
+  /// JSON shape is identical to defaultMemberRealismState and sessions.group_realism_state.
+  /// This is the frozen seed captured at group creation / Group Card import time only.
+  /// Distinct from defaultMemberRealismState (which can be updated later for new sessions).
+  /// Clean column (not a blob) per v30 philosophy of explicit storage — makes the
+  /// immutable-seed contract visible to code and to external direct-SQL tools.
+  /// Added in schema v31.
+  TextColumn get baselineRealismState =>
+      text().withDefault(const Constant('{}'))();
+
+  /// Per-character system prompt overrides scoped to this group.
+  /// Stored as a first-class JSON column (Map<String, String> keyed by stable charId).
+  ///
+  /// This was previously the last remaining "Path B" transitional hack stored inside
+  /// the defaultMemberRealismState JSON blob. As of v32 it has its own proper column.
+  /// The old extraction/promotion logic inside the realism blob has been fully removed.
+  ///
+  /// Takes precedence over a character's normal system prompt when that character
+  /// speaks inside this specific group, but sits under the group-level systemPrompt.
+  TextColumn get characterSystemPrompts =>
+      text().withDefault(const Constant('{}'))();
+
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
 
@@ -492,6 +531,18 @@ class AppDatabase extends _$AppDatabase {
         },
       ),
     );
+
+    // Robust, always-on schema repair for long-lived user databases.
+    // Any previous schemaVersion onUpgrade block that used bare `try { ALTER } catch (_) {}`
+    // could leave the physical DB permanently behind the Dart Table definitions (e.g. the
+    // v29 `chat_id` on objectives, or v30-v32 group columns). This repair uses PRAGMA
+    // table_info introspection + conditional ADD COLUMN only. It creates a timestamped
+    // .db backup the first time it actually mutates schema, then guarantees the columns
+    // the rest of the app (group chat, per-character objectives, Realism/Needs, Chaos)
+    // now unconditionally reference. Never deletes or mutates user rows. Safe and cheap
+    // to run on every normal launch.
+    await _instance!._repairMissingSchemaColumns();
+
     return _instance!;
   }
 
@@ -525,6 +576,160 @@ class AppDatabase extends _$AppDatabase {
       return false;
     }
   }
+
+  /// Ensures all columns that the current Dart schema and application code expect
+  /// are physically present in the database. This is the robust, always-on safety
+  /// net for users whose databases predate recent features (group cards, per-character
+  /// objectives, expanded Realism/Needs/Chaos columns). It replaces the fragile
+  /// pattern of silent `try { ALTER ... } catch (_) {}` inside versioned migration blocks.
+  ///
+  /// Strategy:
+  /// - Uses PRAGMA table_info (fast, reliable even on ancient SQLite files).
+  /// - Only ever does ADD COLUMN with exact NOT NULL DEFAULTs that match the Table
+  ///   class definitions and the historical ALTER statements.
+  /// - On first actual mutation for a given launch, creates a timestamped backup of
+  ///   the .db file next to the original so users with years of chats have an
+  ///   immediate rollback artifact.
+  /// - Failures to add a single column are logged but do not prevent app launch.
+  /// - Idempotent and safe to call on every open (including after cloud sync restore).
+  ///
+  /// This must be kept in sync with any future columns added to Sessions, Groups,
+  /// Objectives, Characters, etc. Add the new "COL TYPE [NOT NULL DEFAULT x]" entry
+  /// here in the same change that adds it to the Table class.
+  Future<void> _repairMissingSchemaColumns() async {
+    final stopwatch = Stopwatch()..start();
+    bool anyRepairDone = false;
+
+    // Physical table -> list of "col_name TYPE [NOT NULL DEFAULT 'lit']" fragments.
+    // These are exactly the columns that were added (or re-added) via the old
+    // silent-catch ALTERs in onUpgrade for schema versions 9 through 32.
+    // The presence of these in the list is what guarantees 1:1 + group chat parity
+    // features will not produce "no such column" on real user databases.
+    const Map<String, List<String>> columnsToEnsure = {
+      'objectives': [
+        'chat_id TEXT', // v29 — the one that was actively crashing group objective loads
+        'is_primary INTEGER NOT NULL DEFAULT 1', // v20
+        'injection_depth INTEGER NOT NULL DEFAULT 4', // safety (was in v8 CREATE + v9 ALTER)
+      ],
+      'groups': [
+        // v30
+        'default_member_realism_state TEXT NOT NULL DEFAULT "{}"',
+        // v31 — the full set of explicit typed columns for Group Card roundtrip + Chaos + lore scoping
+        'chaos_mode_enabled INTEGER NOT NULL DEFAULT 0',
+        'chaos_nsfw_enabled INTEGER NOT NULL DEFAULT 0',
+        "group_lorebook TEXT NOT NULL DEFAULT ''",
+        "world_ids TEXT NOT NULL DEFAULT '[]'",
+        'inherit_character_lorebooks INTEGER NOT NULL DEFAULT 1',
+        'baseline_realism_state TEXT NOT NULL DEFAULT "{}"',
+        // v32 — final deprecation of the last blob hack
+        'character_system_prompts TEXT NOT NULL DEFAULT "{}"',
+      ],
+      'sessions': [
+        // v30 — the live per-group-member realism state (clean replacement for hidden checkpoint msgs)
+        'group_realism_state TEXT NOT NULL DEFAULT "{}"',
+        // Additional columns added with the same fragile pattern that group/per-char
+        // Realism, Needs, Chaos, and evolution paths now depend on unconditionally.
+        'group_evolved_personalities TEXT NOT NULL DEFAULT "{}"',
+        'group_evolved_scenarios TEXT NOT NULL DEFAULT "{}"',
+        'needs_sim_enabled INTEGER NOT NULL DEFAULT 0',
+        'needs_vector TEXT',
+        'start_day_of_week INTEGER NOT NULL DEFAULT 0',
+        'chaos_mode_enabled INTEGER NOT NULL DEFAULT 0',
+        'chaos_pressure INTEGER NOT NULL DEFAULT 0',
+        'generation_settings TEXT',
+        'user_persona_id TEXT',
+        'passage_of_time_enabled INTEGER NOT NULL DEFAULT 1',
+        'nsfw_cooldown_enabled INTEGER NOT NULL DEFAULT 0',
+        'cooldown_turns_remaining INTEGER NOT NULL DEFAULT 0',
+      ],
+    };
+
+    for (final entry in columnsToEnsure.entries) {
+      final table = entry.key;
+      final expectedDefs = entry.value;
+
+      final existing = await _getExistingColumnNames(table);
+      if (existing.isEmpty) {
+        // Table does not exist in this DB yet. A future onCreate or onUpgrade CREATE
+        // TABLE will bring it in with the full modern definition. Nothing to repair.
+        continue;
+      }
+
+      final missingDefs = <String>[];
+      for (final def in expectedDefs) {
+        final colName = def.split(' ').first;
+        if (!existing.contains(colName)) {
+          missingDefs.add(def);
+        }
+      }
+
+      if (missingDefs.isNotEmpty) {
+        if (!anyRepairDone) {
+          await _createPreRepairBackup();
+          anyRepairDone = true;
+        }
+
+        for (final def in missingDefs) {
+          final colName = def.split(' ').first;
+          try {
+            final sql = 'ALTER TABLE $table ADD COLUMN $def';
+            await customStatement(sql);
+            debugPrint('[DB] Schema repair: added $table.$colName (recovered from incomplete past migration)');
+          } catch (e) {
+            debugPrint('[DB] Schema repair: FAILED to add $table.$colName — $e (app will continue; some features may be limited until manual intervention)');
+            // Intentionally not re-thrown. The user's irreplaceable chats must remain accessible.
+          }
+        }
+      }
+    }
+
+    stopwatch.stop();
+    if (anyRepairDone) {
+      debugPrint('[DB] Schema repair completed in ${stopwatch.elapsedMilliseconds}ms — your database is now consistent with app v32+ expectations');
+    }
+  }
+
+  /// Introspects the live physical columns using the SQLite PRAGMA that works
+  /// even when Drift's internal schema snapshot is ahead of the on-disk reality.
+  Future<Set<String>> _getExistingColumnNames(String tableName) async {
+    try {
+      final result = await customSelect('PRAGMA table_info($tableName)').get();
+      return result
+          .map((row) => row.data['name'] as String?)
+          .where((name) => name != null && name.isNotEmpty)
+          .cast<String>()
+          .toSet();
+    } catch (e) {
+      debugPrint('[DB] Could not PRAGMA table_info for $tableName (table may be very old or locked): $e');
+      return <String>{};
+    }
+  }
+
+  /// Creates a byte-for-byte copy of the current .db file with a timestamped suffix
+  /// the first time this launch is about to perform any ALTER. This is the belt-and-
+  /// suspenders protection for users who have explicitly stated that DB deletion or
+  /// any risk of losing character chat history is unacceptable.
+  Future<void> _createPreRepairBackup() async {
+    try {
+      final path = dbFilePath;
+      if (path == null) return;
+      final dbFile = File(path);
+      if (!await dbFile.exists()) return;
+
+      final ts = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
+      final backupPath = '$path.pre-schema-repair-$ts';
+      await dbFile.copy(backupPath);
+      debugPrint('[DB] SAFETY BACKUP created before schema repair: $backupPath');
+      debugPrint('[DB] If anything ever goes wrong, you can rename this file back to front_porch.db to restore your exact previous state (all chats, objectives, groups, etc.).');
+    } catch (e) {
+      debugPrint('[DB] Could not create pre-repair backup (non-fatal — repair will still attempt): $e');
+    }
+  }
+
+  /// Public helper so that direct-open paths (reunification, certain test or recovery
+  /// scenarios) can explicitly ensure the schema matches before using group or objective
+  /// features. The primary AppDatabase.instance() path calls the repair automatically.
+  Future<void> ensureSchemaIsRepaired() => _repairMissingSchemaColumns();
 
   /// Close the database and clear the singleton so the next call to
   /// [instance()] will open a fresh connection to the file on disk.
@@ -560,7 +765,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 30;
+  int get schemaVersion => 32;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1025,6 +1230,66 @@ class AppDatabase extends _$AppDatabase {
         try {
           await customStatement(
             'ALTER TABLE sessions ADD COLUMN group_realism_state TEXT NOT NULL DEFAULT "{}"',
+          );
+        } catch (_) {}
+      }
+      if (from < 31) {
+        // v30→v31: Group configuration columns for Chaos Mode toggles (including NSFW
+        // variant), group-scoped lorebook + world selection/inheritance, and an immutable
+        // creation-time baseline realism seed (separate from the mutable default member
+        // state added in v30). Stored as clean dedicated columns (INTEGER for Bool, TEXT
+        // for JSON strings) rather than inside a single JSON blob or piggy-backing on
+        // character_ids / scenario etc. Follows v30 precedent of explicit columns over
+        // hidden/magic storage for group concerns — improves Drift queries, self-documents
+        // the schema for maintainers, and makes the contract obvious for external
+        // direct-SQL writers. Purpose: enable precise group-level Chaos + lore scoping +
+        // creation-seed baselines for Group Cards and new sessions. Added with explicit
+        // dev authorization. External direct-SQL tools will need to adapt (provide values
+        // or rely on the NOT NULL DEFAULTs documented here when writing to the groups table).
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN chaos_mode_enabled INTEGER NOT NULL DEFAULT 0',
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN chaos_nsfw_enabled INTEGER NOT NULL DEFAULT 0',
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            "ALTER TABLE groups ADD COLUMN group_lorebook TEXT NOT NULL DEFAULT ''",
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            "ALTER TABLE groups ADD COLUMN world_ids TEXT NOT NULL DEFAULT '[]'",
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN inherit_character_lorebooks INTEGER NOT NULL DEFAULT 1',
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN baseline_realism_state TEXT NOT NULL DEFAULT "{}"',
+          );
+        } catch (_) {}
+      }
+
+      if (from < 32) {
+        // v31→v32: Final cleanup of the last "Path B" transitional JSON blob hack.
+        // Per-character system prompts (group-scoped overrides) now have their own
+        // first-class TEXT column instead of being merged into defaultMemberRealismState.
+        // This completes the move to explicit columns for all group-level configuration
+        // (following the v30 and v31 philosophy). All extraction/promotion logic that
+        // previously read/wrote 'character_system_prompts' inside the realism blob has
+        // been fully removed. Old data in the blob is ignored on load going forward.
+        // External direct-SQL tools must now use the new column.
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN character_system_prompts TEXT NOT NULL DEFAULT "{}"',
           );
         } catch (_) {}
       }

@@ -47,6 +47,7 @@ import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_settings_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/group_objectives_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/image_gen_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/data_bank_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/kobold_log_dialog.dart';
@@ -877,7 +878,7 @@ class _ChatPageState extends State<ChatPage> {
       ),
       title: Row(
         children: [
-          // Stacked avatars
+          // Stacked avatars (with emotion rings when group realism is active)
           SizedBox(
             width: 24.0 + (chars.length.clamp(0, 4) - 1) * 16,
             height: 32,
@@ -886,21 +887,43 @@ class _ChatPageState extends State<ChatPage> {
                 for (int i = 0; i < chars.length.clamp(0, 4); i++)
                   Positioned(
                     left: i * 16.0,
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: _groupCharacterColor(i),
-                      backgroundImage: chars[i].imagePath != null
-                          ? FileImage(_resolveCharImage(chars[i].imagePath!))
-                          : null,
-                      child: chars[i].imagePath == null
-                          ? Text(
-                              chars[i].name[0],
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            )
-                          : null,
+                    child: Tooltip(
+                      message: () {
+                        if (!chatService.isGroupRealismActive) return chars[i].name;
+                        final emo = chatService.getEmotionForGroupCharacter(chars[i]);
+                        final fix = chatService.getFixationForGroupCharacter(chars[i]);
+                        final base = '${chars[i].name}${emo != null ? ' • $emo' : ''}';
+                        return fix != null && fix.isNotEmpty ? '$base\nFixated: $fix' : base;
+                      }(),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: chatService.isGroupRealismActive
+                              ? Border.all(
+                                  color: EmotionLabels.ringColor(
+                                    chatService.getEmotionForGroupCharacter(chars[i]),
+                                  ),
+                                  width: 2.0,
+                                )
+                              : null,
+                        ),
+                        child: CircleAvatar(
+                          radius: 16,
+                          backgroundColor: _groupCharacterColor(i),
+                          backgroundImage: chars[i].imagePath != null
+                              ? FileImage(_resolveCharImage(chars[i].imagePath!))
+                              : null,
+                          child: chars[i].imagePath == null
+                              ? Text(
+                                  chars[i].name[0],
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -986,364 +1009,7 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  // ── Helpers for full per-character realism UI in group sidebar (reusing 1:1 visual style) ──
 
-  int _calculateGroupTier(int score) {
-    final abs = score.abs();
-    if (abs < 5) return 0;
-    if (abs < 15) return score > 0 ? 1 : -1;
-    if (abs < 30) return score > 0 ? 2 : -2;
-    if (abs < 50) return score > 0 ? 3 : -3;
-    if (abs < 75) return score > 0 ? 4 : -4;
-    if (abs < 110) return score > 0 ? 5 : -5;
-    if (abs < 150) return score > 0 ? 6 : -6;
-    if (abs < 200) return score > 0 ? 7 : -7;
-    if (abs < 250) return score > 0 ? 8 : -8;
-    if (abs < 300) return score > 0 ? 9 : -9;
-    return score > 0 ? 10 : -10;
-  }
-
-  String _getGroupBondTierName(int tier) {
-    switch (tier) {
-      case 10: return 'Devoted';
-      case 9: return 'Enamored';
-      case 8: return 'Smitten';
-      case 7: return 'Affectionate';
-      case 6: return 'Fond';
-      case 5: return 'Warm';
-      case 4: return 'Friendly';
-      case 3: return 'Neutral+';
-      case 2: return 'Neutral';
-      case 1: return 'Cool';
-      case 0: return 'Indifferent';
-      case -1: return 'Distant';
-      case -2: return 'Cold';
-      case -3: return 'Hostile';
-      case -4: return 'Resentful';
-      case -5: return 'Bitter';
-      case -6: return 'Hateful';
-      case -7: return 'Despising';
-      case -8: return 'Loathing';
-      case -9: return 'Reviling';
-      case -10: return 'Abhorrent';
-      default: return 'Unknown';
-    }
-  }
-
-  Color _getGroupTierColor(int tier) {
-    if (tier >= 10) return Colors.deepPurpleAccent;
-    if (tier >= 9) return Colors.purpleAccent;
-    if (tier >= 8) return Colors.pinkAccent;
-    if (tier >= 7) return Colors.pink;
-    if (tier >= 6) return Colors.pink.shade200;
-    if (tier >= 5) return Colors.orangeAccent;
-    if (tier >= 4) return Colors.greenAccent;
-    if (tier >= 3) return AppColors.resolve(context, Colors.lightBlue, Colors.blue.shade700);
-    if (tier >= 2) return AppColors.resolve(context, Colors.blueGrey, Colors.blueGrey.shade700);
-    if (tier >= 1) return AppColors.resolve(context, Colors.grey.shade400, Colors.grey.shade700);
-    if (tier == 0) return AppColors.textTertiary(context);
-    if (tier >= -1) return AppColors.resolve(context, Colors.orangeAccent.shade100, Colors.orange.shade700);
-    if (tier >= -2) return AppColors.resolve(context, Colors.redAccent.shade100, Colors.red.shade600);
-    if (tier >= -3) return Colors.redAccent;
-    if (tier >= -4) return Colors.red;
-    if (tier >= -5) return AppColors.resolve(context, Colors.red.shade900, Colors.red.shade800);
-    if (tier >= -6) return AppColors.resolve(context, Colors.brown.shade900, Colors.brown.shade700);
-    if (tier >= -7) return AppColors.resolve(context, Colors.deepOrange.shade900, Colors.deepOrange.shade700);
-    if (tier >= -8) return AppColors.resolve(context, Colors.amber.shade900, Colors.amber.shade800);
-    if (tier >= -9) return AppColors.resolve(context, Colors.orange.shade900, Colors.orange.shade800);
-    return AppColors.textPrimary(context);
-  }
-
-  Widget _buildGroupRealismRichRow({
-    required BuildContext context, // Added for AppColors access in light-mode chrome hardening of sidebar realism panels (per rules, edit to existing helper)
-    required String label,
-    required int value,
-    required int tier,
-    required String tierName,
-    required Color color,
-    required IconData icon,
-    int maxValue = 300,
-  }) {
-    final isNegative = value < 0;
-    final displayColor = isNegative ? Colors.redAccent : color;
-    final absVal = value.abs();
-    final target = maxValue;
-    final norm = ((value + maxValue) / (maxValue * 2.0)).clamp(0.0, 1.0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Tooltip(
-          message: label == 'Bond'
-              ? 'Bond: Current relationship strength with this character in the group.'
-              : (label.contains('Trust')
-                  ? 'Trust: How much the character believes and relies on you.'
-                  : 'Arousal: Physical/sexual tension level.'),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 13,
-                color: displayColor,
-              ),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  '$label: $tierName',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: displayColor,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$absVal/$target',
-                style: TextStyle(fontSize: 10, color: AppColors.textTertiary(context)),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(
-            value: norm,
-            minHeight: 5,
-            backgroundColor: AppColors.resolve(context, Colors.white10, Colors.black.withValues(alpha: 0.08)),
-            valueColor: AlwaysStoppedAnimation<Color>(displayColor),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGroupCharacterFullRealismUI(BuildContext context, ChatService chatService, CharacterCard character) {
-    // Added BuildContext param (documented) to existing private helper for AppColors in light-mode sidebar realism UI; required to pass to _buildGroupRealismRichRow
-    if (!chatService.isGroupRealismActive) return const SizedBox.shrink();
-
-    final affection = chatService.getAffectionForGroupCharacter(character);
-    final trust = chatService.getTrustForGroupCharacter(character);
-    final arousal = chatService.getArousalForGroupCharacter(character);
-    final emotion = chatService.getEmotionForGroupCharacter(character) ?? 'neutral';
-    final intensity = chatService.getEmotionIntensityForGroupCharacter(character) ?? '';
-    final isDirector = chatService.observerMode;
-    final opacity = isDirector ? 0.35 : 1.0;
-
-    final bondTier = _calculateGroupTier(affection);
-    final bondName = _getGroupBondTierName(bondTier);
-    final bondColor = _getGroupTierColor(bondTier);
-
-    final trustTier = _calculateGroupTier(trust);
-    final trustName = _getGroupBondTierName(trustTier); // reuse similar naming for simplicity
-    final trustColor = _getGroupTierColor(trustTier);
-
-    final arousalTier = _calculateGroupTier(arousal);
-    final arousalName = _getGroupBondTierName(arousalTier);
-    final arousalColor = _getGroupTierColor(arousalTier);
-
-    final needs = chatService.getTopUrgentNeedsForGroupCharacter(character, count: 2);
-    final fixation = chatService.getFixationForGroupCharacter(character); // I see it's likely WIP - and I like where it going.
-
-    return Opacity(
-      opacity: opacity,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 6, bottom: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Emotion
-            Row(
-              children: [
-                Text(
-                  EmotionLabels.emoji[emotion] ?? '🎭',
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '${emotion[0].toUpperCase()}${emotion.substring(1)}${intensity.isNotEmpty ? ' ($intensity)' : ''}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: _emotionColor(emotion),
-                  ),
-                ),
-                if (isDirector)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 6),
-                    child: Icon(Icons.pause_circle_outline, size: 11, color: Colors.amberAccent),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // Short-Term Bond (full 1:1 visual treatment using group affection)
-            _buildGroupRealismRichRow(
-              context: context,
-              label: 'Short-Term Bond',
-              value: affection,
-              tier: bondTier,
-              tierName: bondName,
-              color: bondColor,
-              icon: affection < 0 ? Icons.heart_broken : Icons.favorite,
-            ),
-            const SizedBox(height: 10),
-
-            // Long-Term Bond (same data for groups, full visual so it looks complete)
-            _buildGroupRealismRichRow(
-              context: context,
-              label: 'Long-Term Bond',
-              value: affection,
-              tier: bondTier,
-              tierName: bondName,
-              color: bondColor,
-              icon: affection < 0 ? Icons.heart_broken_sharp : Icons.monitor_heart,
-            ),
-            const SizedBox(height: 10),
-
-            // Trust (full style)
-            _buildGroupRealismRichRow(
-              context: context,
-              label: 'Trust',
-              value: trust,
-              tier: trustTier,
-              tierName: trustName,
-              color: trustColor,
-              icon: trust < 0 ? Icons.vpn_key_off : Icons.vpn_key,
-              maxValue: 100,
-            ),
-            const SizedBox(height: 10),
-
-            // Arousal (full style)
-            _buildGroupRealismRichRow(
-              context: context,
-              label: 'Arousal',
-              value: arousal,
-              tier: arousalTier,
-              tierName: arousalName,
-              color: arousalColor,
-              icon: Icons.local_fire_department,
-              maxValue: 100,
-            ),
-            const SizedBox(height: 8),
-
-            // Needs info button (only shown when Needs Simulation has actually run for this character)
-            if (needs.isNotEmpty)
-              Row(
-                children: [
-                  Text('Needs', style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context))),
-                  const SizedBox(width: 4),
-                  InkWell(
-                    onTap: () => _showGroupCharacterNeedsPopup(chatService, character),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Tooltip(
-                      message: 'View full needs details for ${character.name}',
-                      child: Padding(
-                        padding: const EdgeInsets.all(2),
-                        child: Icon(Icons.info_outline, size: 14, color: AppColors.iconSecondary(context)),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    needs.map((n) => '${n.$1} ${n.$2.toStringAsFixed(0)}%').join(' · '),
-                    style: const TextStyle(fontSize: 9, color: Colors.orangeAccent),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showGroupCharacterNeedsPopup(ChatService chatService, CharacterCard character) {
-    final needs = chatService.getNeedsForGroupCharacter(character);
-    if (needs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No active needs data for this character.')),
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceOf(context),
-        title: Text('Needs — ${character.name}', style: const TextStyle(fontSize: 16)),
-        content: SizedBox(
-          width: 320,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: needs.entries.map((e) {
-                final pct = (e.value as num).toDouble().clamp(0.0, 100.0);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 100,
-                        child: Text(e.key, style: const TextStyle(fontSize: 12)),
-                      ),
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(3),
-                          child: LinearProgressIndicator(
-                            value: pct / 100.0,
-                            minHeight: 5,
-                            backgroundColor: Colors.white12,
-                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text('${pct.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 11, color: Colors.white70)),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGroupFixationSmall(String fixation) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.psychology, size: 12, color: Colors.deepPurpleAccent),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(
-              'Fixated on: $fixation',
-              style: const TextStyle(
-                fontSize: 10, // slightly smaller than typical 1:1 fixation text
-                color: Colors.deepPurpleAccent,
-                fontStyle: FontStyle.italic,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showGroupSettingsDialog(ChatService chatService) {
     final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
@@ -3904,6 +3570,17 @@ class _ChatPageState extends State<ChatPage> {
             child: _SummarySection(chatService: chatService),
           ),
 
+          // ── Chaos Mode (global for the group chat) ──
+          Consumer<ChatService>(
+            builder: (context, chat, _) => _ChaosModeSection(
+              chat: chat,
+              onSpinRequested: () => _showChanceTimeOverlay(context),
+            ),
+          ),
+
+          // ── Lorebook Triggers (group context) ──
+          _GroupLorebookSection(chatService: chatService),
+
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
             child: Row(
@@ -3919,14 +3596,14 @@ class _ChatPageState extends State<ChatPage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              'Tap a character to make them respond next',
+              'Tap a character to focus their full state (emotion, bond, needs, fixation)',
               style: TextStyle(
                 fontSize: 11,
                 color: AppColors.textTertiary(context).withValues(alpha: 0.6),
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Expanded(
             child: ListView.builder(
               itemCount: chars.length,
@@ -3936,252 +3613,40 @@ class _ChatPageState extends State<ChatPage> {
                 final isNext = chatService.nextCharacter?.name == ch.name;
                 final evolutionCount = chatService.getEvolutionCountFor(ch);
                 final canRemove = chars.length > 2 && !chatService.isGenerating;
-                return GestureDetector(
-                  onTap: chatService.isGenerating
-                      ? null
-                      : () => chatService.setNextCharacter(ch),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isNext
-                          ? color.withValues(alpha: 0.15)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: isNext
-                          ? Border.all(color: color.withValues(alpha: 0.4))
-                          : null,
-                    ),
-                    child: ListTile(
-                      leading: chatService.isGroupRealismActive
-                          ? Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: _emotionColor(chatService.getEmotionForGroupCharacter(ch)),
-                                  width: 2.5,
-                                ),
-                              ),
-                              child: CircleAvatar(
-                                radius: 20,
-                                backgroundColor: color,
-                                backgroundImage: ch.imagePath != null
-                                    ? FileImage(_resolveCharImage(ch.imagePath!))
-                                    : null,
-                                child: ch.imagePath == null
-                                    ? Text(
-                                        ch.name[0],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                            )
-                          : CircleAvatar(
-                              radius: 20,
-                              backgroundColor: color,
-                              backgroundImage: ch.imagePath != null
-                                  ? FileImage(_resolveCharImage(ch.imagePath!))
-                                  : null,
-                              child: ch.imagePath == null
-                                  ? Text(
-                                      ch.name[0],
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                      title: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              ch.name,
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ),
-                          if (Provider.of<StorageService>(
-                                context,
-                                listen: false,
-                              ).characterEvolutionEnabled &&
-                              evolutionCount > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 5,
-                                vertical: 1,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.resolve(
-                                  context,
-                                  Colors.tealAccent.withValues(alpha: 0.15),
-                                  Colors.teal.shade100.withValues(alpha: 0.5),
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                'Evolved $evolutionCount\u00d7',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
-                                ),
-                              ),
-                            ),
-                        ],
+
+                File? avatarFile;
+                if (ch.imagePath != null) {
+                  try {
+                    avatarFile = _resolveCharImage(ch.imagePath!);
+                  } catch (_) {}
+                }
+
+                return GroupMemberCard(
+                  character: ch,
+                  chatService: chatService,
+                  avatarColor: color,
+                  isNextSpeaker: isNext,
+                  isExpanded: isNext, // current/next speaker gets the full 1:1-parity rich view
+                  onTap: chatService.isGenerating ? () {} : () => chatService.setNextCharacter(ch),
+                  avatarFile: avatarFile,
+                  evolutionCount: evolutionCount,
+                  canRemove: canRemove,
+                  onRemove: canRemove
+                      ? () async {
+                          final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+                          await chatService.removeCharacterFromGroup(ch, groupRepo);
+                        }
+                      : null,
+                  onOpenObjectives: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => GroupObjectivesDialog(
+                        chatService: chatService,
+                        groupCharacters: chatService.groupCharacters,
+                        initialCharacter: ch,
                       ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            ch.description.length > 40
-                                ? '${ch.description.substring(0, 40)}...'
-                                : ch.description,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textTertiary(context),
-                            ),
-                          ),
-                          // Fixation under character summary (smaller text, per user request)
-                          if (chatService.isGroupRealismActive)
-                            () {
-                              final fix = chatService.getFixationForGroupCharacter(ch);
-                              return (fix != null && fix.isNotEmpty)
-                                  ? _buildGroupFixationSmall(fix)
-                                  : const SizedBox.shrink();
-                            }(),
-                          // Full realism UI per character (rich 1:1 style bars + needs info button)
-                          if (chatService.isGroupRealismActive)
-                            _buildGroupCharacterFullRealismUI(context, chatService, ch),
-                          Wrap(
-                            spacing: 4,
-                            runSpacing: 0,
-                            children: [
-                              TextButton.icon(
-                                onPressed: () =>
-                                    _showVoicePickerForCharacter(ch),
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: const Size(0, 24),
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                icon: Icon(
-                                  Icons.record_voice_over,
-                                  size: 12,
-                                  color: ch.ttsVoice != null
-                                      ? Colors.amberAccent
-                                      : Colors.white24,
-                                ),
-                                label: Text(
-                                  ch.ttsVoice ?? 'Default voice',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: ch.ttsVoice != null
-                                        ? Colors.amberAccent
-                                        : Colors.white24,
-                                  ),
-                                ),
-                              ),
-                              if (Provider.of<StorageService>(
-                                context,
-                                listen: false,
-                              ).characterEvolutionEnabled)
-                                TextButton.icon(
-                                  onPressed: chatService.isEvolvingCharacter
-                                      ? null
-                                      : () async {
-                                          await chatService.triggerEvolutionNow(
-                                            target: ch,
-                                          );
-                                        },
-                                  style: TextButton.styleFrom(
-                                    padding: EdgeInsets.zero,
-                                    minimumSize: const Size(0, 24),
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  icon: Icon(
-                                    Icons.psychology_alt,
-                                    size: 12,
-                                    color: Colors.tealAccent.withValues(
-                                      alpha: 0.7,
-                                    ),
-                                  ),
-                                  label: Text(
-                                    'Evolve',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.tealAccent.withValues(
-                                        alpha: 0.7,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isNext)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 5,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.purpleAccent.withValues(
-                                  alpha: 0.2,
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.purpleAccent.withValues(
-                                    alpha: 0.4,
-                                  ),
-                                ),
-                              ),
-                              child: const Text(
-                                'Next ▶',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Colors.purpleAccent,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          if (canRemove)
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close,
-                                size: 16,
-                                color: Colors.redAccent,
-                              ),
-                              tooltip: 'Remove from group',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 28,
-                                minHeight: 28,
-                              ),
-                              onPressed: () async {
-                                final groupRepo =
-                                    Provider.of<GroupChatRepository>(
-                                      context,
-                                      listen: false,
-                                    );
-                                await chatService.removeCharacterFromGroup(
-                                  ch,
-                                  groupRepo,
-                                );
-                              },
-                            ),
-                        ],
-                      ),
-                      dense: true,
-                    ),
-                  ),
+                    );
+                  },
                 );
               },
             ),
@@ -6675,6 +6140,137 @@ class _LorebookSectionState extends State<_LorebookSection> {
                 : Text(
                     'No lorebook entries.',
                     style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+                  ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Group-aware lorebook triggers section for the group chat sidebar.
+/// Shows active (triggered or constant) entries from group lorebook,
+/// attached worlds, and inherited character lorebooks.
+class _GroupLorebookSection extends StatefulWidget {
+  final ChatService chatService;
+  const _GroupLorebookSection({required this.chatService});
+
+  @override
+  State<_GroupLorebookSection> createState() => _GroupLorebookSectionState();
+}
+
+class _GroupLorebookSectionState extends State<_GroupLorebookSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeEntries = widget.chatService.getActiveGroupLoreEntries();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4.0),
+            child: Row(
+              children: [
+                Icon(
+                  _expanded ? Icons.expand_more : Icons.chevron_right,
+                  size: 16,
+                  color: AppColors.iconSecondary(context),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Lorebook Triggers',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textSecondary(context),
+                  ),
+                ),
+                if (activeEntries.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.greenAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${activeEntries.length}',
+                      style: const TextStyle(fontSize: 10, color: Colors.greenAccent),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 20.0),
+            child: activeEntries.isEmpty
+                ? Text(
+                    'No active lorebook entries.',
+                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: activeEntries.map((entry) {
+                      Color dotColor = AppColors.resolve(
+                        context,
+                        Colors.redAccent,
+                        Colors.red.shade700,
+                      );
+                      if (entry.constant) {
+                        dotColor = AppColors.resolve(
+                          context,
+                          Colors.blueAccent,
+                          Colors.blue.shade700,
+                        );
+                      } else if (entry.isTriggered) {
+                        dotColor = AppColors.resolve(
+                          context,
+                          Colors.greenAccent,
+                          Colors.green.shade700,
+                        );
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3.0),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: AppColors.resolve(
+                                  context,
+                                  dotColor,
+                                  dotColor.withValues(alpha: 0.85),
+                                ),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                entry.displayName,
+                                style: TextStyle(
+                                  color: (entry.isTriggered || entry.constant)
+                                      ? AppColors.textPrimary(context)
+                                      : AppColors.textSecondary(context),
+                                  fontSize: 12,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
                   ),
           ),
         ],

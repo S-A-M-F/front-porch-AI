@@ -45,17 +45,50 @@ class GroupChat {
   /// Added in v30 (clean replacement for old hidden checkpoint system).
   String defaultMemberRealismState;
 
+  /// Immutable creation-time baseline realism/needs seed for this group definition.
+  ///
+  /// This is the **frozen snapshot** of per-character realism values (bond, trust, emotion,
+  /// time of day, day count, etc.) that were explicitly seeded when the group was first
+  /// created or imported via Group Card. It is **never mutated** by normal chat activity.
+  ///
+  /// Contrast with [defaultMemberRealismState], which holds the live/evolving per-character
+  /// state for new sessions and can change over time.
+  ///
+  /// When exporting a Group Card, we deliberately export this baseline (not the evolved
+  /// state) so that re-importing the card recreates the group exactly as the creator
+  /// intended it at birth.
+  ///
+  /// Stored in its own first-class column (v31) rather than inside a JSON blob.
+  String baselineRealismState;
+
   /// Per-character system prompt overrides that only apply inside *this* group.
   /// Keyed by stable charId (image basename without extension, matching how
   /// characterIds are stored).
   /// These take precedence over the character's normal `systemPrompt` (from their card)
-  /// when that character speaks in this group, but sit "under" the group-level `systemPrompt`.
+  /// when that character speaks in this group, but sit \"under\" the group-level `systemPrompt`.
   ///
-  /// For Path B (cleaner architecture, no spec bump): exposed as a first-class Map on the model.
-  /// Persisted during transition inside `defaultMemberRealismState` JSON under 'character_system_prompts'
-  /// (see GroupChatRepository). On Group Card import, legacy data from `realism_state` is promoted here.
-  /// See docs/characters.md "Prompt Priority in Groups" for the v1.0 hierarchy.
+  /// Stored in its own first-class column on the groups table (v32).
+  /// The previous transitional storage inside defaultMemberRealismState JSON
+  /// has been fully removed (no more Path B blob merging).
+  /// See docs/characters.md "Prompt Priority in Groups" for the hierarchy.
   Map<String, String> characterSystemPrompts;
+
+  /// Worlds linked to this group (for world lorebook injection).
+  List<String> worldIds;
+
+  /// Group-level lorebook entries (JSON string, same format as Character.lorebook).
+  /// Takes highest priority in prompt construction.
+  String groupLorebook;
+
+  /// Whether to inherit/append lorebooks from participating characters.
+  /// When false, only group + world lorebooks are used.
+  bool inheritCharacterLorebooks;
+
+  /// Whether Chaos Mode (Chance Time) is enabled for this group.
+  bool chaosModeEnabled;
+
+  /// Whether NSFW events are included in the Chance Time pool for this group.
+  bool chaosNsfwEnabled;
 
   GroupChat({
     required this.id,
@@ -68,7 +101,13 @@ class GroupChat {
     this.scenario = '',
     this.systemPrompt = '',
     this.defaultMemberRealismState = '{}',
+    this.baselineRealismState = '{}',
     Map<String, String>? characterSystemPrompts,
+    this.worldIds = const [],
+    this.groupLorebook = '',
+    this.inheritCharacterLorebooks = true,
+    this.chaosModeEnabled = false,
+    this.chaosNsfwEnabled = false,
   }) : characterSystemPrompts = characterSystemPrompts ?? {};
 
   Map<String, dynamic> toJson() {
@@ -83,7 +122,13 @@ class GroupChat {
       'scenario': scenario,
       'system_prompt': systemPrompt,
       'default_member_realism_state': defaultMemberRealismState,
+      'baseline_realism_state': baselineRealismState,
       'character_system_prompts': characterSystemPrompts,
+      'world_ids': worldIds,
+      'group_lorebook': groupLorebook,
+      'inherit_character_lorebooks': inheritCharacterLorebooks,
+      'chaos_mode_enabled': chaosModeEnabled,
+      'chaos_nsfw_enabled': chaosNsfwEnabled,
     };
   }
 
@@ -92,6 +137,11 @@ class GroupChat {
     final charPrompts = (rawCharPrompts is Map)
         ? rawCharPrompts.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()))
         : <String, String>{};
+
+    final rawWorldIds = json['world_ids'];
+    final worldIdsList = (rawWorldIds is List)
+        ? rawWorldIds.map((e) => e.toString()).toList()
+        : <String>[];
 
     return GroupChat(
       id: json['id'] ?? '',
@@ -111,7 +161,13 @@ class GroupChat {
       scenario: json['scenario'] ?? '',
       systemPrompt: json['system_prompt'] ?? '',
       defaultMemberRealismState: json['default_member_realism_state'] ?? '{}',
+      baselineRealismState: json['baseline_realism_state'] ?? '{}',
       characterSystemPrompts: charPrompts,
+      worldIds: worldIdsList,
+      groupLorebook: json['group_lorebook'] ?? '',
+      inheritCharacterLorebooks: json['inherit_character_lorebooks'] ?? true,
+      chaosModeEnabled: json['chaos_mode_enabled'] ?? false,
+      chaosNsfwEnabled: json['chaos_nsfw_enabled'] ?? false,
     );
   }
 }

@@ -137,8 +137,9 @@ class AudiobookGeneratorService extends ChangeNotifier {
         }
       }
 
-      if (compiledAudioParts.isEmpty)
+      if (compiledAudioParts.isEmpty) {
         throw Exception('No audio files generated.');
+      }
 
       // 3. Stitch WAV files using pure Dart — zero external tools!
       _status = 'Stitching ${compiledAudioParts.length} audio segments...';
@@ -184,8 +185,9 @@ class AudiobookGeneratorService extends ChangeNotifier {
   Future<void> _concatenateWavFiles(List<File> parts, File output) async {
     // Read the first file to determine audio format parameters
     final firstBytes = await parts.first.readAsBytes();
-    if (firstBytes.length < 44)
+    if (firstBytes.length < 44) {
       throw Exception('Invalid WAV file (too small).');
+    }
 
     // Parse WAV header from the first file
     final byteData = ByteData.sublistView(firstBytes);
@@ -224,8 +226,9 @@ class AudiobookGeneratorService extends ChangeNotifier {
       }
     }
 
-    if (totalPcmBytes == 0)
+    if (totalPcmBytes == 0) {
       throw Exception('No audio data found in WAV chunks.');
+    }
 
     // Build the combined WAV file with a proper header
     final totalFileSize =

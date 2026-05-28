@@ -154,12 +154,14 @@ class VramEstimator {
     // Heuristic based on common architectures:
     // KV cache per token = 2 * layers * kvHeads * headDim * 2 (FP16)
     // Approximate by parameter class:
-    if (paramCountB >= 128)
+    if (paramCountB >= 128) {
       return 8192; // 128B+ class (e.g., Mixtral 8x22B, Command R+)
+    }
     if (paramCountB >= 70) return 4096; // 70B class (e.g., Llama-3-70B)
     if (paramCountB >= 34) return 3072; // 34B class (e.g., Yi-34B)
-    if (paramCountB >= 13)
+    if (paramCountB >= 13) {
       return 2048; // 13B class (e.g., Mistral-7B-v3, Llama-2-13B)
+    }
     if (paramCountB >= 8) return 1536; // 8B class (e.g., Llama-3-8B)
     if (paramCountB >= 3) return 1024; // 3B class (e.g., Phi-3)
     if (paramCountB >= 1) return 512; // 1-2B class

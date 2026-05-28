@@ -321,8 +321,9 @@ class GoogleDriveProvider extends CloudStorageProvider {
     if (_driveApi == null) throw Exception('Not connected to Google Drive');
 
     final folderId = await _getOrCreateFolderId(remotePath);
-    if (folderId == null || folderId == 'root' || folderId == 'appDataFolder')
+    if (folderId == null || folderId == 'root' || folderId == 'appDataFolder') {
       return;
+    }
 
     // Delete the folder (Google Drive cascades to contents)
     try {
@@ -352,8 +353,9 @@ class GoogleDriveProvider extends CloudStorageProvider {
   /// Get or create a folder hierarchy and return the leaf folder's ID.
   Future<String?> _getOrCreateFolderId(String remotePath) async {
     if (_driveApi == null) return null;
-    if (_folderIdCache.containsKey(remotePath))
+    if (_folderIdCache.containsKey(remotePath)) {
       return _folderIdCache[remotePath];
+    }
 
     final parts = remotePath.split('/').where((p) => p.isNotEmpty).toList();
     String parentId = 'appDataFolder';

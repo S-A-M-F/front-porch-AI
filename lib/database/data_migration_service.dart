@@ -100,8 +100,9 @@ class DataMigrationService {
     final v2Service = V2CardService();
 
     await for (final entity in charDir.list()) {
-      if (entity is! File || !entity.path.toLowerCase().endsWith('.png'))
+      if (entity is! File || !entity.path.toLowerCase().endsWith('.png')) {
         continue;
+      }
 
       try {
         final card = await v2Service.readCard(entity.path);
@@ -342,8 +343,9 @@ class DataMigrationService {
     if (!await worldsDir.exists()) return;
 
     await for (final entity in worldsDir.list()) {
-      if (entity is! File || !entity.path.toLowerCase().endsWith('.json'))
+      if (entity is! File || !entity.path.toLowerCase().endsWith('.json')) {
         continue;
+      }
 
       try {
         final json = jsonDecode(await entity.readAsString());

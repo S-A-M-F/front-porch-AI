@@ -59,116 +59,51 @@ class GroupCardService {
       // Auto-generate a nice collage from the member avatars
       final avatarPaths = groupCard.members
           .map((c) => c.imagePath)
-          .toList(growable: false);
-      final collageBytes = await createGroupAvatarCollage(avatarPaths);
-      visual = img.decodePng(collageBytes);
-    }
+          .whereType<String>()
+          .where((p) => p.isNotEmpty)
+          .toList();
 
-    if (visual == null) {
-      // Last-resort placeholder
-      visual = img.Image(width: 512, height: 512);
-      img.fill(visual, color: img.ColorRgb8(40, 40, 70));
-    }
-
-    // Only downscale if the collage is *extremely* large.
-    // We want high-res group card visuals, not 2010-era thumbnails.
-    if (visual.width > 2048 || visual.height > 2048) {
-      visual = img.copyResize(visual, width: 1600);
-    }
-
-    // Enhance member data with embedded avatar images for better round-tripping.
-    // This allows imported Group Cards to restore the original character avatars
-    // instead of just colored placeholders.
-    final baseData = groupCard.toJson();
-    final enhancedMembers = <Map<String, dynamic>>[];
-
-    for (final member in groupCard.members) {
-      final memberJson = member.toJson();
-
-      // Try to embed the actual avatar image (resized for size)
-      if (member.imagePath != null) {
-        try {
-          final avatarFile = File(member.imagePath!);
-          if (await avatarFile.exists()) {
-            var avatarImg = img.decodeImage(await avatarFile.readAsBytes());
-            if (avatarImg != null) {
-              // Resize down if very large to keep the Group Card PNG reasonable
-              if (avatarImg.width > 512 || avatarImg.height > 512) {
-                avatarImg = img.copyResize(avatarImg, width: 512);
-              }
-              final avatarBytes = img.encodePng(avatarImg);
-              memberJson['avatar_base64'] = base64Encode(avatarBytes);
-            }
-          }
-        } catch (_) {
-          // Ignore avatar embedding failures — fall back to placeholder on import
-        }
+      if (avatarPaths.isNotEmpty) {
+        final collageBytes = await createGroupAvatarCollage(avatarPaths);
+        visual = img.decodePng(collageBytes) ?? img.decodeImage(collageBytes);
       }
-
-      enhancedMembers.add(memberJson);
     }
 
-    // Replace members in the data with the avatar-enhanced versions
-    final enhancedData = Map<String, dynamic>.from(baseData);
-    enhancedData['members'] = enhancedMembers;
+    // Build the portable JSON payload
+    final payload = groupCard.toJson();
+    payload['spec'] = specName;
+    payload['spec_version'] = specVersion;
 
-    // Build the portable envelope (same shape we document in the spec)
-    final envelope = {
-      'spec': specName,
-      'spec_version': specVersion,
-      'data': enhancedData,
-    };
+    final jsonString = jsonEncode(payload);
+    final base64Data = base64Encode(utf8.encode(jsonString));
 
-    final jsonStr = jsonEncode(envelope);
-    final base64Str = base64Encode(utf8.encode(jsonStr));
+    // Encode the image with the custom chunk
+    final encoded = PngMetadataUtils.encodeWithTextChunk(
+      visual ?? img.Image(width: 512, height: 512),
+      groupChunkKeyword,
+      base64Data,
+    );
 
-    // Use the image package textData path (simple and reliable when we control creation)
-    visual.textData ??= {};
-    visual.textData![groupChunkKeyword] = base64Str;
-
-    final pngBytes = img.encodePng(visual);
-    await File(outputPath).writeAsBytes(pngBytes);
+    await File(outputPath).writeAsBytes(encoded);
   }
 
-  /// Reads a GroupCard from a PNG file.
-  ///
-  /// Returns null if the file does not contain a valid `fpa_group` chunk or
-  /// the JSON does not match the expected Front Porch group card shape.
-  Future<GroupCard?> readGroupCard(String path) async {
-    final bytes = await File(path).readAsBytes();
-
-    // Try the dedicated group keyword first
-    String? payload = PngMetadataUtils.extractTextChunk(bytes, groupChunkKeyword);
-
-    if (payload == null) {
-      // Also accept the chunk under the image package's textData if present
-      try {
-        final decoded = img.decodePng(bytes);
-        if (decoded?.textData != null &&
-            decoded!.textData!.containsKey(groupChunkKeyword)) {
-          payload = decoded.textData![groupChunkKeyword];
-        }
-      } catch (_) {}
-    }
-
-    if (payload == null) return null;
-
+  /// Loads a GroupCard from a PNG file.
+  Future<GroupCard?> loadGroupCardFromPng(String path) async {
     try {
-      final jsonStr = utf8.decode(base64Decode(payload));
-      final envelope = jsonDecode(jsonStr) as Map<String, dynamic>;
+      final bytes = await File(path).readAsBytes();
+      final base64Data = PngMetadataUtils.extractTextChunk(bytes, groupChunkKeyword);
 
-      // Accept both the canonical envelope and a raw data object for flexibility
-      final data = (envelope['data'] ?? envelope) as Map<String, dynamic>;
+      if (base64Data == null) return null;
 
-      // Basic shape validation
-      if (data['members'] is! List) {
-        return null;
-      }
+      final jsonString = utf8.decode(base64Decode(base64Data));
+      final json = jsonDecode(jsonString) as Map<String, dynamic>;
 
-      return GroupCard.fromJson(data);
+      return GroupCard.fromJson(json);
     } catch (e) {
-      print('Failed to parse Front Porch group card: $e');
       return null;
     }
   }
+
+  /// Convenience alias matching the naming style of V2CardService.readCard.
+  Future<GroupCard?> readGroupCard(String path) => loadGroupCardFromPng(path);
 }

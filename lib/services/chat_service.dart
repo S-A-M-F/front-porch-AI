@@ -40,7 +40,6 @@ import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/services/group_turn_manager.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
-import 'package:front_porch_ai/services/cloud_sync_service.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
 import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/utils/emotion_labels.dart';
@@ -357,6 +356,82 @@ class ChatService extends ChangeNotifier {
   /// inside this group. Now persisted via the sessions.group_realism_state column.
   Map<String, String> _groupCharacterSystemPrompts = {};
 
+  /// Per-character objectives when in group mode.
+  /// Each member carries their own independent personal objectives/tasks.
+  /// Keyed by stable charId. Stored inside the group state JSON for now
+  /// (consistent with other per-char group data like realism/needs).
+  Map<String, List<Objective>> _groupObjectives = {};
+
+  /// Returns the personal objectives for a specific character when in group mode.
+  /// Falls back to the global list for 1:1 or when no per-char data exists yet.
+  List<Objective> getObjectivesForGroupCharacter(CharacterCard character) {
+    if (_activeGroup == null) return _activeObjectives;
+    final id = _getCharacterIdFromCard(character);
+    return _groupObjectives[id] ?? const <Objective>[];
+  }
+
+  /// Returns all currently active lorebook entries (enabled + (triggered or constant))
+  /// for the active group context. Includes:
+  /// - Group-level lorebook
+  /// - Lorebooks from worlds attached to the group
+  /// - Per-character lorebooks (and their worlds) if `inheritCharacterLorebooks` is true
+  ///
+  /// This is intended for UI display (e.g. sidebar) to show what lore is currently "in play".
+  List<LorebookEntry> getActiveGroupLoreEntries() {
+    final result = <LorebookEntry>[];
+    if (_activeGroup == null) return result;
+
+    final inherit = _activeGroup!.inheritCharacterLorebooks;
+
+    // 1. Group-level lorebook
+    if (_activeGroup!.groupLorebook.isNotEmpty) {
+      try {
+        final json = jsonDecode(_activeGroup!.groupLorebook);
+        final gl = Lorebook.fromJson(json as Map<String, dynamic>);
+        result.addAll(
+          gl.entries.where((e) => e.enabled && (e.isTriggered || e.constant)),
+        );
+      } catch (_) {}
+    }
+
+    // 2. Group-attached worlds
+    for (final wid in _activeGroup!.worldIds) {
+      final world = _worldRepository.worlds
+          .where((w) => w.name == wid)
+          .firstOrNull;
+      if (world != null) {
+        result.addAll(
+          world.lorebook.entries.where((e) => e.enabled && (e.isTriggered || e.constant)),
+        );
+      }
+    }
+
+    // 3. Per-character (and their worlds) if inheriting
+    if (inherit) {
+      for (final ch in _groupCharacters) {
+        if (ch.lorebook != null) {
+          result.addAll(
+            ch.lorebook!.entries.where((e) => e.enabled && (e.isTriggered || e.constant)),
+          );
+        }
+        for (final wName in ch.worldNames) {
+          final world = _worldRepository.worlds
+              .where((w) => w.name == wName)
+              .firstOrNull;
+          if (world != null) {
+            result.addAll(
+              world.lorebook.entries.where((e) => e.enabled && (e.isTriggered || e.constant)),
+            );
+          }
+        }
+      }
+    }
+
+    // Deduplicate by content to avoid showing the exact same lore text multiple times
+    final seen = <String>{};
+    return result.where((e) => seen.add(e.content)).toList();
+  }
+
   // RAG settings for the active group (stored in the hidden checkpoint, no DB schema change)
   bool _groupRagEnabled = true;
   int _groupRetrievalCount = 8;
@@ -588,7 +663,6 @@ class ChatService extends ChangeNotifier {
   static const int _arousalSuppressionDefaultTurns = 6;
 
   // Post-climax crash tuning (see _tickNeedsDecay and climax handler).
-  static const int _postClimaxCrashDefaultTurns = 4;
   static const double _postClimaxCrashDecayMultiplier =
       1.8; // +80% on energy/fun/social
 
@@ -1066,6 +1140,21 @@ class ChatService extends ChangeNotifier {
     return raw?.toInt();
   }
 
+  /// Clears the fixation (and its lifespan) for a specific character in the current
+  /// group chat. No-op outside group realism mode. Triggers a UI update immediately.
+  void clearFixationForGroupCharacter(CharacterCard character) {
+    if (!isGroupRealismActive) return;
+    final id = _getCharacterIdFromCard(character);
+    if (id.isEmpty) return;
+
+    final map = _groupRealism[id];
+    if (map != null) {
+      map['fixation'] = '';
+      map['fixationLifespan'] = 0;
+    }
+    notifyListeners();
+  }
+
   /// Returns the top N most urgent needs (lowest value first) for the character,
   /// as a list of (needName, value) pairs.
   List<(String, int)> getTopUrgentNeedsForGroupCharacter(
@@ -1538,16 +1627,6 @@ class ChatService extends ChangeNotifier {
     return rawScore;
   }
 
-  /// Calculate short-term decay (2 points per 10 turns toward 0)
-  void _applyShortTermDecay() {
-    if (_affectionScore > 0) {
-      _affectionScore = (_affectionScore - 1).clamp(-300, 300);
-    } else if (_affectionScore < 0) {
-      _affectionScore = (_affectionScore + 1).clamp(-300, 300);
-    }
-    _turnsSinceDecayCheck = 0;
-  }
-
   String get shortTermTierName {
     switch (_relationshipTier) {
       case 10:
@@ -1821,7 +1900,7 @@ class ChatService extends ChangeNotifier {
       return;
     }
     final llmService = _llmProvider?.activeService ?? _koboldService;
-    if (llmService == null || !llmService.isReady) {
+    if (!llmService.isReady) {
       debugPrint('[Expression] reclassify: LLM not ready, skipping');
       return;
     }
@@ -1906,11 +1985,9 @@ class ChatService extends ChangeNotifier {
 
   /// Initialize the ONNX expression classifier service.
   void initExpressionClassifier() {
-    if (_expressionClassifierService == null) {
-      _expressionClassifierService = ExpressionClassifierService(
+    _expressionClassifierService ??= ExpressionClassifierService(
         _storageService,
       );
-    }
   }
 
   /// Fire-and-forget: classify emotion using ONNX model.
@@ -2145,12 +2222,6 @@ class ChatService extends ChangeNotifier {
     _llmProvider = provider;
   }
 
-  /// Set the CloudSyncService after construction.
-  CloudSyncService? _cloudSyncService;
-  void setCloudSyncService(CloudSyncService service) {
-    _cloudSyncService = service;
-  }
-
   /// Set the TtsService after construction (for TTS-aware auto-play delay).
   void setTtsService(TtsService service) {
     _ttsService = service;
@@ -2169,8 +2240,9 @@ class ChatService extends ChangeNotifier {
   /// Wait for TTS to finish speaking, then apply the configured delay before auto-play.
   void _waitForTtsThenContinue() {
     if (!(_groupManager?.autoPlayActive ?? false) ||
-        !(_groupManager?.observerMode ?? false))
+        !(_groupManager?.observerMode ?? false)) {
       return;
+    }
 
     Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (!(_groupManager?.autoPlayActive ?? false) ||
@@ -2433,11 +2505,19 @@ class ChatService extends ChangeNotifier {
       startInDirectorMode: group.directorMode,
     );
 
+    // Seed group definition defaults for Chaos (can be overridden by per-session values loaded below).
+    // This makes the chaosModeEnabled / chaosNsfwEnabled on the GroupChat model actually functional.
+    _chaosModeEnabled = group.chaosModeEnabled;
+    _chaosNsfwEnabled = group.chaosNsfwEnabled;
+
     // v30: For newly created group sessions (no prior state), seed from the group's default realism data.
     // (The actual load of any prior session state happens in _loadLastSession below.)
     if (_messages.isEmpty && _activeGroup != null && _groupRealism.isEmpty) {
       _loadGroupRealismStateFromSession(null);
     }
+
+    // Seed objectives that came from an imported Group Card (one-time)
+    await _seedImportedMemberObjectivesIfPresent();
 
     // Reset all lorebook triggers (skip constant entries — they're always active)
     for (final ch in _groupCharacters) {
@@ -2466,6 +2546,14 @@ class ChatService extends ChangeNotifier {
 
     // Try to load last session for this group
     await _loadLastSession();
+
+    // Load the objectives for whoever is the initial next speaker (or first char)
+    if (_activeGroup != null) {
+      await _loadObjectivesForCurrentSpeaker();
+    }
+
+    // Seed objectives that came from an imported Group Card (one-time), in case it wasn't caught above
+    await _seedImportedMemberObjectivesIfPresent();
 
     // If no session, create a greeting
     if (_messages.isEmpty && _groupCharacters.isNotEmpty) {
@@ -2522,7 +2610,6 @@ class ChatService extends ChangeNotifier {
     if (_isGenerating) return null;
     if (_activeCharacter == null || _characterRepository == null) return null;
     if (_messages.isEmpty) return null;
-    if (_db == null) return null;
 
     final originalCharId = _getCharacterIdFromCard(_activeCharacter!);
     final allCharIds = [
@@ -2545,6 +2632,9 @@ class ChatService extends ChangeNotifier {
       characterIds: allCharIds,
       turnOrder: turnOrder,
       scenario: scenario ?? '',
+      // v31 columns — new groups start with clean defaults.
+      // baselineRealismState remains '{}' until the caller (or UI) seeds explicit values.
+      baselineRealismState: '{}',
     );
     await groupRepo.save(group);
 
@@ -2573,7 +2663,7 @@ class ChatService extends ChangeNotifier {
     }
 
     // Insert the new session
-    await _db!.upsertSession(
+    await _db.upsertSession(
       SessionsCompanion.insert(
         id: newSessionId,
         groupId: drift.Value(group.id),
@@ -2597,7 +2687,7 @@ class ChatService extends ChangeNotifier {
       ),
     );
     if (copiedMessages.isNotEmpty) {
-      await _db!.insertMessages(copiedMessages);
+      await _db.insertMessages(copiedMessages);
     }
 
     debugPrint(
@@ -2618,7 +2708,6 @@ class ChatService extends ChangeNotifier {
   ) async {
     if (_activeGroup == null || _characterRepository == null) return false;
     if (_isGenerating) return false;
-    if (_db == null) return false;
 
     final charId = _getCharacterIdFromCard(character);
     if (!(_groupManager?.addCharacterId(charId) ?? false)) {
@@ -2644,7 +2733,7 @@ class ChatService extends ChangeNotifier {
     // group JSON map columns (if a session is active).
     if (_currentSessionId != null) {
       try {
-        final session = await _db!.getSessionById(_currentSessionId!);
+        final session = await _db.getSessionById(_currentSessionId!);
         if (session != null) {
           final personalities = _tryParseJsonMap(
             session.groupEvolvedPersonalities,
@@ -2672,8 +2761,9 @@ class ChatService extends ChangeNotifier {
   ) async {
     if (_activeGroup == null || _characterRepository == null) return false;
     if (_isGenerating) return false;
-    if ((_groupManager?.characterIds.length ?? 0) <= 2)
+    if ((_groupManager?.characterIds.length ?? 0) <= 2) {
       return false; // enforce minimum
+    }
 
     final charId = _getCharacterIdFromCard(character);
     _groupManager?.removeCharacterId(charId);
@@ -2767,7 +2857,7 @@ class ChatService extends ChangeNotifier {
     _groupCharacterSystemPrompts = {};
     _groupCharacterRAGPriorities = {};
 
-    if (stateJson != null && stateJson.isNotEmpty && stateJson != '{}') {
+    if (stateJson.isNotEmpty && stateJson != '{}') {
       try {
         final decoded = jsonDecode(stateJson);
         if (decoded is Map) {
@@ -2827,6 +2917,20 @@ class ChatService extends ChangeNotifier {
             );
           }
 
+          // Per-char objectives for group mode (each member has independent tasks)
+          _groupObjectives.clear();
+          final objMap = map['objectives'];
+          if (objMap is Map) {
+            objMap.forEach((charId, list) {
+              if (list is List) {
+                _groupObjectives[charId.toString()] = [];
+              }
+            });
+          }
+
+          // One-time seeding of objectives from an imported Group Card is handled
+          // asynchronously after this state load completes (see callers of this method).
+
           debugPrint(
             '[GroupState v30] Loaded realism state for ${_groupRealism.length} characters '
             '(session + group defaults) for group ${_activeGroup!.name}',
@@ -2841,8 +2945,9 @@ class ChatService extends ChangeNotifier {
 
   Future<void> _saveChat() async {
     if ((_activeCharacter == null && _activeGroup == null) ||
-        _currentSessionId == null)
+        _currentSessionId == null) {
       return;
+    }
 
     // ── Safety guard: never overwrite existing session data with empty messages.
     // This prevents data loss if _messages is momentarily empty due to a rebuild
@@ -2859,6 +2964,18 @@ class ChatService extends ChangeNotifier {
     // new group_realism_state column (clean replacement for hidden checkpoint).
     String groupRealismJson = '{}';
     if (_activeGroup != null) {
+      // Include per-char objectives so each group member carries independent tasks.
+      final perCharObjectives = <String, List<Map<String, dynamic>>>{};
+      _groupObjectives.forEach((charId, list) {
+        perCharObjectives[charId] = list.map((o) => {
+          'id': o.id,
+          'objective': o.objective,
+          'isPrimary': o.isPrimary,
+          'active': o.active,
+          // tasks and other fields are stored in the objectives table; we keep lightweight here
+        }).toList();
+      });
+
       groupRealismJson = jsonEncode({
         'perChar': _groupRealism,
         'authorNotes': _groupAuthorNotes,
@@ -2868,14 +2985,13 @@ class ChatService extends ChangeNotifier {
         'retrievalCount': _groupRetrievalCount,
         'memoryBudgetPercent': _groupMemoryBudgetPercent,
         'characterRAGPriorities': _groupCharacterRAGPriorities,
+        'objectives': perCharObjectives,
         'savedAt': DateTime.now().toIso8601String(),
       });
     }
 
     // Snapshot messages at the start so async gaps can't see a mutated list.
     final snapshot = List<ChatMessage>.from(_messages);
-
-    final charId = _getCharacterId();
 
     // Look up character DB id if in 1:1 mode
     String? characterDbId;
@@ -3431,8 +3547,9 @@ class ChatService extends ChangeNotifier {
   /// Copies messages 0..messageIndex into a new session and switches to it.
   Future<void> forkFromMessage(int messageIndex) async {
     if ((_activeCharacter == null && _activeGroup == null) ||
-        _currentSessionId == null)
+        _currentSessionId == null) {
       return;
+    }
     if (messageIndex < 0 || messageIndex >= _messages.length) return;
 
     final oldSessionId = _currentSessionId!;
@@ -3450,13 +3567,11 @@ class ChatService extends ChangeNotifier {
             metadata: m.metadata != null
                 ? Map<String, dynamic>.from(m.metadata!)
                 : null,
-            swipeMetadata: m.swipeMetadata != null
-                ? m.swipeMetadata!
+            swipeMetadata: m.swipeMetadata
                       .map(
                         (e) => e != null ? Map<String, dynamic>.from(e) : null,
                       )
-                      .toList()
-                : null,
+                      .toList(),
           ),
         )
         .toList();
@@ -3954,7 +4069,7 @@ class ChatService extends ChangeNotifier {
   /// which are not tied to a specific CharacterCard.
   String _applyUserReplacement(String text) {
     if (text.isEmpty) return text;
-    final userName = _userPersonaService?.persona.name ?? 'You';
+    final userName = _userPersonaService.persona.name;
     return text
         .replaceAll(RegExp(r'\{\{user\}\}', caseSensitive: false), userName)
         .replaceAll(RegExp(r'<user>', caseSensitive: false), userName);
@@ -3962,8 +4077,9 @@ class ChatService extends ChangeNotifier {
 
   Future<void> sendMessage(String text) async {
     if ((_activeCharacter == null && _activeGroup == null) ||
-        text.trim().isEmpty)
+        text.trim().isEmpty) {
       return;
+    }
     clearSuggestions();
 
     // ── Slash Command Handling ──────────────────────────────────────────
@@ -4029,8 +4145,7 @@ class ChatService extends ChangeNotifier {
 
     // ── Chaos Mode: check + pause for wheel if triggered ─────────────────
     if (_chaosModeEnabled &&
-        _activeGroup == null &&
-        _pendingChaosInjection == null) {
+                _pendingChaosInjection == null) {
       if (checkAndTickChaosPressure()) {
         // Create a completer so sendMessage pauses here until the wheel resolves
         _chanceTimeCompleter = Completer<void>();
@@ -4521,7 +4636,7 @@ class ChatService extends ChangeNotifier {
       // Compute needs_deltas AFTER generation so the post-generation checks
       // are reflected. This mirrors the normal generation path (line ~4053).
       // Apply directly to the message since _pendingRealismMetadata was consumed.
-      Map<String, dynamic>? needsDeltas = null;
+      Map<String, dynamic>? needsDeltas;
       if (_needsSimEnabled && _needsVector.isNotEmpty) {
         needsDeltas = _computeNeedsDeltasWithReasons(regenPreTurn);
       }
@@ -4606,8 +4721,9 @@ class ChatService extends ChangeNotifier {
     String prefix = '',
     required Function(String accumulated) onToken,
   }) async {
-    if ((_activeCharacter == null && _activeGroup == null) || _isGenerating)
+    if ((_activeCharacter == null && _activeGroup == null) || _isGenerating) {
       return;
+    }
 
     _isGenerating = true;
     _cancelRequested = false;
@@ -4626,7 +4742,7 @@ class ChatService extends ChangeNotifier {
 
       // Build prompt the same way _generateResponse does
       // Path B clean hierarchy (same as the main generation path)
-      final String systemPrompt;
+      String systemPrompt;
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
         systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
       } else if (_activeGroup != null) {
@@ -4655,30 +4771,61 @@ class ChatService extends ChangeNotifier {
         }
       }
 
-      // Lorebook
+      // Lorebook (group + per-character, respecting inherit flag and group worlds)
       String loreContent = '';
       final activeLoreStrings = <String>{}; // Set for deduplication
-      final loreCharacters = _activeGroup != null
-          ? _groupCharacters
-          : [_activeCharacter!];
-      for (final ch in loreCharacters) {
-        if (ch.lorebook != null) {
-          final activeEntries = ch.lorebook!.entries.where(
-            (e) => e.enabled && (e.isTriggered || e.constant),
-          );
-          activeLoreStrings.addAll(activeEntries.map((e) => e.content));
-        }
-        for (final worldName in ch.worldNames) {
+
+      final inherit = _activeGroup?.inheritCharacterLorebooks ?? true;
+
+      // Group-level lorebook (highest priority when present)
+      if (_activeGroup != null && _activeGroup!.groupLorebook.isNotEmpty) {
+        try {
+          final json = jsonDecode(_activeGroup!.groupLorebook);
+          final gl = Lorebook.fromJson(json as Map<String, dynamic>);
+          final active = gl.entries.where((e) => e.enabled && (e.isTriggered || e.constant));
+          activeLoreStrings.addAll(active.map((e) => e.content));
+        } catch (_) {}
+      }
+
+      // Group-level worlds (always included if attached to the group)
+      if (_activeGroup != null) {
+        for (final wid in _activeGroup!.worldIds) {
           final world = _worldRepository.worlds
-              .where((w) => w.name == worldName)
+              .where((w) => w.name == wid)
               .firstOrNull;
           if (world == null) continue;
-          final activeWorldEntries = world.lorebook.entries.where(
+          final active = world.lorebook.entries.where(
             (e) => e.enabled && (e.isTriggered || e.constant),
           );
-          activeLoreStrings.addAll(activeWorldEntries.map((e) => e.content));
+          activeLoreStrings.addAll(active.map((e) => e.content));
         }
       }
+
+      // Per-character lore and their worlds (only if inherit is true or no group)
+      if (inherit || _activeGroup == null) {
+        final loreCharacters = _activeGroup != null
+            ? _groupCharacters
+            : (_activeCharacter != null ? [_activeCharacter!] : <CharacterCard>[]);
+        for (final ch in loreCharacters) {
+          if (ch.lorebook != null) {
+            final activeEntries = ch.lorebook!.entries.where(
+              (e) => e.enabled && (e.isTriggered || e.constant),
+            );
+            activeLoreStrings.addAll(activeEntries.map((e) => e.content));
+          }
+          for (final worldName in ch.worldNames) {
+            final world = _worldRepository.worlds
+                .where((w) => w.name == worldName)
+                .firstOrNull;
+            if (world == null) continue;
+            final activeWorldEntries = world.lorebook.entries.where(
+              (e) => e.enabled && (e.isTriggered || e.constant),
+            );
+            activeLoreStrings.addAll(activeWorldEntries.map((e) => e.content));
+          }
+        }
+      }
+
       if (activeLoreStrings.isNotEmpty) {
         loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
         loreContent = speakingCharacter.replacePlaceholders(
@@ -4889,8 +5036,9 @@ class ChatService extends ChangeNotifier {
 
   /// Trigger the next character to speak in group mode.
   Future<void> triggerNextCharacter() async {
-    if (_activeGroup == null || _groupCharacters.isEmpty || _isGenerating)
+    if (_activeGroup == null || _groupCharacters.isEmpty || _isGenerating) {
       return;
+    }
     await _generateResponse(GenerationMode.normal);
   }
 
@@ -4899,6 +5047,11 @@ class ChatService extends ChangeNotifier {
   void setNextCharacter(CharacterCard character) {
     _groupManager?.setNextSpeaker(character);
     notifyListeners(); // ensure UI updates even if manager didn't notify
+
+    // In group mode, switch the active objectives to this character's personal ones.
+    if (_activeGroup != null) {
+      _loadObjectivesForCurrentSpeaker();
+    }
   }
 
   /// Pick which character speaks next based on turn order.
@@ -4917,7 +5070,7 @@ class ChatService extends ChangeNotifier {
   /// we are about to generate for (or just generated for).
   String _getCurrentSpeakerIdForRealism() {
     if (_activeGroup == null || _groupCharacters.isEmpty) {
-      return _getCharacterId() ?? '';
+      return _getCharacterId();
     }
     final next = nextCharacter;
     if (next != null) {
@@ -4927,9 +5080,6 @@ class ChatService extends ChangeNotifier {
   }
 
   // ── Per-character realism state helpers (group mode) ────────────────────
-  int _getGroupAffection(String charId) =>
-      (_groupRealism[charId]?['affection'] as num?)?.toInt() ?? 0;
-
   void _setGroupRealismValue(String charId, String key, dynamic value) {
     if (_activeGroup == null) return;
     _groupRealism.putIfAbsent(charId, () => <String, dynamic>{});
@@ -5159,29 +5309,58 @@ class ChatService extends ChangeNotifier {
             '\n\n[Voice Call Mode] ${_storageService.callSystemPrompt}';
       }
 
-      // Build Lorebook content from all relevant characters
+      // Build Lorebook content (group + per-character, respecting inherit + group worlds)
       String loreContent = '';
       final activeLoreStrings = <String>{}; // Set for deduplication
 
-      final loreCharacters = _activeGroup != null
-          ? _groupCharacters
-          : [_activeCharacter!];
-      for (final ch in loreCharacters) {
-        if (ch.lorebook != null) {
-          final activeEntries = ch.lorebook!.entries.where(
-            (e) => e.enabled && (e.isTriggered || e.constant),
-          );
-          activeLoreStrings.addAll(activeEntries.map((e) => e.content));
-        }
-        for (final worldName in ch.worldNames) {
+      final inherit = _activeGroup?.inheritCharacterLorebooks ?? true;
+
+      // Group-level lorebook (highest priority)
+      if (_activeGroup != null && _activeGroup!.groupLorebook.isNotEmpty) {
+        try {
+          final json = jsonDecode(_activeGroup!.groupLorebook);
+          final gl = Lorebook.fromJson(json as Map<String, dynamic>);
+          final active = gl.entries.where((e) => e.enabled && (e.isTriggered || e.constant));
+          activeLoreStrings.addAll(active.map((e) => e.content));
+        } catch (_) {}
+      }
+
+      // Group-level attached worlds
+      if (_activeGroup != null) {
+        for (final wid in _activeGroup!.worldIds) {
           final world = _worldRepository.worlds
-              .where((w) => w.name == worldName)
+              .where((w) => w.name == wid)
               .firstOrNull;
           if (world == null) continue;
-          final activeWorldEntries = world.lorebook.entries.where(
+          final active = world.lorebook.entries.where(
             (e) => e.enabled && (e.isTriggered || e.constant),
           );
-          activeLoreStrings.addAll(activeWorldEntries.map((e) => e.content));
+          activeLoreStrings.addAll(active.map((e) => e.content));
+        }
+      }
+
+      // Per-character (only if inheriting or no group)
+      if (inherit || _activeGroup == null) {
+        final loreCharacters = _activeGroup != null
+            ? _groupCharacters
+            : [_activeCharacter!];
+        for (final ch in loreCharacters) {
+          if (ch.lorebook != null) {
+            final activeEntries = ch.lorebook!.entries.where(
+              (e) => e.enabled && (e.isTriggered || e.constant),
+            );
+            activeLoreStrings.addAll(activeEntries.map((e) => e.content));
+          }
+          for (final worldName in ch.worldNames) {
+            final world = _worldRepository.worlds
+                .where((w) => w.name == worldName)
+                .firstOrNull;
+            if (world == null) continue;
+            final activeWorldEntries = world.lorebook.entries.where(
+              (e) => e.enabled && (e.isTriggered || e.constant),
+            );
+            activeLoreStrings.addAll(activeWorldEntries.map((e) => e.content));
+          }
         }
       }
 
@@ -5237,7 +5416,7 @@ class ChatService extends ChangeNotifier {
       if (mode == GenerationMode.normal) {
         suffix = "\n${speakingCharacter.name}:";
       } else if (mode == GenerationMode.impersonate) {
-        suffix = "\n${userName}:";
+        suffix = "\n$userName:";
       } else if (mode == GenerationMode.continue_) {
         // Suffix will be set after history is built — see below
         suffix = "";
@@ -5355,7 +5534,7 @@ class ChatService extends ChangeNotifier {
         if (_pendingNeedsCatastrophe != null) {
           needsCatastropheBlock =
               '[MANDATORY CATASTROPHIC NEED EVENT — THIS HAS ALREADY OCCURRED THIS TURN:\n'
-              '${_pendingNeedsCatastrophe}\n'
+              '$_pendingNeedsCatastrophe\n'
               'You MUST narrate the immediate physical sensations, the visible evidence '
               '(wet patch/puddle on clothes or floor, her collapsing or fainting, smell, '
               'mortified/embarrassed expression, how {{user}} and anyone else present reacts), '
@@ -5862,7 +6041,7 @@ class ChatService extends ChangeNotifier {
           _generationPhase = GenerationPhase.thinking;
           if (_messages.isNotEmpty) {
             _messages.last.thinkingStartTime =
-                _thinkStartTime!.millisecondsSinceEpoch;
+                _thinkStartTime.millisecondsSinceEpoch;
           }
         }
         if (_thinkStarted &&
@@ -5875,7 +6054,7 @@ class ChatService extends ChangeNotifier {
               : GenerationPhase.generating;
           if (_thinkStartTime != null && _messages.isNotEmpty) {
             _messages.last.thinkingDurationMs = DateTime.now()
-                .difference(_thinkStartTime!)
+                .difference(_thinkStartTime)
                 .inMilliseconds;
             // Keep thinkingStartTime for fallback display logic in UI
           }
@@ -6325,49 +6504,6 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  void _decrementLoreDepth() {
-    final characters = _activeGroup != null
-        ? _groupCharacters
-        : (_activeCharacter != null ? [_activeCharacter!] : <CharacterCard>[]);
-    if (characters.isEmpty) return;
-    bool changed = false;
-
-    for (final ch in characters) {
-      if (ch.lorebook != null) {
-        for (final entry in ch.lorebook!.entries) {
-          if (entry.isTriggered && !entry.constant) {
-            entry.remainingDepth--;
-            if (entry.remainingDepth <= 0) {
-              entry.isTriggered = false;
-              changed = true;
-            }
-          }
-        }
-      }
-
-      for (final worldName in ch.worldNames) {
-        final world = _worldRepository.worlds
-            .where((w) => w.name == worldName)
-            .firstOrNull;
-        if (world == null) continue;
-
-        for (final entry in world.lorebook.entries) {
-          if (entry.isTriggered && !entry.constant) {
-            entry.remainingDepth--;
-            if (entry.remainingDepth <= 0) {
-              entry.isTriggered = false;
-              changed = true;
-            }
-          }
-        }
-      }
-    }
-
-    if (changed) {
-      notifyListeners();
-    }
-  }
-
   /// Decrement remainingDepth only for the provided set of entries.
   /// Used after AI response finalization so that lore entries *discovered in the AI's
   /// own response* keep their full stickyDepth for the next user turn.
@@ -6488,11 +6624,8 @@ class ChatService extends ChangeNotifier {
   /// Delete a specific chat session and its messages.
   /// If it's the current session, switches to the most recent remaining one.
   Future<void> deleteSession(String sessionId) async {
-    if (_db == null) return;
-
-    // Delete messages and session from DB
-    await _db!.deleteMessagesForSession(sessionId);
-    await _db!.deleteSessionById(sessionId);
+    await _db.deleteMessagesForSession(sessionId);
+    await _db.deleteSessionById(sessionId);
 
     // If we deleted the current session, switch to another
     if (sessionId == _currentSessionId) {
@@ -6514,8 +6647,6 @@ class ChatService extends ChangeNotifier {
 
   void deleteMessage(int index) async {
     if (index >= 0 && index < _messages.length) {
-      bool isLastNode = index == _messages.length - 1;
-      final deletedMsg = _messages[index];
       _messages.removeAt(index);
 
       // Time-travel rollback for realism when deleting a character message.
@@ -6656,7 +6787,7 @@ class ChatService extends ChangeNotifier {
 
     try {
       final llmService = _llmProvider!.activeService;
-      if (llmService == null || !llmService.isReady) {
+      if (!llmService.isReady) {
         debugPrint('[Actions] ✗ LLM not ready');
         return;
       }
@@ -6672,7 +6803,6 @@ class ChatService extends ChangeNotifier {
           })
           .join('\n');
 
-      final charName = _activeCharacter?.name ?? 'the character';
       final userName = _userPersonaService.persona.name;
 
       final prompt =
@@ -6775,16 +6905,8 @@ class ChatService extends ChangeNotifier {
         );
       }
     } catch (e) {
-      debugPrint('[Objective] Failed to load: $e');
-
-      // Very defensive fallback for users whose local database is on a schema
-      // older than the chat_id migration. We swallow the error completely and
-      // just run without objectives rather than letting the app be noisy/broken.
-      final errStr = e.toString().toLowerCase();
-      if (errStr.contains('chat_id') || errStr.contains('no such column')) {
-        debugPrint('[Objective] Database schema too old for chat-scoped objectives. Running without objectives for this session.');
-        _activeObjectives = [];
-      }
+      debugPrint('[Objective] Failed to load (will run without objectives this session): $e');
+      _activeObjectives = [];
     }
     notifyListeners();
   }
@@ -6890,11 +7012,22 @@ class ChatService extends ChangeNotifier {
     return sb.toString();
   }
 
-  /// Set a new objective for the current session.
-  Future<void> setObjective(String goal, {bool isPrimary = true}) async {
-    if (_activeCharacter == null || goal.trim().isEmpty) return;
+  /// Set a new objective for the current session (or for a specific character when in group mode).
+  Future<void> setObjective(String goal, {bool isPrimary = true, CharacterCard? targetCharacter}) async {
+    if (goal.trim().isEmpty) return;
     if (_currentSessionId == null) return;
-    final charId = _getCharacterIdFromCard(_activeCharacter!);
+
+    CharacterCard? target = targetCharacter;
+    if (target == null) {
+      if (_activeGroup != null) {
+        target = nextCharacter ?? _groupCharacters.firstOrNull;
+      } else {
+        target = _activeCharacter;
+      }
+    }
+    if (target == null) return;
+
+    final charId = _getCharacterIdFromCard(target);
 
     if (isPrimary) {
       final existing = await _db.getObjectivesForCharacter(
@@ -6961,7 +7094,7 @@ class ChatService extends ChangeNotifier {
 
     try {
       final llmService = _llmProvider!.activeService;
-      if (llmService == null || !llmService.isReady) {
+      if (!llmService.isReady) {
         debugPrint('[Objective] LLM not ready');
         // Restore tasks since we cleared them
         await _db.updateObjective(
@@ -7036,16 +7169,18 @@ class ChatService extends ChangeNotifier {
         final numbered = RegExp(r'^\d+[\.\)\-]?\s*(.+)').firstMatch(trimmed);
         if (numbered != null) {
           final desc = numbered.group(1)!.trim();
-          if (desc.isNotEmpty && !desc.startsWith('['))
+          if (desc.isNotEmpty && !desc.startsWith('[')) {
             genTasks.add({'description': desc, 'completed': false});
+          }
           continue;
         }
         // Try bullet: "- ...", "• ...", "* ..."
         final bullet = RegExp(r'^[-•*]\s+(.+)').firstMatch(trimmed);
         if (bullet != null) {
           final desc = bullet.group(1)!.trim();
-          if (desc.isNotEmpty)
+          if (desc.isNotEmpty) {
             genTasks.add({'description': desc, 'completed': false});
+          }
           continue;
         }
         // Plain sentence fallback (skip very short lines or header-like lines)
@@ -7210,8 +7345,9 @@ class ChatService extends ChangeNotifier {
   Future<void> _maybeCheckTaskCompletionSync() async {
     if (_activeObjectives.isEmpty ||
         _llmProvider == null ||
-        _isCheckingCompletion)
+        _isCheckingCompletion) {
       return;
+    }
 
     _messagesSinceLastCheck++;
     final freq = _realismEnabled
@@ -7222,21 +7358,6 @@ class ChatService extends ChangeNotifier {
     _messagesSinceLastCheck = 0;
 
     await _checkTaskCompletionInBackground();
-  }
-
-  void _maybeCheckTaskCompletion() {
-    if (_activeObjectives.isEmpty) return;
-    _messagesSinceLastCheck++;
-
-    final freq = _realismEnabled
-        ? 1
-        : (primaryObjective?.checkFrequency ??
-              _activeObjectives.first.checkFrequency);
-    if (_messagesSinceLastCheck < freq) return;
-    _messagesSinceLastCheck = 0;
-
-    debugPrint('[Objective] Checking task completion for active objectives');
-    _checkTaskCompletionInBackground();
   }
 
   Future<void> _checkTaskCompletionInBackground() async {
@@ -7262,8 +7383,9 @@ class ChatService extends ChangeNotifier {
             .map((t) => t['description'] as String)
             .firstOrNull;
 
-        if (currentTask == null && tasks.isNotEmpty)
+        if (currentTask == null && tasks.isNotEmpty) {
           continue; // All tasks finished but objective not manually resolved
+        }
 
         final evalTarget = currentTask != null
             ? 'Task to evaluate: "$currentTask"\n'
@@ -7357,8 +7479,9 @@ class ChatService extends ChangeNotifier {
 
     _userMessagesSinceLastPeriodicEval++;
     if (_userMessagesSinceLastPeriodicEval <
-        _storageService.autoPersonaInterval)
+        _storageService.autoPersonaInterval) {
       return;
+    }
     _userMessagesSinceLastPeriodicEval = 0;
 
     debugPrint(
@@ -7442,8 +7565,9 @@ class ChatService extends ChangeNotifier {
   /// Returns true if a fact passes the quality gate.
   /// Rejects RP actions, character-specific events, and scene-bound facts.
   bool _isValidFact(String fact) {
-    if (fact.length < _minFactLength || fact.length > _maxFactLength)
+    if (fact.length < _minFactLength || fact.length > _maxFactLength) {
       return false;
+    }
     for (final pattern in _factGarbagePatterns) {
       if (pattern.hasMatch(fact)) {
         debugPrint('[RAG:Persona] ✗ Rejected by quality gate: "$fact"');
@@ -7478,7 +7602,7 @@ class ChatService extends ChangeNotifier {
 
     try {
       final llmService = _llmProvider!.activeService;
-      if (llmService == null || !llmService.isReady) {
+      if (!llmService.isReady) {
         debugPrint('[RAG:Persona] ✗ LLM not ready, skipping extraction');
         return;
       }
@@ -7659,7 +7783,6 @@ class ChatService extends ChangeNotifier {
       if (facts.length <= _maxLearnedFacts) return;
 
       final userName = _userPersonaService.persona.name;
-      final overCount = facts.length - _maxLearnedFacts;
 
       // Ask the LLM to consolidate the facts
       final consolidationPrompt =
@@ -7817,10 +7940,6 @@ class ChatService extends ChangeNotifier {
 
   /// Per-character evolution counts (for group mode).
   final Map<String, int> _groupEvolutionCounts = {};
-
-  /// Deprecated no-op. Evolution is now loaded inside _loadLastSession() and
-  /// loadSession() after _currentSessionId is set, making it per-session.
-  Future<void> _loadEvolvedFields() async {}
 
   /// Load evolved fields for all characters in the active group from the
   /// session's JSON map columns (group_evolved_personalities/scenarios).
@@ -8092,9 +8211,9 @@ class ChatService extends ChangeNotifier {
       if (responseText.length <= 500) {
         debugPrint(responseText);
       } else {
-        debugPrint('${responseText.substring(0, 250)}');
+        debugPrint(responseText.substring(0, 250));
         debugPrint('[...${responseText.length - 500} chars omitted...]');
-        debugPrint('${responseText.substring(responseText.length - 250)}');
+        debugPrint(responseText.substring(responseText.length - 250));
       }
       debugPrint('[Evolution] ── Response end ──');
 
@@ -8216,7 +8335,7 @@ class ChatService extends ChangeNotifier {
       if (_activeCharacter != null) _characterEvolutionCount = newCount;
 
       debugPrint(
-        '[Evolution] ✅ ${charName} evolved successfully (count: $newCount)',
+        '[Evolution] ✅ $charName evolved successfully (count: $newCount)',
       );
       debugPrint(
         '[Evolution] Personality preview: ${newPersonality.substring(0, newPersonality.length.clamp(0, 100))}...',
@@ -8245,7 +8364,7 @@ class ChatService extends ChangeNotifier {
 
     if (_activeGroup != null && charId != null) {
       // Group mode: remove this char's key from both JSON map columns
-      final session = await _db!.getSessionById(_currentSessionId!);
+      final session = await _db.getSessionById(_currentSessionId!);
       if (session != null) {
         final personalities = _tryParseJsonMap(
           session.groupEvolvedPersonalities,
@@ -8253,7 +8372,7 @@ class ChatService extends ChangeNotifier {
         final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
         personalities.remove(charId);
         scenarios.remove(charId);
-        await _db!.patchSession(
+        await _db.patchSession(
           SessionsCompanion(
             id: drift.Value(_currentSessionId!),
             groupEvolvedPersonalities: drift.Value(jsonEncode(personalities)),
@@ -8263,7 +8382,7 @@ class ChatService extends ChangeNotifier {
       }
     } else {
       // 1:1 mode: clear plain columns
-      await _db!.patchSession(
+      await _db.patchSession(
         SessionsCompanion(
           id: drift.Value(_currentSessionId!),
           evolvedPersonality: const drift.Value(''),
@@ -8300,13 +8419,13 @@ class ChatService extends ChangeNotifier {
     final charId = card != null ? _getCharacterIdFromCard(card) : null;
 
     if (_activeGroup != null && charId != null) {
-      final session = await _db!.getSessionById(_currentSessionId!);
+      final session = await _db.getSessionById(_currentSessionId!);
       if (session != null) {
         final personalities = _tryParseJsonMap(
           session.groupEvolvedPersonalities,
         );
         personalities[charId] = text;
-        await _db!.patchSession(
+        await _db.patchSession(
           SessionsCompanion(
             id: drift.Value(_currentSessionId!),
             groupEvolvedPersonalities: drift.Value(jsonEncode(personalities)),
@@ -8314,7 +8433,7 @@ class ChatService extends ChangeNotifier {
         );
       }
     } else {
-      await _db!.patchSession(
+      await _db.patchSession(
         SessionsCompanion(
           id: drift.Value(_currentSessionId!),
           evolvedPersonality: drift.Value(text),
@@ -8336,11 +8455,11 @@ class ChatService extends ChangeNotifier {
     final charId = card != null ? _getCharacterIdFromCard(card) : null;
 
     if (_activeGroup != null && charId != null) {
-      final session = await _db!.getSessionById(_currentSessionId!);
+      final session = await _db.getSessionById(_currentSessionId!);
       if (session != null) {
         final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
         scenarios[charId] = text;
-        await _db!.patchSession(
+        await _db.patchSession(
           SessionsCompanion(
             id: drift.Value(_currentSessionId!),
             groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
@@ -8348,7 +8467,7 @@ class ChatService extends ChangeNotifier {
         );
       }
     } else {
-      await _db!.patchSession(
+      await _db.patchSession(
         SessionsCompanion(
           id: drift.Value(_currentSessionId!),
           evolvedScenario: drift.Value(text),
@@ -8368,10 +8487,9 @@ class ChatService extends ChangeNotifier {
 
     // Look up cross-character sources from DB
     if (_activeCharacter != null &&
-        _db != null &&
         _activeCharacter!.dbId != null) {
       try {
-        final dbChar = await _db!.getCharacterById(_activeCharacter!.dbId!);
+        final dbChar = await _db.getCharacterById(_activeCharacter!.dbId!);
         final ms = dbChar.memorySources;
         if (ms.isNotEmpty && ms != '[]') {
           final decoded = List<String>.from(
@@ -8396,7 +8514,7 @@ class ChatService extends ChangeNotifier {
   Future<void> _generateSummaryInBackground() async {
     if (_llmProvider == null) return;
     final llmService = _llmProvider!.activeService;
-    if (llmService == null || !llmService.isReady) return;
+    if (!llmService.isReady) return;
 
     _isSummaryGenerating = true;
     notifyListeners();
@@ -8712,11 +8830,9 @@ class ChatService extends ChangeNotifier {
     final llmService = _llmProvider?.activeService ?? _koboldService;
     debugPrint('[Realism] Realism eval cancel requested');
     try {
-      if (llmService != null) {
-        llmService.abortGeneration();
-        debugPrint('[Realism] abortGeneration invoked');
-      }
-    } catch (e) {
+      llmService.abortGeneration();
+      debugPrint('[Realism] abortGeneration invoked');
+        } catch (e) {
       // Ensure we always proceed to reset state even if abortion fails unexpectedly
       debugPrint('[Realism cancel] Unexpected error during abort: $e');
     } finally {
@@ -9084,18 +9200,18 @@ class ChatService extends ChangeNotifier {
     } else if (tier <= 4) {
       frame =
           'genuinely trusts this person. Their social mask is down. They share real feelings and speak more '
-          'candidly than they would with most people. What this looks like depends entirely on ${charName}\'s '
+          'candidly than they would with most people. What this looks like depends entirely on $charName\'s '
           'own character — an introverted character might simply hold eye contact longer or say one true thing; '
-          'an expressive one might open up more dramatically. Follow ${charName}\'s persona.';
+          'an expressive one might open up more dramatically. Follow $charName\'s persona.';
     } else {
       frame =
           'has reached a level of deep trust that is rare for them. They are fully themselves — '
           'no performance, no guard. They may say things they have never said to anyone, '
-          'show vulnerability in whatever form is authentic to ${charName}\'s personality.';
+          'show vulnerability in whatever form is authentic to $charName\'s personality.';
     }
 
     return '[Trust Calibration — $charName $frame'
-        ' Do NOT apply generic warmth or humor. Let ${charName}\'s specific personality '
+        ' Do NOT apply generic warmth or humor. Let $charName\'s specific personality '
         'define exactly how this trust level manifests in behavior.]\n';
   }
 
@@ -9245,8 +9361,9 @@ class ChatService extends ChangeNotifier {
   /// Placed AFTER the character name suffix for maximum recency weight.
   /// Consumed after one use (cleared after response generation).
   String _getChanceTimeInjection() {
-    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty)
+    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty) {
       return '';
+    }
     final charName = _activeCharacter?.name ?? 'the character';
     final event = _pendingChaosInjection!;
     // Mark as delivered so it can be cleared on the NEXT sendMessage.
@@ -9369,10 +9486,12 @@ class ChatService extends ChangeNotifier {
       if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
         _pendingRealismMetadata ??= {};
         if (bondDelta != 0) _pendingRealismMetadata!['bond_delta'] = bondDelta;
-        if (arousalDelta != 0)
+        if (arousalDelta != 0) {
           _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-        if (trustDelta != 0)
+        }
+        if (trustDelta != 0) {
           _pendingRealismMetadata!['trust_delta'] = trustDelta;
+        }
       }
 
       // Extract and store per-chip reasons
@@ -9489,14 +9608,16 @@ class ChatService extends ChangeNotifier {
       final emotionMatch = RegExp(
         r'"emotion"\s*:\s*"([^"]+)"',
       ).firstMatch(text);
-      if (emotionMatch != null)
+      if (emotionMatch != null) {
         _characterEmotion = emotionMatch.group(1)!.toLowerCase().trim();
+      }
 
       final intensityMatch = RegExp(
         r'"emotion_intensity"\s*:\s*"([^"]+)"',
       ).firstMatch(text);
-      if (intensityMatch != null)
+      if (intensityMatch != null) {
         _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
+      }
 
       if (_nsfwCooldownEnabled) {
         final arDelta = _extractJsonInt(text, 'arousal_delta');
@@ -9649,7 +9770,7 @@ class ChatService extends ChangeNotifier {
             ? 'Recent position reference: $charName was "$_spatialStance". '
             : '';
         final posturePrompt =
-            '${emotionCtx}${currentPostureCtx}Relationship tension: $shortTermTierName. Current time: $_timeOfDay.\n\n'
+            '$emotionCtx${currentPostureCtx}Relationship tension: $shortTermTierName. Current time: $_timeOfDay.\n\n'
             'What is $charName\'s current physical position and stance? Use "none" if unclear.\n'
             '- Match the posture to the current scene context and emotional state.\n'
             '- If the conversation implies a location or activity change, update accordingly.\n'
@@ -9734,7 +9855,8 @@ class ChatService extends ChangeNotifier {
         .map((m) => '${m.sender}: ${m.displayText}')
         .join('\n');
     if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
+      // This path requires an active character (the group per-speaker path
+      // temporarily sets _activeCharacter before calling us for parity).
       return;
     }
     final charName = _activeCharacter!.name;
@@ -9796,10 +9918,11 @@ class ChatService extends ChangeNotifier {
                       !o.isPrimary,
                 )
                 .firstOrNull;
-            if (addedObj != null)
+            if (addedObj != null) {
               unawaited(
                 generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
               );
+            }
           }
         }
       }
@@ -9819,6 +9942,8 @@ class ChatService extends ChangeNotifier {
     if (!_realismEnabled) return;
     if (_activeCharacter == null && _activeGroup == null) return;
     if (_activeGroup != null && _observerMode) return;
+
+    // The group speaker path sets _activeCharacter before calling this for parity.
 
     // Keep the eval prompt lean for local models — use fewer messages and a
     // shorter personality snippet to reduce prefill time on large models.
@@ -9852,7 +9977,7 @@ class ChatService extends ChangeNotifier {
         ? 'Recent position reference: $charName was "$_spatialStance". '
         : '';
     final relationshipCtx =
-        '${emotionCtx}${postureCtx}Current relationship tension: $shortTermTierName | Trust level: $_trustLevel\n\n';
+        '$emotionCtx${postureCtx}Current relationship tension: $shortTermTierName | Trust level: $_trustLevel\n\n';
 
     final arousalField = _nsfwCooldownEnabled
         ? ', "arousal_delta": <number -25 to +25>'
@@ -9935,10 +10060,6 @@ class ChatService extends ChangeNotifier {
         _applyScoreDelta(bondDelta);
       }
 
-      int moodDelta = 0;
-      // (mood_shift extraction omitted — the original RegExp result was never
-      // consumed; legacy dead code left in place to avoid behavior/scope drift)
-
       int trustDelta = 0;
       final trDelta = _extractJsonInt(text, 'trust_delta');
       if (trDelta != null) {
@@ -9988,20 +10109,26 @@ class ChatService extends ChangeNotifier {
       if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['bond_delta'] = bondDelta;
-        if (arousalDelta != 0)
+        if (arousalDelta != 0) {
           _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-        if (trustDelta != 0)
+        }
+        if (trustDelta != 0) {
           _pendingRealismMetadata!['trust_delta'] = trustDelta;
-        if (bondReason.isNotEmpty)
+        }
+        if (bondReason.isNotEmpty) {
           _pendingRealismMetadata!['bond_reason'] = bondReason;
-        if (trustReason.isNotEmpty)
+        }
+        if (trustReason.isNotEmpty) {
           _pendingRealismMetadata!['trust_reason'] = trustReason;
+        }
       } else if (bondReason.isNotEmpty || trustReason.isNotEmpty) {
         _pendingRealismMetadata ??= {};
-        if (bondReason.isNotEmpty)
+        if (bondReason.isNotEmpty) {
           _pendingRealismMetadata!['bond_reason'] = bondReason;
-        if (trustReason.isNotEmpty)
+        }
+        if (trustReason.isNotEmpty) {
           _pendingRealismMetadata!['trust_reason'] = trustReason;
+        }
       }
 
       // ── Autonomous Objective ──
@@ -10288,6 +10415,13 @@ class ChatService extends ChangeNotifier {
       preTurnVector = Map<String, int>.from(_needsVector);
     }
 
+    // Temporarily load this speaker's personal objectives so the narrative
+    // evaluation (and one-shot) sees the correct primary/secondary context
+    // for "proposed_objective" generation. This is required for 1:1 parity.
+    final previousObjectives = List<Objective>.from(_activeObjectives);
+    final speakerObjectives = await getActiveObjectivesFor(speaker);
+    _activeObjectives = speakerObjectives.where((o) => o.active).toList();
+
     void handleChunk(String chunk) {
       _realismEvalStreamText += chunk;
       _evalChunkTimer?.cancel();
@@ -10349,6 +10483,7 @@ class ChatService extends ChangeNotifier {
     } finally {
       // Always restore previous context and clear busy state
       _activeCharacter = previousActiveCharacter;
+      _activeObjectives = previousObjectives;
       _evalChunkTimer?.cancel();
       _evalChunkTimer = null;
       _isEvaluatingRealism = false;
@@ -10439,6 +10574,154 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  /// Public API: Focus the personal objectives of a specific group member so the
+  /// existing objective management UI and generation can operate on them.
+  /// Does nothing in 1:1 mode.
+  Future<void> focusObjectivesForGroupCharacter(CharacterCard character) async {
+    if (_activeGroup == null) return;
+    final charId = _getCharacterIdFromCard(character);
+    final objs = await _db.getObjectivesForCharacter(charId, chatId: _currentSessionId);
+    _activeObjectives = objs.where((o) => o.active).toList();
+    notifyListeners();
+  }
+
+  /// Loads the active objectives for the given character in the current session.
+  /// Safe to call from group objective UIs — does not mutate global _activeObjectives.
+  Future<List<Objective>> getActiveObjectivesFor(CharacterCard character) async {
+    if (_currentSessionId == null) return const [];
+    final charId = _getCharacterIdFromCard(character);
+    try {
+      return await _db.getActiveObjectives(charId, chatId: _currentSessionId!);
+    } catch (e) {
+      debugPrint('[Objective] Failed to load for ${character.name}: $e');
+      return const [];
+    }
+  }
+
+  // ── Group Creation Baseline Seeding (bond/trust/emotion/time/day only) ──
+
+  /// Returns the immutable creation-time baseline realism values for a group member.
+  /// Only the allowed seeding fields are exposed: affection (bond), trust, emotion, timeOfDay, dayCount.
+  Map<String, dynamic> getBaselineSeedForGroupCharacter(CharacterCard character) {
+    if (_activeGroup == null) return {};
+    final charId = _getCharacterIdFromCard(character);
+    try {
+      final json = jsonDecode(_activeGroup!.baselineRealismState);
+      if (json is Map && json.containsKey(charId)) {
+        final data = json[charId] as Map<String, dynamic>? ?? {};
+        return {
+          'affection': (data['affection'] as num?)?.toInt() ?? 50,
+          'trust': (data['trust'] as num?)?.toInt() ?? 50,
+          'emotion': (data['emotion'] as String?) ?? 'neutral',
+          'emotionIntensity': (data['emotionIntensity'] as String?) ?? 'moderate',
+          'timeOfDay': (data['timeOfDay'] as String?) ?? 'morning',
+          'dayCount': (data['dayCount'] as num?)?.toInt() ?? 1,
+        };
+      }
+    } catch (_) {}
+    return {
+      'affection': 50,
+      'trust': 50,
+      'emotion': 'neutral',
+      'emotionIntensity': 'moderate',
+      'timeOfDay': 'morning',
+      'dayCount': 1,
+    };
+  }
+
+  /// Updates the immutable creation baseline for a group member.
+  /// Only allowed fields are accepted. This should only be called during group creation seeding.
+  void setBaselineSeedForGroupCharacter(CharacterCard character, Map<String, dynamic> values) {
+    if (_activeGroup == null) return;
+    final charId = _getCharacterIdFromCard(character);
+
+    Map<String, dynamic> baseline;
+    try {
+      baseline = Map<String, dynamic>.from(jsonDecode(_activeGroup!.baselineRealismState));
+    } catch (_) {
+      baseline = {};
+    }
+
+    baseline[charId] = {
+      'affection': (values['affection'] as num?)?.toInt() ?? 50,
+      'trust': (values['trust'] as num?)?.toInt() ?? 50,
+      'emotion': (values['emotion'] as String?) ?? 'neutral',
+      'emotionIntensity': (values['emotionIntensity'] as String?) ?? 'moderate',
+      'timeOfDay': (values['timeOfDay'] as String?) ?? 'morning',
+      'dayCount': (values['dayCount'] as num?)?.toInt() ?? 1,
+    };
+
+    _activeGroup!.baselineRealismState = jsonEncode(baseline);
+    notifyListeners();
+  }
+
+  /// Loads the personal objectives for the current/next speaker into _activeObjectives
+  /// when in group mode. This makes the existing objective UI, generation, and injection
+  /// work per-character in groups without duplicating the entire objective system.
+  Future<void> _loadObjectivesForCurrentSpeaker() async {
+    if (_activeGroup == null || _currentSessionId == null) return;
+
+    final speaker = nextCharacter ?? _groupCharacters.firstOrNull;
+    if (speaker == null) {
+      _activeObjectives = [];
+      notifyListeners();
+      return;
+    }
+
+    final charId = _getCharacterIdFromCard(speaker);
+    final objs = await _db.getObjectivesForCharacter(
+      charId,
+      chatId: _currentSessionId,
+    );
+
+    _activeObjectives = objs.where((o) => o.active).toList();
+    notifyListeners();
+  }
+
+  /// One-time seeding of objectives that were carried in an imported Group Card.
+  /// Called after group state is loaded for a freshly imported group.
+  Future<void> _seedImportedMemberObjectivesIfPresent() async {
+    if (_activeGroup == null || _currentSessionId == null) return;
+
+    try {
+      final stateJson = _activeGroup!.defaultMemberRealismState;
+      if (stateJson.isEmpty || stateJson == '{}') return;
+
+      final map = jsonDecode(stateJson);
+      if (map is! Map) return;
+
+      final importedObj = map['imported_member_objectives'];
+      if (importedObj is! Map) return;
+
+      for (final entry in importedObj.entries) {
+        final charId = entry.key.toString();
+        final list = entry.value as List? ?? [];
+        for (final objData in list) {
+          final objMap = objData as Map<String, dynamic>? ?? {};
+          final newId = 'obj_${DateTime.now().millisecondsSinceEpoch}_${charId.hashCode}';
+          await _db.insertObjective(
+            ObjectivesCompanion.insert(
+              id: newId,
+              characterId: charId,
+              chatId: drift.Value(_currentSessionId!),
+              objective: objMap['objective']?.toString() ?? 'Imported objective',
+              tasks: drift.Value(objMap['tasks']?.toString() ?? '[]'),
+              active: const drift.Value(true),
+              isPrimary: drift.Value(objMap['isPrimary'] == true),
+              checkFrequency: drift.Value((objMap['checkFrequency'] as num?)?.toInt() ?? 3),
+              injectionDepth: drift.Value((objMap['injectionDepth'] as num?)?.toInt() ?? 4),
+            ),
+          );
+        }
+      }
+
+      // Remove the marker so it doesn't seed again
+      map.remove('imported_member_objectives');
+      _activeGroup!.defaultMemberRealismState = jsonEncode(map);
+      await _saveChat();
+    } catch (_) {}
+  }
+
   // ── Sims/Needs Simulation Core Logic (ported cleanly) ─────────────────────
 
   void _tickNeedsDecay() {
@@ -10461,9 +10744,9 @@ class ChatService extends ChangeNotifier {
         final current = needs[key] ?? 80;
         int decay = _needDecay[key] ?? 0;
 
-        if (isMorning && _needDecayMorning.containsKey(key))
+        if (isMorning && _needDecayMorning.containsKey(key)) {
           decay = _needDecayMorning[key] ?? decay;
-        else if (isNight && _needDecayNight.containsKey(key))
+        } else if (isNight && _needDecayNight.containsKey(key))
           decay = _needDecayNight[key] ?? decay;
 
         if (_needsAfterglowTurnsRemaining > 0 &&
@@ -10672,7 +10955,7 @@ class ChatService extends ChangeNotifier {
   /// just occurred when it hit 0).
   String _buildCatastropheText(String need) {
     return _needCatastropheNarrative[need] ??
-        'Something catastrophic just happened because her ${need} need hit zero.';
+        'Something catastrophic just happened because her $need need hit zero.';
   }
 
   /// Returns the floor value the need should be lifted to immediately after the
@@ -10922,8 +11205,9 @@ class ChatService extends ChangeNotifier {
   Future<void> _verifyNeedFulfillmentCall({
     void Function(String)? onChunk,
   }) async {
-    if (!_needsSimEnabled || !_realismEnabled || _activeCharacter == null)
+    if (!_needsSimEnabled || !_realismEnabled || _activeCharacter == null) {
       return;
+    }
 
     final pendingNeeds = _needsVector.entries
         .where((e) => e.value <= _needFulfillmentScanThreshold)
@@ -10943,7 +11227,6 @@ class ChatService extends ChangeNotifier {
       // Group chat or other mode — relationship evals not supported in this path yet
       return;
     }
-    final charName = _activeCharacter!.name;
     final needListStr = pendingNeeds.join(', ');
 
     final prompt =
@@ -11187,9 +11470,9 @@ class ChatService extends ChangeNotifier {
           // Intensity-scaled duration. Gated effect so it respects afterglow + lust haze.
           final intensity = _extractJsonInt(text, 'orgasm_intensity') ?? 5;
           int crashDur = 0;
-          if (intensity >= 9)
+          if (intensity >= 9) {
             crashDur = 5;
-          else if (intensity >= 7)
+          } else if (intensity >= 7)
             crashDur = 4;
           else if (intensity >= 5)
             crashDur = 3;
@@ -11667,7 +11950,6 @@ class ChatService extends ChangeNotifier {
 
     // Estimate period count from duration language
     int periods = 1;
-    bool isNextDay = false;
 
     if (RegExp(
       r'\b(all day|entire day|full day|day passes|the (whole|entire) day)\b',
@@ -11676,7 +11958,6 @@ class ChatService extends ChangeNotifier {
     } else if (RegExp(
       r'\b(next (morning|day)|the following (morning|day)|wake up|woke up|overnight)\b',
     ).hasMatch(lower)) {
-      isNextDay = true;
       _dayCount++;
       _timeOfDay = 'dawn';
       _turnsSinceLastTimeAdvance = 0;
@@ -11802,10 +12083,11 @@ class ChatService extends ChangeNotifier {
     // Use microseconds for better entropy than milliseconds
     final roll = (DateTime.now().microsecondsSinceEpoch % 100);
     final fires = roll < effectiveChance;
-    if (fires)
+    if (fires) {
       debugPrint(
         '[ChanceTime] Auto-trigger! pressure=$_chaosPressure% roll=$roll',
       );
+    }
     return fires;
   }
 

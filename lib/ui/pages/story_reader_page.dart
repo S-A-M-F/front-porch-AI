@@ -730,8 +730,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
   }
 
   void _buildPages(BoxConstraints constraints, bool isTwoPageSpread) {
-    if (_pages != null && _lastConstraints == constraints)
+    if (_pages != null && _lastConstraints == constraints) {
       return; // Already built for this size
+    }
     _lastConstraints = constraints;
 
     final repo = Provider.of<StoryRepository>(context, listen: false);
@@ -864,8 +865,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             }
           }
 
-          if (bestFitLength == 0)
+          if (bestFitLength == 0) {
             bestFitLength = 1; // Prevent infinite loop on tiny screens
+          }
 
           // Snap strictly to word boundary for aesthetic
           if (bestFitLength < remainingText.length) {
@@ -1023,8 +1025,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
             _currentPage = isTwoPageSpread
                 ? project.lastReadPageIndex ~/ 2
                 : project.lastReadPageIndex;
-            if (_currentPage >= flipCount)
+            if (_currentPage >= flipCount) {
               _currentPage = (flipCount - 1).clamp(0, flipCount);
+            }
           }
           _isFirstLoad = false;
           _lastIsTwoPageSpread = isTwoPageSpread;
@@ -1034,8 +1037,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
               ? _currentPage * 2
               : _currentPage;
           _currentPage = isTwoPageSpread ? oldLogicalPage ~/ 2 : oldLogicalPage;
-          if (_currentPage >= flipCount)
+          if (_currentPage >= flipCount) {
             _currentPage = (flipCount - 1).clamp(0, flipCount);
+          }
           _lastIsTwoPageSpread = isTwoPageSpread;
         }
 

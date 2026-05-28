@@ -18,6 +18,8 @@
 
 import 'dart:convert';
 
+import 'package:image/image.dart' as img;
+
 /// Shared PNG tEXt / iTXt chunk utilities for character cards and group cards.
 ///
 /// These helpers provide reliable extraction that works even for cards created
@@ -99,5 +101,23 @@ class PngMetadataUtils {
     }
 
     return null;
+  }
+
+  /// Encodes an [image] as PNG with an additional uncompressed tEXt chunk.
+  ///
+  /// The [keyword] (max 79 bytes, ASCII) and [text] payload are stored in a
+  /// standard tEXt chunk so tools like SillyTavern ignore it (they only look
+  /// for the 'chara' chunk). Front Porch group cards use the 'fpa_group' keyword.
+  ///
+  /// This re-uses the `image` package's built-in textData support for maximum
+  /// compatibility with how V2 character cards are already written.
+  static List<int> encodeWithTextChunk(
+    img.Image image,
+    String keyword,
+    String text,
+  ) {
+    image.textData ??= {};
+    image.textData![keyword] = text;
+    return img.encodePng(image);
   }
 }

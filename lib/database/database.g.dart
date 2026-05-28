@@ -4896,6 +4896,99 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
         requiredDuringInsert: false,
         defaultValue: const Constant('{}'),
       );
+  static const VerificationMeta _chaosModeEnabledMeta = const VerificationMeta(
+    'chaosModeEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> chaosModeEnabled = GeneratedColumn<bool>(
+    'chaos_mode_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("chaos_mode_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _chaosNsfwEnabledMeta = const VerificationMeta(
+    'chaosNsfwEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> chaosNsfwEnabled = GeneratedColumn<bool>(
+    'chaos_nsfw_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("chaos_nsfw_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _groupLorebookMeta = const VerificationMeta(
+    'groupLorebook',
+  );
+  @override
+  late final GeneratedColumn<String> groupLorebook = GeneratedColumn<String>(
+    'group_lorebook',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _worldIdsMeta = const VerificationMeta(
+    'worldIds',
+  );
+  @override
+  late final GeneratedColumn<String> worldIds = GeneratedColumn<String>(
+    'world_ids',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _inheritCharacterLorebooksMeta =
+      const VerificationMeta('inheritCharacterLorebooks');
+  @override
+  late final GeneratedColumn<bool> inheritCharacterLorebooks =
+      GeneratedColumn<bool>(
+        'inherit_character_lorebooks',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("inherit_character_lorebooks" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
+  static const VerificationMeta _baselineRealismStateMeta =
+      const VerificationMeta('baselineRealismState');
+  @override
+  late final GeneratedColumn<String> baselineRealismState =
+      GeneratedColumn<String>(
+        'baseline_realism_state',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
+  static const VerificationMeta _characterSystemPromptsMeta =
+      const VerificationMeta('characterSystemPrompts');
+  @override
+  late final GeneratedColumn<String> characterSystemPrompts =
+      GeneratedColumn<String>(
+        'character_system_prompts',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -4931,6 +5024,13 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
     scenario,
     systemPrompt,
     defaultMemberRealismState,
+    chaosModeEnabled,
+    chaosNsfwEnabled,
+    groupLorebook,
+    worldIds,
+    inheritCharacterLorebooks,
+    baselineRealismState,
+    characterSystemPrompts,
     updatedAt,
     deletedAt,
   ];
@@ -5025,6 +5125,66 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
         ),
       );
     }
+    if (data.containsKey('chaos_mode_enabled')) {
+      context.handle(
+        _chaosModeEnabledMeta,
+        chaosModeEnabled.isAcceptableOrUnknown(
+          data['chaos_mode_enabled']!,
+          _chaosModeEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('chaos_nsfw_enabled')) {
+      context.handle(
+        _chaosNsfwEnabledMeta,
+        chaosNsfwEnabled.isAcceptableOrUnknown(
+          data['chaos_nsfw_enabled']!,
+          _chaosNsfwEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('group_lorebook')) {
+      context.handle(
+        _groupLorebookMeta,
+        groupLorebook.isAcceptableOrUnknown(
+          data['group_lorebook']!,
+          _groupLorebookMeta,
+        ),
+      );
+    }
+    if (data.containsKey('world_ids')) {
+      context.handle(
+        _worldIdsMeta,
+        worldIds.isAcceptableOrUnknown(data['world_ids']!, _worldIdsMeta),
+      );
+    }
+    if (data.containsKey('inherit_character_lorebooks')) {
+      context.handle(
+        _inheritCharacterLorebooksMeta,
+        inheritCharacterLorebooks.isAcceptableOrUnknown(
+          data['inherit_character_lorebooks']!,
+          _inheritCharacterLorebooksMeta,
+        ),
+      );
+    }
+    if (data.containsKey('baseline_realism_state')) {
+      context.handle(
+        _baselineRealismStateMeta,
+        baselineRealismState.isAcceptableOrUnknown(
+          data['baseline_realism_state']!,
+          _baselineRealismStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('character_system_prompts')) {
+      context.handle(
+        _characterSystemPromptsMeta,
+        characterSystemPrompts.isAcceptableOrUnknown(
+          data['character_system_prompts']!,
+          _characterSystemPromptsMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -5086,6 +5246,34 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
         DriftSqlType.string,
         data['${effectivePrefix}default_member_realism_state'],
       )!,
+      chaosModeEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}chaos_mode_enabled'],
+      )!,
+      chaosNsfwEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}chaos_nsfw_enabled'],
+      )!,
+      groupLorebook: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_lorebook'],
+      )!,
+      worldIds: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}world_ids'],
+      )!,
+      inheritCharacterLorebooks: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}inherit_character_lorebooks'],
+      )!,
+      baselineRealismState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baseline_realism_state'],
+      )!,
+      characterSystemPrompts: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}character_system_prompts'],
+      )!,
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -5121,6 +5309,31 @@ class Group extends DataClass implements Insertable<Group> {
   /// Added in schema v30 as part of proper DB-backed group realism (clean break from
   /// old hidden __group_state__ checkpoint messages).
   final String defaultMemberRealismState;
+  final bool chaosModeEnabled;
+  final bool chaosNsfwEnabled;
+  final String groupLorebook;
+  final String worldIds;
+  final bool inheritCharacterLorebooks;
+
+  /// Immutable creation-time baseline realism/needs seed for this group definition.
+  /// JSON shape is identical to defaultMemberRealismState and sessions.group_realism_state.
+  /// This is the frozen seed captured at group creation / Group Card import time only.
+  /// Distinct from defaultMemberRealismState (which can be updated later for new sessions).
+  /// Clean column (not a blob) per v30 philosophy of explicit storage — makes the
+  /// immutable-seed contract visible to code and to external direct-SQL tools.
+  /// Added in schema v31.
+  final String baselineRealismState;
+
+  /// Per-character system prompt overrides scoped to this group.
+  /// Stored as a first-class JSON column (Map<String, String> keyed by stable charId).
+  ///
+  /// This was previously the last remaining "Path B" transitional hack stored inside
+  /// the defaultMemberRealismState JSON blob. As of v32 it has its own proper column.
+  /// The old extraction/promotion logic inside the realism blob has been fully removed.
+  ///
+  /// Takes precedence over a character's normal system prompt when that character
+  /// speaks inside this specific group, but sits under the group-level systemPrompt.
+  final String characterSystemPrompts;
   final DateTime updatedAt;
   final DateTime? deletedAt;
   const Group({
@@ -5134,6 +5347,13 @@ class Group extends DataClass implements Insertable<Group> {
     required this.scenario,
     required this.systemPrompt,
     required this.defaultMemberRealismState,
+    required this.chaosModeEnabled,
+    required this.chaosNsfwEnabled,
+    required this.groupLorebook,
+    required this.worldIds,
+    required this.inheritCharacterLorebooks,
+    required this.baselineRealismState,
+    required this.characterSystemPrompts,
     required this.updatedAt,
     this.deletedAt,
   });
@@ -5152,6 +5372,15 @@ class Group extends DataClass implements Insertable<Group> {
     map['default_member_realism_state'] = Variable<String>(
       defaultMemberRealismState,
     );
+    map['chaos_mode_enabled'] = Variable<bool>(chaosModeEnabled);
+    map['chaos_nsfw_enabled'] = Variable<bool>(chaosNsfwEnabled);
+    map['group_lorebook'] = Variable<String>(groupLorebook);
+    map['world_ids'] = Variable<String>(worldIds);
+    map['inherit_character_lorebooks'] = Variable<bool>(
+      inheritCharacterLorebooks,
+    );
+    map['baseline_realism_state'] = Variable<String>(baselineRealismState);
+    map['character_system_prompts'] = Variable<String>(characterSystemPrompts);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
@@ -5171,6 +5400,13 @@ class Group extends DataClass implements Insertable<Group> {
       scenario: Value(scenario),
       systemPrompt: Value(systemPrompt),
       defaultMemberRealismState: Value(defaultMemberRealismState),
+      chaosModeEnabled: Value(chaosModeEnabled),
+      chaosNsfwEnabled: Value(chaosNsfwEnabled),
+      groupLorebook: Value(groupLorebook),
+      worldIds: Value(worldIds),
+      inheritCharacterLorebooks: Value(inheritCharacterLorebooks),
+      baselineRealismState: Value(baselineRealismState),
+      characterSystemPrompts: Value(characterSystemPrompts),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
@@ -5196,6 +5432,19 @@ class Group extends DataClass implements Insertable<Group> {
       defaultMemberRealismState: serializer.fromJson<String>(
         json['defaultMemberRealismState'],
       ),
+      chaosModeEnabled: serializer.fromJson<bool>(json['chaosModeEnabled']),
+      chaosNsfwEnabled: serializer.fromJson<bool>(json['chaosNsfwEnabled']),
+      groupLorebook: serializer.fromJson<String>(json['groupLorebook']),
+      worldIds: serializer.fromJson<String>(json['worldIds']),
+      inheritCharacterLorebooks: serializer.fromJson<bool>(
+        json['inheritCharacterLorebooks'],
+      ),
+      baselineRealismState: serializer.fromJson<String>(
+        json['baselineRealismState'],
+      ),
+      characterSystemPrompts: serializer.fromJson<String>(
+        json['characterSystemPrompts'],
+      ),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
@@ -5216,6 +5465,17 @@ class Group extends DataClass implements Insertable<Group> {
       'defaultMemberRealismState': serializer.toJson<String>(
         defaultMemberRealismState,
       ),
+      'chaosModeEnabled': serializer.toJson<bool>(chaosModeEnabled),
+      'chaosNsfwEnabled': serializer.toJson<bool>(chaosNsfwEnabled),
+      'groupLorebook': serializer.toJson<String>(groupLorebook),
+      'worldIds': serializer.toJson<String>(worldIds),
+      'inheritCharacterLorebooks': serializer.toJson<bool>(
+        inheritCharacterLorebooks,
+      ),
+      'baselineRealismState': serializer.toJson<String>(baselineRealismState),
+      'characterSystemPrompts': serializer.toJson<String>(
+        characterSystemPrompts,
+      ),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
@@ -5232,6 +5492,13 @@ class Group extends DataClass implements Insertable<Group> {
     String? scenario,
     String? systemPrompt,
     String? defaultMemberRealismState,
+    bool? chaosModeEnabled,
+    bool? chaosNsfwEnabled,
+    String? groupLorebook,
+    String? worldIds,
+    bool? inheritCharacterLorebooks,
+    String? baselineRealismState,
+    String? characterSystemPrompts,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
   }) => Group(
@@ -5246,6 +5513,15 @@ class Group extends DataClass implements Insertable<Group> {
     systemPrompt: systemPrompt ?? this.systemPrompt,
     defaultMemberRealismState:
         defaultMemberRealismState ?? this.defaultMemberRealismState,
+    chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
+    chaosNsfwEnabled: chaosNsfwEnabled ?? this.chaosNsfwEnabled,
+    groupLorebook: groupLorebook ?? this.groupLorebook,
+    worldIds: worldIds ?? this.worldIds,
+    inheritCharacterLorebooks:
+        inheritCharacterLorebooks ?? this.inheritCharacterLorebooks,
+    baselineRealismState: baselineRealismState ?? this.baselineRealismState,
+    characterSystemPrompts:
+        characterSystemPrompts ?? this.characterSystemPrompts,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
@@ -5273,6 +5549,25 @@ class Group extends DataClass implements Insertable<Group> {
       defaultMemberRealismState: data.defaultMemberRealismState.present
           ? data.defaultMemberRealismState.value
           : this.defaultMemberRealismState,
+      chaosModeEnabled: data.chaosModeEnabled.present
+          ? data.chaosModeEnabled.value
+          : this.chaosModeEnabled,
+      chaosNsfwEnabled: data.chaosNsfwEnabled.present
+          ? data.chaosNsfwEnabled.value
+          : this.chaosNsfwEnabled,
+      groupLorebook: data.groupLorebook.present
+          ? data.groupLorebook.value
+          : this.groupLorebook,
+      worldIds: data.worldIds.present ? data.worldIds.value : this.worldIds,
+      inheritCharacterLorebooks: data.inheritCharacterLorebooks.present
+          ? data.inheritCharacterLorebooks.value
+          : this.inheritCharacterLorebooks,
+      baselineRealismState: data.baselineRealismState.present
+          ? data.baselineRealismState.value
+          : this.baselineRealismState,
+      characterSystemPrompts: data.characterSystemPrompts.present
+          ? data.characterSystemPrompts.value
+          : this.characterSystemPrompts,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
@@ -5291,6 +5586,13 @@ class Group extends DataClass implements Insertable<Group> {
           ..write('scenario: $scenario, ')
           ..write('systemPrompt: $systemPrompt, ')
           ..write('defaultMemberRealismState: $defaultMemberRealismState, ')
+          ..write('chaosModeEnabled: $chaosModeEnabled, ')
+          ..write('chaosNsfwEnabled: $chaosNsfwEnabled, ')
+          ..write('groupLorebook: $groupLorebook, ')
+          ..write('worldIds: $worldIds, ')
+          ..write('inheritCharacterLorebooks: $inheritCharacterLorebooks, ')
+          ..write('baselineRealismState: $baselineRealismState, ')
+          ..write('characterSystemPrompts: $characterSystemPrompts, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
           ..write(')'))
@@ -5309,6 +5611,13 @@ class Group extends DataClass implements Insertable<Group> {
     scenario,
     systemPrompt,
     defaultMemberRealismState,
+    chaosModeEnabled,
+    chaosNsfwEnabled,
+    groupLorebook,
+    worldIds,
+    inheritCharacterLorebooks,
+    baselineRealismState,
+    characterSystemPrompts,
     updatedAt,
     deletedAt,
   );
@@ -5326,6 +5635,13 @@ class Group extends DataClass implements Insertable<Group> {
           other.scenario == this.scenario &&
           other.systemPrompt == this.systemPrompt &&
           other.defaultMemberRealismState == this.defaultMemberRealismState &&
+          other.chaosModeEnabled == this.chaosModeEnabled &&
+          other.chaosNsfwEnabled == this.chaosNsfwEnabled &&
+          other.groupLorebook == this.groupLorebook &&
+          other.worldIds == this.worldIds &&
+          other.inheritCharacterLorebooks == this.inheritCharacterLorebooks &&
+          other.baselineRealismState == this.baselineRealismState &&
+          other.characterSystemPrompts == this.characterSystemPrompts &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
 }
@@ -5341,6 +5657,13 @@ class GroupsCompanion extends UpdateCompanion<Group> {
   final Value<String> scenario;
   final Value<String> systemPrompt;
   final Value<String> defaultMemberRealismState;
+  final Value<bool> chaosModeEnabled;
+  final Value<bool> chaosNsfwEnabled;
+  final Value<String> groupLorebook;
+  final Value<String> worldIds;
+  final Value<bool> inheritCharacterLorebooks;
+  final Value<String> baselineRealismState;
+  final Value<String> characterSystemPrompts;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
   final Value<int> rowid;
@@ -5355,6 +5678,13 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     this.scenario = const Value.absent(),
     this.systemPrompt = const Value.absent(),
     this.defaultMemberRealismState = const Value.absent(),
+    this.chaosModeEnabled = const Value.absent(),
+    this.chaosNsfwEnabled = const Value.absent(),
+    this.groupLorebook = const Value.absent(),
+    this.worldIds = const Value.absent(),
+    this.inheritCharacterLorebooks = const Value.absent(),
+    this.baselineRealismState = const Value.absent(),
+    this.characterSystemPrompts = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5370,6 +5700,13 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     this.scenario = const Value.absent(),
     this.systemPrompt = const Value.absent(),
     this.defaultMemberRealismState = const Value.absent(),
+    this.chaosModeEnabled = const Value.absent(),
+    this.chaosNsfwEnabled = const Value.absent(),
+    this.groupLorebook = const Value.absent(),
+    this.worldIds = const Value.absent(),
+    this.inheritCharacterLorebooks = const Value.absent(),
+    this.baselineRealismState = const Value.absent(),
+    this.characterSystemPrompts = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5386,6 +5723,13 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     Expression<String>? scenario,
     Expression<String>? systemPrompt,
     Expression<String>? defaultMemberRealismState,
+    Expression<bool>? chaosModeEnabled,
+    Expression<bool>? chaosNsfwEnabled,
+    Expression<String>? groupLorebook,
+    Expression<String>? worldIds,
+    Expression<bool>? inheritCharacterLorebooks,
+    Expression<String>? baselineRealismState,
+    Expression<String>? characterSystemPrompts,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
     Expression<int>? rowid,
@@ -5402,6 +5746,16 @@ class GroupsCompanion extends UpdateCompanion<Group> {
       if (systemPrompt != null) 'system_prompt': systemPrompt,
       if (defaultMemberRealismState != null)
         'default_member_realism_state': defaultMemberRealismState,
+      if (chaosModeEnabled != null) 'chaos_mode_enabled': chaosModeEnabled,
+      if (chaosNsfwEnabled != null) 'chaos_nsfw_enabled': chaosNsfwEnabled,
+      if (groupLorebook != null) 'group_lorebook': groupLorebook,
+      if (worldIds != null) 'world_ids': worldIds,
+      if (inheritCharacterLorebooks != null)
+        'inherit_character_lorebooks': inheritCharacterLorebooks,
+      if (baselineRealismState != null)
+        'baseline_realism_state': baselineRealismState,
+      if (characterSystemPrompts != null)
+        'character_system_prompts': characterSystemPrompts,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (rowid != null) 'rowid': rowid,
@@ -5419,6 +5773,13 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     Value<String>? scenario,
     Value<String>? systemPrompt,
     Value<String>? defaultMemberRealismState,
+    Value<bool>? chaosModeEnabled,
+    Value<bool>? chaosNsfwEnabled,
+    Value<String>? groupLorebook,
+    Value<String>? worldIds,
+    Value<bool>? inheritCharacterLorebooks,
+    Value<String>? baselineRealismState,
+    Value<String>? characterSystemPrompts,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
     Value<int>? rowid,
@@ -5435,6 +5796,15 @@ class GroupsCompanion extends UpdateCompanion<Group> {
       systemPrompt: systemPrompt ?? this.systemPrompt,
       defaultMemberRealismState:
           defaultMemberRealismState ?? this.defaultMemberRealismState,
+      chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
+      chaosNsfwEnabled: chaosNsfwEnabled ?? this.chaosNsfwEnabled,
+      groupLorebook: groupLorebook ?? this.groupLorebook,
+      worldIds: worldIds ?? this.worldIds,
+      inheritCharacterLorebooks:
+          inheritCharacterLorebooks ?? this.inheritCharacterLorebooks,
+      baselineRealismState: baselineRealismState ?? this.baselineRealismState,
+      characterSystemPrompts:
+          characterSystemPrompts ?? this.characterSystemPrompts,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
@@ -5476,6 +5846,33 @@ class GroupsCompanion extends UpdateCompanion<Group> {
         defaultMemberRealismState.value,
       );
     }
+    if (chaosModeEnabled.present) {
+      map['chaos_mode_enabled'] = Variable<bool>(chaosModeEnabled.value);
+    }
+    if (chaosNsfwEnabled.present) {
+      map['chaos_nsfw_enabled'] = Variable<bool>(chaosNsfwEnabled.value);
+    }
+    if (groupLorebook.present) {
+      map['group_lorebook'] = Variable<String>(groupLorebook.value);
+    }
+    if (worldIds.present) {
+      map['world_ids'] = Variable<String>(worldIds.value);
+    }
+    if (inheritCharacterLorebooks.present) {
+      map['inherit_character_lorebooks'] = Variable<bool>(
+        inheritCharacterLorebooks.value,
+      );
+    }
+    if (baselineRealismState.present) {
+      map['baseline_realism_state'] = Variable<String>(
+        baselineRealismState.value,
+      );
+    }
+    if (characterSystemPrompts.present) {
+      map['character_system_prompts'] = Variable<String>(
+        characterSystemPrompts.value,
+      );
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -5501,6 +5898,13 @@ class GroupsCompanion extends UpdateCompanion<Group> {
           ..write('scenario: $scenario, ')
           ..write('systemPrompt: $systemPrompt, ')
           ..write('defaultMemberRealismState: $defaultMemberRealismState, ')
+          ..write('chaosModeEnabled: $chaosModeEnabled, ')
+          ..write('chaosNsfwEnabled: $chaosNsfwEnabled, ')
+          ..write('groupLorebook: $groupLorebook, ')
+          ..write('worldIds: $worldIds, ')
+          ..write('inheritCharacterLorebooks: $inheritCharacterLorebooks, ')
+          ..write('baselineRealismState: $baselineRealismState, ')
+          ..write('characterSystemPrompts: $characterSystemPrompts, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
@@ -11824,6 +12228,13 @@ typedef $$GroupsTableCreateCompanionBuilder =
       Value<String> scenario,
       Value<String> systemPrompt,
       Value<String> defaultMemberRealismState,
+      Value<bool> chaosModeEnabled,
+      Value<bool> chaosNsfwEnabled,
+      Value<String> groupLorebook,
+      Value<String> worldIds,
+      Value<bool> inheritCharacterLorebooks,
+      Value<String> baselineRealismState,
+      Value<String> characterSystemPrompts,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
       Value<int> rowid,
@@ -11840,6 +12251,13 @@ typedef $$GroupsTableUpdateCompanionBuilder =
       Value<String> scenario,
       Value<String> systemPrompt,
       Value<String> defaultMemberRealismState,
+      Value<bool> chaosModeEnabled,
+      Value<bool> chaosNsfwEnabled,
+      Value<String> groupLorebook,
+      Value<String> worldIds,
+      Value<bool> inheritCharacterLorebooks,
+      Value<String> baselineRealismState,
+      Value<String> characterSystemPrompts,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
       Value<int> rowid,
@@ -11901,6 +12319,41 @@ class $$GroupsTableFilterComposer
 
   ColumnFilters<String> get defaultMemberRealismState => $composableBuilder(
     column: $table.defaultMemberRealismState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get chaosModeEnabled => $composableBuilder(
+    column: $table.chaosModeEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get chaosNsfwEnabled => $composableBuilder(
+    column: $table.chaosNsfwEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupLorebook => $composableBuilder(
+    column: $table.groupLorebook,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get worldIds => $composableBuilder(
+    column: $table.worldIds,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get inheritCharacterLorebooks => $composableBuilder(
+    column: $table.inheritCharacterLorebooks,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baselineRealismState => $composableBuilder(
+    column: $table.baselineRealismState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get characterSystemPrompts => $composableBuilder(
+    column: $table.characterSystemPrompts,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11974,6 +12427,41 @@ class $$GroupsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get chaosModeEnabled => $composableBuilder(
+    column: $table.chaosModeEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get chaosNsfwEnabled => $composableBuilder(
+    column: $table.chaosNsfwEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupLorebook => $composableBuilder(
+    column: $table.groupLorebook,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get worldIds => $composableBuilder(
+    column: $table.worldIds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get inheritCharacterLorebooks => $composableBuilder(
+    column: $table.inheritCharacterLorebooks,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baselineRealismState => $composableBuilder(
+    column: $table.baselineRealismState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get characterSystemPrompts => $composableBuilder(
+    column: $table.characterSystemPrompts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -12036,6 +12524,39 @@ class $$GroupsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get chaosModeEnabled => $composableBuilder(
+    column: $table.chaosModeEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get chaosNsfwEnabled => $composableBuilder(
+    column: $table.chaosNsfwEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get groupLorebook => $composableBuilder(
+    column: $table.groupLorebook,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get worldIds =>
+      $composableBuilder(column: $table.worldIds, builder: (column) => column);
+
+  GeneratedColumn<bool> get inheritCharacterLorebooks => $composableBuilder(
+    column: $table.inheritCharacterLorebooks,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get baselineRealismState => $composableBuilder(
+    column: $table.baselineRealismState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get characterSystemPrompts => $composableBuilder(
+    column: $table.characterSystemPrompts,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
@@ -12081,6 +12602,13 @@ class $$GroupsTableTableManager
                 Value<String> scenario = const Value.absent(),
                 Value<String> systemPrompt = const Value.absent(),
                 Value<String> defaultMemberRealismState = const Value.absent(),
+                Value<bool> chaosModeEnabled = const Value.absent(),
+                Value<bool> chaosNsfwEnabled = const Value.absent(),
+                Value<String> groupLorebook = const Value.absent(),
+                Value<String> worldIds = const Value.absent(),
+                Value<bool> inheritCharacterLorebooks = const Value.absent(),
+                Value<String> baselineRealismState = const Value.absent(),
+                Value<String> characterSystemPrompts = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -12095,6 +12623,13 @@ class $$GroupsTableTableManager
                 scenario: scenario,
                 systemPrompt: systemPrompt,
                 defaultMemberRealismState: defaultMemberRealismState,
+                chaosModeEnabled: chaosModeEnabled,
+                chaosNsfwEnabled: chaosNsfwEnabled,
+                groupLorebook: groupLorebook,
+                worldIds: worldIds,
+                inheritCharacterLorebooks: inheritCharacterLorebooks,
+                baselineRealismState: baselineRealismState,
+                characterSystemPrompts: characterSystemPrompts,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 rowid: rowid,
@@ -12111,6 +12646,13 @@ class $$GroupsTableTableManager
                 Value<String> scenario = const Value.absent(),
                 Value<String> systemPrompt = const Value.absent(),
                 Value<String> defaultMemberRealismState = const Value.absent(),
+                Value<bool> chaosModeEnabled = const Value.absent(),
+                Value<bool> chaosNsfwEnabled = const Value.absent(),
+                Value<String> groupLorebook = const Value.absent(),
+                Value<String> worldIds = const Value.absent(),
+                Value<bool> inheritCharacterLorebooks = const Value.absent(),
+                Value<String> baselineRealismState = const Value.absent(),
+                Value<String> characterSystemPrompts = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -12125,6 +12667,13 @@ class $$GroupsTableTableManager
                 scenario: scenario,
                 systemPrompt: systemPrompt,
                 defaultMemberRealismState: defaultMemberRealismState,
+                chaosModeEnabled: chaosModeEnabled,
+                chaosNsfwEnabled: chaosNsfwEnabled,
+                groupLorebook: groupLorebook,
+                worldIds: worldIds,
+                inheritCharacterLorebooks: inheritCharacterLorebooks,
+                baselineRealismState: baselineRealismState,
+                characterSystemPrompts: characterSystemPrompts,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 rowid: rowid,

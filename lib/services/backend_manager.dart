@@ -311,8 +311,9 @@ class BackendManager extends ChangeNotifier {
 
   String _formatSpeed(double bytesPerSec) {
     if (bytesPerSec < 1024) return '${bytesPerSec.toStringAsFixed(1)} B/s';
-    if (bytesPerSec < 1024 * 1024)
+    if (bytesPerSec < 1024 * 1024) {
       return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
+    }
     return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s';
   }
 
@@ -340,12 +341,14 @@ class BackendManager extends ChangeNotifier {
   }
 
   String _getDownloadUrl() {
-    if (Platform.isWindows)
+    if (Platform.isWindows) {
       return 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp.exe';
+    }
     if (Platform.isLinux) {
       if (_useRocm) return 'https://koboldai.org/cpplinuxrocm';
-      if (_hasCuda)
+      if (_hasCuda) {
         return 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-linux-x64';
+      }
       return 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-linux-x64-nocuda';
     }
     if (Platform.isMacOS) {
