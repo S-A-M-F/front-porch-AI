@@ -1999,8 +1999,9 @@ class _HomePageState extends State<HomePage> {
     }
 
     // Create the group itself
-    // Seed portable group realism/needs defaults from the imported card if present
-    // (enables split-to-solo characters to inherit evolved bond/trust/emotion/etc from the group).
+    // Seed portable group realism/needs defaults (including relationships for Group Dynamics)
+    // from the imported card if present. This fulfills the v30+ contract that
+    // defaultMemberRealismState travels with Group Cards for new sessions and split-to-solo.
     final importedRealism = groupCard.extensions?['realism_state'];
 
     // Path B compatibility: Prefer the new top-level `character_system_prompts` key in the Group Card.
@@ -2032,6 +2033,13 @@ class _HomePageState extends State<HomePage> {
       chaosNsfwEnabled: groupCard.chaosNsfwEnabled,
       baselineRealismState: groupCard.baselineRealismState.isNotEmpty
           ? groupCard.baselineRealismState
+          : '{}',
+      // Full round-trip of the rich per-member default state (v30+).
+      // This carries needs vectors, 'enjoysLowHygiene', the hidden 'relationships'
+      // map for Group Dynamics (small groups), etc. This is what ChatService uses
+      // as the seed for brand-new sessions after import and for split-to-solo.
+      defaultMemberRealismState: groupCard.defaultMemberRealismState.isNotEmpty
+          ? groupCard.defaultMemberRealismState
           : '{}',
       characterSystemPrompts: importedCharPrompts,
     );
@@ -2213,11 +2221,25 @@ class _HomePageState extends State<HomePage> {
           worldIds: group.worldIds,
           inheritCharacterLorebooks: group.inheritCharacterLorebooks,
           baselineRealismState: group.baselineRealismState,
+          defaultMemberRealismState: group.defaultMemberRealismState,
           memberObjectives: memberObjectives,
           extensions: (group.baselineRealismState.isNotEmpty &&
                   group.baselineRealismState != '{}')
-              ? {'realism_state': jsonDecode(group.baselineRealismState)}
-              : null,
+              ? {
+                  'realism_state': jsonDecode(group.baselineRealismState),
+                  // Also expose the richer default state under the legacy key for
+                  // any external readers that only looked at the old realism_state blob.
+                  if (group.defaultMemberRealismState.isNotEmpty &&
+                      group.defaultMemberRealismState != '{}')
+                    'default_member_realism_state': jsonDecode(group.defaultMemberRealismState),
+                }
+              : (group.defaultMemberRealismState.isNotEmpty &&
+                      group.defaultMemberRealismState != '{}')
+                  ? {
+                      'default_member_realism_state':
+                          jsonDecode(group.defaultMemberRealismState),
+                    }
+                  : null,
         );
 
         final service = GroupCardService();
