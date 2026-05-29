@@ -2548,6 +2548,7 @@ class _LorebookWorldsTabState extends State<_LorebookWorldsTab> {
   Future<void> _showEntryEditor({LorebookEntry? existing, int? index}) async {
     final keyCtrl = TextEditingController(text: existing?.key ?? '');
     final contentCtrl = TextEditingController(text: existing?.content ?? '');
+
     bool enabled = existing?.enabled ?? true;
     bool constant = existing?.constant ?? false;
     int stickyDepth = existing?.stickyDepth ?? 1;
@@ -2556,63 +2557,133 @@ class _LorebookWorldsTabState extends State<_LorebookWorldsTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceOf(context),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(existing == null ? 'Add Lore Entry' : 'Edit Lore Entry'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppTextField(
-                controller: keyCtrl,
-                decoration: const InputDecoration(labelText: 'Trigger Keys (comma separated)'),
-                style: TextStyle(color: AppColors.textPrimary(context)),
-              ),
-              const SizedBox(height: 12),
-              AppTextField(
-                controller: contentCtrl,
-                maxLines: 6,
-                decoration: const InputDecoration(labelText: 'Content (injected when triggered)'),
-                style: TextStyle(color: AppColors.textPrimary(context)),
-              ),
-              const SizedBox(height: 12),
-              Row(
+        content: StatefulBuilder(
+          builder: (innerCtx, setInnerState) {
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: SwitchListTile(
-                      title: const Text('Enabled'),
-                      value: enabled,
-                      onChanged: (v) => enabled = v,
-                      dense: true,
+                  if (!constant) ...[
+                    AppTextField(
+                      controller: keyCtrl,
+                      decoration: const InputDecoration(labelText: 'Trigger Keys (comma separated)'),
+                      style: TextStyle(color: AppColors.textPrimary(context)),
                     ),
+                    const SizedBox(height: 12),
+                  ],
+                  AppTextField(
+                    controller: contentCtrl,
+                    maxLines: 6,
+                    decoration: const InputDecoration(labelText: 'Content (injected when triggered)'),
+                    style: TextStyle(color: AppColors.textPrimary(context)),
                   ),
-                  Expanded(
-                    child: SwitchListTile(
-                      title: const Text('Constant'),
-                      value: constant,
-                      onChanged: (v) => constant = v,
-                      dense: true,
+                  const SizedBox(height: 16),
+
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardOf(context),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.borderOf(context)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Enabled', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  const SizedBox(height: 2),
+                                  Text('This entry can be injected when its keys match', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: enabled,
+                              onChanged: (v) => setInnerState(() => enabled = v),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Divider(color: AppColors.borderOf(context), height: 1),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Constant', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  const SizedBox(height: 2),
+                                  Text('Always considered active (ignores trigger keys)', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: constant,
+                              onChanged: (v) => setInnerState(() => constant = v),
+                            ),
+                          ],
+                        ),
+                        if (!constant) ...[
+                          const SizedBox(height: 12),
+                          Divider(color: AppColors.borderOf(context), height: 1),
+                          const SizedBox(height: 12),
+
+                          // Sticky Depth — clean slider presentation
+                          // (hidden when Constant is on, since constant entries never decay)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text('Sticky Depth', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  const Spacer(),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surfaceContainerOf(context),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text('$stickyDepth', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text('How many turns the entry stays active after triggering', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                              const SizedBox(height: 6),
+                              SliderTheme(
+                                data: SliderThemeData(
+                                  activeTrackColor: Colors.tealAccent,
+                                  inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.4),
+                                  thumbColor: Colors.tealAccent,
+                                  trackHeight: 3,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                                ),
+                                child: Slider(
+                                  value: stickyDepth.toDouble().clamp(0, 12),
+                                  min: 0,
+                                  max: 12,
+                                  divisions: 12,
+                                  label: stickyDepth.toString(),
+                                  onChanged: (v) => setInnerState(() => stickyDepth = v.round()),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Text('Sticky Depth'),
-                  Expanded(
-                    child: Slider(
-                      value: stickyDepth.toDouble(),
-                      min: 0,
-                      max: 10,
-                      divisions: 10,
-                      label: stickyDepth.toString(),
-                      onChanged: (v) => stickyDepth = v.round(),
-                    ),
-                  ),
-                  Text(stickyDepth.toString()),
-                ],
-              ),
-            ],
-          ),
+            );
+          },
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -2640,7 +2711,6 @@ class _LorebookWorldsTabState extends State<_LorebookWorldsTab> {
       } else {
         _groupLoreEntries.add(newEntry);
       }
-      
     });
   }
 

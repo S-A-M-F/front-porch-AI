@@ -464,6 +464,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final keyCtrl = TextEditingController(text: existing?.key ?? '');
     final contentCtrl = TextEditingController(text: existing?.content ?? '');
+
+    // Use StatefulBuilder so the toggles and slider update live inside the dialog.
+    // The previous Row + Expanded + SwitchListTile pattern caused horrific wrapping
+    // ("Enable d", "Consta nt") and the switches/slider never responded visually.
     bool enabled = existing?.enabled ?? true;
     bool constant = existing?.constant ?? false;
     int sticky = existing?.stickyDepth ?? 1;
@@ -472,29 +476,127 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceOf(context),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(existing == null ? 'Add Group Lore Entry' : 'Edit Group Lore Entry'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppTextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Entry Name (optional)')),
-              const SizedBox(height: 10),
-              AppTextField(controller: keyCtrl, decoration: const InputDecoration(labelText: 'Trigger Keys (comma or space separated)')),
-              const SizedBox(height: 10),
-              AppTextField(controller: contentCtrl, maxLines: 5, decoration: const InputDecoration(labelText: 'Content (injected when triggered)')),
-              const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: SwitchListTile(title: const Text('Enabled'), value: enabled, onChanged: (v) => setState(() => enabled = v), dense: true)),
-                Expanded(child: SwitchListTile(title: const Text('Constant'), value: constant, onChanged: (v) => setState(() => constant = v), dense: true)),
-              ]),
-              const SizedBox(height: 8),
-              Row(children: [
-                const Text('Sticky Depth'),
-                Expanded(child: Slider(value: sticky.toDouble(), min: 0, max: 12, divisions: 12, label: sticky.toString(), onChanged: (v) => setState(() => sticky = v.round()))),
-                Text(sticky.toString()),
-              ]),
-            ],
-          ),
+        content: StatefulBuilder(
+          builder: (innerCtx, setInnerState) {
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppTextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Entry Name (optional)')),
+                  if (!constant) ...[
+                    const SizedBox(height: 12),
+                    AppTextField(controller: keyCtrl, decoration: const InputDecoration(labelText: 'Trigger Keys (comma or space separated)')),
+                  ],
+                  const SizedBox(height: 12),
+                  AppTextField(controller: contentCtrl, maxLines: 5, decoration: const InputDecoration(labelText: 'Content (injected when triggered)')),
+                  const SizedBox(height: 16),
+
+                  // Clean, non-wrapping toggle section (replaces the broken SwitchListTile rows)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardOf(context),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.borderOf(context)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Enabled', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  const SizedBox(height: 2),
+                                  Text('This entry can be injected when its keys match', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: enabled,
+                              onChanged: (v) => setInnerState(() => enabled = v),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Divider(color: AppColors.borderOf(context), height: 1),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Constant', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  const SizedBox(height: 2),
+                                  Text('Always considered active (ignores trigger keys)', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: constant,
+                              onChanged: (v) => setInnerState(() => constant = v),
+                            ),
+                          ],
+                        ),
+                        if (!constant) ...[
+                          const SizedBox(height: 12),
+                          Divider(color: AppColors.borderOf(context), height: 1),
+                          const SizedBox(height: 12),
+
+                          // Sticky Depth — clean slider presentation
+                          // (hidden when Constant is on, since constant entries never decay)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text('Sticky Depth', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  const Spacer(),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surfaceContainerOf(context),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text('$sticky', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text('How many turns the entry stays active after triggering', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                              const SizedBox(height: 6),
+                              SliderTheme(
+                                data: SliderThemeData(
+                                  activeTrackColor: Colors.tealAccent,
+                                  inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.4),
+                                  thumbColor: Colors.tealAccent,
+                                  trackHeight: 3,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                                ),
+                                child: Slider(
+                                  value: sticky.toDouble().clamp(0, 12),
+                                  min: 0,
+                                  max: 12,
+                                  divisions: 12,
+                                  label: sticky.toString(),
+                                  onChanged: (v) => setInnerState(() => sticky = v.round()),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -1349,8 +1451,8 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                           showMasterEnabledToggle: false,
                           // Enjoys low hygiene will now naturally appear under Optional Features
                           // when the global Needs Simulation is enabled (because needsSimEnabled is passed above).
-                          enjoysLowHygiene: false,
-                          onEnjoysLowHygieneChanged: (_) {},
+                          enjoysLowHygiene: (seed['enjoysLowHygiene'] as bool?) ?? false,
+                          onEnjoysLowHygieneChanged: (v) => _updateMemberRealism(id, {'enjoysLowHygiene': v}),
                           currentTask: (seed['currentTask'] as String?) ?? '',
                           onCurrentTaskChanged: (v) => _updateMemberRealism(id, {'currentTask': v}),
                         ),
