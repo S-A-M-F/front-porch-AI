@@ -196,9 +196,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   int? _getEffectiveNextStep(int current) {
     int next = current + 1;
 
-    // Skip Group Dynamics (step 6) if group is too large
-    if (next == 6 && _members.length > 4) {
-      next = 7;
+    // Skip Group Dynamics (now step 5) if group is too large
+    if (next == 5 && _members.length > 4) {
+      next = 6; // jump to Opening
     }
 
     if (next > 7) return null; // beyond Review
@@ -210,7 +210,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
     // If we are coming back from Review and skipped Dynamics, go to Realism instead
     if (current == 7 && _members.length > 4) {
-      prev = 5;
+      prev = 4; // Realism
     }
 
     if (prev < 0) prev = 0;
@@ -328,7 +328,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
   // ── AI GENERATION (adapted + improved from old dialog) ─────────────
 
-  Future<void> _generateScenario() async {
+  Future<void> _generateScenario({String dynamicsContext = ''}) async {
     final llm = Provider.of<LLMProvider>(context, listen: false);
     final service = llm.activeService;
     if (!service.isReady) {
@@ -343,9 +343,13 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       return '${c.name} ($trait)';
     }).join(', ');
 
+    final dynamicsCtx = dynamicsContext.isNotEmpty
+        ? '\n\nHidden inter-character dynamics to reflect in the setting and atmosphere:\n$dynamicsContext\n\nIncorporate the emotional undercurrents between the characters into the description of the location and situation (without stating them directly).'
+        : '';
+
     final prompt = '[Output ONLY the scenario text. No planning, reasoning, or explanation. '
         'Do NOT use <think> tags.]\n\n'
-        'Write a brief scenario (1-2 sentences max) for a group roleplay with: $briefs.\n'
+        'Write a brief scenario (1-2 sentences max) for a group roleplay with: $briefs.$dynamicsCtx\n'
         'The scenario should describe WHERE the characters are and WHAT is happening.\n'
         'Use {{user}} to refer to the player when appropriate. Keep it concise.\n\n'
         'SCENARIO: ';
@@ -372,7 +376,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     }
   }
 
-  Future<void> _generateFirstMessage() async {
+  Future<void> _generateFirstMessage({String dynamicsContext = ''}) async {
     final llm = Provider.of<LLMProvider>(context, listen: false);
     final service = llm.activeService;
     if (!service.isReady) {
@@ -391,11 +395,15 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         ? '\nThe group scenario is: ${_scenarioController.text.trim()}'
         : '';
 
+    final dynamicsCtx = dynamicsContext.isNotEmpty
+        ? '\n\n$dynamicsContext\n\nIMPORTANT INSTRUCTIONS FOR USING THE DYNAMICS:\n- These are the characters\' private, hidden feelings toward one another (the player does not know these feelings exist).\n- Use them to create natural tension, chemistry, coldness, protectiveness, jealousy, affection, etc. in the opening scene.\n- Show the dynamics through subtext, body language, tone of voice, who stands near whom, micro-expressions, and how characters speak to (or about) each other.\n- Never have a character explicitly state their numerical score or tier. Reveal it organically through behavior and dialogue.\n- Strong negative scores should create visible friction or wariness. Strong positive scores should create warmth, protectiveness, or instinctive closeness.'
+        : '';
+
     final isDirector = _directorMode;
     final prompt = isDirector
         ? '[INSTRUCTIONS: Output ONLY the creative scene text. '
           'Do NOT plan, reason, analyze, or explain. Do NOT use <think> tags. Start writing IMMEDIATELY.]\n\n'
-          'Write a vivid, immersive opening scene (3-5 paragraphs) for a DIRECTOR MODE group roleplay featuring:\n$descriptions$scenarioCtx\n\n'
+          'Write a vivid, immersive opening scene (3-5 paragraphs) for a DIRECTOR MODE group roleplay featuring:\n$descriptions$scenarioCtx$dynamicsCtx\n\n'
           'CRITICAL: There is NO user/player present. Characters interact ONLY with each other.\n'
           'Each character MUST have at least 2 lines of dialogue.\n'
           'Characters address and react to EACH OTHER.\n'
@@ -404,7 +412,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           'BEGIN SCENE:\n'
         : '[INSTRUCTIONS: Output ONLY the creative scene text. '
           'Do NOT plan, reason, analyze, or explain. Do NOT use <think> tags. Start writing IMMEDIATELY.]\n\n'
-          'Write a vivid, immersive opening message (2-4 paragraphs) for a group roleplay featuring:\n$descriptions$scenarioCtx\n\n'
+          'Write a vivid, immersive opening message (2-4 paragraphs) for a group roleplay featuring:\n$descriptions$scenarioCtx$dynamicsCtx\n\n'
           'The player ({{user}}) is present. Include natural dialogue from the characters and actions in *asterisks*.\n'
           'Keep it engaging and true to the characters.\n\n'
           'OPENING:\n';
@@ -630,6 +638,44 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     setState(() => _groupLoreEntries.removeAt(index));
   }
 
+  /// Builds a rich, explanatory summary of the current hidden inter-character
+  /// relationships (from the Group Dynamics step) to feed into AI generation.
+  /// Includes guidance on the -300 to +300 scale so the model actually understands
+  /// how to use the data when writing the opening scene.
+  String _buildDynamicsContextForGeneration() {
+    if (_members.length > 4) return '';
+
+    final buffer = StringBuffer();
+    buffer.writeln('Hidden inter-character dynamics (these are private feelings the characters have toward each other — the player does not know about them):');
+    buffer.writeln('Scale explanation: Values range from -300 (extreme hatred/resentment) to +300 (deep soul-level bond).');
+    buffer.writeln('Rough tiers: 80+ = Soulbound / extremely devoted, 50+ = Deep Bond, 20+ = Close, 5+ = Friendly, -4 to +4 = Neutral, -5 to -19 = Uneasy, -20 to -49 = Distant, -50 to -79 = Hostile, -80 and below = Nemesis / intense personal animosity.');
+    buffer.writeln('');
+
+    for (final source in _members) {
+      final sourceId = _stableId(source);
+      final seed = _memberRealismSeeds[sourceId];
+      final rels = (seed?['relationships'] as Map?)?.cast<String, int>() ?? {};
+      if (rels.isEmpty) continue;
+
+      for (final entry in rels.entries) {
+        final target = _members.firstWhere(
+          (m) => _stableId(m) == entry.key,
+          orElse: () => source,
+        );
+        if (target == source) continue;
+
+        final value = entry.value;
+        final tier = _getRelationshipTierName(value);
+        buffer.writeln('- ${source.name} feels ${tier.toLowerCase()} toward ${target.name} (score: $value on -300 to +300 scale)');
+      }
+    }
+
+    buffer.writeln('');
+    buffer.writeln('When writing the opening scene, reflect these private feelings naturally through body language, tone, subtext, and how the characters interact with each other. Do not state the scores directly.');
+
+    return buffer.toString().trim();
+  }
+
   // ── WORLD HELPERS ──────────────────────────────────────────────────
 
   void _toggleWorld(String worldId) {
@@ -753,6 +799,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     await chatService.setActiveGroup(group);
     await chatService.startNewChat();
 
+    // Make sure custom scenario/first message from the wizard actually stick.
+    // startNewChat() can clear the greeting that setActiveGroup injected.
+    chatService.ensureCustomGroupOpeningMessage(group);
+
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const ChatPage()),
@@ -803,15 +853,15 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 : _currentStep == 1
                 ? _buildIdentityStep()
                 : _currentStep == 2
-                ? _buildOpeningStep()
-                : _currentStep == 3
                 ? _buildPromptsStep()
-                : _currentStep == 4
+                : _currentStep == 3
                 ? _buildLoreStep()
-                : _currentStep == 5
+                : _currentStep == 4
                 ? _buildRealismStep()
-                : _currentStep == 6
+                : _currentStep == 5
                 ? (_members.length <= 4 ? _buildGroupDynamicsStep() : _buildGroupDynamicsDisabledStep())
+                : _currentStep == 6
+                ? _buildOpeningStep()
                 : _buildReviewStep(),
           ),
         ],
@@ -1027,40 +1077,54 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text('Opening Scene', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+
           Row(
             children: [
-              Expanded(child: Text('Opening Scene', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+              Expanded(child: Text('Scenario (optional)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
               TextButton.icon(
-                onPressed: _isGeneratingScenario ? null : _generateScenario,
-                icon: _isGeneratingScenario ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
-                label: Text(_isGeneratingScenario ? 'Generating...' : 'Generate Scenario'),
+                onPressed: () async {
+                  final dynamics = _buildDynamicsContextForGeneration();
+                  await _generateScenario(dynamicsContext: dynamics);
+                },
+                icon: _isGeneratingScenario
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
+                label: Text(_isGeneratingScenario ? 'Generating...' : 'Generate with Dynamics'),
               ),
             ],
           ),
           const SizedBox(height: 8),
           AppTextField(controller: _scenarioController, maxLines: 3, decoration: const InputDecoration(hintText: 'The group is...')),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
+
           Row(
             children: [
               Expanded(child: Text('First Message (optional)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
               TextButton.icon(
-                onPressed: _isGeneratingFirst ? null : _generateFirstMessage,
-                icon: _isGeneratingFirst ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
-                label: Text(_isGeneratingFirst ? 'Generating...' : 'Generate'),
+                onPressed: () async {
+                  final dynamics = _buildDynamicsContextForGeneration();
+                  await _generateFirstMessage(dynamicsContext: dynamics);
+                },
+                icon: _isGeneratingFirst
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
+                label: Text(_isGeneratingFirst ? 'Generating...' : 'Generate with Dynamics'),
               ),
             ],
           ),
           const SizedBox(height: 8),
           AppTextField(controller: _firstMessageController, maxLines: 8, decoration: const InputDecoration(hintText: 'The scene opens with...')),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           if (_directorMode)
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
-              child: const Text('Director Mode active: generated first message will be a self-contained group scene with no {{user}}.', style: TextStyle(color: Colors.amberAccent)),
+              child: const Text('Director Mode: generated opening will be a self-contained group scene.', style: TextStyle(fontSize: 13, color: Colors.amberAccent)),
             ),
 
-          _buildNavButtons(currentStep: 2),
+          _buildNavButtons(currentStep: 6),
         ],
       ),
     );
@@ -1101,7 +1165,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           }),
           if (_members.isEmpty) const Text('Add members first to configure per-character prompts.'),
 
-          _buildNavButtons(currentStep: 3),
+          _buildNavButtons(currentStep: 2),
         ],
       ),
     );
@@ -1178,7 +1242,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             ],
           ),
 
-          _buildNavButtons(currentStep: 4),
+          _buildNavButtons(currentStep: 3),
         ],
       ),
     );
@@ -1478,7 +1542,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             ),
           ],
 
-          _buildNavButtons(currentStep: 5),
+          _buildNavButtons(currentStep: 4),
         ],
       ),
     );
@@ -1641,7 +1705,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
           ),
 
-          _buildNavButtons(currentStep: 6),
+          _buildNavButtons(currentStep: 5),
         ],
       ),
     );
@@ -1704,8 +1768,58 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Review', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          Text('Review & Opening', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
+
+          // Scenario + First Message moved here (last step) so AI generation
+          // can use the hidden relationships from the Group Dynamics step.
+          Row(
+            children: [
+              Expanded(child: Text('Scenario (optional)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+              TextButton.icon(
+                onPressed: () async {
+                  final dynamics = _buildDynamicsContextForGeneration();
+                  await _generateScenario(dynamicsContext: dynamics);
+                },
+                icon: _isGeneratingScenario
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
+                label: Text(_isGeneratingScenario ? 'Generating...' : 'Generate with Dynamics'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AppTextField(controller: _scenarioController, maxLines: 3, decoration: const InputDecoration(hintText: 'The group is...')),
+          const SizedBox(height: 20),
+
+          Row(
+            children: [
+              Expanded(child: Text('First Message (optional)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+              TextButton.icon(
+                onPressed: () async {
+                  final dynamics = _buildDynamicsContextForGeneration();
+                  await _generateFirstMessage(dynamicsContext: dynamics);
+                },
+                icon: _isGeneratingFirst
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
+                label: Text(_isGeneratingFirst ? 'Generating...' : 'Generate with Dynamics'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AppTextField(controller: _firstMessageController, maxLines: 8, decoration: const InputDecoration(hintText: 'The scene opens with...')),
+          const SizedBox(height: 8),
+          if (_directorMode)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+              child: const Text('Director Mode: generated opening will be a self-contained group scene.', style: TextStyle(fontSize: 13, color: Colors.amberAccent)),
+            ),
+
+          const SizedBox(height: 24),
+
+          // Single group summary
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: AppColors.cardOf(context), borderRadius: BorderRadius.circular(12)),
@@ -1727,6 +1841,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             ),
           ),
           const SizedBox(height: 24),
+
           ElevatedButton.icon(
             onPressed: _createGroup,
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)), minimumSize: const Size.fromHeight(52)),
@@ -1752,11 +1867,11 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final labels = [
       'Members',
       'Identity',
-      'Opening',
       'Prompts',
       'Lore',
       'Realism',
       'Group Dynamics',
+      'Opening',
       'Review',
     ];
 

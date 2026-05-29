@@ -2583,6 +2583,30 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ensures that a newly created group with a custom first message actually
+  /// has that message as the opening (some flows like startNewChat() can clear
+  /// the greeting that was set during setActiveGroup).
+  void ensureCustomGroupOpeningMessage(GroupChat group) {
+    if (group.firstMessage.trim().isEmpty) return;
+    if (_messages.isNotEmpty) return;
+
+    final text = _applyUserReplacement(group.firstMessage);
+    _messages.add(
+      ChatMessage(
+        text: text,
+        sender: group.name,
+        isUser: false,
+        characterId: null,
+      ),
+    );
+    _scanLorebook(_messages.last.text);
+
+    if (_currentSessionId == null) {
+      _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
+    }
+    debugPrint('[ChatService] Re-injected custom group first message after new chat setup');
+  }
+
   /// Fork the current 1:1 chat into a new group chat, copying all messages.
   /// The original 1:1 session remains untouched.
   Future<GroupChat?> forkToGroupChat(
@@ -2786,6 +2810,12 @@ class ChatService extends ChangeNotifier {
 
   /// Returns a stable ID string for a character card.
   String _getCharacterIdFromCard(CharacterCard card) {
+    // Prefer dbId when present for compatibility with the new group creator wizard
+    // (which uses dbId as the stable ID when available). Falls back to the
+    // traditional image basename for portability and older data.
+    if (card.dbId != null && card.dbId!.isNotEmpty) {
+      return card.dbId!;
+    }
     if (card.imagePath != null) {
       return path.basenameWithoutExtension(card.imagePath!);
     }
