@@ -431,26 +431,50 @@ class _ChatPageState extends State<ChatPage> {
 
   void _onComposerTextChanged() {
     _spellDebounce?.cancel();
-    _spellDebounce = Timer(const Duration(milliseconds: 300), _runCustomSpellCheck);
+    _spellDebounce = Timer(const Duration(milliseconds: 300), _trySpellCheck);
+  }
+
+  bool _spellCheckInFlight = false;
+
+  void _trySpellCheck() {
+    if (!_spellCheckInFlight) {
+      _runCustomSpellCheck();
+    }
+    // If in-flight, the completion handler will auto-retry below.
   }
 
   Future<void> _runCustomSpellCheck() async {
+    if (_spellCheckInFlight) return;
+    _spellCheckInFlight = true;
     final text = _controller.text;
-    if (text.trim().isEmpty) {
+    try {
+      if (text.trim().isEmpty) {
+        _controller.clearSpellResults();
+        if (mounted) setState(() {});
+        return;
+      }
+      final locale = PlatformDispatcher.instance.locale;
+      final results = await _spellService.fetchSpellCheckSuggestions(locale, text);
+      if (!mounted) return;
+      if (text != _controller.text) return;
+      if (results != null && results.isNotEmpty) {
+        _controller.applySpellResults(text, results);
+      } else {
+        _controller.clearSpellResults();
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Spell check error: $e');
       _controller.clearSpellResults();
       if (mounted) setState(() {});
-      return;
+    } finally {
+      _spellCheckInFlight = false;
+      // If text changed during the request, schedule a retry.
+      if (_controller.text != text) {
+        _spellDebounce?.cancel();
+        _spellDebounce = Timer(const Duration(milliseconds: 300), _trySpellCheck);
+      }
     }
-    final locale = PlatformDispatcher.instance.locale;
-    final results = await _spellService.fetchSpellCheckSuggestions(locale, text);
-    if (!mounted) return;
-    if (text != _controller.text) return; // stale, a new keystroke arrived
-    if (results != null && results.isNotEmpty) {
-      _controller.applySpellResults(text, results);
-    } else {
-      _controller.clearSpellResults();
-    }
-    if (mounted) setState(() {});
   }
 
   @override

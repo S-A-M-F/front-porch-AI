@@ -137,9 +137,16 @@ class AppTextField extends StatelessWidget {
     this.stylusHandwritingEnabled = true,
     this.enableIMEPersonalizedLearning = true,
     this.contextMenuBuilder,
-    // Spell check: callers may override explicitly. Passing
-    // SpellCheckConfiguration.disabled() at the call site documents
-    // intent clearly for technical inputs (API keys, URLs, etc.).
+    // Spell check configuration.
+    //
+    // Behaviours:
+    //  - `null` (default) → platform default (enabled on Windows/macOS via
+    //    [platformSpellCheck], disabled elsewhere).
+    //  - `SpellCheckConfiguration.disabled()` → explicitly disabled.
+    //
+    // ⚠️ Do NOT pass `null` to disable spell check on Windows/macOS — it
+    // will be silently upgraded to the platform default (enabled). Use
+    // `SpellCheckConfiguration.disabled()` for explicit opt-out.
     this.spellCheckConfiguration,
     this.magnifierConfiguration,
     this.onTapUpOutside,
@@ -329,9 +336,13 @@ class AppTextField extends StatelessWidget {
   /// The resolved spell check configuration for this widget instance.
   ///
   /// Priority:
-  ///   1. Explicit caller override (allows opt-out on technical fields)
+  ///   1. Explicit caller override (non-null) — allows both opt-in and opt-out
   ///   2. Platform-resolved default via [platformSpellCheck]
   ///   3. `null` — no spell check (unsupported platforms)
+  ///
+  /// **Note:** `null` from the caller does NOT disable spell check — it
+  /// delegates to the platform default (enabled on Windows/macOS).
+  /// Use `SpellCheckConfiguration.disabled()` to explicitly opt out.
   SpellCheckConfiguration? get _resolvedSpellCheck {
     // Explicit caller override always wins — allows both opt-in and opt-out.
     if (spellCheckConfiguration != null) return spellCheckConfiguration;
