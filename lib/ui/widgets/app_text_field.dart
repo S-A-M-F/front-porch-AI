@@ -28,6 +28,18 @@ import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
 // import when they need to explicitly opt out on a technical input field.
 export 'package:flutter/material.dart' show SpellCheckConfiguration;
 
+/// Interface for [TextEditingController] subclasses that provide their own
+/// [SpellCheckResults] cache independently of Flutter's built-in spell check
+/// pipeline (e.g. [StyledTextController] in the chat composer).
+///
+/// When a controller implements this interface,
+/// [AppTextField.spellCheckContextMenuBuilder] reads suggestions from the
+/// controller instead of from [EditableTextState.spellCheckResults], which
+/// is null when [spellCheckConfiguration] is disabled.
+abstract class SpellCheckResultsProvider {
+  SpellCheckResults? get spellCheckResults;
+}
+
 /// The standard text input widget for all user-facing **prose** fields across
 /// Front Porch AI (chat input, character descriptions, system prompts, lore
 /// entries, story prose, etc.).
@@ -58,17 +70,9 @@ export 'package:flutter/material.dart' show SpellCheckConfiguration;
 /// `spellCheckConfiguration: SpellCheckConfiguration.disabled()` explicitly.
 ///
 /// For inputs that have their own custom `TextSpan` coloring (e.g. chat message
-/// composer with "dialogue" / *action* styling), prefer
-/// `AppTextField.platformSpellCheck(showMisspellings: false)`. This keeps the
-/// native spell service and suggestion results active (context menu corrections
-/// still work) while suppressing the red underline style that would otherwise
-/// fight the custom colors.
-///
-/// ## Drop-in replacement
-///
-/// [AppTextField] is a true structural alias for [TextField] — it proxies every
-/// constructor parameter. Swapping `TextField(` for `AppTextField(` requires no
-/// other changes.
+/// input "dialogue"/ *action* coloring) where the misspelled style would
+/// otherwise interfere. The spell check service and suggestion results
+/// remain active either way, so context menu corrections still work.
 class AppTextField extends StatelessWidget {
   const AppTextField({
     super.key,
@@ -268,7 +272,12 @@ class AppTextField extends StatelessWidget {
     BuildContext context,
     EditableTextState editableTextState,
   ) {
-    final SpellCheckResults? results = editableTextState.spellCheckResults;
+    // Allow custom controllers (e.g. StyledTextController) to provide their
+    // own spell check cache when Flutter's built-in pipeline is disabled.
+    final controller = editableTextState.widget.controller;
+    final results = controller is SpellCheckResultsProvider
+        ? (controller as SpellCheckResultsProvider).spellCheckResults
+        : editableTextState.spellCheckResults;
     final TextEditingValue value = editableTextState.textEditingValue;
 
     // Find a misspelled span that contains the current cursor position.
