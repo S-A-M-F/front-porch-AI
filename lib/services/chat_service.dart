@@ -2583,6 +2583,30 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ensures that a newly created group with a custom first message actually
+  /// has that message as the opening (some flows like startNewChat() can clear
+  /// the greeting that was set during setActiveGroup).
+  void ensureCustomGroupOpeningMessage(GroupChat group) {
+    if (group.firstMessage.trim().isEmpty) return;
+    if (_messages.isNotEmpty) return;
+
+    final text = _applyUserReplacement(group.firstMessage);
+    _messages.add(
+      ChatMessage(
+        text: text,
+        sender: group.name,
+        isUser: false,
+        characterId: null,
+      ),
+    );
+    _scanLorebook(_messages.last.text);
+
+    if (_currentSessionId == null) {
+      _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
+    }
+    debugPrint('[ChatService] Re-injected custom group first message after new chat setup');
+  }
+
   /// Fork the current 1:1 chat into a new group chat, copying all messages.
   /// The original 1:1 session remains untouched.
   Future<GroupChat?> forkToGroupChat(
@@ -2786,6 +2810,12 @@ class ChatService extends ChangeNotifier {
 
   /// Returns a stable ID string for a character card.
   String _getCharacterIdFromCard(CharacterCard card) {
+    // Prefer dbId when present for compatibility with the new group creator wizard
+    // (which uses dbId as the stable ID when available). Falls back to the
+    // traditional image basename for portability and older data.
+    if (card.dbId != null && card.dbId!.isNotEmpty) {
+      return card.dbId!;
+    }
     if (card.imagePath != null) {
       return path.basenameWithoutExtension(card.imagePath!);
     }
@@ -11623,7 +11653,7 @@ class ChatService extends ChangeNotifier {
         'Did $charName do any of the following in this response?\n'
         '- Ate or drank a significant meal / snack / drink\n'
         '- Slept, napped, or had a good rest\n'
-        '- Took a bath, shower, or cleaned up thoroughly\n\n'
+        '- Took a deliberate, non-sexual bath, shower, or thorough cleaning (not just quick rinse during/after sex)\n\n'
         'Answer ONLY with a flat JSON object:\n'
         '{"ate": true/false, "slept": true/false, "bathed": true/false, "quality": 1-10}';
 
@@ -11659,9 +11689,31 @@ class ChatService extends ChangeNotifier {
       }
 
       if (bathed) {
-        deltas['hygiene'] = (25 * strength).round();
-        deltas['comfort'] = (deltas['comfort'] ?? 0) + (12 * strength).round();
-        deltas['fun'] = (deltas['fun'] ?? 0) + (6 * strength).round();
+        // Hygiene from bathing is intentionally reduced in two cases:
+        // 1. Recent sexual activity (e.g. sex in the shower) — cleaning during/after
+        //    messy sex shouldn't count as a full refreshing reset.
+        // 2. Characters with "Enjoys low hygiene" get less benefit from cleaning
+        //    because they like being sweaty/musky/dirty.
+        int hygieneGain = (25 * strength).round();
+
+        final bool recentSexualActivity =
+            _needsAfterglowTurnsRemaining > 0 || _postClimaxCrashTurnsRemaining > 0;
+
+        if (recentSexualActivity) {
+          hygieneGain = (hygieneGain * 0.35).round().clamp(0, 100);
+        }
+
+        if (_enjoysLowHygiene) {
+          hygieneGain = (hygieneGain * 0.5).round().clamp(0, 100);
+          // Lower comfort/fun payoff from bathing for these characters
+          deltas['comfort'] = (deltas['comfort'] ?? 0) + (6 * strength).round();
+          deltas['fun'] = (deltas['fun'] ?? 0) + (3 * strength).round();
+        } else {
+          deltas['comfort'] = (deltas['comfort'] ?? 0) + (12 * strength).round();
+          deltas['fun'] = (deltas['fun'] ?? 0) + (6 * strength).round();
+        }
+
+        deltas['hygiene'] = hygieneGain;
       }
 
       if (deltas.isNotEmpty) {

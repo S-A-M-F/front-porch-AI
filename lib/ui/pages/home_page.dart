@@ -1907,6 +1907,11 @@ class _HomePageState extends State<HomePage> {
     int successCount = 0;
     int failCount = 0;
 
+    // Mapping from original exported stable IDs to the new stable IDs generated on this import.
+    // This is required to correctly attach per-character realism data (including Group Dynamics
+    // relationships) and other ID-keyed maps after characters are re-created during import.
+    final Map<String, String> oldStableIdToNewStableId = {};
+
     // Use the high-fidelity raw member data when available
     final rawMembers = groupCard.rawMemberData.isNotEmpty
         ? groupCard.rawMemberData
@@ -1969,8 +1974,16 @@ class _HomePageState extends State<HomePage> {
         if (imported != null && imported.imagePath != null) {
           // Use the *stable* character ID (image basename) that the rest of the
           // app (ChatService, group resolution, etc.) expects. Storing dbId was wrong.
-          final stableId = path.basenameWithoutExtension(imported.imagePath!);
-          importedMemberIds.add(stableId);
+          final newStableId = path.basenameWithoutExtension(imported.imagePath!);
+          importedMemberIds.add(newStableId);
+
+          // Record mapping from the original exported ID (if present in the raw data)
+          // to the newly generated ID. This enables correct remapping of realism data below.
+          final originalStableId = (raw['_original_stable_id'] as String?)?.trim();
+          if (originalStableId != null && originalStableId.isNotEmpty) {
+            oldStableIdToNewStableId[originalStableId] = newStableId;
+          }
+
           successCount++;
         } else {
           failCount++;
@@ -1999,8 +2012,9 @@ class _HomePageState extends State<HomePage> {
     }
 
     // Create the group itself
-    // Seed portable group realism/needs defaults from the imported card if present
-    // (enables split-to-solo characters to inherit evolved bond/trust/emotion/etc from the group).
+    // Seed portable group realism/needs defaults (including relationships for Group Dynamics)
+    // from the imported card if present. This fulfills the v30+ contract that
+    // defaultMemberRealismState travels with Group Cards for new sessions and split-to-solo.
     final importedRealism = groupCard.extensions?['realism_state'];
 
     // Path B compatibility: Prefer the new top-level `character_system_prompts` key in the Group Card.
@@ -2013,6 +2027,79 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
+    // ── Remap ID-keyed data using the old→new stable ID mapping we built during import ──
+    String finalBaseline = groupCard.baselineRealismState;
+    String finalDefaultMember = groupCard.defaultMemberRealismState;
+    Map<String, String> finalCharPrompts = importedCharPrompts;
+    Map<String, List<Map<String, dynamic>>> finalObjectives = groupCard.memberObjectives;
+
+    if (oldStableIdToNewStableId.isNotEmpty) {
+      String _remapIdsInJson(String jsonString, Map<String, String> mapping) {
+        if (jsonString.isEmpty || jsonString == '{}') return jsonString;
+        try {
+          final decoded = jsonDecode(jsonString);
+          if (decoded is! Map) return jsonString;
+
+          final Map<String, dynamic> rewritten = {};
+
+          Map<String, dynamic> rewritePerCharMap(Map input) {
+            final Map<String, dynamic> out = {};
+            for (final entry in input.entries) {
+              final oldId = entry.key.toString();
+              final newId = mapping[oldId] ?? oldId;
+              final value = entry.value;
+
+              if (value is Map && value.containsKey('relationships')) {
+                final inner = Map<String, dynamic>.from(value);
+                final rels = inner['relationships'];
+                if (rels is Map) {
+                  final newRels = <String, dynamic>{};
+                  for (final r in rels.entries) {
+                    final oldTarget = r.key.toString();
+                    final newTarget = mapping[oldTarget] ?? oldTarget;
+                    newRels[newTarget] = r.value;
+                  }
+                  inner['relationships'] = newRels;
+                }
+                out[newId] = inner;
+              } else {
+                out[newId] = value;
+              }
+            }
+            return out;
+          }
+
+          if (decoded.containsKey('perChar') && decoded['perChar'] is Map) {
+            rewritten['perChar'] = rewritePerCharMap(decoded['perChar'] as Map);
+            for (final k in decoded.keys) {
+              if (k != 'perChar') rewritten[k] = decoded[k];
+            }
+          } else {
+            rewritten.addAll(rewritePerCharMap(decoded));
+          }
+
+          return jsonEncode(rewritten);
+        } catch (_) {
+          return jsonString;
+        }
+      }
+
+      finalBaseline = _remapIdsInJson(groupCard.baselineRealismState, oldStableIdToNewStableId);
+      finalDefaultMember = _remapIdsInJson(groupCard.defaultMemberRealismState, oldStableIdToNewStableId);
+
+      final remappedPrompts = <String, String>{};
+      for (final e in importedCharPrompts.entries) {
+        remappedPrompts[oldStableIdToNewStableId[e.key] ?? e.key] = e.value;
+      }
+      finalCharPrompts = remappedPrompts;
+
+      final remappedObjectives = <String, List<Map<String, dynamic>>>{};
+      for (final e in groupCard.memberObjectives.entries) {
+        remappedObjectives[oldStableIdToNewStableId[e.key] ?? e.key] = e.value;
+      }
+      finalObjectives = remappedObjectives;
+    }
+
     final newGroup = GroupChat(
       id: 'group_${DateTime.now().millisecondsSinceEpoch}',
       name: groupCard.name,
@@ -2023,29 +2110,24 @@ class _HomePageState extends State<HomePage> {
       firstMessage: groupCard.firstMessage,
       scenario: groupCard.scenario,
       systemPrompt: groupCard.systemPrompt,
-      // Full v31/v32 + baseline support: restore exactly what was exported.
-      // We deliberately restore the *baseline* seed here (not evolved state).
       groupLorebook: groupCard.groupLorebook ?? '',
       worldIds: groupCard.worldIds,
       inheritCharacterLorebooks: groupCard.inheritCharacterLorebooks,
       chaosModeEnabled: groupCard.chaosModeEnabled,
       chaosNsfwEnabled: groupCard.chaosNsfwEnabled,
-      baselineRealismState: groupCard.baselineRealismState.isNotEmpty
-          ? groupCard.baselineRealismState
-          : '{}',
-      characterSystemPrompts: importedCharPrompts,
+      baselineRealismState: finalBaseline.isNotEmpty ? finalBaseline : '{}',
+      defaultMemberRealismState: finalDefaultMember.isNotEmpty ? finalDefaultMember : '{}',
+      characterSystemPrompts: finalCharPrompts,
     );
 
-    // Carry per-char objectives from the imported Group Card for first-load seeding.
-    if (groupCard.memberObjectives.isNotEmpty) {
-      // Store in the group's state so ChatService can seed the objectives table
-      // the first time the imported group is entered (one-time).
+    // Carry per-char objectives (now with correctly remapped IDs)
+    if (finalObjectives.isNotEmpty) {
       try {
         final currentState = jsonDecode(newGroup.defaultMemberRealismState);
         final mutable = (currentState is Map)
             ? Map<String, dynamic>.from(currentState)
             : <String, dynamic>{};
-        mutable['imported_member_objectives'] = groupCard.memberObjectives;
+        mutable['imported_member_objectives'] = finalObjectives;
         newGroup.defaultMemberRealismState = jsonEncode(mutable);
       } catch (_) {}
     }
@@ -2164,8 +2246,16 @@ class _HomePageState extends State<HomePage> {
     for (final card in memberCards) {
       final raw = Map<String, dynamic>.from(card.toJson());
 
+      // Capture the original stable ID (basename of the image at export time).
+      // This is critical for remapping per-character realism data (baseline + defaultMemberRealismState
+      // including Group Dynamics relationships) when the group is later imported.
       if (card.imagePath != null && card.imagePath!.isNotEmpty) {
         try {
+          final originalStableId = path.basenameWithoutExtension(card.imagePath!);
+          if (originalStableId.isNotEmpty) {
+            raw['_original_stable_id'] = originalStableId;
+          }
+
           final imageFile = File(card.imagePath!);
           if (await imageFile.exists()) {
             final bytes = await imageFile.readAsBytes();
@@ -2213,11 +2303,25 @@ class _HomePageState extends State<HomePage> {
           worldIds: group.worldIds,
           inheritCharacterLorebooks: group.inheritCharacterLorebooks,
           baselineRealismState: group.baselineRealismState,
+          defaultMemberRealismState: group.defaultMemberRealismState,
           memberObjectives: memberObjectives,
           extensions: (group.baselineRealismState.isNotEmpty &&
                   group.baselineRealismState != '{}')
-              ? {'realism_state': jsonDecode(group.baselineRealismState)}
-              : null,
+              ? {
+                  'realism_state': jsonDecode(group.baselineRealismState),
+                  // Also expose the richer default state under the legacy key for
+                  // any external readers that only looked at the old realism_state blob.
+                  if (group.defaultMemberRealismState.isNotEmpty &&
+                      group.defaultMemberRealismState != '{}')
+                    'default_member_realism_state': jsonDecode(group.defaultMemberRealismState),
+                }
+              : (group.defaultMemberRealismState.isNotEmpty &&
+                      group.defaultMemberRealismState != '{}')
+                  ? {
+                      'default_member_realism_state':
+                          jsonDecode(group.defaultMemberRealismState),
+                    }
+                  : null,
         );
 
         final service = GroupCardService();

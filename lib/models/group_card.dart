@@ -71,6 +71,16 @@ class GroupCard {
   /// This is what should be restored on import (not any evolved state).
   final String baselineRealismState;
 
+  /// Portable default per-member realism/needs state for the group definition.
+  /// This is the rich blob (including per-char needs vectors, 'enjoysLowHygiene',
+  /// and the hidden 'relationships' map for Group Dynamics in small groups) that
+  /// is used as the seed for new sessions and split-to-solo after import.
+  ///
+  /// Added to Group Card round-tripping to fulfill the v30+ schema contract
+  /// (see database.dart table comment). Exported groups now carry the full
+  /// intended starting state for the definition, not just the frozen baseline.
+  final String defaultMemberRealismState;
+
   /// Per-member objectives snapshot at export time (for portable Group Cards).
   /// Keyed by stable charId. This allows objectives to travel with the card.
   final Map<String, List<Map<String, dynamic>>> memberObjectives;
@@ -96,6 +106,7 @@ class GroupCard {
     this.chaosModeEnabled = false,
     this.chaosNsfwEnabled = false,
     this.baselineRealismState = '{}',
+    this.defaultMemberRealismState = '{}',
     this.memberObjectives = const {},
     this.extensions,
   })  : rawMemberData = rawMemberData ?? members.map((c) => c.toJson()).toList(),
@@ -129,6 +140,10 @@ class GroupCard {
 
     if (baselineRealismState.isNotEmpty && baselineRealismState != '{}') {
       result['baseline_realism_state'] = baselineRealismState;
+    }
+
+    if (defaultMemberRealismState.isNotEmpty && defaultMemberRealismState != '{}') {
+      result['default_member_realism_state'] = defaultMemberRealismState;
     }
 
     if (memberObjectives.isNotEmpty) {
@@ -189,6 +204,7 @@ class GroupCard {
       chaosModeEnabled: json['chaos_mode_enabled'] ?? false,
       chaosNsfwEnabled: json['chaos_nsfw_enabled'] ?? false,
       baselineRealismState: json['baseline_realism_state']?.toString() ?? '{}',
+      defaultMemberRealismState: json['default_member_realism_state']?.toString() ?? '{}',
       memberObjectives: (json['member_objectives'] is Map)
           ? (json['member_objectives'] as Map).map((k, v) =>
               MapEntry(k.toString(), (v as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()))
