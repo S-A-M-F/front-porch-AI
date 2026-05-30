@@ -28,6 +28,18 @@ import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
 // import when they need to explicitly opt out on a technical input field.
 export 'package:flutter/material.dart' show SpellCheckConfiguration;
 
+/// Interface for [TextEditingController] subclasses that provide their own
+/// [SpellCheckResults] cache independently of Flutter's built-in spell check
+/// pipeline (e.g. [StyledTextController] in the chat composer).
+///
+/// When a controller implements this interface,
+/// [AppTextField.spellCheckContextMenuBuilder] reads suggestions from the
+/// controller instead of from [EditableTextState.spellCheckResults], which
+/// is null when [spellCheckConfiguration] is disabled.
+abstract class SpellCheckResultsProvider {
+  SpellCheckResults? get spellCheckResults;
+}
+
 /// The standard text input widget for all user-facing **prose** fields across
 /// Front Porch AI (chat input, character descriptions, system prompts, lore
 /// entries, story prose, etc.).
@@ -58,17 +70,9 @@ export 'package:flutter/material.dart' show SpellCheckConfiguration;
 /// `spellCheckConfiguration: SpellCheckConfiguration.disabled()` explicitly.
 ///
 /// For inputs that have their own custom `TextSpan` coloring (e.g. chat message
-/// composer with "dialogue" / *action* styling), prefer
-/// `AppTextField.platformSpellCheck(showMisspellings: false)`. This keeps the
-/// native spell service and suggestion results active (context menu corrections
-/// still work) while suppressing the red underline style that would otherwise
-/// fight the custom colors.
-///
-/// ## Drop-in replacement
-///
-/// [AppTextField] is a true structural alias for [TextField] — it proxies every
-/// constructor parameter. Swapping `TextField(` for `AppTextField(` requires no
-/// other changes.
+/// input "dialogue"/ *action* coloring) where the misspelled style would
+/// otherwise interfere. The spell check service and suggestion results
+/// remain active either way, so context menu corrections still work.
 class AppTextField extends StatelessWidget {
   const AppTextField({
     super.key,
@@ -133,9 +137,16 @@ class AppTextField extends StatelessWidget {
     this.stylusHandwritingEnabled = true,
     this.enableIMEPersonalizedLearning = true,
     this.contextMenuBuilder,
-    // Spell check: callers may override explicitly. Passing
-    // SpellCheckConfiguration.disabled() at the call site documents
-    // intent clearly for technical inputs (API keys, URLs, etc.).
+    // Spell check configuration.
+    //
+    // Behaviours:
+    //  - `null` (default) → platform default (enabled on Windows/macOS via
+    //    [platformSpellCheck], disabled elsewhere).
+    //  - `SpellCheckConfiguration.disabled()` → explicitly disabled.
+    //
+    // ⚠️ Do NOT pass `null` to disable spell check on Windows/macOS — it
+    // will be silently upgraded to the platform default (enabled). Use
+    // `SpellCheckConfiguration.disabled()` for explicit opt-out.
     this.spellCheckConfiguration,
     this.magnifierConfiguration,
     this.onTapUpOutside,
@@ -268,7 +279,12 @@ class AppTextField extends StatelessWidget {
     BuildContext context,
     EditableTextState editableTextState,
   ) {
-    final SpellCheckResults? results = editableTextState.spellCheckResults;
+    // Allow custom controllers (e.g. StyledTextController) to provide their
+    // own spell check cache when Flutter's built-in pipeline is disabled.
+    final controller = editableTextState.widget.controller;
+    final results = controller is SpellCheckResultsProvider
+        ? (controller as SpellCheckResultsProvider).spellCheckResults
+        : editableTextState.spellCheckResults;
     final TextEditingValue value = editableTextState.textEditingValue;
 
     // Find a misspelled span that contains the current cursor position.
@@ -320,9 +336,13 @@ class AppTextField extends StatelessWidget {
   /// The resolved spell check configuration for this widget instance.
   ///
   /// Priority:
-  ///   1. Explicit caller override (allows opt-out on technical fields)
+  ///   1. Explicit caller override (non-null) — allows both opt-in and opt-out
   ///   2. Platform-resolved default via [platformSpellCheck]
   ///   3. `null` — no spell check (unsupported platforms)
+  ///
+  /// **Note:** `null` from the caller does NOT disable spell check — it
+  /// delegates to the platform default (enabled on Windows/macOS).
+  /// Use `SpellCheckConfiguration.disabled()` to explicitly opt out.
   SpellCheckConfiguration? get _resolvedSpellCheck {
     // Explicit caller override always wins — allows both opt-in and opt-out.
     if (spellCheckConfiguration != null) return spellCheckConfiguration;

@@ -37,6 +37,7 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 // Specific dialogs and modules not covered by the barrels (or intentionally direct)
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
 import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/ui/dialogs/character_avatars_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/edit_character_dialog.dart';
@@ -96,8 +97,42 @@ TextStyle _applyGoogleFont(String? fontFamily, TextStyle baseStyle) {
   }
 }
 
-class _StyledTextController extends TextEditingController {
+class StyledTextController extends TextEditingController
+    implements SpellCheckResultsProvider {
   static final _pattern = RegExp(r'("[^"]*")|(\*[^*]*\*)');
+
+  // Custom spell check cache (populated by the debounced spell runner).
+  String? _lastCheckedText;
+  final List<TextRange> _misspelledRanges = [];
+  final Map<int, List<String>> _suggestions = {};
+
+  void applySpellResults(String checkedText, List<SuggestionSpan> spans) {
+    _lastCheckedText = checkedText;
+    _misspelledRanges
+      ..clear()
+      ..addAll(spans.map((s) => s.range));
+    _misspelledRanges.sort((a, b) => a.start.compareTo(b.start));
+    _suggestions
+      ..clear()
+      ..addEntries(spans.map((s) => MapEntry(s.range.start, s.suggestions)));
+  }
+
+  void clearSpellResults() {
+    _lastCheckedText = null;
+    _misspelledRanges.clear();
+    _suggestions.clear();
+  }
+
+  @override
+  SpellCheckResults? get spellCheckResults {
+    if (_misspelledRanges.isEmpty || _lastCheckedText != text) return null;
+    return SpellCheckResults(
+      _lastCheckedText!,
+      _misspelledRanges.map((r) {
+        return SuggestionSpan(r, _suggestions[r.start] ?? <String>[]);
+      }).toList(),
+    );
+  }
 
   @override
   TextSpan buildTextSpan({
@@ -107,47 +142,110 @@ class _StyledTextController extends TextEditingController {
   }) {
     final text = this.text;
     final matches = _pattern.allMatches(text);
+    final useSpellCheck = _lastCheckedText == text && _misspelledRanges.isNotEmpty;
 
-    if (matches.isEmpty) {
-      return TextSpan(text: text, style: style);
-    }
-
-    final List<TextSpan> spans = [];
+    // Build a list of (text, style, offset) for each colored segment.
+    final segments = <({String text, TextStyle? style, int offset})>[];
     int lastEnd = 0;
 
-    for (final match in matches) {
-      if (match.start > lastEnd) {
-        spans.add(
-          TextSpan(text: text.substring(lastEnd, match.start), style: style),
-        );
-      }
-      final matchText = match.group(0)!;
-      if (matchText.startsWith('"')) {
-        spans.add(
-          TextSpan(
-            text: matchText,
-            style: style?.copyWith(
+    void addSegment(String segText, TextStyle? segStyle, int segOffset) {
+      segments.add((text: segText, style: segStyle, offset: segOffset));
+    }
+
+    if (matches.isEmpty) {
+      addSegment(text, style, 0);
+    } else {
+      for (final match in matches) {
+        if (match.start > lastEnd) {
+          addSegment(text.substring(lastEnd, match.start), style, lastEnd);
+        }
+        final matchText = match.group(0)!;
+        if (matchText.startsWith('"')) {
+          addSegment(
+            matchText,
+            style?.copyWith(
               color: AppColors.resolve(context, Colors.amberAccent, const Color(0xFFB45309)),
               fontWeight: FontWeight.w500,
             ),
-          ),
-        );
-      } else {
-        spans.add(
-          TextSpan(
-            text: matchText,
-            style: style?.copyWith(color: AppColors.resolve(context, const Color(0xFF90CAF9), const Color(0xFF1565C0))),
-          ),
-        );
+            match.start,
+          );
+        } else {
+          addSegment(
+            matchText,
+            style?.copyWith(
+              color: AppColors.resolve(context, const Color(0xFF90CAF9), const Color(0xFF1565C0)),
+            ),
+            match.start,
+          );
+        }
+        lastEnd = match.end;
       }
-      lastEnd = match.end;
+      if (lastEnd < text.length) {
+        addSegment(text.substring(lastEnd), style, lastEnd);
+      }
     }
 
-    if (lastEnd < text.length) {
-      spans.add(TextSpan(text: text.substring(lastEnd), style: style));
+    if (!useSpellCheck) {
+      return TextSpan(
+        children: segments.map((s) => TextSpan(text: s.text, style: s.style)).toList(),
+        style: style,
+      );
     }
 
-    return TextSpan(children: spans, style: style);
+    // Apply spell check: split colored segments at misspelled boundaries
+    // and add wavy red decoration to the intersecting portions while
+    // preserving each segment's base color.
+    const misspelledTextStyle = TextStyle(
+      decoration: TextDecoration.underline,
+      decorationColor: Colors.redAccent,
+      decorationStyle: TextDecorationStyle.wavy,
+    );
+
+    final children = <TextSpan>[];
+    for (final seg in segments) {
+      final spanStart = seg.offset;
+      final spanEnd = seg.offset + seg.text.length;
+
+      // Collect intersecting misspelled ranges in this segment.
+      final intersecting = <({int start, int end})>[];
+      for (final range in _misspelledRanges) {
+        final isectStart = range.start > spanStart ? range.start : spanStart;
+        final isectEnd = range.end < spanEnd ? range.end : spanEnd;
+        if (isectStart < isectEnd) {
+          intersecting.add((start: isectStart, end: isectEnd));
+        }
+      }
+
+      if (intersecting.isEmpty) {
+        children.add(TextSpan(text: seg.text, style: seg.style));
+        continue;
+      }
+
+      int splitAt = 0;
+      for (final isect in intersecting) {
+        final localStart = (isect.start - seg.offset).clamp(0, seg.text.length);
+        if (localStart > splitAt) {
+          children.add(TextSpan(
+            text: seg.text.substring(splitAt, localStart),
+            style: seg.style,
+          ));
+        }
+        final localEnd = (isect.end - seg.offset).clamp(0, seg.text.length);
+        children.add(TextSpan(
+          text: seg.text.substring(localStart, localEnd),
+          style: seg.style?.merge(misspelledTextStyle) ?? misspelledTextStyle,
+        ));
+        splitAt = localEnd;
+      }
+      if (splitAt < seg.text.length) {
+        children.add(TextSpan(
+          text: seg.text.substring(splitAt),
+          style: seg.style,
+        ));
+      }
+    }
+
+    return TextSpan(children: children, style: style);
   }
 }
 
@@ -159,7 +257,7 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final _StyledTextController _controller = _StyledTextController();
+  final StyledTextController _controller = StyledTextController();
   final ScrollController _scrollController = ScrollController();
   late final FocusNode _chatFocusNode;
   bool _autoScroll = true;
@@ -171,6 +269,8 @@ class _ChatPageState extends State<ChatPage> {
   bool _imageConsentChecked = false;
   TtsService? _ttsService;
   ChatService? _chatService;
+  final DesktopSpellCheckService _spellService = DesktopSpellCheckService();
+  Timer? _spellDebounce;
 
   // Slider drag tracking — store live value during drag, null on release
   double? _dragDirectorDelay;
@@ -208,6 +308,9 @@ class _ChatPageState extends State<ChatPage> {
         return KeyEventResult.ignored;
       },
     );
+
+    // Listen for custom spell check triggered by text changes.
+    _controller.addListener(_onComposerTextChanged);
 
     // Listen for TTS errors (e.g. ElevenLabs quota exceeded) and show a snackbar.
     final tts = Provider.of<TtsService>(context, listen: false);
@@ -305,6 +408,8 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    _spellDebounce?.cancel();
+    _controller.removeListener(_onComposerTextChanged);
     _ttsService?.removeListener(_onTtsChanged);
     _chatService?.removeListener(_onChatServiceChanged);
     _chatFocusNode.dispose();
@@ -321,6 +426,54 @@ class _ChatPageState extends State<ChatPage> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
+    }
+  }
+
+  void _onComposerTextChanged() {
+    _spellDebounce?.cancel();
+    _spellDebounce = Timer(const Duration(milliseconds: 300), _trySpellCheck);
+  }
+
+  bool _spellCheckInFlight = false;
+
+  void _trySpellCheck() {
+    if (!_spellCheckInFlight) {
+      _runCustomSpellCheck();
+    }
+    // If in-flight, the completion handler will auto-retry below.
+  }
+
+  Future<void> _runCustomSpellCheck() async {
+    if (_spellCheckInFlight) return;
+    _spellCheckInFlight = true;
+    final text = _controller.text;
+    try {
+      if (text.trim().isEmpty) {
+        _controller.clearSpellResults();
+        if (mounted) setState(() {});
+        return;
+      }
+      final locale = PlatformDispatcher.instance.locale;
+      final results = await _spellService.fetchSpellCheckSuggestions(locale, text);
+      if (!mounted) return;
+      if (text != _controller.text) return;
+      if (results != null && results.isNotEmpty) {
+        _controller.applySpellResults(text, results);
+      } else {
+        _controller.clearSpellResults();
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Spell check error: $e');
+      _controller.clearSpellResults();
+      if (mounted) setState(() {});
+    } finally {
+      _spellCheckInFlight = false;
+      // If text changed during the request, schedule a retry.
+      if (_controller.text != text) {
+        _spellDebounce?.cancel();
+        _spellDebounce = Timer(const Duration(milliseconds: 300), _trySpellCheck);
+      }
     }
   }
 
@@ -2462,7 +2615,7 @@ class _ChatPageState extends State<ChatPage> {
                   minLines: _inputMinLines,
                   textInputAction: TextInputAction.newline,
                   style: TextStyle(color: AppColors.textPrimary(context)),
-                  spellCheckConfiguration: AppTextField.platformSpellCheck(),
+                  spellCheckConfiguration: SpellCheckConfiguration.disabled(),
                   decoration: InputDecoration(
                     hintText: chatService.observerMode
                         ? 'Direct the scene...'
