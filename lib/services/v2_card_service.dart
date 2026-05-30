@@ -24,9 +24,11 @@ import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/utils/png_metadata_utils.dart';
 
 class V2CardService {
-  Future<void> saveCardAsPng(
+  /// Shared implementation: loads a real image when possible, otherwise synthesizes
+  /// a deterministic pleasant colored placeholder from the card name. Always returns
+  /// a reasonably-sized image ready for embedding.
+  Future<img.Image> _resolveOrCreateAvatar(
     CharacterCard card,
-    String outputPath,
     String? sourceImagePath,
   ) async {
     img.Image? avatar;
@@ -61,6 +63,16 @@ class V2CardService {
       avatar = img.copyResize(avatar, width: 1024);
     }
 
+    return avatar;
+  }
+
+  Future<void> saveCardAsPng(
+    CharacterCard card,
+    String outputPath,
+    String? sourceImagePath,
+  ) async {
+    final avatar = await _resolveOrCreateAvatar(card, sourceImagePath);
+
     // Encode character data to Base64
     // V2 Spec: 'chara' chunk containing base64 encoded JSON
     final jsonMap = card.toJson();
@@ -74,6 +86,29 @@ class V2CardService {
     // Save to file
     final pngBytes = img.encodePng(avatar);
     await File(outputPath).writeAsBytes(pngBytes);
+  }
+
+  /// Returns the complete PNG bytes for a character card, with the V2 'chara'
+  /// metadata embedded. When no sourceImagePath is supplied (or it fails to load),
+  /// a deterministic placeholder image is synthesized from the card name.
+  /// This is the preferred API for Group Card export when a member has no
+  /// on-disk avatar at export time: the returned bytes can be base64-encoded
+  /// directly into avatar_base64 so the exported group always contains 100%
+  /// of its members with fully usable, later-extractable data.
+  Future<List<int>> encodeCharacterCardToPngBytes(
+    CharacterCard card,
+    String? sourceImagePath,
+  ) async {
+    final avatar = await _resolveOrCreateAvatar(card, sourceImagePath);
+
+    final jsonMap = card.toJson();
+    final jsonStr = jsonEncode(jsonMap);
+    final base64Str = base64Encode(utf8.encode(jsonStr));
+
+    avatar.textData ??= {};
+    avatar.textData!['chara'] = base64Str;
+
+    return img.encodePng(avatar);
   }
 
   Future<CharacterCard?> readCard(String path) async {

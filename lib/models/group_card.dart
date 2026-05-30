@@ -156,6 +156,15 @@ class GroupCard {
         result['realism_state'] = extensions!['realism_state'];
       }
     }
+
+    // High-fidelity portable member data (including avatar_base64 for round-trip
+    // visuals + _original_stable_id for realism relationship remapping). This is
+    // what makes Group Card export include 100% of members (even avatar-less ones)
+    // with fully extractable data. Written explicitly so it survives the PNG chunk.
+    if (rawMemberData.isNotEmpty) {
+      result['raw_member_data'] = rawMemberData;
+    }
+
     return result;
   }
 
@@ -164,6 +173,17 @@ class GroupCard {
         .whereType<Map<String, dynamic>>()
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
+
+    // Prefer the high-fidelity raw_member_data (contains avatar_base64,
+    // _original_stable_id, full extensions, etc.) when present. This is what
+    // enables 100% member fidelity for avatar-less characters in exported groups.
+    final suppliedRaw = (json['raw_member_data'] as List<dynamic>?)
+        ?.whereType<Map<String, dynamic>>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final effectiveRaw = (suppliedRaw != null && suppliedRaw.isNotEmpty)
+        ? suppliedRaw
+        : rawMembers;
 
     final members = rawMembers.map((m) {
       final data = m['data'] is Map ? Map<String, dynamic>.from(m['data']) : m;
@@ -190,7 +210,7 @@ class GroupCard {
     return GroupCard(
       name: json['name'] ?? 'Group',
       members: members,
-      rawMemberData: rawMembers,
+      rawMemberData: effectiveRaw,
       turnOrder: json['turn_order'] ?? 'roundRobin',
       autoAdvance: json['auto_advance'] ?? false,
       directorMode: json['director_mode'] ?? false,

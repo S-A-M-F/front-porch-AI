@@ -2025,9 +2025,7 @@ class _HomePageState extends State<HomePage> {
     File file,
     GroupCard groupCard,
   ) async {
-    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
     final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
-    final worldRepo = Provider.of<WorldRepository>(context, listen: false);
 
     // Clean-break private import (per plan + user directive): NEVER touch library/CharacterRepository.
     // All members go to private groups/<id>/avatars/ + typed group_members rows (UUID keys).
@@ -2229,6 +2227,15 @@ class _HomePageState extends State<HomePage> {
           ),
         );
       }
+      // Best-effort cleanup of any partially materialized private avatar tree
+      // (prevents orphan dirs/files from failed imports; addresses data bloat risk
+      // for user-provided imagery that traveled in the Group Card).
+      try {
+        final orphanDir = Directory(path.join(storage.groupsDir.path, groupId));
+        if (await orphanDir.exists()) {
+          await orphanDir.delete(recursive: true);
+        }
+      } catch (_) {}
       return;
     }
 
@@ -2333,7 +2340,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     final newGroup = GroupChat(
-      id: 'group_${DateTime.now().millisecondsSinceEpoch}',
+      id: groupId,
       name: groupCard.name,
       turnOrder: groupCard.turnOrder == 'random'
           ? TurnOrder.random
@@ -2371,12 +2378,14 @@ class _HomePageState extends State<HomePage> {
 
     if (context.mounted) {
       final msg = failCount > 0
-          ? 'Imported group "${groupCard.name}" with $successCount members ($failCount failed).'
+          ? 'Partially imported group "${groupCard.name}": $successCount member(s) succeeded, $failCount failed. The group shell was created with the successful members only (their data + private avatars are fully usable; use "Separate to my library" to extract any as solo characters).'
           : 'Imported group "${groupCard.name}" with $successCount members!';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg),
-          backgroundColor: Colors.purpleAccent.shade700,
+          backgroundColor: failCount > 0
+              ? Colors.orange.shade700
+              : Colors.purpleAccent.shade700,
         ),
       );
     }
@@ -2440,30 +2449,40 @@ class _HomePageState extends State<HomePage> {
   /// Export a group as a single self-contained PNG "Group Card".
   /// This is a Front Porch novel format (fpa_group chunk) that bundles every
   /// member character (full data + lorebooks + extensions) plus group settings.
+  ///
+  /// Zero-compromise fidelity: every member is always included, even if the
+  /// private avatar file is missing on disk. For those, a full V2 PNG with
+  /// placeholder image + embedded metadata is synthesized on the fly so the
+  /// recipient can import the complete group and later "Separate to my library"
+  /// any or all members as independent characters.
   Future<void> _exportGroup(GroupChat group) async {
     final context = this.context; // capture from StatefulWidget
 
-    // Resolve full CharacterCard objects for the members from decoupled private storage (extends this existing _exportGroup; mirrors working _extract pattern).
-    // No new private methods. Uses getMembersForGroup + toCharacterCard with resolved private paths.
     final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
     final storage = Provider.of<StorageService>(context, listen: false);
-    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
 
     final members = await groupRepo.getMembersForGroup(group.id);
+
+    // Always produce a CharacterCard for 100% of members (use '' when no
+    // private avatar file exists; toCharacterCard and downstream tolerate it).
     final memberCards = <CharacterCard>[];
     for (final m in members) {
-      if (m.avatarFilename == null) continue;
-      final resolvedPath = path.join(
-        storage.groupsDir.path,
-        group.id,
-        'avatars',
-        m.avatarFilename!,
-      );
-      if (!await File(resolvedPath).exists()) continue;
-      memberCards.add(m.toCharacterCard(resolvedImagePath: resolvedPath));
+      String? resolvedPath;
+      if (m.avatarFilename != null) {
+        final p = path.join(
+          storage.groupsDir.path,
+          group.id,
+          'avatars',
+          m.avatarFilename!,
+        );
+        if (await File(p).exists()) {
+          resolvedPath = p;
+        }
+      }
+      memberCards.add(m.toCharacterCard(resolvedImagePath: resolvedPath ?? ''));
     }
 
-    if (memberCards.isEmpty) {
+    if (members.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cannot export empty group')),
@@ -2472,8 +2491,12 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // Embed current avatar images as base64 for perfect roundtrip fidelity
-    // (mirrors the logic the import side already uses).
+    // Embed current avatar images (or synthesize full placeholder PNGs with
+    // complete V2 metadata) as base64 for perfect roundtrip fidelity.
+    // Every member gets an avatar_base64 entry and an _original_stable_id
+    // (file basename when real avatar existed, else the group_members UUID)
+    // so realism relationships, objectives, system prompts etc. remap correctly
+    // even for members that had no avatar at export time.
     final rawMembersWithAvatars = <Map<String, dynamic>>[];
 
     // Snapshot per-character objectives for portable Group Card
@@ -2502,29 +2525,46 @@ class _HomePageState extends State<HomePage> {
       // Best effort for objectives snapshot
     }
 
-    for (final card in memberCards) {
+    for (int i = 0; i < memberCards.length; i++) {
+      final card = memberCards[i];
+      final m = members[i];
       final raw = Map<String, dynamic>.from(card.toJson());
 
-      // Capture the original stable ID (basename of the image at export time).
-      // This is critical for remapping per-character realism data (baseline + defaultMemberRealismState
-      // including Group Dynamics relationships) when the group is later imported.
+      String? stableIdForRemap;
+      bool hasRealAvatar = false;
+
       if (card.imagePath != null && card.imagePath!.isNotEmpty) {
         try {
-          final originalStableId = path.basenameWithoutExtension(
-            card.imagePath!,
-          );
-          if (originalStableId.isNotEmpty) {
-            raw['_original_stable_id'] = originalStableId;
-          }
+          stableIdForRemap = path.basenameWithoutExtension(card.imagePath!);
 
           final imageFile = File(card.imagePath!);
           if (await imageFile.exists()) {
             final bytes = await imageFile.readAsBytes();
             raw['avatar_base64'] = base64Encode(bytes);
+            hasRealAvatar = true;
           }
         } catch (_) {
           // Best effort — don't fail the whole export over one avatar.
         }
+      }
+
+      if (!hasRealAvatar) {
+        // Synthesize a complete valid PNG (placeholder image + full chara
+        // metadata) so this member is 100% present and extractable later.
+        try {
+          final v2 = V2CardService();
+          final bytes = await v2.encodeCharacterCardToPngBytes(card, null);
+          raw['avatar_base64'] = base64Encode(bytes);
+        } catch (_) {
+          // If synthesis also fails, still include the textual data; import
+          // side has its own legacy placeholder path as final safety net.
+        }
+        // Use the stable group_members UUID when there was never an avatar file.
+        stableIdForRemap ??= m.id;
+      }
+
+      if (stableIdForRemap != null && stableIdForRemap.isNotEmpty) {
+        raw['_original_stable_id'] = stableIdForRemap;
       }
 
       rawMembersWithAvatars.add(raw);
