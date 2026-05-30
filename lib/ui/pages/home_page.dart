@@ -38,6 +38,7 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 // Specific pages, dialogs, and internal services not in barrels
 import 'package:front_porch_ai/ui/pages/chat_page.dart';
 import 'package:front_porch_ai/ui/pages/edit_character_page.dart';
+import 'package:front_porch_ai/ui/pages/edit_group_page.dart';
 import 'package:front_porch_ai/ui/pages/character_creator_page.dart';
 import 'package:front_porch_ai/ui/pages/story_home_view.dart';
 import 'package:front_porch_ai/ui/dialogs/byaf_import_dialog.dart';
@@ -199,6 +200,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   String _getCharacterIdFromCard(CharacterCard card) {
+    // Align with ChatService and character_card_grid for consistent
+    // stable ID resolution across the app (especially for groups created
+    // via the new wizard).
+    if (card.dbId != null && card.dbId!.isNotEmpty) {
+      return card.dbId!;
+    }
     if (card.imagePath != null) {
       return path.basenameWithoutExtension(card.imagePath!);
     }
@@ -224,7 +231,9 @@ class _HomePageState extends State<HomePage> {
   void _toggleSelect(CharacterCard character) {
     final id = character.imagePath != null
         ? path.basenameWithoutExtension(character.imagePath!)
-        : character.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
+        : character.name
+              .replaceAll(RegExp(r'[^\w\s]'), '')
+              .replaceAll(' ', '_');
     setState(() {
       if (_selectedCharacterIds.contains(id)) {
         _selectedCharacterIds.remove(id);
@@ -274,14 +283,10 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Text(
                   'Get started by creating a new character!',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(
-                    color: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.color
-                        ?.withValues(alpha: 0.7),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.color?.withValues(alpha: 0.7),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -406,8 +411,6 @@ class _HomePageState extends State<HomePage> {
             modeToggle: _buildModeToggle(),
             onTapCharacter: _handleTapCharacter,
             onTapGroup: _handleTapGroup,
-            onExportGroup: _exportGroup,
-            onExtractCharacters: _extractCharactersFromGroup,
             onToggleSelect: _toggleSelect,
             onToggleSelectMode: _toggleSelectMode,
             onToggleOrganizeMode: _toggleOrganizeMode,
@@ -429,6 +432,7 @@ class _HomePageState extends State<HomePage> {
             onResolveCharImage: _resolveCharImage,
             onDeleteGroup: _handleDeleteGroup,
             onAfterNavigateBack: _refreshLastActivityCache,
+            onGroupContextMenuAction: _handleGroupContextMenuAction,
           ),
         );
       },
@@ -547,7 +551,10 @@ class _HomePageState extends State<HomePage> {
             children: [
               Text(
                 status,
-                style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
+                style: TextStyle(
+                  color: AppColors.textSecondary(context),
+                  fontSize: 13,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
@@ -560,7 +567,9 @@ class _HomePageState extends State<HomePage> {
                     const Color(0xFF333333),
                     AppColors.surfaceContainerLight,
                   ),
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Colors.greenAccent,
+                  ),
                 ),
               ),
             ],
@@ -569,7 +578,6 @@ class _HomePageState extends State<HomePage> {
       ],
     );
   }
-
 
   /// Shows a dialog letting the user choose which saved session to resume.
   /// Returns the session ID, '__new__' for a new chat, or null if cancelled.
@@ -682,7 +690,8 @@ class _HomePageState extends State<HomePage> {
                                 color: AppColors.textTertiary(context),
                               ),
                             ),
-                            if (description != null && description.isNotEmpty) ...[
+                            if (description != null &&
+                                description.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
                                 description,
@@ -700,40 +709,92 @@ class _HomePageState extends State<HomePage> {
                               spacing: 6,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: Colors.blueAccent.withValues(alpha: 0.15),
+                                    color: Colors.blueAccent.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3), width: 0.5),
+                                    border: Border.all(
+                                      color: Colors.blueAccent.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      width: 0.5,
+                                    ),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.forum, size: 10, color: AppColors.resolve(context, Colors.blueAccent.shade200, Colors.blueAccent.shade700)),
+                                      Icon(
+                                        Icons.forum,
+                                        size: 10,
+                                        color: AppColors.resolve(
+                                          context,
+                                          Colors.blueAccent.shade200,
+                                          Colors.blueAccent.shade700,
+                                        ),
+                                      ),
                                       const SizedBox(width: 4),
                                       Text(
                                         '$messageCount total',
-                                        style: TextStyle(fontSize: 10, color: AppColors.resolve(context, Colors.blueAccent.shade200, Colors.blueAccent.shade700), fontWeight: FontWeight.w500),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: AppColors.resolve(
+                                            context,
+                                            Colors.blueAccent.shade200,
+                                            Colors.blueAccent.shade700,
+                                          ),
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
                                 if (userMessageCount > 0)
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: Colors.greenAccent.withValues(alpha: 0.15),
+                                      color: Colors.greenAccent.withValues(
+                                        alpha: 0.15,
+                                      ),
                                       borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3), width: 0.5),
+                                      border: Border.all(
+                                        color: Colors.greenAccent.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        width: 0.5,
+                                      ),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.person, size: 10, color: AppColors.resolve(context, Colors.greenAccent.shade200, Colors.greenAccent.shade700)),
+                                        Icon(
+                                          Icons.person,
+                                          size: 10,
+                                          color: AppColors.resolve(
+                                            context,
+                                            Colors.greenAccent.shade200,
+                                            Colors.greenAccent.shade700,
+                                          ),
+                                        ),
                                         const SizedBox(width: 4),
                                         Text(
                                           '$userMessageCount user',
-                                          style: TextStyle(fontSize: 10, color: AppColors.resolve(context, Colors.greenAccent.shade200, Colors.greenAccent.shade700), fontWeight: FontWeight.w500),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: AppColors.resolve(
+                                              context,
+                                              Colors.greenAccent.shade200,
+                                              Colors.greenAccent.shade700,
+                                            ),
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -804,9 +865,9 @@ class _HomePageState extends State<HomePage> {
       await chatService.setActiveCharacter(character);
     }
     if (context.mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ChatPage()),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ChatPage()));
       _refreshLastActivityCache();
     }
   }
@@ -836,9 +897,9 @@ class _HomePageState extends State<HomePage> {
       await chatService.setActiveGroup(group);
     }
     if (context.mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ChatPage()),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ChatPage()));
       _refreshLastActivityCache();
     }
   }
@@ -855,14 +916,60 @@ class _HomePageState extends State<HomePage> {
         _exportCharacter(context, character);
         break;
       case 'remove_folder':
-        final folderService = Provider.of<FolderService>(context, listen: false);
+        final folderService = Provider.of<FolderService>(
+          context,
+          listen: false,
+        );
         if (_activeFolderId != null && character.imagePath != null) {
-          folderService.removeFromFolder(_activeFolderId!, character.imagePath!);
+          folderService.removeFromFolder(
+            _activeFolderId!,
+            character.imagePath!,
+          );
         }
         break;
       case 'delete':
         _confirmDeleteCharacter(context, character);
         break;
+    }
+  }
+
+  void _handleGroupContextMenuAction(String action, GroupChat group) {
+    switch (action) {
+      case 'edit':
+        _editGroup(group);
+        break;
+      case 'duplicate':
+        _duplicateGroup(group);
+        break;
+      case 'export':
+        _exportGroup(group);
+        break;
+      case 'extract':
+        _extractCharactersFromGroup(group);
+        break;
+      case 'delete':
+        _confirmDeleteGroup(context, group);
+        break;
+    }
+  }
+
+  Future<void> _editGroup(GroupChat group) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => EditGroupPage(group: group)),
+    );
+    // GroupChatRepository.save() already calls notifyListeners(),
+    // so the home grid rebuilds automatically after edit.
+  }
+
+  void _duplicateGroup(GroupChat group) {
+    // Placeholder — real implementation will copy the GroupChat definition (new id, "Copy of" name, same seeds/ lore / worlds / prompts).
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Duplicate Group not yet implemented: ${group.name}'),
+        ),
+      );
     }
   }
 
@@ -1010,7 +1117,10 @@ class _HomePageState extends State<HomePage> {
                 context,
                 listen: false,
               );
-              await groupRepo.delete(group.id, cloudSyncService: cloudSyncService);
+              await groupRepo.delete(
+                group.id,
+                cloudSyncService: cloudSyncService,
+              );
               // No post-delete snackbar for groups (character delete shows one via the outer context)
             },
             child: const Text('Delete'),
@@ -1071,7 +1181,9 @@ class _HomePageState extends State<HomePage> {
                   final isSubfolder = folder.parentId != null;
                   return ListTile(
                     leading: Icon(
-                      isSubfolder ? Icons.subdirectory_arrow_right : Icons.folder,
+                      isSubfolder
+                          ? Icons.subdirectory_arrow_right
+                          : Icons.folder,
                       color: Colors.amberAccent,
                     ),
                     title: Text(
@@ -1080,7 +1192,10 @@ class _HomePageState extends State<HomePage> {
                     ),
                     subtitle: Text(
                       '${folder.characterPaths.length} characters',
-                      style: const TextStyle(color: Colors.white38, fontSize: 12),
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                      ),
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -1097,37 +1212,37 @@ class _HomePageState extends State<HomePage> {
                     },
                   );
                 }),
-              const Divider(color: Colors.white12),
-              ListTile(
-                leading: const Icon(
-                  Icons.create_new_folder,
-                  color: Colors.greenAccent,
+                const Divider(color: Colors.white12),
+                ListTile(
+                  leading: const Icon(
+                    Icons.create_new_folder,
+                    color: Colors.greenAccent,
+                  ),
+                  title: const Text(
+                    'New Folder',
+                    style: TextStyle(color: Colors.greenAccent),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  hoverColor: Colors.white10,
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final name = await _promptFolderName(context);
+                    if (name != null && name.isNotEmpty && context.mounted) {
+                      final folder = await folderService.createFolder(name);
+                      await _moveSelectedToFolder(
+                        context,
+                        folder.id,
+                        repo,
+                        folderService,
+                      );
+                    }
+                  },
                 ),
-                title: const Text(
-                  'New Folder',
-                  style: TextStyle(color: Colors.greenAccent),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                hoverColor: Colors.white10,
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final name = await _promptFolderName(context);
-                  if (name != null && name.isNotEmpty && context.mounted) {
-                    final folder = await folderService.createFolder(name);
-                    await _moveSelectedToFolder(
-                      context,
-                      folder.id,
-                      repo,
-                      folderService,
-                    );
-                  }
-                },
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
         actions: [
           TextButton(
@@ -1200,8 +1315,6 @@ class _HomePageState extends State<HomePage> {
     }
     _cancelSelection();
   }
-
-
 
   // (old group creator dialog variables and body fully removed — 2026 overhaul)
 
@@ -1381,7 +1494,9 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppColors.resolve(context, Colors.white24, Colors.black26)),
+        side: BorderSide(
+          color: AppColors.resolve(context, Colors.white24, Colors.black26),
+        ),
       ),
     );
   }
@@ -1929,30 +2044,40 @@ class _HomePageState extends State<HomePage> {
         final jsonStr = jsonEncode(memberJson);
         final b64 = base64Encode(utf8.encode(jsonStr));
 
-        final tempDir = await Directory.systemTemp.createTemp('fp_group_member_');
+        final tempDir = await Directory.systemTemp.createTemp(
+          'fp_group_member_',
+        );
 
         // Check if this member has an embedded avatar from a previous Group Card export
-        final avatarBase64 = raw['avatar_base64'] as String? ??
+        final avatarBase64 =
+            raw['avatar_base64'] as String? ??
             (raw['data'] as Map?)?['avatar_base64'] as String?;
 
         if (avatarBase64 != null && avatarBase64.isNotEmpty) {
           // Use the real avatar that was embedded on export
           final avatarBytes = base64Decode(avatarBase64);
-          var avatarImg = img.decodePng(avatarBytes) ?? img.decodeImage(avatarBytes);
+          var avatarImg =
+              img.decodePng(avatarBytes) ?? img.decodeImage(avatarBytes);
 
           if (avatarImg != null) {
             // Embed the character metadata into the real avatar image
             avatarImg.textData ??= {};
             avatarImg.textData!['chara'] = b64;
 
-            tempPng = File(path.join(tempDir.path, 'member_${DateTime.now().millisecondsSinceEpoch}.png'));
+            tempPng = File(
+              path.join(
+                tempDir.path,
+                'member_${DateTime.now().millisecondsSinceEpoch}.png',
+              ),
+            );
             await tempPng.writeAsBytes(img.encodePng(avatarImg));
           }
         }
 
         // Fallback: create a colored placeholder if no embedded avatar (foreign group cards, or old exports)
         if (tempPng == null) {
-          final memberName = (raw['name'] ?? raw['data']?['name'] ?? 'Character').toString();
+          final memberName =
+              (raw['name'] ?? raw['data']?['name'] ?? 'Character').toString();
 
           // Deterministic pleasant color from the name
           final hash = memberName.codeUnits.fold(0, (a, b) => a + b);
@@ -1966,20 +2091,31 @@ class _HomePageState extends State<HomePage> {
           placeholder.textData ??= {};
           placeholder.textData!['chara'] = b64;
 
-          tempPng = File(path.join(tempDir.path, 'member_${DateTime.now().millisecondsSinceEpoch}.png'));
+          tempPng = File(
+            path.join(
+              tempDir.path,
+              'member_${DateTime.now().millisecondsSinceEpoch}.png',
+            ),
+          );
           await tempPng.writeAsBytes(img.encodePng(placeholder));
         }
 
-        final imported = await charRepo.importCharacter(tempPng, worldRepo: worldRepo);
+        final imported = await charRepo.importCharacter(
+          tempPng,
+          worldRepo: worldRepo,
+        );
         if (imported != null && imported.imagePath != null) {
           // Use the *stable* character ID (image basename) that the rest of the
           // app (ChatService, group resolution, etc.) expects. Storing dbId was wrong.
-          final newStableId = path.basenameWithoutExtension(imported.imagePath!);
+          final newStableId = path.basenameWithoutExtension(
+            imported.imagePath!,
+          );
           importedMemberIds.add(newStableId);
 
           // Record mapping from the original exported ID (if present in the raw data)
           // to the newly generated ID. This enables correct remapping of realism data below.
-          final originalStableId = (raw['_original_stable_id'] as String?)?.trim();
+          final originalStableId = (raw['_original_stable_id'] as String?)
+              ?.trim();
           if (originalStableId != null && originalStableId.isNotEmpty) {
             oldStableIdToNewStableId[originalStableId] = newStableId;
           }
@@ -2005,7 +2141,9 @@ class _HomePageState extends State<HomePage> {
     if (importedMemberIds.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Group import failed — no members could be created.')),
+          const SnackBar(
+            content: Text('Group import failed — no members could be created.'),
+          ),
         );
       }
       return;
@@ -2021,9 +2159,13 @@ class _HomePageState extends State<HomePage> {
     // Fall back to promoting from the legacy location inside `realism_state` (for cards exported before this change).
     Map<String, String> importedCharPrompts = groupCard.characterSystemPrompts;
     if (importedCharPrompts.isEmpty && importedRealism is Map) {
-      final legacy = importedRealism['characterSystemPrompts'] ?? importedRealism['character_system_prompts'];
+      final legacy =
+          importedRealism['characterSystemPrompts'] ??
+          importedRealism['character_system_prompts'];
       if (legacy is Map) {
-        importedCharPrompts = legacy.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
+        importedCharPrompts = legacy.map(
+          (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+        );
       }
     }
 
@@ -2031,7 +2173,8 @@ class _HomePageState extends State<HomePage> {
     String finalBaseline = groupCard.baselineRealismState;
     String finalDefaultMember = groupCard.defaultMemberRealismState;
     Map<String, String> finalCharPrompts = importedCharPrompts;
-    Map<String, List<Map<String, dynamic>>> finalObjectives = groupCard.memberObjectives;
+    Map<String, List<Map<String, dynamic>>> finalObjectives =
+        groupCard.memberObjectives;
 
     if (oldStableIdToNewStableId.isNotEmpty) {
       String _remapIdsInJson(String jsonString, Map<String, String> mapping) {
@@ -2084,8 +2227,14 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      finalBaseline = _remapIdsInJson(groupCard.baselineRealismState, oldStableIdToNewStableId);
-      finalDefaultMember = _remapIdsInJson(groupCard.defaultMemberRealismState, oldStableIdToNewStableId);
+      finalBaseline = _remapIdsInJson(
+        groupCard.baselineRealismState,
+        oldStableIdToNewStableId,
+      );
+      finalDefaultMember = _remapIdsInJson(
+        groupCard.defaultMemberRealismState,
+        oldStableIdToNewStableId,
+      );
 
       final remappedPrompts = <String, String>{};
       for (final e in importedCharPrompts.entries) {
@@ -2104,7 +2253,9 @@ class _HomePageState extends State<HomePage> {
       id: 'group_${DateTime.now().millisecondsSinceEpoch}',
       name: groupCard.name,
       characterIds: importedMemberIds,
-      turnOrder: groupCard.turnOrder == 'random' ? TurnOrder.random : TurnOrder.roundRobin,
+      turnOrder: groupCard.turnOrder == 'random'
+          ? TurnOrder.random
+          : TurnOrder.roundRobin,
       autoAdvance: groupCard.autoAdvance,
       directorMode: groupCard.directorMode,
       firstMessage: groupCard.firstMessage,
@@ -2116,7 +2267,9 @@ class _HomePageState extends State<HomePage> {
       chaosModeEnabled: groupCard.chaosModeEnabled,
       chaosNsfwEnabled: groupCard.chaosNsfwEnabled,
       baselineRealismState: finalBaseline.isNotEmpty ? finalBaseline : '{}',
-      defaultMemberRealismState: finalDefaultMember.isNotEmpty ? finalDefaultMember : '{}',
+      defaultMemberRealismState: finalDefaultMember.isNotEmpty
+          ? finalDefaultMember
+          : '{}',
       characterSystemPrompts: finalCharPrompts,
     );
 
@@ -2184,10 +2337,7 @@ class _HomePageState extends State<HomePage> {
           ? 'Extracted 1 character as an individual.'
           : 'Extracted $extracted characters as individuals.';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: Colors.teal.shade700,
-        ),
+        SnackBar(content: Text(msg), backgroundColor: Colors.teal.shade700),
       );
     }
   }
@@ -2229,14 +2379,18 @@ class _HomePageState extends State<HomePage> {
         final charId = _getCharacterIdFromCard(card);
         final objs = await db.getObjectivesForCharacter(charId);
         if (objs.isNotEmpty) {
-          memberObjectives[charId] = objs.map((o) => {
-            'objective': o.objective,
-            'tasks': o.tasks,
-            'isPrimary': o.isPrimary,
-            'active': o.active,
-            'checkFrequency': o.checkFrequency,
-            'injectionDepth': o.injectionDepth,
-          }).toList();
+          memberObjectives[charId] = objs
+              .map(
+                (o) => {
+                  'objective': o.objective,
+                  'tasks': o.tasks,
+                  'isPrimary': o.isPrimary,
+                  'active': o.active,
+                  'checkFrequency': o.checkFrequency,
+                  'injectionDepth': o.injectionDepth,
+                },
+              )
+              .toList();
         }
       }
     } catch (_) {
@@ -2251,7 +2405,9 @@ class _HomePageState extends State<HomePage> {
       // including Group Dynamics relationships) when the group is later imported.
       if (card.imagePath != null && card.imagePath!.isNotEmpty) {
         try {
-          final originalStableId = path.basenameWithoutExtension(card.imagePath!);
+          final originalStableId = path.basenameWithoutExtension(
+            card.imagePath!,
+          );
           if (originalStableId.isNotEmpty) {
             raw['_original_stable_id'] = originalStableId;
           }
@@ -2289,7 +2445,8 @@ class _HomePageState extends State<HomePage> {
         final portable = GroupCard(
           name: group.name,
           members: memberCards,
-          rawMemberData: rawMembersWithAvatars, // includes avatar_base64 for fidelity
+          rawMemberData:
+              rawMembersWithAvatars, // includes avatar_base64 for fidelity
           turnOrder: group.turnOrder.name,
           autoAdvance: group.autoAdvance,
           directorMode: group.directorMode,
@@ -2305,7 +2462,8 @@ class _HomePageState extends State<HomePage> {
           baselineRealismState: group.baselineRealismState,
           defaultMemberRealismState: group.defaultMemberRealismState,
           memberObjectives: memberObjectives,
-          extensions: (group.baselineRealismState.isNotEmpty &&
+          extensions:
+              (group.baselineRealismState.isNotEmpty &&
                   group.baselineRealismState != '{}')
               ? {
                   'realism_state': jsonDecode(group.baselineRealismState),
@@ -2313,15 +2471,18 @@ class _HomePageState extends State<HomePage> {
                   // any external readers that only looked at the old realism_state blob.
                   if (group.defaultMemberRealismState.isNotEmpty &&
                       group.defaultMemberRealismState != '{}')
-                    'default_member_realism_state': jsonDecode(group.defaultMemberRealismState),
+                    'default_member_realism_state': jsonDecode(
+                      group.defaultMemberRealismState,
+                    ),
                 }
               : (group.defaultMemberRealismState.isNotEmpty &&
-                      group.defaultMemberRealismState != '{}')
-                  ? {
-                      'default_member_realism_state':
-                          jsonDecode(group.defaultMemberRealismState),
-                    }
-                  : null,
+                    group.defaultMemberRealismState != '{}')
+              ? {
+                  'default_member_realism_state': jsonDecode(
+                    group.defaultMemberRealismState,
+                  ),
+                }
+              : null,
         );
 
         final service = GroupCardService();
@@ -2335,9 +2496,9 @@ class _HomePageState extends State<HomePage> {
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Group export failed: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Group export failed: $e')));
         }
       }
     }
@@ -2739,10 +2900,7 @@ class CharacterBrowser extends InAppBrowser {
   final Future<void> Function(String url) onDownload;
   final VoidCallback? onClosed;
 
-  CharacterBrowser({
-    required this.onDownload,
-    this.onClosed,
-  });
+  CharacterBrowser({required this.onDownload, this.onClosed});
 
   @override
   Future<NavigationActionPolicy>? shouldOverrideUrlLoading(
@@ -2770,7 +2928,8 @@ class CharacterBrowser extends InAppBrowser {
 
   @override
   void onExit() {
-    super.onExit(); // Required for proper internal cleanup in flutter_inappwebview
+    super
+        .onExit(); // Required for proper internal cleanup in flutter_inappwebview
     debugPrint('AG_DEBUG: Browser closed');
     onClosed?.call();
   }

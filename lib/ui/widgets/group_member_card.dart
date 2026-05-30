@@ -21,6 +21,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/ui/pages/edit_group_page.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/realism_progress_row.dart';
 import 'package:front_porch_ai/ui/widgets/needs_bar.dart';
@@ -78,15 +79,33 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
     final isRealism = chat.isGroupRealismActive;
 
     // Resolve per-character state (only meaningful when realism is on)
-    final emotion = isRealism ? (chat.getEmotionForGroupCharacter(widget.character) ?? 'neutral') : null;
-    final intensity = isRealism ? chat.getEmotionIntensityForGroupCharacter(widget.character) : null;
-    final affection = isRealism ? chat.getAffectionForGroupCharacter(widget.character) : 0;
-    final trust = isRealism ? chat.getTrustForGroupCharacter(widget.character) : 0;
-    final arousal = isRealism ? chat.getArousalForGroupCharacter(widget.character) : 0;
-    final fixation = isRealism ? chat.getFixationForGroupCharacter(widget.character) : null;
-    final fixationLife = isRealism ? chat.getFixationLifespanForGroupCharacter(widget.character) : null;
-    final needs = isRealism ? chat.getNeedsForGroupCharacter(widget.character) : const <String, int>{};
-    final topNeeds = isRealism ? chat.getTopUrgentNeedsForGroupCharacter(widget.character, count: 2) : const <(String, int)>[];
+    final emotion = isRealism
+        ? (chat.getEmotionForGroupCharacter(widget.character) ?? 'neutral')
+        : null;
+    final intensity = isRealism
+        ? chat.getEmotionIntensityForGroupCharacter(widget.character)
+        : null;
+    final affection = isRealism
+        ? chat.getAffectionForGroupCharacter(widget.character)
+        : 0;
+    final trust = isRealism
+        ? chat.getTrustForGroupCharacter(widget.character)
+        : 0;
+    final arousal = isRealism
+        ? chat.getArousalForGroupCharacter(widget.character)
+        : 0;
+    final fixation = isRealism
+        ? chat.getFixationForGroupCharacter(widget.character)
+        : null;
+    final fixationLife = isRealism
+        ? chat.getFixationLifespanForGroupCharacter(widget.character)
+        : null;
+    final needs = isRealism
+        ? chat.getNeedsForGroupCharacter(widget.character)
+        : const <String, int>{};
+    final topNeeds = isRealism
+        ? chat.getTopUrgentNeedsForGroupCharacter(widget.character, count: 2)
+        : const <(String, int)>[];
 
     final bondTier = _calcTier(affection);
     final bondName = _tierName(bondTier);
@@ -111,20 +130,33 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
       opacity: opacity,
       child: GestureDetector(
         onTap: widget.onTap,
+        // NOTE: secondary (right-click "Edit Group") is deliberately on the header-only wrapper below
+        // so that expanded rich-view children (IconButton, TextButton, inner GestureDetectors) do not absorb it.
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           decoration: BoxDecoration(
             color: widget.isExpanded
-                ? AppColors.resolve(context, Colors.white.withValues(alpha: 0.035), Colors.black.withValues(alpha: 0.04))
+                ? AppColors.resolve(
+                    context,
+                    Colors.white.withValues(alpha: 0.035),
+                    Colors.black.withValues(alpha: 0.04),
+                  )
                 : (widget.isNextSpeaker
-                    ? widget.avatarColor.withValues(alpha: 0.10)
-                    : Colors.transparent),
+                      ? widget.avatarColor.withValues(alpha: 0.10)
+                      : Colors.transparent),
             borderRadius: BorderRadius.circular(10),
             border: widget.isNextSpeaker
-                ? Border.all(color: widget.avatarColor.withValues(alpha: 0.45), width: 1.2)
+                ? Border.all(
+                    color: widget.avatarColor.withValues(alpha: 0.45),
+                    width: 1.2,
+                  )
                 : (widget.isExpanded
-                    ? Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.3))
-                    : null),
+                      ? Border.all(
+                          color: AppColors.borderOf(
+                            context,
+                          ).withValues(alpha: 0.3),
+                        )
+                      : null),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
@@ -132,77 +164,149 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header row (avatar + name + badges)
-                Row(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: ringColor, width: widget.isExpanded ? 2.5 : 2.0),
+                // Header row (avatar + name + badges) — secondary tap only here for reliable "Edit Group" right-click
+                // even on fully-expanded rich speaker view (avoids child gesture absorption).
+                GestureDetector(
+                  onSecondaryTapUp: (details) {
+                    final active = widget.chatService.activeGroup;
+                    if (active == null) return;
+                    final position = details.globalPosition;
+                    showMenu<String>(
+                      context: context,
+                      position: RelativeRect.fromLTRB(
+                        position.dx,
+                        position.dy,
+                        position.dx,
+                        position.dy,
                       ),
-                      child: CircleAvatar(
-                        radius: widget.isExpanded ? 18 : 16,
-                        backgroundColor: widget.avatarColor,
-                        backgroundImage: widget.avatarFile != null ? FileImage(widget.avatarFile!) : null,
-                        child: widget.avatarFile == null
-                            ? Text(
-                                widget.character.name.isNotEmpty ? widget.character.name[0] : '?',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              )
-                            : null,
+                      color: AppColors.surfaceContainerOf(context),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        widget.character.name,
-                        style: TextStyle(
-                          fontSize: widget.isExpanded ? 14 : 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (widget.isNextSpeaker)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: widget.avatarColor.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text('NEXT', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
-                      ),
-                    if (widget.evolutionCount > 0) ...[
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: AppColors.resolve(
-                            context,
-                            Colors.tealAccent.withValues(alpha: 0.15),
-                            Colors.teal.shade100.withValues(alpha: 0.5),
+                      items: [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.edit,
+                              color: AppColors.iconSecondary(context),
+                              size: 20,
+                            ),
+                            title: const Text('Edit Group'),
+                            dense: true,
                           ),
-                          borderRadius: BorderRadius.circular(6),
                         ),
+                      ],
+                    ).then((value) {
+                      if (value == 'edit' && mounted) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => EditGroupPage(group: active),
+                          ),
+                        );
+                      }
+                    });
+                  },
+                  child: Row(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: ringColor,
+                            width: widget.isExpanded ? 2.5 : 2.0,
+                          ),
+                        ),
+                        child: CircleAvatar(
+                          radius: widget.isExpanded ? 18 : 16,
+                          backgroundColor: widget.avatarColor,
+                          backgroundImage: widget.avatarFile != null
+                              ? FileImage(widget.avatarFile!)
+                              : null,
+                          child: widget.avatarFile == null
+                              ? Text(
+                                  widget.character.name.isNotEmpty
+                                      ? widget.character.name[0]
+                                      : '?',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
                         child: Text(
-                          'E${widget.evolutionCount}',
+                          widget.character.name,
                           style: TextStyle(
-                            fontSize: 9,
-                            color: AppColors.resolve(context, Colors.tealAccent, Colors.teal.shade700),
+                            fontSize: widget.isExpanded ? 14 : 13,
+                            fontWeight: FontWeight.w600,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (widget.isNextSpeaker)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: widget.avatarColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'NEXT',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      if (widget.evolutionCount > 0) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.resolve(
+                              context,
+                              Colors.tealAccent.withValues(alpha: 0.15),
+                              Colors.teal.shade100.withValues(alpha: 0.5),
+                            ),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'E${widget.evolutionCount}',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: AppColors.resolve(
+                                context,
+                                Colors.tealAccent,
+                                Colors.teal.shade700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (widget.canRemove && widget.onRemove != null)
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 14),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 24,
+                            minHeight: 24,
+                          ),
+                          onPressed: widget.onRemove,
+                          color: AppColors.textTertiary(context),
+                          tooltip: 'Remove from group',
+                        ),
                     ],
-                    if (widget.canRemove && widget.onRemove != null)
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 14),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                        onPressed: widget.onRemove,
-                        color: AppColors.textTertiary(context),
-                        tooltip: 'Remove from group',
-                      ),
-                  ],
+                  ),
                 ),
 
                 // === EXPANDED (speaker) — full 1:1 parity view ===
@@ -226,7 +330,11 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
                       ),
                       if (isDirector) ...[
                         const SizedBox(width: 6),
-                        const Icon(Icons.pause_circle_outline, size: 12, color: Colors.amberAccent),
+                        const Icon(
+                          Icons.pause_circle_outline,
+                          size: 12,
+                          color: Colors.amberAccent,
+                        ),
                       ],
                     ],
                   ),
@@ -250,7 +358,9 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
                     tier: bondTier,
                     tierName: bondName,
                     color: bondColor,
-                    icon: affection < 0 ? Icons.heart_broken_sharp : Icons.monitor_heart,
+                    icon: affection < 0
+                        ? Icons.heart_broken_sharp
+                        : Icons.monitor_heart,
                   ),
                   const SizedBox(height: 8),
 
@@ -289,7 +399,13 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
                   // Full needs grid
                   if (needs.isNotEmpty) ...[
                     const SizedBox(height: 6),
-                    Text('Needs', style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context))),
+                    Text(
+                      'Needs',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary(context),
+                      ),
+                    ),
                     NeedsGrid(needs: needs, mini: false, crossAxisCount: 2),
                   ],
 
@@ -302,13 +418,24 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
                         const SizedBox(width: 4),
                         Text(
                           '${chat.getObjectivesForGroupCharacter(widget.character).where((o) => o.active).length} active objectives',
-                          style: const TextStyle(fontSize: 11, color: Colors.amber),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.amber,
+                          ),
                         ),
                         const Spacer(),
                         TextButton(
                           onPressed: widget.onOpenObjectives,
-                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2)),
-                          child: const Text('Manage', style: TextStyle(fontSize: 11)),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                          ),
+                          child: const Text(
+                            'Manage',
+                            style: TextStyle(fontSize: 11),
+                          ),
                         ),
                       ],
                     ),
@@ -321,15 +448,25 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
                   if (isRealism && emotion != null)
                     Row(
                       children: [
-                        Text(EmotionLabels.emoji[emotion] ?? '🎭', style: const TextStyle(fontSize: 12)),
+                        Text(
+                          EmotionLabels.emoji[emotion] ?? '🎭',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           emotion[0].toUpperCase() + emotion.substring(1),
-                          style: TextStyle(fontSize: 10, color: _emotionRingColor(emotion)),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: _emotionRingColor(emotion),
+                          ),
                         ),
                         const Spacer(),
                         if (fixation != null && fixation.isNotEmpty)
-                          FixationChip(topic: fixation, lifespan: fixationLife, compact: true),
+                          FixationChip(
+                            topic: fixation,
+                            lifespan: fixationLife,
+                            compact: true,
+                          ),
                       ],
                     ),
                   if (isRealism) ...[
@@ -353,29 +490,55 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
                         'Realism off — enable in sidebar for per-character state',
-                        style: TextStyle(fontSize: 9, color: AppColors.textTertiary(context), fontStyle: FontStyle.italic),
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: AppColors.textTertiary(context),
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                     ),
 
                   // Compact objectives count
                   if (widget.onOpenObjectives != null) ...[
                     const SizedBox(height: 3),
-                    Builder(builder: (ctx) {
-                      final count = chat.getObjectivesForGroupCharacter(widget.character).where((o) => o.active).length;
-                      if (count == 0) return const SizedBox.shrink();
-                      return Row(
-                        children: [
-                          const Icon(Icons.flag, size: 11, color: Colors.amber),
-                          const SizedBox(width: 3),
-                          Text('$count obj', style: const TextStyle(fontSize: 9, color: Colors.amber)),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: widget.onOpenObjectives,
-                            child: const Text('edit', style: TextStyle(fontSize: 9, color: Colors.amber, decoration: TextDecoration.underline)),
-                          ),
-                        ],
-                      );
-                    }),
+                    Builder(
+                      builder: (ctx) {
+                        final count = chat
+                            .getObjectivesForGroupCharacter(widget.character)
+                            .where((o) => o.active)
+                            .length;
+                        if (count == 0) return const SizedBox.shrink();
+                        return Row(
+                          children: [
+                            const Icon(
+                              Icons.flag,
+                              size: 11,
+                              color: Colors.amber,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              '$count obj',
+                              style: const TextStyle(
+                                fontSize: 9,
+                                color: Colors.amber,
+                              ),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: widget.onOpenObjectives,
+                              child: const Text(
+                                'edit',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.amber,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ],
                 ],
               ],
@@ -397,7 +560,11 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
       ),
       child: Text(
         '$label${value.abs()}',
-        style: TextStyle(fontSize: 9, color: isNeg ? Colors.redAccent : color, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          fontSize: 9,
+          color: isNeg ? Colors.redAccent : color,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -407,12 +574,17 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
       decoration: BoxDecoration(
-        color: (isCrit ? Colors.redAccent : Colors.orangeAccent).withValues(alpha: 0.12),
+        color: (isCrit ? Colors.redAccent : Colors.orangeAccent).withValues(
+          alpha: 0.12,
+        ),
         borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
         '${name[0].toUpperCase()}$val',
-        style: TextStyle(fontSize: 9, color: isCrit ? Colors.redAccent : Colors.orangeAccent),
+        style: TextStyle(
+          fontSize: 9,
+          color: isCrit ? Colors.redAccent : Colors.orangeAccent,
+        ),
       ),
     );
   }
@@ -436,28 +608,50 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
 
   String _tierName(int tier) {
     switch (tier) {
-      case 10: return 'Devoted';
-      case 9: return 'Enamored';
-      case 8: return 'Smitten';
-      case 7: return 'Affectionate';
-      case 6: return 'Fond';
-      case 5: return 'Warm';
-      case 4: return 'Friendly';
-      case 3: return 'Neutral+';
-      case 2: return 'Neutral';
-      case 1: return 'Cool';
-      case 0: return 'Indifferent';
-      case -1: return 'Distant';
-      case -2: return 'Cold';
-      case -3: return 'Hostile';
-      case -4: return 'Resentful';
-      case -5: return 'Bitter';
-      case -6: return 'Hateful';
-      case -7: return 'Despising';
-      case -8: return 'Loathing';
-      case -9: return 'Reviling';
-      case -10: return 'Abhorrent';
-      default: return 'Unknown';
+      case 10:
+        return 'Devoted';
+      case 9:
+        return 'Enamored';
+      case 8:
+        return 'Smitten';
+      case 7:
+        return 'Affectionate';
+      case 6:
+        return 'Fond';
+      case 5:
+        return 'Warm';
+      case 4:
+        return 'Friendly';
+      case 3:
+        return 'Neutral+';
+      case 2:
+        return 'Neutral';
+      case 1:
+        return 'Cool';
+      case 0:
+        return 'Indifferent';
+      case -1:
+        return 'Distant';
+      case -2:
+        return 'Cold';
+      case -3:
+        return 'Hostile';
+      case -4:
+        return 'Resentful';
+      case -5:
+        return 'Bitter';
+      case -6:
+        return 'Hateful';
+      case -7:
+        return 'Despising';
+      case -8:
+        return 'Loathing';
+      case -9:
+        return 'Reviling';
+      case -10:
+        return 'Abhorrent';
+      default:
+        return 'Unknown';
     }
   }
 
@@ -469,19 +663,65 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
     if (tier >= 6) return Colors.pink.shade200;
     if (tier >= 5) return Colors.orangeAccent;
     if (tier >= 4) return Colors.greenAccent;
-    if (tier >= 3) return AppColors.resolve(context, Colors.lightBlue, Colors.blue.shade700);
-    if (tier >= 2) return AppColors.resolve(context, Colors.blueGrey, Colors.blueGrey.shade700);
-    if (tier >= 1) return AppColors.resolve(context, Colors.grey.shade400, Colors.grey.shade700);
+    if (tier >= 3)
+      return AppColors.resolve(context, Colors.lightBlue, Colors.blue.shade700);
+    if (tier >= 2)
+      return AppColors.resolve(
+        context,
+        Colors.blueGrey,
+        Colors.blueGrey.shade700,
+      );
+    if (tier >= 1)
+      return AppColors.resolve(
+        context,
+        Colors.grey.shade400,
+        Colors.grey.shade700,
+      );
     if (tier == 0) return AppColors.textTertiary(context);
-    if (tier >= -1) return AppColors.resolve(context, Colors.orangeAccent.shade100, Colors.orange.shade700);
-    if (tier >= -2) return AppColors.resolve(context, Colors.redAccent.shade100, Colors.red.shade600);
+    if (tier >= -1)
+      return AppColors.resolve(
+        context,
+        Colors.orangeAccent.shade100,
+        Colors.orange.shade700,
+      );
+    if (tier >= -2)
+      return AppColors.resolve(
+        context,
+        Colors.redAccent.shade100,
+        Colors.red.shade600,
+      );
     if (tier >= -3) return Colors.redAccent;
     if (tier >= -4) return Colors.red;
-    if (tier >= -5) return AppColors.resolve(context, Colors.red.shade900, Colors.red.shade800);
-    if (tier >= -6) return AppColors.resolve(context, Colors.brown.shade900, Colors.brown.shade700);
-    if (tier >= -7) return AppColors.resolve(context, Colors.deepOrange.shade900, Colors.deepOrange.shade700);
-    if (tier >= -8) return AppColors.resolve(context, Colors.amber.shade900, Colors.amber.shade800);
-    if (tier >= -9) return AppColors.resolve(context, Colors.orange.shade900, Colors.orange.shade800);
+    if (tier >= -5)
+      return AppColors.resolve(
+        context,
+        Colors.red.shade900,
+        Colors.red.shade800,
+      );
+    if (tier >= -6)
+      return AppColors.resolve(
+        context,
+        Colors.brown.shade900,
+        Colors.brown.shade700,
+      );
+    if (tier >= -7)
+      return AppColors.resolve(
+        context,
+        Colors.deepOrange.shade900,
+        Colors.deepOrange.shade700,
+      );
+    if (tier >= -8)
+      return AppColors.resolve(
+        context,
+        Colors.amber.shade900,
+        Colors.amber.shade800,
+      );
+    if (tier >= -9)
+      return AppColors.resolve(
+        context,
+        Colors.orange.shade900,
+        Colors.orange.shade800,
+      );
     return AppColors.textPrimary(context);
   }
 

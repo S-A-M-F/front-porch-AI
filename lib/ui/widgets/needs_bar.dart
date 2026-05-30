@@ -97,7 +97,9 @@ class NeedsBar extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: pct,
                 minHeight: 2.5,
-                backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
+                backgroundColor: AppColors.borderOf(
+                  context,
+                ).withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(effectiveColor),
               ),
             ),
@@ -105,7 +107,10 @@ class NeedsBar extends StatelessWidget {
           const SizedBox(width: 2),
           Text(
             '$value',
-            style: TextStyle(fontSize: 8, color: AppColors.textTertiary(context)),
+            style: TextStyle(
+              fontSize: 8,
+              color: AppColors.textTertiary(context),
+            ),
           ),
         ],
       );
@@ -142,7 +147,9 @@ class NeedsBar extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: pct,
                 minHeight: 5,
-                backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
+                backgroundColor: AppColors.borderOf(
+                  context,
+                ).withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(effectiveColor),
               ),
             ),
@@ -154,7 +161,9 @@ class NeedsBar extends StatelessWidget {
               '$value%',
               style: TextStyle(
                 fontSize: 10,
-                color: isCritical ? Colors.redAccent : AppColors.textTertiary(context),
+                color: isCritical
+                    ? Colors.redAccent
+                    : AppColors.textTertiary(context),
                 fontWeight: isCritical ? FontWeight.w600 : FontWeight.normal,
               ),
               textAlign: TextAlign.right,
@@ -165,7 +174,11 @@ class NeedsBar extends StatelessWidget {
             Tooltip(
               message: reason,
               preferBelow: false,
-              child: const Icon(Icons.info_outline, size: 11, color: Colors.white38),
+              child: const Icon(
+                Icons.info_outline,
+                size: 11,
+                color: Colors.white38,
+              ),
             ),
           ],
         ],

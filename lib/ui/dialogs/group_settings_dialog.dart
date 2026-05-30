@@ -1199,9 +1199,6 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
   bool _chaosModeEnabled = false;
   bool _chaosNsfwEnabled = false;
 
-  bool _hasUnsavedChanges = false;
-  String _statusMessage = '';
-
   List<CharacterCard> _chars = [];
 
   // Baseline seeding state (only bond/trust/emotion/time/day)
@@ -1233,9 +1230,6 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     for (final c in _chars) {
       _baselineSeeds[_getCharId(c)] = Map<String, dynamic>.from(cs.getBaselineSeedForGroupCharacter(c));
     }
-
-    _hasUnsavedChanges = false;
-    _statusMessage = '';
   }
 
   String _getCharId(CharacterCard c) => c.imagePath != null
@@ -1248,48 +1242,39 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     super.dispose();
   }
 
-  void _markDirty() {
-    setState(() {
-      _hasUnsavedChanges = true;
-      _statusMessage = '';
-    });
-  }
-
   void _updateRealism(bool value) {
-    _realismEnabled = value;
-    
+    setState(() {
+      _realismEnabled = value;
+    });
+    widget.chatService.setRealismEnabled(value);
   }
 
   void _updateNeedsSim(bool value) {
-    _needsSimEnabled = value;
-    
+    setState(() {
+      _needsSimEnabled = value;
+    });
+    widget.chatService.setNeedsSimEnabled(value);
   }
 
   void _updatePassageOfTime(bool value) {
-    _passageOfTimeEnabled = value;
-    
+    setState(() {
+      _passageOfTimeEnabled = value;
+    });
+    widget.chatService.setPassageOfTimeEnabled(value);
   }
 
   void _updateChaosMode(bool value) {
-    _chaosModeEnabled = value;
-    
+    setState(() {
+      _chaosModeEnabled = value;
+    });
+    widget.chatService.setChaosModeEnabled(value);
   }
 
   void _updateChaosNsfw(bool value) {
-    _chaosNsfwEnabled = value;
-    
-  }
-
-  void _resetToDefaults() {
     setState(() {
-      _realismEnabled = false;
-      _needsSimEnabled = false;
-      _passageOfTimeEnabled = true;
-      _chaosModeEnabled = false;
-      _chaosNsfwEnabled = false;
-      _hasUnsavedChanges = true;
-      _statusMessage = 'Reset to defaults (unsaved)';
+      _chaosNsfwEnabled = value;
     });
+    widget.chatService.setChaosNsfwEnabled(value);
   }
 
   void _resetAllRealismStates() {
@@ -1300,21 +1285,10 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       cs.resetRealismForGroupCharacter(c);
     }
 
-    if (mounted) {
-      setState(() {
-        _statusMessage =
-            'All character realism states cleared for this group. They will re-initialize on the next turn/eval.';
-      });
-    }
   }
 
   void _resetCharacterRealism(CharacterCard character) {
     widget.chatService.resetRealismForGroupCharacter(character);
-    if (mounted) {
-      setState(() {
-        _statusMessage = 'Reset realism state for ${character.name}.';
-      });
-    }
   }
 
 

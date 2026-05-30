@@ -38,8 +38,6 @@ class CharacterCardGrid extends StatelessWidget {
     required this.modeToggle,
     required this.onTapCharacter,
     required this.onTapGroup,
-    this.onExportGroup,
-    this.onExtractCharacters,
     required this.onToggleSelect,
     this.onToggleSelectMode,
     this.onToggleOrganizeMode,
@@ -60,6 +58,7 @@ class CharacterCardGrid extends StatelessWidget {
     required this.onResolveCharImage,
     required this.onDeleteGroup,
     required this.onAfterNavigateBack,
+    this.onGroupContextMenuAction,
   });
 
   final String searchQuery;
@@ -81,8 +80,6 @@ class CharacterCardGrid extends StatelessWidget {
 
   final Future<void> Function(CharacterCard character) onTapCharacter;
   final Future<void> Function(GroupChat group) onTapGroup;
-  final void Function(GroupChat group)? onExportGroup;
-  final void Function(GroupChat group)? onExtractCharacters;
   final void Function(CharacterCard character) onToggleSelect;
   final VoidCallback? onToggleSelectMode;
   final VoidCallback? onToggleOrganizeMode;
@@ -105,7 +102,17 @@ class CharacterCardGrid extends StatelessWidget {
   final void Function(GroupChat group) onDeleteGroup;
   final VoidCallback onAfterNavigateBack;
 
+  /// Called when the user right-clicks (secondary tap) a group card on the home grid.
+  /// Mirrors the existing `onContextMenuAction` pattern used for CharacterCard.
+  final void Function(String action, GroupChat group)? onGroupContextMenuAction;
+
   String _getCharacterIdFromCard(CharacterCard card) {
+    // Match the logic used in ChatService so that groups created via the
+    // new wizard (which can use dbId as the stable ID) resolve correctly
+    // when displayed on the home screen.
+    if (card.dbId != null && card.dbId!.isNotEmpty) {
+      return card.dbId!;
+    }
     if (card.imagePath != null) {
       return path.basenameWithoutExtension(card.imagePath!);
     }
@@ -782,8 +789,7 @@ class CharacterCardGrid extends StatelessWidget {
             return _buildGroupCard(
               context, 
               groups[groupOffset], 
-              onExportGroup ?? (_) {}, 
-              onExtractCharacters ?? (_) {},
+              onGroupContextMenuAction,
             );
           }
           final character = displayCharacters[groupOffset - groups.length];
@@ -1323,8 +1329,7 @@ class CharacterCardGrid extends StatelessWidget {
   Widget _buildGroupCard(
     BuildContext context,
     GroupChat group,
-    void Function(GroupChat group) onExportGroup,
-    void Function(GroupChat group) onExtractCharacters,
+    void Function(String action, GroupChat group)? onGroupContextMenuAction,
   ) {
     final characters = <CharacterCard>[];
     for (final id in group.characterIds) {
@@ -1482,68 +1487,117 @@ class CharacterCardGrid extends StatelessWidget {
                 );
               },
             ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Extract characters from this group as independent standalone characters
-                  // (especially useful after importing someone else's Group Card)
-                  Material(
-                    color: AppColors.resolve(context, Colors.black54, Colors.black12),
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () => onExtractCharacters(group),
-                      child: const Padding(
-                        padding: EdgeInsets.all(6.0),
-                        child: Icon(
-                          Icons.call_split,
-                          color: Colors.tealAccent,
-                          size: 16,
-                        ),
+
+            // Right-click (secondary tap) context menu for groups — parity with character cards.
+            // Only active when not in bulk select/organize modes (same guard as characters).
+            if (!isSelecting && !isOrganizing && onGroupContextMenuAction != null)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onSecondaryTapUp: (details) {
+                    final position = details.globalPosition;
+                    showMenu<String>(
+                      context: context,
+                      position: RelativeRect.fromLTRB(
+                        position.dx,
+                        position.dy,
+                        position.dx,
+                        position.dy,
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  // Export group as PNG (novel Front Porch group card feature)
-                  Material(
-                    color: AppColors.resolve(context, Colors.black54, Colors.black12),
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () => onExportGroup(group),
-                      child: const Padding(
-                        padding: EdgeInsets.all(6.0),
-                        child: Icon(
-                          Icons.download,
-                          color: Colors.lightBlueAccent,
-                          size: 16,
-                        ),
+                      color: AppColors.surfaceContainerOf(context),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Material(
-                    color: AppColors.resolve(context, Colors.black54, Colors.black12),
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () => onDeleteGroup(group),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(
-                          Icons.delete,
-                          color: Colors.redAccent,
-                          size: 18,
+                      items: [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.edit,
+                              color: AppColors.iconSecondary(context),
+                              size: 20,
+                            ),
+                            title: Text(
+                              'Edit Group',
+                              style: TextStyle(color: AppColors.textPrimary(context)),
+                            ),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                ],
+                        PopupMenuItem(
+                          value: 'duplicate',
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.copy,
+                              color: AppColors.iconSecondary(context),
+                              size: 20,
+                            ),
+                            title: Text(
+                              'Duplicate Group',
+                              style: TextStyle(color: AppColors.textPrimary(context)),
+                            ),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'export',
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.upload,
+                              color: AppColors.iconSecondary(context),
+                              size: 20,
+                            ),
+                            title: Text(
+                              'Export PNG',
+                              style: TextStyle(color: AppColors.textPrimary(context)),
+                            ),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'extract',
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.call_split,
+                              color: Colors.tealAccent,
+                              size: 20,
+                            ),
+                            title: Text(
+                              'Extract Characters',
+                              style: TextStyle(color: AppColors.textPrimary(context)),
+                            ),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.delete,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
+                            title: Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.redAccent),
+                            ),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
+                    ).then((value) {
+                      if (value == null) return;
+                      onGroupContextMenuAction(value, group);
+                    });
+                  },
+                  child: const SizedBox.shrink(),
+                ),
               ),
-            ),
           ],
         ),
       ),

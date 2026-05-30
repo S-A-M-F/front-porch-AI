@@ -30,25 +30,18 @@ import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/pages/chat_page.dart';
 
-/// First-class, menu-driven Group Chat Creator.
+/// First-class, menu-driven Group Chat Creator (pure create flow).
 ///
-/// Launched from the sidebar (peer to the character creators).
-/// Supports the complete modern GroupChat model at creation time:
-/// - Rich member roster builder (search, add, remove, reorder, voices)
-/// - Group lorebooks + worlds + inherit flag
-/// - Per-character system prompt overrides
-/// - Full Realism/Needs + Chaos seeding (baseline + defaultMember)
-/// - Director Mode, turn order, auto-advance, opening scene with AI gen
-///
-/// No layering on the old crusty dialog. Beautiful, first-class experience.
+/// Launched from the sidebar "Create Group" button.
+/// Uses the exact same linear step wizard UI (top-bar dots, _currentStep,
+/// AnimatedSwitcher, _buildNavButtons) as create_character_page.dart.
+/// Edit flows now use the dedicated tabbed EditGroupPage (matching EditCharacterPage style).
 class CreateGroupChatPage extends StatefulWidget {
   const CreateGroupChatPage({super.key});
 
   @override
   State<CreateGroupChatPage> createState() => _CreateGroupChatPageState();
 }
-
-
 
 class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   int _currentStep = 0;
@@ -93,7 +86,8 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   // (reserved for future entry dialog state if we go non-modal)
 
   // Realism / Chaos / Needs (group level + per-member seeds)
-  bool _realismEnabled = true; // Master group toggle — this is the only realism on/off control
+  bool _realismEnabled =
+      true; // Master group toggle — this is the only realism on/off control
   final Map<String, Map<String, dynamic>> _memberRealismSeeds = {};
   bool _chaosModeEnabled = false;
   bool _chaosNsfwEnabled = false;
@@ -114,12 +108,17 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   @override
   void initState() {
     super.initState();
+
     _nameController.addListener(_updateEstimates);
     _scenarioController.addListener(_updateEstimates);
     _firstMessageController.addListener(_updateEstimates);
     _groupSystemController.addListener(_updateEstimates);
     _memberSearchController.addListener(() {
-      setState(() => _memberSearchQuery = _memberSearchController.text.trim().toLowerCase());
+      setState(
+        () => _memberSearchQuery = _memberSearchController.text
+            .trim()
+            .toLowerCase(),
+      );
     });
   }
 
@@ -161,37 +160,27 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final q = _memberSearchQuery;
     var list = _availableCharacters;
     if (q.isNotEmpty) {
-      list = list.where((c) =>
-          c.name.toLowerCase().contains(q) ||
-          c.description.toLowerCase().contains(q) ||
-          c.personality.toLowerCase().contains(q)).toList();
+      list = list
+          .where(
+            (c) =>
+                c.name.toLowerCase().contains(q) ||
+                c.description.toLowerCase().contains(q) ||
+                c.personality.toLowerCase().contains(q),
+          )
+          .toList();
     }
     // Simple sort by name
     list.sort((a, b) => a.name.compareTo(b.name));
     return list;
   }
 
-  String _stableId(CharacterCard c) => c.dbId ?? (c.imagePath != null ? p.basenameWithoutExtension(c.imagePath!) : c.name);
+  String _stableId(CharacterCard c) =>
+      c.dbId ??
+      (c.imagePath != null ? p.basenameWithoutExtension(c.imagePath!) : c.name);
 
   // ── SECTION NAV ────────────────────────────────────────────────────
 
   bool get _canLeaveMembersStep => _members.length >= 2;
-
-  List<String> get _stepLabels {
-    final labels = [
-      'Members',
-      'Identity',
-      'Opening',
-      'Prompts',
-      'Lore',
-      'Realism',
-    ];
-    if (_members.length <= 4) {
-      labels.add('Group Dynamics');
-    }
-    labels.add('Review');
-    return labels;
-  }
 
   int? _getEffectiveNextStep(int current) {
     int next = current + 1;
@@ -292,17 +281,20 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         'rest': 65,
         'social': 60,
         'hygiene': 80,
-        'arousal': 20,
         'bladder': 85,
       },
       'enjoysLowHygiene': false,
-      'relationships': <String, int>{}, // seeded in Group Dynamics step for small groups
+      'relationships':
+          <String, int>{}, // seeded in Group Dynamics step for small groups
     };
   }
 
   void _seedRealismFromCard(String charId) {
     final repo = Provider.of<CharacterRepository>(context, listen: false);
-    final card = _members.firstWhere((c) => _stableId(c) == charId, orElse: () => _members.first);
+    final card = _members.firstWhere(
+      (c) => _stableId(c) == charId,
+      orElse: () => _members.first,
+    );
     setState(() {
       _memberRealismSeeds[charId] = _defaultRealismSeedFor(card);
     });
@@ -332,22 +324,29 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final llm = Provider.of<LLMProvider>(context, listen: false);
     final service = llm.activeService;
     if (!service.isReady) {
-      _showSnack('LLM backend is not ready. Start KoboldCPP or configure your API first.');
+      _showSnack(
+        'LLM backend is not ready. Start KoboldCPP or configure your API first.',
+      );
       return;
     }
     setState(() => _isGeneratingScenario = true);
 
     final names = _members.map((c) => c.name).join(', ');
-    final briefs = _members.map((c) {
-      final trait = c.personality.isNotEmpty ? c.personality.split('.').first : c.name;
-      return '${c.name} ($trait)';
-    }).join(', ');
+    final briefs = _members
+        .map((c) {
+          final trait = c.personality.isNotEmpty
+              ? c.personality.split('.').first
+              : c.name;
+          return '${c.name} ($trait)';
+        })
+        .join(', ');
 
     final dynamicsCtx = dynamicsContext.isNotEmpty
         ? '\n\nHidden inter-character dynamics to reflect in the setting and atmosphere:\n$dynamicsContext\n\nIncorporate the emotional undercurrents between the characters into the description of the location and situation (without stating them directly).'
         : '';
 
-    final prompt = '[Output ONLY the scenario text. No planning, reasoning, or explanation. '
+    final prompt =
+        '[Output ONLY the scenario text. No planning, reasoning, or explanation. '
         'Do NOT use <think> tags.]\n\n'
         'Write a brief scenario (1-2 sentences max) for a group roleplay with: $briefs.$dynamicsCtx\n'
         'The scenario should describe WHERE the characters are and WHAT is happening.\n'
@@ -365,7 +364,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       await for (final tok in service.generateStream(params)) {
         buf.write(tok);
       }
-      var result = _cleanThinkAndMarkers(buf.toString(), prefixMarkers: ['SCENARIO:']);
+      var result = _cleanThinkAndMarkers(
+        buf.toString(),
+        prefixMarkers: ['SCENARIO:'],
+      );
       if (result.isNotEmpty) {
         _scenarioController.text = result;
       }
@@ -380,16 +382,22 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final llm = Provider.of<LLMProvider>(context, listen: false);
     final service = llm.activeService;
     if (!service.isReady) {
-      _showSnack('LLM backend is not ready. Start KoboldCPP or configure your API first.');
+      _showSnack(
+        'LLM backend is not ready. Start KoboldCPP or configure your API first.',
+      );
       return;
     }
     setState(() => _isGeneratingFirst = true);
 
-    final descriptions = _members.map((c) {
-      final persona = c.personality.isNotEmpty ? c.personality : c.description;
-      final scen = c.scenario.isNotEmpty ? ' Scenario: ${c.scenario}' : '';
-      return '- ${c.name}: $persona$scen';
-    }).join('\n');
+    final descriptions = _members
+        .map((c) {
+          final persona = c.personality.isNotEmpty
+              ? c.personality
+              : c.description;
+          final scen = c.scenario.isNotEmpty ? ' Scenario: ${c.scenario}' : '';
+          return '- ${c.name}: $persona$scen';
+        })
+        .join('\n');
 
     final scenarioCtx = _scenarioController.text.trim().isNotEmpty
         ? '\nThe group scenario is: ${_scenarioController.text.trim()}'
@@ -402,20 +410,20 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final isDirector = _directorMode;
     final prompt = isDirector
         ? '[INSTRUCTIONS: Output ONLY the creative scene text. '
-          'Do NOT plan, reason, analyze, or explain. Do NOT use <think> tags. Start writing IMMEDIATELY.]\n\n'
-          'Write a vivid, immersive opening scene (3-5 paragraphs) for a DIRECTOR MODE group roleplay featuring:\n$descriptions$scenarioCtx$dynamicsCtx\n\n'
-          'CRITICAL: There is NO user/player present. Characters interact ONLY with each other.\n'
-          'Each character MUST have at least 2 lines of dialogue.\n'
-          'Characters address and react to EACH OTHER.\n'
-          'Use *asterisks* for actions.\n'
-          'When done, write "END SCENE" on its own line.\n\n'
-          'BEGIN SCENE:\n'
+              'Do NOT plan, reason, analyze, or explain. Do NOT use <think> tags. Start writing IMMEDIATELY.]\n\n'
+              'Write a vivid, immersive opening scene (3-5 paragraphs) for a DIRECTOR MODE group roleplay featuring:\n$descriptions$scenarioCtx$dynamicsCtx\n\n'
+              'CRITICAL: There is NO user/player present. Characters interact ONLY with each other.\n'
+              'Each character MUST have at least 2 lines of dialogue.\n'
+              'Characters address and react to EACH OTHER.\n'
+              'Use *asterisks* for actions.\n'
+              'When done, write "END SCENE" on its own line.\n\n'
+              'BEGIN SCENE:\n'
         : '[INSTRUCTIONS: Output ONLY the creative scene text. '
-          'Do NOT plan, reason, analyze, or explain. Do NOT use <think> tags. Start writing IMMEDIATELY.]\n\n'
-          'Write a vivid, immersive opening message (2-4 paragraphs) for a group roleplay featuring:\n$descriptions$scenarioCtx$dynamicsCtx\n\n'
-          'The player ({{user}}) is present. Include natural dialogue from the characters and actions in *asterisks*.\n'
-          'Keep it engaging and true to the characters.\n\n'
-          'OPENING:\n';
+              'Do NOT plan, reason, analyze, or explain. Do NOT use <think> tags. Start writing IMMEDIATELY.]\n\n'
+              'Write a vivid, immersive opening message (2-4 paragraphs) for a group roleplay featuring:\n$descriptions$scenarioCtx$dynamicsCtx\n\n'
+              'The player ({{user}}) is present. Include natural dialogue from the characters and actions in *asterisks*.\n'
+              'Keep it engaging and true to the characters.\n\n'
+              'OPENING:\n';
 
     try {
       final buf = StringBuffer();
@@ -423,20 +431,31 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         prompt: prompt,
         maxLength: isDirector ? 1800 : 1200,
         temperature: 0.86,
-        stopSequences: isDirector ? ['END SCENE', '---', '[END]', '<think>'] : ['\n\n\n', '---', '<think>'],
+        stopSequences: isDirector
+            ? ['END SCENE', '---', '[END]', '<think>']
+            : ['\n\n\n', '---', '<think>'],
       );
       await for (final tok in service.generateStream(params)) {
         buf.write(tok);
       }
-      var result = _cleanThinkAndMarkers(buf.toString(), prefixMarkers: ['BEGIN SCENE:', 'OPENING:']);
+      var result = _cleanThinkAndMarkers(
+        buf.toString(),
+        prefixMarkers: ['BEGIN SCENE:', 'OPENING:'],
+      );
       if (isDirector) {
-        result = result.split('\n').where((line) {
-          final t = line.trimLeft();
-          return !t.startsWith('The user wants') &&
-              !t.startsWith('I need to') &&
-              !t.startsWith('I will') &&
-              !RegExp(r'^\d+\.\s+(Write|Use|Set|Make|Do|Keep|NOT|Create|End)').hasMatch(t);
-        }).join('\n').trim();
+        result = result
+            .split('\n')
+            .where((line) {
+              final t = line.trimLeft();
+              return !t.startsWith('The user wants') &&
+                  !t.startsWith('I need to') &&
+                  !t.startsWith('I will') &&
+                  !RegExp(
+                    r'^\d+\.\s+(Write|Use|Set|Make|Do|Keep|NOT|Create|End)',
+                  ).hasMatch(t);
+            })
+            .join('\n')
+            .trim();
       }
       if (result.isNotEmpty) {
         _firstMessageController.text = result;
@@ -448,9 +467,15 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     }
   }
 
-  String _cleanThinkAndMarkers(String raw, {List<String> prefixMarkers = const []}) {
+  String _cleanThinkAndMarkers(
+    String raw, {
+    List<String> prefixMarkers = const [],
+  }) {
     var s = raw
-        .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+        .replaceAll(
+          RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+          '',
+        )
         .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
         .replaceAll(RegExp(r'</think>', caseSensitive: false), '')
         .replaceAll('"', '')
@@ -468,7 +493,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
   // ── LOREBOOK HELPERS ───────────────────────────────────────────────
 
-  Future<void> _showLoreEntryEditor({LorebookEntry? existing, int? index}) async {
+  Future<void> _showLoreEntryEditor({
+    LorebookEntry? existing,
+    int? index,
+  }) async {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final keyCtrl = TextEditingController(text: existing?.key ?? '');
     final contentCtrl = TextEditingController(text: existing?.content ?? '');
@@ -485,7 +513,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceOf(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(existing == null ? 'Add Group Lore Entry' : 'Edit Group Lore Entry'),
+        title: Text(
+          existing == null ? 'Add Group Lore Entry' : 'Edit Group Lore Entry',
+        ),
         content: StatefulBuilder(
           builder: (innerCtx, setInnerState) {
             return SingleChildScrollView(
@@ -493,13 +523,29 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AppTextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Entry Name (optional)')),
+                  AppTextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Entry Name (optional)',
+                    ),
+                  ),
                   if (!constant) ...[
                     const SizedBox(height: 12),
-                    AppTextField(controller: keyCtrl, decoration: const InputDecoration(labelText: 'Trigger Keys (comma or space separated)')),
+                    AppTextField(
+                      controller: keyCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Trigger Keys (comma or space separated)',
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 12),
-                  AppTextField(controller: contentCtrl, maxLines: 5, decoration: const InputDecoration(labelText: 'Content (injected when triggered)')),
+                  AppTextField(
+                    controller: contentCtrl,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      labelText: 'Content (injected when triggered)',
+                    ),
+                  ),
                   const SizedBox(height: 16),
 
                   // Clean, non-wrapping toggle section (replaces the broken SwitchListTile rows)
@@ -518,15 +564,28 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Enabled', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  Text(
+                                    'Enabled',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary(context),
+                                    ),
+                                  ),
                                   const SizedBox(height: 2),
-                                  Text('This entry can be injected when its keys match', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                                  Text(
+                                    'This entry can be injected when its keys match',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary(context),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
                             Switch(
                               value: enabled,
-                              onChanged: (v) => setInnerState(() => enabled = v),
+                              onChanged: (v) =>
+                                  setInnerState(() => enabled = v),
                             ),
                           ],
                         ),
@@ -539,21 +598,37 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Constant', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  Text(
+                                    'Constant',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary(context),
+                                    ),
+                                  ),
                                   const SizedBox(height: 2),
-                                  Text('Always considered active (ignores trigger keys)', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                                  Text(
+                                    'Always considered active (ignores trigger keys)',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary(context),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
                             Switch(
                               value: constant,
-                              onChanged: (v) => setInnerState(() => constant = v),
+                              onChanged: (v) =>
+                                  setInnerState(() => constant = v),
                             ),
                           ],
                         ),
                         if (!constant) ...[
                           const SizedBox(height: 12),
-                          Divider(color: AppColors.borderOf(context), height: 1),
+                          Divider(
+                            color: AppColors.borderOf(context),
+                            height: 1,
+                          ),
                           const SizedBox(height: 12),
 
                           // Sticky Depth — clean slider presentation
@@ -563,28 +638,63 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                             children: [
                               Row(
                                 children: [
-                                  Text('Sticky Depth', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                  Text(
+                                    'Sticky Depth',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary(context),
+                                    ),
+                                  ),
                                   const Spacer(),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: AppColors.surfaceContainerOf(context),
+                                      color: AppColors.surfaceContainerOf(
+                                        context,
+                                      ),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
-                                    child: Text('$sticky', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+                                    child: Text(
+                                      '$sticky',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textPrimary(context),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              Text('How many turns the entry stays active after triggering', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                              Text(
+                                'How many turns the entry stays active after triggering',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary(context),
+                                ),
+                              ),
                               const SizedBox(height: 6),
                               SliderTheme(
                                 data: SliderThemeData(
-                                  activeTrackColor: Colors.tealAccent,
-                                  inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.4),
-                                  thumbColor: Colors.tealAccent,
+                                  activeTrackColor: AppColors.resolve(
+                                    context,
+                                    Colors.tealAccent,
+                                    Colors.teal.shade700,
+                                  ),
+                                  inactiveTrackColor: AppColors.borderOf(
+                                    context,
+                                  ).withValues(alpha: 0.4),
+                                  thumbColor: AppColors.resolve(
+                                    context,
+                                    Colors.tealAccent,
+                                    Colors.teal.shade700,
+                                  ),
                                   trackHeight: 3,
-                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 7,
+                                  ),
                                 ),
                                 child: Slider(
                                   value: sticky.toDouble().clamp(0, 12),
@@ -592,7 +702,8 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                                   max: 12,
                                   divisions: 12,
                                   label: sticky.toString(),
-                                  onChanged: (v) => setInnerState(() => sticky = v.round()),
+                                  onChanged: (v) =>
+                                      setInnerState(() => sticky = v.round()),
                                 ),
                               ),
                             ],
@@ -607,8 +718,14 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           },
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
@@ -646,9 +763,15 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     if (_members.length > 4) return '';
 
     final buffer = StringBuffer();
-    buffer.writeln('Hidden inter-character dynamics (these are private feelings the characters have toward each other — the player does not know about them):');
-    buffer.writeln('Scale explanation: Values range from -300 (extreme hatred/resentment) to +300 (deep soul-level bond).');
-    buffer.writeln('Rough tiers: 80+ = Soulbound / extremely devoted, 50+ = Deep Bond, 20+ = Close, 5+ = Friendly, -4 to +4 = Neutral, -5 to -19 = Uneasy, -20 to -49 = Distant, -50 to -79 = Hostile, -80 and below = Nemesis / intense personal animosity.');
+    buffer.writeln(
+      'Hidden inter-character dynamics (these are private feelings the characters have toward each other — the player does not know about them):',
+    );
+    buffer.writeln(
+      'Scale explanation: Values range from -300 (extreme hatred/resentment) to +300 (deep soul-level bond).',
+    );
+    buffer.writeln(
+      'Rough tiers: 80+ = Soulbound / extremely devoted, 50+ = Deep Bond, 20+ = Close, 5+ = Friendly, -4 to +4 = Neutral, -5 to -19 = Uneasy, -20 to -49 = Distant, -50 to -79 = Hostile, -80 and below = Nemesis / intense personal animosity.',
+    );
     buffer.writeln('');
 
     for (final source in _members) {
@@ -666,12 +789,16 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
         final value = entry.value;
         final tier = _getRelationshipTierName(value);
-        buffer.writeln('- ${source.name} feels ${tier.toLowerCase()} toward ${target.name} (score: $value on -300 to +300 scale)');
+        buffer.writeln(
+          '- ${source.name} feels ${tier.toLowerCase()} toward ${target.name} (score: $value on -300 to +300 scale)',
+        );
       }
     }
 
     buffer.writeln('');
-    buffer.writeln('When writing the opening scene, reflect these private feelings naturally through body language, tone, subtext, and how the characters interact with each other. Do not state the scores directly.');
+    buffer.writeln(
+      'When writing the opening scene, reflect these private feelings naturally through body language, tone, subtext, and how the characters interact with each other. Do not state the scores directly.',
+    );
 
     return buffer.toString().trim();
   }
@@ -693,15 +820,18 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   void _updateMemberRealism(String charId, Map<String, dynamic> values) {
     setState(() {
       _memberRealismSeeds[charId] = {
-        ...(_memberRealismSeeds[charId] ?? _defaultRealismSeedFor(_members.firstWhere((c) => _stableId(c) == charId))),
+        ...(_memberRealismSeeds[charId] ??
+            _defaultRealismSeedFor(
+              _members.firstWhere((c) => _stableId(c) == charId),
+            )),
         ...values,
       };
     });
   }
 
-  // ── CREATE ─────────────────────────────────────────────────────────
+  // ── SAVE (unified create + edit; extended existing method, 0 new private methods) ──
 
-  Future<void> _createGroup() async {
+  Future<void> _createGroup({bool enterChat = true}) async {
     if (_members.length < 2) {
       _showSnack('A group needs at least 2 characters.');
       setState(() => _currentStep = 0);
@@ -716,8 +846,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
     final repo = Provider.of<CharacterRepository>(context, listen: false);
     final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
-    final chatService = Provider.of<ChatService>(context, listen: false);
-    Provider.of<TtsService>(context, listen: false); // voices already resolved earlier
+    Provider.of<TtsService>(
+      context,
+      listen: false,
+    ); // voices already resolved earlier
 
     // Build per-char system prompts & voices
     final charPrompts = <String, String>{};
@@ -731,13 +863,11 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final lb = Lorebook(entries: List.from(_groupLoreEntries));
     final groupLoreJson = jsonEncode(lb.toJson());
 
-    // Build realism blobs — only when the group master toggle is on.
-    // This prevents the serious footgun of mixed per-character realism states.
+    // Build realism blobs (create-only path now).
     String baselineJson = '{}';
     String defaultMemberJson = '{}';
 
     if (_realismEnabled) {
-      final baseline = <String, dynamic>{};
       final defaultMember = <String, dynamic>{'perChar': <String, dynamic>{}};
 
       for (final c in _members) {
@@ -748,6 +878,18 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           seed = Map<String, dynamic>.from(seed)..remove('needs');
         }
 
+        (defaultMember['perChar'] as Map)[id] = seed;
+      }
+
+      defaultMemberJson = jsonEncode(defaultMember);
+
+      final baseline = <String, dynamic>{};
+      for (final c in _members) {
+        final id = _stableId(c);
+        var seed = _memberRealismSeeds[id] ?? _defaultRealismSeedFor(c);
+        if (!_needsSimEnabled) {
+          seed = Map<String, dynamic>.from(seed)..remove('needs');
+        }
         baseline[id] = {
           'affection': (seed['affection'] as num?)?.toInt() ?? 35,
           'trust': (seed['trust'] as num?)?.toInt() ?? 40,
@@ -756,12 +898,8 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           'timeOfDay': _globalTimeOfDay,
           'dayCount': _globalDayCount,
         };
-
-        (defaultMember['perChar'] as Map)[id] = seed;
       }
-
       baselineJson = jsonEncode(baseline);
-      defaultMemberJson = jsonEncode(defaultMember);
     }
 
     final group = GroupChat(
@@ -788,31 +926,39 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
     // Apply voice overrides (same pattern as the old creator)
     for (final entry in _characterVoices.entries) {
-      final card = _members.firstWhere((c) => _stableId(c) == entry.key, orElse: () => _members.first);
+      final card = _members.firstWhere(
+        (c) => _stableId(c) == entry.key,
+        orElse: () => _members.first,
+      );
       if (entry.value.isNotEmpty && entry.value != card.ttsVoice) {
         card.ttsVoice = entry.value;
         await repo.updateCharacter(card);
       }
     }
 
-    // Auto-enter the beautiful new group
-    await chatService.setActiveGroup(group);
-    await chatService.startNewChat();
+    if (enterChat) {
+      // Full "Create & Enter" path.
+      final chatService = Provider.of<ChatService>(context, listen: false);
+      await chatService.setActiveGroup(group);
+      await chatService.startNewChat();
 
-    // Make sure custom scenario/first message from the wizard actually stick.
-    // startNewChat() can clear the greeting that setActiveGroup injected.
-    chatService.ensureCustomGroupOpeningMessage(group);
-
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const ChatPage()),
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Group "$name" created!'),
-          backgroundColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)),
-        ),
-      );
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (_) => const ChatPage()));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Group "$name" created!')));
+      }
+    } else {
+      // "Create Only (don't enter chat yet)"
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
+          SnackBar(content: Text('Group "$name" created.')),
+        );
+        Navigator.of(context).pop();
+      }
     }
   }
 
@@ -830,7 +976,15 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         ),
         title: Row(
           children: [
-            const Icon(Icons.group_add, color: Color(0xFF7C3AED), size: 22),
+            Icon(
+              Icons.group_add,
+              color: AppColors.resolve(
+                context,
+                AppColors.logLoading,
+                AppColors.userBubble,
+              ),
+              size: 22,
+            ),
             const SizedBox(width: 10),
             const Text('Create Group Chat'),
             const Spacer(),
@@ -859,7 +1013,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 : _currentStep == 4
                 ? _buildRealismStep()
                 : _currentStep == 5
-                ? (_members.length <= 4 ? _buildGroupDynamicsStep() : _buildGroupDynamicsDisabledStep())
+                ? (_members.length <= 4
+                      ? _buildGroupDynamicsStep()
+                      : _buildGroupDynamicsDisabledStep())
                 : _currentStep == 6
                 ? _buildOpeningStep()
                 : _buildReviewStep(),
@@ -869,34 +1025,63 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     );
   }
 
-
-
   Widget _buildMembersStep() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Members', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary(context))),
+          Text(
+            'Members',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary(context),
+            ),
+          ),
           const SizedBox(height: 6),
-          Text('Build your roster. At least 2 characters required.', style: TextStyle(color: AppColors.textSecondary(context))),
+          Text(
+            'Build your roster. At least 2 characters required.',
+            style: TextStyle(color: AppColors.textSecondary(context)),
+          ),
           const SizedBox(height: 16),
 
           // Current Roster
           Row(
             children: [
-              Text('Current Roster (${_members.length})', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+              Text(
+                'Current Roster (${_members.length})',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary(context),
+                ),
+              ),
               if (_members.length < 2) ...[
                 const SizedBox(width: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.15),
+                    color: AppColors.resolve(
+                      context,
+                      Colors.redAccent.withValues(alpha: 0.15),
+                      Colors.red.withValues(alpha: 0.15),
+                    ),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Minimum 2 required',
-                    style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: AppColors.resolve(
+                        context,
+                        Colors.redAccent,
+                        Colors.red.shade700,
+                      ),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -906,8 +1091,13 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           if (_members.isEmpty)
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: AppColors.cardOf(context), borderRadius: BorderRadius.circular(12)),
-              child: const Center(child: Text('No members yet — add from the browser below')),
+              decoration: BoxDecoration(
+                color: AppColors.cardOf(context),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Center(
+                child: Text('No members yet — add from the browser below'),
+              ),
             )
           else
             ReorderableListView.builder(
@@ -925,12 +1115,17 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                   child: ListTile(
                     leading: _avatar(c, radius: 22),
                     title: Text(c.name),
-                    subtitle: Text('${c.description.isNotEmpty ? c.description.substring(0, c.description.length.clamp(0, 60)) : "No description"}...'),
+                    subtitle: Text(
+                      '${c.description.isNotEmpty ? c.description.substring(0, c.description.length.clamp(0, 60)) : "No description"}...',
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _voiceDropdown(c, voice, (v) => _setVoice(id, v)),
-                        IconButton(icon: const Icon(Icons.close), onPressed: () => _removeMember(id)),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => _removeMember(id),
+                        ),
                       ],
                     ),
                   ),
@@ -939,7 +1134,13 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             ),
 
           const SizedBox(height: 24),
-          Text('Add Characters', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary(context))),
+          Text(
+            'Add Characters',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary(context),
+            ),
+          ),
           const SizedBox(height: 8),
 
           // Search
@@ -950,7 +1151,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
               prefixIcon: const Icon(Icons.search),
               filled: true,
               fillColor: AppColors.surfaceContainerOf(context),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -974,8 +1178,22 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                     children: [
                       _avatar(c, radius: 18),
                       const SizedBox(width: 8),
-                      Expanded(child: Text(c.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13))),
-                      const Icon(Icons.add, size: 18, color: Color(0xFF7C3AED)),
+                      Expanded(
+                        child: Text(
+                          c.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      Icon(
+                        Icons.add,
+                        size: 18,
+                        color: AppColors.resolve(
+                          context,
+                          const Color(0xFF7C3AED),
+                          const Color(0xFF6D28D9),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -985,7 +1203,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           if (_filteredAvailable.isEmpty)
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Text('No more characters available.', style: TextStyle(color: AppColors.textTertiary(context))),
+              child: Text(
+                'No more characters available.',
+                style: TextStyle(color: AppColors.textTertiary(context)),
+              ),
             ),
 
           _buildNavButtons(currentStep: 0),
@@ -994,7 +1215,11 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     );
   }
 
-  Widget _voiceDropdown(CharacterCard c, String current, ValueChanged<String?> onChanged) {
+  Widget _voiceDropdown(
+    CharacterCard c,
+    String current,
+    ValueChanged<String?> onChanged,
+  ) {
     final tts = Provider.of<TtsService>(context, listen: false);
     final voices = tts.activeVoices;
     return DropdownButton<String>(
@@ -1003,7 +1228,12 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       isDense: true,
       items: [
         const DropdownMenuItem(value: '', child: Text('Default')),
-        ...voices.map((v) => DropdownMenuItem(value: v.id, child: Text(v.name, overflow: TextOverflow.ellipsis))),
+        ...voices.map(
+          (v) => DropdownMenuItem(
+            value: v.id,
+            child: Text(v.name, overflow: TextOverflow.ellipsis),
+          ),
+        ),
       ],
       onChanged: onChanged,
     );
@@ -1012,7 +1242,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   Widget _tinyAvatar(CharacterCard c) {
     return CircleAvatar(
       radius: 12,
-      backgroundImage: c.imagePath != null ? FileImage(File(c.imagePath!)) : null,
+      backgroundImage: c.imagePath != null
+          ? FileImage(File(c.imagePath!))
+          : null,
       child: c.imagePath == null ? const Icon(Icons.person, size: 14) : null,
     );
   }
@@ -1020,8 +1252,12 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   Widget _avatar(CharacterCard c, {double radius = 20}) {
     return CircleAvatar(
       radius: radius,
-      backgroundImage: c.imagePath != null ? FileImage(File(c.imagePath!)) : null,
-      child: c.imagePath == null ? Icon(Icons.person, size: radius * 0.9) : null,
+      backgroundImage: c.imagePath != null
+          ? FileImage(File(c.imagePath!))
+          : null,
+      child: c.imagePath == null
+          ? Icon(Icons.person, size: radius * 0.9)
+          : null,
     );
   }
 
@@ -1031,20 +1267,40 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Identity & Behavior', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          Text(
+            'Identity & Behavior',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 20),
           AppTextField(
             controller: _nameController,
-            decoration: const InputDecoration(labelText: 'Group Name', hintText: 'e.g. The Ember Circle'),
-            style: TextStyle(color: AppColors.textPrimary(context), fontSize: 18),
+            decoration: const InputDecoration(
+              labelText: 'Group Name',
+              hintText: 'e.g. The Ember Circle',
+            ),
+            style: TextStyle(
+              color: AppColors.textPrimary(context),
+              fontSize: 18,
+            ),
           ),
           const SizedBox(height: 24),
-          Text('Turn Order', style: TextStyle(color: AppColors.textSecondary(context))),
+          Text(
+            'Turn Order',
+            style: TextStyle(color: AppColors.textSecondary(context)),
+          ),
           const SizedBox(height: 8),
           SegmentedButton<TurnOrder>(
             segments: const [
-              ButtonSegment(value: TurnOrder.roundRobin, label: Text('Round Robin'), icon: Icon(Icons.repeat)),
-              ButtonSegment(value: TurnOrder.random, label: Text('Random'), icon: Icon(Icons.shuffle)),
+              ButtonSegment(
+                value: TurnOrder.roundRobin,
+                label: Text('Round Robin'),
+                icon: Icon(Icons.repeat),
+              ),
+              ButtonSegment(
+                value: TurnOrder.random,
+                label: Text('Random'),
+                icon: Icon(Icons.shuffle),
+              ),
             ],
             selected: {_turnOrder},
             onSelectionChanged: (v) => setState(() => _turnOrder = v.first),
@@ -1052,17 +1308,43 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           const SizedBox(height: 20),
           SwitchListTile(
             title: const Text('Auto-Advance'),
-            subtitle: const Text('Characters respond one after another automatically'),
+            subtitle: const Text(
+              'Characters respond one after another automatically',
+            ),
             value: _autoAdvance,
             onChanged: (v) => setState(() => _autoAdvance = v),
-            activeThumbColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)),
+            activeThumbColor: AppColors.resolve(
+              context,
+              const Color(0xFF7C3AED),
+              const Color(0xFF6D28D9),
+            ),
           ),
           SwitchListTile(
-            title: Row(children: const [Icon(Icons.movie_creation, color: Colors.amberAccent, size: 18), SizedBox(width: 6), Text('Director Mode')]),
-            subtitle: const Text('Characters chat autonomously — you direct the scene (no player present)'),
+            title: Row(
+              children: [
+                Icon(
+                  Icons.movie_creation,
+                  color: AppColors.resolve(
+                    context,
+                    Colors.amberAccent,
+                    Colors.amber.shade700,
+                  ),
+                  size: 18,
+                ),
+                const SizedBox(width: 6),
+                const Text('Director Mode'),
+              ],
+            ),
+            subtitle: const Text(
+              'Characters chat autonomously — you direct the scene (no player present)',
+            ),
             value: _directorMode,
             onChanged: (v) => setState(() => _directorMode = v),
-            activeThumbColor: Colors.amberAccent,
+            activeThumbColor: AppColors.resolve(
+              context,
+              Colors.amberAccent,
+              Colors.amber.shade700,
+            ),
           ),
 
           _buildNavButtons(currentStep: 1),
@@ -1077,52 +1359,246 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Opening Scene', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          Text(
+            'Opening Scene',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
+
+          // Dialogue subsection (groups): first message + explicit coming-soon stub for alt greetings.
+          // Completely omits Example Dialogue (CharacterCard / mes_example concept only; no such field on GroupChat).
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.borderOf(context)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.chat_bubble_outline,
+                      color: AppColors.resolve(
+                        context,
+                        Colors.blueAccent,
+                        Colors.blue.shade700,
+                      ),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Dialogue',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.blueAccent,
+                          Colors.blue.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'First Message (optional)',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary(context),
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        final dynamics = _buildDynamicsContextForGeneration();
+                        await _generateFirstMessage(dynamicsContext: dynamics);
+                      },
+                      icon: _isGeneratingFirst
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              Icons.auto_awesome,
+                              color: AppColors.resolve(
+                                context,
+                                Colors.amberAccent,
+                                Colors.amber.shade700,
+                              ),
+                            ),
+                      label: Text(
+                        _isGeneratingFirst
+                            ? 'Generating...'
+                            : 'Generate with Dynamics',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                AppTextField(
+                  controller: _firstMessageController,
+                  maxLines: 8,
+                  decoration: const InputDecoration(
+                    hintText: 'The scene opens with...',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_directorMode)
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.resolve(
+                        context,
+                        Colors.amber.withValues(alpha: 0.08),
+                        Colors.amber.withValues(alpha: 0.08),
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Director Mode: generated opening will be a self-contained group scene.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amberAccent,
+                          Colors.amber.shade700,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 20),
+
+                // Alternate Greetings stub (non-functional, informative only — groups do not support per-group alt greetings yet).
+                Opacity(
+                  opacity: 0.6,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerOf(context),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: AppColors.borderOf(
+                          context,
+                        ).withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.swap_horiz,
+                              color: AppColors.iconSecondary(context),
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Alternate Greetings',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary(context),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.resolve(
+                                  context,
+                                  const Color(0xFF334155),
+                                  const Color(0xFFE5E7EB),
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'Coming soon',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.textTertiary(context),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Alternate greetings for groups are coming in a future update. The opening message above is used for new sessions today.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textTertiary(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
 
           Row(
             children: [
-              Expanded(child: Text('Scenario (optional)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  'Scenario (optional)',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary(context),
+                  ),
+                ),
+              ),
               TextButton.icon(
                 onPressed: () async {
                   final dynamics = _buildDynamicsContextForGeneration();
                   await _generateScenario(dynamicsContext: dynamics);
                 },
                 icon: _isGeneratingScenario
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
-                label: Text(_isGeneratingScenario ? 'Generating...' : 'Generate with Dynamics'),
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        Icons.auto_awesome,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amberAccent,
+                          Colors.amber.shade700,
+                        ),
+                      ),
+                label: Text(
+                  _isGeneratingScenario
+                      ? 'Generating...'
+                      : 'Generate with Dynamics',
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          AppTextField(controller: _scenarioController, maxLines: 3, decoration: const InputDecoration(hintText: 'The group is...')),
-          const SizedBox(height: 20),
-
-          Row(
-            children: [
-              Expanded(child: Text('First Message (optional)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-              TextButton.icon(
-                onPressed: () async {
-                  final dynamics = _buildDynamicsContextForGeneration();
-                  await _generateFirstMessage(dynamicsContext: dynamics);
-                },
-                icon: _isGeneratingFirst
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
-                label: Text(_isGeneratingFirst ? 'Generating...' : 'Generate with Dynamics'),
-              ),
-            ],
+          AppTextField(
+            controller: _scenarioController,
+            maxLines: 3,
+            decoration: const InputDecoration(hintText: 'The group is...'),
           ),
-          const SizedBox(height: 8),
-          AppTextField(controller: _firstMessageController, maxLines: 8, decoration: const InputDecoration(hintText: 'The scene opens with...')),
-          const SizedBox(height: 8),
-          if (_directorMode)
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
-              child: const Text('Director Mode: generated opening will be a self-contained group scene.', style: TextStyle(fontSize: 13, color: Colors.amberAccent)),
-            ),
 
           _buildNavButtons(currentStep: 6),
         ],
@@ -1136,15 +1612,85 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Group System Prompt', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          AppTextField(controller: _groupSystemController, maxLines: 6, decoration: const InputDecoration(hintText: 'Global instructions for this group...')),
+          // "Personality & World" subsection for groups (per spec): only group-applicable fields.
+          // Omits Description/Personality (CharacterCard-only concepts). Scenario lives in Opening.
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.borderOf(context)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.psychology_outlined,
+                      color: AppColors.resolve(
+                        context,
+                        const Color(0xFF0EA5E9),
+                        const Color(0xFF0284C8),
+                      ),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Personality & World',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.resolve(
+                          context,
+                          const Color(0xFF0EA5E9),
+                          const Color(0xFF0284C8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Group-level equivalents to character personality live in the system prompt and scenario.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary(context),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Group System Prompt',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary(context),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                AppTextField(
+                  controller: _groupSystemController,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    hintText: 'Global instructions for this group...',
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 24),
-          Text('Per-Character Overrides (optional)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+
+          Text(
+            'Per-Character Overrides (optional)',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 8),
           ..._members.map((c) {
             final id = _stableId(c);
-            final ctrl = TextEditingController(text: _characterSystemPrompts[id] ?? '');
+            final ctrl = TextEditingController(
+              text: _characterSystemPrompts[id] ?? '',
+            );
             ctrl.addListener(() {
               _characterSystemPrompts[id] = ctrl.text;
             });
@@ -1155,15 +1701,32 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [_avatar(c, radius: 16), const SizedBox(width: 8), Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600))]),
+                    Row(
+                      children: [
+                        _avatar(c, radius: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          c.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 6),
-                    AppTextField(controller: ctrl, maxLines: 2, decoration: const InputDecoration(hintText: 'Extra instructions only for this character in this group')),
+                    AppTextField(
+                      controller: ctrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Extra instructions only for this character in this group',
+                      ),
+                    ),
                   ],
                 ),
               ),
             );
           }),
-          if (_members.isEmpty) const Text('Add members first to configure per-character prompts.'),
+          if (_members.isEmpty)
+            const Text('Add members first to configure per-character prompts.'),
 
           _buildNavButtons(currentStep: 2),
         ],
@@ -1182,41 +1745,77 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         children: [
           Row(
             children: [
-              Expanded(child: Text('Group Lorebook', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600))),
-              ElevatedButton.icon(onPressed: () => _showLoreEntryEditor(), icon: const Icon(Icons.add), label: const Text('Add Entry')),
+              Expanded(
+                child: Text(
+                  'Group Lorebook',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showLoreEntryEditor(),
+                icon: const Icon(Icons.add),
+                label: const Text('Add Entry'),
+              ),
             ],
           ),
           const SizedBox(height: 8),
           if (_groupLoreEntries.isEmpty)
-            const Text('No group lore entries yet. These take highest priority in prompts.')
+            const Text(
+              'No group lore entries yet. These take highest priority in prompts.',
+            )
           else
             ..._groupLoreEntries.asMap().entries.map((e) {
               final i = e.key;
               final entry = e.value;
               return ListTile(
                 title: Text(entry.name.isNotEmpty ? entry.name : entry.key),
-                subtitle: Text(entry.content.length > 80 ? '${entry.content.substring(0, 80)}...' : entry.content),
-                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  IconButton(icon: const Icon(Icons.edit), onPressed: () => _showLoreEntryEditor(existing: entry, index: i)),
-                  IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteLoreEntry(i)),
-                ]),
+                subtitle: Text(
+                  entry.content.length > 80
+                      ? '${entry.content.substring(0, 80)}...'
+                      : entry.content,
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () =>
+                          _showLoreEntryEditor(existing: entry, index: i),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () => _deleteLoreEntry(i),
+                    ),
+                  ],
+                ),
               );
             }),
           const SizedBox(height: 24),
           SwitchListTile(
             title: const Text('Inherit character & world lorebooks'),
-            subtitle: const Text('When on, member cards and their attached worlds contribute lore in addition to the group lorebook above.'),
+            subtitle: const Text(
+              'When on, member cards and their attached worlds contribute lore in addition to the group lorebook above.',
+            ),
             value: _inheritCharacterLorebooks,
             onChanged: (v) => setState(() => _inheritCharacterLorebooks = v),
           ),
           const SizedBox(height: 16),
-          Text('Linked Worlds', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          Text(
+            'Linked Worlds',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             children: [
               ..._worldIds.map((wid) {
-                final w = allWorlds.firstWhere((ww) => ww.name == wid, orElse: () => World(name: wid, lorebook: Lorebook(entries: const [])));
+                final w = allWorlds.firstWhere(
+                  (ww) => ww.name == wid,
+                  orElse: () => World(
+                    name: wid,
+                    lorebook: Lorebook(entries: const []),
+                  ),
+                );
                 return Chip(
                   label: Text(w.name),
                   onDeleted: () => _toggleWorld(wid),
@@ -1228,10 +1827,14 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                     context: context,
                     builder: (ctx) => SimpleDialog(
                       title: const Text('Link a World'),
-                      children: allWorlds.map((w) => SimpleDialogOption(
-                        onPressed: () => Navigator.pop(ctx, w),
-                        child: Text(w.name),
-                      )).toList(),
+                      children: allWorlds
+                          .map(
+                            (w) => SimpleDialogOption(
+                              onPressed: () => Navigator.pop(ctx, w),
+                              child: Text(w.name),
+                            ),
+                          )
+                          .toList(),
                     ),
                   );
                   if (chosen != null) _toggleWorld(chosen.name);
@@ -1267,17 +1870,32 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.casino, size: 18, color: Color(0xFFFFD166)),
+                    Icon(
+                      Icons.casino,
+                      size: 18,
+                      color: AppColors.resolve(
+                        context,
+                        const Color(0xFFFFD166),
+                        const Color(0xFFB45309),
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
                         'Group Chaos (Chance Time)',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                     Switch(
                       value: _chaosModeEnabled,
-                      activeThumbColor: const Color(0xFFFFD166),
+                      activeThumbColor: AppColors.resolve(
+                        context,
+                        const Color(0xFFFFD166),
+                        const Color(0xFFB45309),
+                      ),
                       onChanged: (v) => setState(() => _chaosModeEnabled = v),
                     ),
                   ],
@@ -1285,17 +1903,27 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 const SizedBox(height: 6),
                 Text(
                   'Random narrative events during roleplay. Can include NSFW events when enabled.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary(context),
+                  ),
                 ),
                 if (_chaosModeEnabled) ...[
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      const Text('Include NSFW events', style: TextStyle(fontSize: 13)),
+                      const Text(
+                        'Include NSFW events',
+                        style: TextStyle(fontSize: 13),
+                      ),
                       const Spacer(),
                       Switch(
                         value: _chaosNsfwEnabled,
-                        activeThumbColor: const Color(0xFFFFD166),
+                        activeThumbColor: AppColors.resolve(
+                          context,
+                          const Color(0xFFFFD166),
+                          const Color(0xFFB45309),
+                        ),
                         onChanged: (v) => setState(() => _chaosNsfwEnabled = v),
                       ),
                     ],
@@ -1319,17 +1947,32 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.auto_awesome, size: 18, color: Colors.tealAccent),
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 18,
+                      color: AppColors.resolve(
+                        context,
+                        Colors.tealAccent,
+                        Colors.teal.shade700,
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
                         'Realism Engine for this group',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                     Switch(
                       value: _realismEnabled,
-                      activeThumbColor: Colors.tealAccent,
+                      activeThumbColor: AppColors.resolve(
+                        context,
+                        Colors.tealAccent,
+                        Colors.teal.shade700,
+                      ),
                       onChanged: (v) => setState(() => _realismEnabled = v),
                     ),
                   ],
@@ -1337,14 +1980,21 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 const SizedBox(height: 6),
                 Text(
                   'Tracks emotions, short/long-term bond, trust, arousal, fixation, and needs simulation for every member. Only takes effect when not in Director Mode.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary(context),
+                  ),
                 ),
                 if (!_realismEnabled)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       'All realism features (bond, trust, emotion, needs, fixation, chaos pressure, etc.) are disabled for this group while the master toggle is off.',
-                      style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context), fontStyle: FontStyle.italic),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textTertiary(context),
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ),
 
@@ -1355,17 +2005,32 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      const Icon(Icons.battery_std, size: 18, color: Colors.tealAccent),
+                      Icon(
+                        Icons.battery_std,
+                        size: 18,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.tealAccent,
+                          Colors.teal.shade700,
+                        ),
+                      ),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
                           'Needs Simulation',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                       Switch(
                         value: _needsSimEnabled,
-                        activeThumbColor: Colors.tealAccent,
+                        activeThumbColor: AppColors.resolve(
+                          context,
+                          Colors.tealAccent,
+                          Colors.teal.shade700,
+                        ),
                         onChanged: (v) => setState(() => _needsSimEnabled = v),
                       ),
                     ],
@@ -1373,7 +2038,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                   const SizedBox(height: 4),
                   Text(
                     'Hunger, bladder, energy, social, fun, hygiene, comfort. Only relevant when Realism is enabled.',
-                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context)),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary(context),
+                    ),
                   ),
                 ],
               ],
@@ -1386,9 +2054,28 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           if (_realismEnabled) ...[
             Row(
               children: [
-                Icon(Icons.schedule, color: Colors.amberAccent, size: 18),
+                Icon(
+                  Icons.schedule,
+                  color: AppColors.resolve(
+                    context,
+                    Colors.amberAccent,
+                    Colors.amber.shade700,
+                  ),
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
-                Text('Group Time & Day', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.amberAccent)),
+                Text(
+                  'Group Time & Day',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.resolve(
+                      context,
+                      Colors.amberAccent,
+                      Colors.amber.shade700,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1405,20 +2092,45 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Time of Day', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                        Text(
+                          'Time of Day',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary(context),
+                          ),
+                        ),
                         const SizedBox(height: 6),
                         DropdownButton<String>(
                           value: _globalTimeOfDay,
                           isExpanded: true,
                           dropdownColor: AppColors.surfaceContainerOf(context),
-                          onChanged: (v) => setState(() => _globalTimeOfDay = v!),
+                          onChanged: (v) =>
+                              setState(() => _globalTimeOfDay = v!),
                           items: const [
-                            DropdownMenuItem(value: 'dawn', child: Text('Dawn')),
-                            DropdownMenuItem(value: 'morning', child: Text('Morning')),
-                            DropdownMenuItem(value: 'late_morning', child: Text('Late Morning')),
-                            DropdownMenuItem(value: 'afternoon', child: Text('Afternoon')),
-                            DropdownMenuItem(value: 'evening', child: Text('Evening')),
-                            DropdownMenuItem(value: 'night', child: Text('Night')),
+                            DropdownMenuItem(
+                              value: 'dawn',
+                              child: Text('Dawn'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'morning',
+                              child: Text('Morning'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'late_morning',
+                              child: Text('Late Morning'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'afternoon',
+                              child: Text('Afternoon'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'evening',
+                              child: Text('Evening'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'night',
+                              child: Text('Night'),
+                            ),
                           ],
                         ),
                       ],
@@ -1429,18 +2141,30 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Day Number', style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context))),
+                        Text(
+                          'Day Number',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary(context),
+                          ),
+                        ),
                         const SizedBox(height: 6),
                         TextField(
-                          controller: TextEditingController(text: _globalDayCount.toString()),
+                          controller: TextEditingController(
+                            text: _globalDayCount.toString(),
+                          ),
                           keyboardType: TextInputType.number,
                           onChanged: (v) {
                             final n = int.tryParse(v);
-                            if (n != null && n >= 1) setState(() => _globalDayCount = n);
+                            if (n != null && n >= 1)
+                              setState(() => _globalDayCount = n);
                           },
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                         ),
                       ],
@@ -1456,47 +2180,74 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           if (_realismEnabled) ...[
             Row(
               children: [
-                Text('Initial Realism State per Member', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                Text(
+                  'Initial Realism State per Member',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
                 const Spacer(),
-                TextButton(onPressed: () => _bulkSeedRealism('neutral'), child: const Text('Neutral')),
-                TextButton(onPressed: () => _bulkSeedRealism('highBond'), child: const Text('High Bond')),
+                TextButton(
+                  onPressed: () => _bulkSeedRealism('neutral'),
+                  child: const Text('Neutral'),
+                ),
+                TextButton(
+                  onPressed: () => _bulkSeedRealism('highBond'),
+                  child: const Text('High Bond'),
+                ),
               ],
             ),
             const SizedBox(height: 8),
             if (_members.isEmpty)
-              const Text('Add members first to configure their starting realism values.')
+              const Text(
+                'Add members first to configure their starting realism values.',
+              )
             else
               ..._members.map((c) {
                 final id = _stableId(c);
-                final seed = _memberRealismSeeds[id] ?? _defaultRealismSeedFor(c);
+                final seed =
+                    _memberRealismSeeds[id] ?? _defaultRealismSeedFor(c);
                 return Card(
                   key: ValueKey('realism-card-$id'),
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ExpansionTile(
                     leading: _avatar(c, radius: 18),
                     title: Text(c.name),
-                    subtitle: Text('${seed['emotion']} • Bond ${seed['affection']} / Trust ${seed['trust']}'),
+                    subtitle: Text(
+                      '${seed['emotion']} • Bond ${seed['affection']} / Trust ${seed['trust']}',
+                    ),
                     children: [
                       Padding(
                         padding: const EdgeInsets.all(12),
                         child: RealismFormSection(
                           key: ValueKey('realism-form-$id'),
                           enabled: true,
-                          onEnabledChanged: (_) {}, // controlled by the group master toggle above
-                          timeOfDay: (seed['timeOfDay'] as String?) ?? 'morning',
-                          onTimeOfDayChanged: (v) => _updateMemberRealism(id, {'timeOfDay': v}),
+                          onEnabledChanged:
+                              (
+                                _,
+                              ) {}, // controlled by the group master toggle above
+                          timeOfDay:
+                              (seed['timeOfDay'] as String?) ?? 'morning',
+                          onTimeOfDayChanged: (v) =>
+                              _updateMemberRealism(id, {'timeOfDay': v}),
                           dayCount: (seed['dayCount'] as num?)?.toInt() ?? 1,
-                          onDayCountChanged: (v) => _updateMemberRealism(id, {'dayCount': v}),
-                          shortTermBond: (seed['affection'] as num?)?.toInt() ?? 35,
-                          onShortTermBondChanged: (v) => _updateMemberRealism(id, {'affection': v}),
+                          onDayCountChanged: (v) =>
+                              _updateMemberRealism(id, {'dayCount': v}),
+                          shortTermBond:
+                              (seed['affection'] as num?)?.toInt() ?? 35,
+                          onShortTermBondChanged: (v) =>
+                              _updateMemberRealism(id, {'affection': v}),
                           longTermBond: (seed['trust'] as num?)?.toInt() ?? 40,
-                          onLongTermBondChanged: (v) => _updateMemberRealism(id, {'trust': v}),
+                          onLongTermBondChanged: (v) =>
+                              _updateMemberRealism(id, {'trust': v}),
                           trustLevel: (seed['trust'] as num?)?.toInt() ?? 40,
-                          onTrustLevelChanged: (v) => _updateMemberRealism(id, {'trust': v}),
+                          onTrustLevelChanged: (v) =>
+                              _updateMemberRealism(id, {'trust': v}),
                           emotion: (seed['emotion'] as String?) ?? 'neutral',
-                          onEmotionChanged: (v) => _updateMemberRealism(id, {'emotion': v}),
-                          emotionIntensity: (seed['emotionIntensity'] as String?) ?? 'mild',
-                          onEmotionIntensityChanged: (v) => _updateMemberRealism(id, {'emotionIntensity': v}),
+                          onEmotionChanged: (v) =>
+                              _updateMemberRealism(id, {'emotion': v}),
+                          emotionIntensity:
+                              (seed['emotionIntensity'] as String?) ?? 'mild',
+                          onEmotionIntensityChanged: (v) =>
+                              _updateMemberRealism(id, {'emotionIntensity': v}),
                           // These are group-level concepts (we already have the master Chaos toggle at the top of the section).
                           // Forcing them off here prevents duplicate/confusing per-character toggles.
                           nsfwCooldownEnabled: false,
@@ -1515,14 +2266,20 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                           showMasterEnabledToggle: false,
                           // Enjoys low hygiene will now naturally appear under Optional Features
                           // when the global Needs Simulation is enabled (because needsSimEnabled is passed above).
-                          enjoysLowHygiene: (seed['enjoysLowHygiene'] as bool?) ?? false,
-                          onEnjoysLowHygieneChanged: (v) => _updateMemberRealism(id, {'enjoysLowHygiene': v}),
+                          enjoysLowHygiene:
+                              (seed['enjoysLowHygiene'] as bool?) ?? false,
+                          onEnjoysLowHygieneChanged: (v) =>
+                              _updateMemberRealism(id, {'enjoysLowHygiene': v}),
                           currentTask: (seed['currentTask'] as String?) ?? '',
-                          onCurrentTaskChanged: (v) => _updateMemberRealism(id, {'currentTask': v}),
+                          onCurrentTaskChanged: (v) =>
+                              _updateMemberRealism(id, {'currentTask': v}),
                         ),
                       ),
 
-                      TextButton(onPressed: () => _seedRealismFromCard(id), child: const Text('Reset to character defaults')),
+                      TextButton(
+                        onPressed: () => _seedRealismFromCard(id),
+                        child: const Text('Reset to character defaults'),
+                      ),
                     ],
                   ),
                 );
@@ -1537,7 +2294,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
               ),
               child: Text(
                 'Realism is disabled for this group. No bond, trust, emotion, needs, or fixation tracking will occur.',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context)),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary(context),
+                ),
               ),
             ),
           ],
@@ -1557,11 +2317,19 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.people_alt, size: 64, color: AppColors.textTertiary(context)),
+            Icon(
+              Icons.people_alt,
+              size: 64,
+              color: AppColors.textTertiary(context),
+            ),
             const SizedBox(height: 16),
             Text(
               'Group Dynamics',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary(context)),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary(context),
+              ),
             ),
             const SizedBox(height: 12),
             Text(
@@ -1573,7 +2341,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             const SizedBox(height: 24),
             Text(
               'Larger groups use different social dynamics modeling.',
-              style: TextStyle(color: AppColors.textTertiary(context), fontStyle: FontStyle.italic),
+              style: TextStyle(
+                color: AppColors.textTertiary(context),
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ],
         ),
@@ -1592,13 +2363,22 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             children: [
               Text(
                 'Group Dynamics',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary(context)),
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary(context),
+                ),
               ),
               const SizedBox(width: 8),
               Tooltip(
-                message: 'Pre-seed hidden intra-group relationship scores (same -300..+300 raw scale as Long-Term Bond in Realism). Only available for groups of 4 or fewer per engine limits. These private feelings (never shown in UI) influence how members treat each other in prompts and behavior when the Realism Engine is active. Values persist in the Group Card export and round-trip on split-to-solo.',
+                message:
+                    'Pre-seed hidden intra-group relationship scores (same -300..+300 raw scale as Long-Term Bond in Realism). Only available for groups of 4 or fewer per engine limits. These private feelings (never shown in UI) influence how members treat each other in prompts and behavior when the Realism Engine is active. Values persist in the Group Card export and round-trip on split-to-solo.',
                 preferBelow: false,
-                child: Icon(Icons.info_outline, size: 18, color: AppColors.textTertiary(context)),
+                child: Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: AppColors.textTertiary(context),
+                ),
               ),
             ],
           ),
@@ -1611,7 +2391,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
           ..._members.map((source) {
             final sourceId = _stableId(source);
-            final relationships = (_memberRealismSeeds[sourceId]?['relationships'] as Map?)?.cast<String, int>() ?? {};
+            final relationships =
+                (_memberRealismSeeds[sourceId]?['relationships'] as Map?)
+                    ?.cast<String, int>() ??
+                {};
 
             return Card(
               margin: const EdgeInsets.only(bottom: 16),
@@ -1626,13 +2409,18 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                         const SizedBox(width: 12),
                         Text(
                           'How ${source.name} feels about others',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
 
-                    ..._members.where((target) => _stableId(target) != sourceId).map((target) {
+                    ..._members.where((target) => _stableId(target) != sourceId).map((
+                      target,
+                    ) {
                       final targetId = _stableId(target);
                       final currentValue = relationships[targetId] ?? 0;
 
@@ -1647,12 +2435,17 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                                 const SizedBox(width: 8),
                                 Expanded(child: Text(target.name)),
                                 Tooltip(
-                                  message: 'Hidden relationship score on the same -300..+300 scale as Long-Term Bond. Positive values mean the source character privately feels warmly toward the target.',
+                                  message:
+                                      'Hidden relationship score on the same -300..+300 scale as Long-Term Bond. Positive values mean the source character privately feels warmly toward the target.',
                                   child: Text(
-                                    currentValue > 0 ? '+$currentValue' : currentValue.toString(),
+                                    currentValue > 0
+                                        ? '+$currentValue'
+                                        : currentValue.toString(),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: _getRelationshipColor(currentValue),
+                                      color: _getRelationshipColor(
+                                        currentValue,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -1660,11 +2453,17 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                             ),
                             SliderTheme(
                               data: SliderThemeData(
-                                activeTrackColor: _getRelationshipColor(currentValue),
-                                inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.3),
+                                activeTrackColor: _getRelationshipColor(
+                                  currentValue,
+                                ),
+                                inactiveTrackColor: AppColors.borderOf(
+                                  context,
+                                ).withValues(alpha: 0.3),
                                 thumbColor: _getRelationshipColor(currentValue),
                                 trackHeight: 4,
-                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 8,
+                                ),
                               ),
                               child: Slider(
                                 value: currentValue.toDouble().clamp(-300, 300),
@@ -1673,13 +2472,18 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                                 divisions: 120,
                                 label: currentValue.toString(),
                                 onChanged: (v) {
-                                  _updateRelationship(sourceId, targetId, v.round());
+                                  _updateRelationship(
+                                    sourceId,
+                                    targetId,
+                                    v.round(),
+                                  );
                                 },
                               ),
                             ),
                             const SizedBox(height: 4),
                             Tooltip(
-                              message: 'Starting hidden feeling of ${source.name} toward ${target.name}. Matches the Long-Term Bond tier system used in the 1:1 Realism creator and runtime evaluations. These scores only affect groups of 4 or fewer and drive realistic intra-group behavior when Realism is enabled.',
+                              message:
+                                  'Starting hidden feeling of ${source.name} toward ${target.name}. Matches the Long-Term Bond tier system used in the 1:1 Realism creator and runtime evaluations. These scores only affect groups of 4 or fewer and drive realistic intra-group behavior when Realism is enabled.',
                               child: Text(
                                 _getRelationshipTierName(currentValue),
                                 style: TextStyle(
@@ -1702,7 +2506,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           const SizedBox(height: 16),
           Text(
             'These values are private to the group and affect how characters treat each other when Realism is active.',
-            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+            style: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 12,
+            ),
           ),
 
           _buildNavButtons(currentStep: 5),
@@ -1717,7 +2524,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         _members.firstWhere((c) => _stableId(c) == fromId),
       );
 
-      final rels = (seed['relationships'] as Map<String, int>?)?.cast<String, int>() ?? {};
+      final rels =
+          (seed['relationships'] as Map<String, int>?)?.cast<String, int>() ??
+          {};
       rels[toId] = value;
       seed['relationships'] = rels;
     });
@@ -1742,23 +2551,47 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     // Granular valence coloring (green=positive, red=negative) for visual feedback.
     // Thresholds kept close to tier boundaries for consistency with existing bond/trust color logic.
     if (value >= 80) {
-      return Colors.greenAccent.shade200;
+      return AppColors.resolve(
+        context,
+        Colors.greenAccent.shade200,
+        Colors.green.shade200,
+      );
     } else if (value >= 50) {
-      return Colors.greenAccent.shade400;
+      return AppColors.resolve(
+        context,
+        Colors.greenAccent.shade400,
+        Colors.green.shade400,
+      );
     } else if (value >= 20) {
-      return Colors.greenAccent.shade700;
+      return AppColors.resolve(
+        context,
+        Colors.greenAccent.shade700,
+        Colors.green.shade700,
+      );
     } else if (value >= 5) {
-      return Colors.lightGreen;
+      return AppColors.resolve(context, Colors.lightGreen, Colors.lightGreen);
     } else if (value >= -4) {
       return AppColors.textSecondary(context);
     } else if (value >= -19) {
-      return Colors.orangeAccent;
+      return AppColors.resolve(
+        context,
+        Colors.orangeAccent,
+        Colors.orange.shade700,
+      );
     } else if (value >= -49) {
-      return Colors.deepOrangeAccent;
+      return AppColors.resolve(
+        context,
+        Colors.deepOrangeAccent,
+        Colors.deepOrange.shade700,
+      );
     } else if (value >= -79) {
-      return Colors.redAccent;
+      return AppColors.resolve(context, Colors.redAccent, Colors.red.shade700);
     } else {
-      return Colors.red.shade700;
+      return AppColors.resolve(
+        context,
+        Colors.red.shade700,
+        Colors.red.shade900,
+      );
     }
   }
 
@@ -1768,53 +2601,123 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Review & Opening', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          Text(
+            'Review & Opening',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
 
           // Scenario + First Message moved here (last step) so AI generation
           // can use the hidden relationships from the Group Dynamics step.
           Row(
             children: [
-              Expanded(child: Text('Scenario (optional)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  'Scenario (optional)',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
               TextButton.icon(
                 onPressed: () async {
                   final dynamics = _buildDynamicsContextForGeneration();
                   await _generateScenario(dynamicsContext: dynamics);
                 },
                 icon: _isGeneratingScenario
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
-                label: Text(_isGeneratingScenario ? 'Generating...' : 'Generate with Dynamics'),
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        Icons.auto_awesome,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amberAccent,
+                          Colors.amber.shade700,
+                        ),
+                      ),
+                label: Text(
+                  _isGeneratingScenario
+                      ? 'Generating...'
+                      : 'Generate with Dynamics',
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          AppTextField(controller: _scenarioController, maxLines: 3, decoration: const InputDecoration(hintText: 'The group is...')),
+          AppTextField(
+            controller: _scenarioController,
+            maxLines: 3,
+            decoration: const InputDecoration(hintText: 'The group is...'),
+          ),
           const SizedBox(height: 20),
 
           Row(
             children: [
-              Expanded(child: Text('First Message (optional)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  'First Message (optional)',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
               TextButton.icon(
                 onPressed: () async {
                   final dynamics = _buildDynamicsContextForGeneration();
                   await _generateFirstMessage(dynamicsContext: dynamics);
                 },
                 icon: _isGeneratingFirst
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.auto_awesome, color: Colors.amberAccent),
-                label: Text(_isGeneratingFirst ? 'Generating...' : 'Generate with Dynamics'),
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        Icons.auto_awesome,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amberAccent,
+                          Colors.amber.shade700,
+                        ),
+                      ),
+                label: Text(
+                  _isGeneratingFirst
+                      ? 'Generating...'
+                      : 'Generate with Dynamics',
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          AppTextField(controller: _firstMessageController, maxLines: 8, decoration: const InputDecoration(hintText: 'The scene opens with...')),
+          AppTextField(
+            controller: _firstMessageController,
+            maxLines: 8,
+            decoration: const InputDecoration(
+              hintText: 'The scene opens with...',
+            ),
+          ),
           const SizedBox(height: 8),
           if (_directorMode)
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
-              child: const Text('Director Mode: generated opening will be a self-contained group scene.', style: TextStyle(fontSize: 13, color: Colors.amberAccent)),
+              decoration: BoxDecoration(
+                color: AppColors.resolve(
+                  context,
+                  Colors.amber.withValues(alpha: 0.08),
+                  Colors.amber.withValues(alpha: 0.08),
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Director Mode: generated opening will be a self-contained group scene.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.resolve(
+                    context,
+                    Colors.amberAccent,
+                    Colors.amber.shade700,
+                  ),
+                ),
+              ),
             ),
 
           const SizedBox(height: 24),
@@ -1822,20 +2725,68 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           // Single group summary
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: AppColors.cardOf(context), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_nameController.text.isEmpty ? 'Unnamed Group' : _nameController.text, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Wrap(spacing: 6, children: _members.map((c) => Chip(label: Text(c.name))).toList()),
-                const SizedBox(height: 12),
-                Text('${_members.length} members • ${_groupLoreEntries.length} lore entries • ${_worldIds.length} worlds'),
-                if (_chaosModeEnabled) const Text('Chaos Mode enabled', style: TextStyle(color: Color(0xFFFFD166))),
-                if (_directorMode) const Text('Director Mode', style: TextStyle(color: Colors.amberAccent)),
                 Text(
-                  _realismEnabled ? 'Realism Engine: Enabled for group' : 'Realism Engine: Disabled for group',
-                  style: TextStyle(color: _realismEnabled ? Colors.tealAccent : AppColors.textSecondary(context)),
+                  _nameController.text.isEmpty
+                      ? 'Unnamed Group'
+                      : _nameController.text,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  children: _members
+                      .map((c) => Chip(label: Text(c.name)))
+                      .toList(),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '${_members.length} members • ${_groupLoreEntries.length} lore entries • ${_worldIds.length} worlds',
+                ),
+                if (_chaosModeEnabled)
+                  Text(
+                    'Chaos Mode enabled',
+                    style: TextStyle(
+                      color: AppColors.resolve(
+                        context,
+                        const Color(0xFFFFD166),
+                        const Color(0xFFB45309),
+                      ),
+                    ),
+                  ),
+                if (_directorMode)
+                  Text(
+                    'Director Mode',
+                    style: TextStyle(
+                      color: AppColors.resolve(
+                        context,
+                        Colors.amberAccent,
+                        Colors.amber.shade700,
+                      ),
+                    ),
+                  ),
+                Text(
+                  _realismEnabled
+                      ? 'Realism Engine: Enabled for group'
+                      : 'Realism Engine: Disabled for group',
+                  style: TextStyle(
+                    color: _realismEnabled
+                        ? AppColors.resolve(
+                            context,
+                            Colors.tealAccent,
+                            Colors.teal.shade700,
+                          )
+                        : AppColors.textSecondary(context),
+                  ),
                 ),
               ],
             ),
@@ -1843,15 +2794,27 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           const SizedBox(height: 24),
 
           ElevatedButton.icon(
-            onPressed: _createGroup,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)), minimumSize: const Size.fromHeight(52)),
+            onPressed: () => _createGroup(enterChat: true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.resolve(
+                context,
+                const Color(0xFF7C3AED),
+                const Color(0xFF6D28D9),
+              ),
+              minimumSize: const Size.fromHeight(52),
+            ),
             icon: const Icon(Icons.check),
-            label: const Text('Create Group & Enter Chat', style: TextStyle(fontSize: 16)),
+            label: const Text(
+              'Create Group & Enter Chat',
+              style: TextStyle(fontSize: 16),
+            ),
           ),
           const SizedBox(height: 8),
           OutlinedButton(
-            onPressed: _createGroup,
-            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+            onPressed: () => _createGroup(enterChat: false),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+            ),
             child: const Text('Create Only (don\'t enter chat yet)'),
           ),
         ],
@@ -1895,8 +2858,12 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final dotColor = !available
         ? AppColors.surfaceContainerOf(context).withValues(alpha: 0.5)
         : (isActive
-            ? AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9))
-            : AppColors.surfaceContainerOf(context));
+              ? AppColors.resolve(
+                  context,
+                  const Color(0xFF7C3AED),
+                  const Color(0xFF6D28D9),
+                )
+              : AppColors.surfaceContainerOf(context));
 
     final borderColor = isCurrent
         ? AppColors.textPrimary(context)
@@ -1908,7 +2875,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
     final labelColor = !available
         ? AppColors.textTertiary(context).withValues(alpha: 0.6)
-        : (isActive ? AppColors.textSecondary(context) : AppColors.textTertiary(context));
+        : (isActive
+              ? AppColors.textSecondary(context)
+              : AppColors.textTertiary(context));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1921,28 +2890,21 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             color: dotColor,
             border: isCurrent
                 ? Border.all(color: borderColor, width: 2)
-                : Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.3)),
+                : Border.all(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.3),
+                  ),
           ),
           child: Center(
             child: isActive && !isCurrent
                 ? const Icon(Icons.check, size: 14, color: Colors.white)
                 : Text(
                     '${step + 1}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: numberOrCheckColor,
-                    ),
+                    style: TextStyle(fontSize: 11, color: numberOrCheckColor),
                   ),
           ),
         ),
         const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: labelColor,
-          ),
-        ),
+        Text(label, style: TextStyle(fontSize: 10, color: labelColor)),
       ],
     );
   }
@@ -1991,7 +2953,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textSecondary(context),
                     side: BorderSide(color: AppColors.borderOf(context)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
@@ -2007,7 +2971,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                           return;
                         }
                         if (isLastStep) {
-                          _createGroup();
+                          _createGroup(); // defaults to enterChat: true (primary action)
                         } else {
                           setState(() => _currentStep = effectiveNextStep!);
                         }
@@ -2019,9 +2983,15 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 ),
                 label: Text(nextText, style: const TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.resolve(context, const Color(0xFF7C3AED), const Color(0xFF6D28D9)),
+                  backgroundColor: AppColors.resolve(
+                    context,
+                    const Color(0xFF7C3AED),
+                    const Color(0xFF6D28D9),
+                  ),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   disabledBackgroundColor: AppColors.borderOf(context),
                 ),
               ),
@@ -2034,16 +3004,31 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
 
   bool _canAdvanceFromStep(int step) {
     if (step == 0) return _canLeaveMembersStep;
-    if (step == 6) return _members.length >= 2 && _nameController.text.trim().isNotEmpty;
+    if (step == 6)
+      return _members.length >= 2 && _nameController.text.trim().isNotEmpty;
     return true;
   }
 
   Widget _tokenBadge() {
-    final color = _contentTokenEstimate > 6000 ? Colors.redAccent : _contentTokenEstimate > 3000 ? Colors.orangeAccent : AppColors.textTertiary(context);
+    final color = _contentTokenEstimate > 6000
+        ? AppColors.resolve(context, Colors.redAccent, Colors.red.shade700)
+        : _contentTokenEstimate > 3000
+        ? AppColors.resolve(
+            context,
+            Colors.orangeAccent,
+            Colors.orange.shade700,
+          )
+        : AppColors.textTertiary(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-      child: Text('~$_contentTokenEstimate tokens', style: TextStyle(color: color, fontSize: 12)),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '~$_contentTokenEstimate tokens',
+        style: TextStyle(color: color, fontSize: 12),
+      ),
     );
   }
 }

@@ -401,7 +401,9 @@ class ChatService extends ChangeNotifier {
           .firstOrNull;
       if (world != null) {
         result.addAll(
-          world.lorebook.entries.where((e) => e.enabled && (e.isTriggered || e.constant)),
+          world.lorebook.entries.where(
+            (e) => e.enabled && (e.isTriggered || e.constant),
+          ),
         );
       }
     }
@@ -411,7 +413,9 @@ class ChatService extends ChangeNotifier {
       for (final ch in _groupCharacters) {
         if (ch.lorebook != null) {
           result.addAll(
-            ch.lorebook!.entries.where((e) => e.enabled && (e.isTriggered || e.constant)),
+            ch.lorebook!.entries.where(
+              (e) => e.enabled && (e.isTriggered || e.constant),
+            ),
           );
         }
         for (final wName in ch.worldNames) {
@@ -420,7 +424,9 @@ class ChatService extends ChangeNotifier {
               .firstOrNull;
           if (world != null) {
             result.addAll(
-              world.lorebook.entries.where((e) => e.enabled && (e.isTriggered || e.constant)),
+              world.lorebook.entries.where(
+                (e) => e.enabled && (e.isTriggered || e.constant),
+              ),
             );
           }
         }
@@ -960,8 +966,7 @@ class ChatService extends ChangeNotifier {
       '- Internal thoughts can be written in italics or described through narration.';
 
   CharacterCard? get activeCharacter => _activeCharacter;
-  List<ChatMessage> get messages =>
-      List.unmodifiable(_messages);
+  List<ChatMessage> get messages => List.unmodifiable(_messages);
   bool get isGenerating => _isGenerating;
   bool get isLoadingSession => _isLoadingSession;
   String? get currentSessionId => _currentSessionId;
@@ -1088,14 +1093,24 @@ class ChatService extends ChangeNotifier {
 
   /// Returns the full needs vector for the given group character.
   /// Empty map if not in group realism mode or no data.
+  /// Only official needs keys are returned (legacy bad keys such as 'arousal'/'libido'
+  /// from older group data are silently filtered).
   Map<String, int> getNeedsForGroupCharacter(CharacterCard character) {
     if (!isGroupRealismActive) return const {};
     final id = _getCharacterIdFromCard(character);
     final raw = _groupRealism[id]?['needs'];
-    if (raw is Map) {
-      return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    final result = <String, int>{};
+    for (final k in _needKeys) {
+      final v = (raw is Map) ? raw[k] : null;
+      if (v is num) {
+        result[k] = v.toInt();
+      } else {
+        // Fill any missing official needs so the UI always shows the complete set.
+        // This handles legacy/incomplete group data after previous cleanups.
+        result[k] = _needDefaults[k] ?? 80;
+      }
     }
-    return const {};
+    return result;
   }
 
   int getAffectionForGroupCharacter(CharacterCard character) {
@@ -1374,8 +1389,10 @@ class ChatService extends ChangeNotifier {
   bool get isCancellingRealismEval => _isCancellingRealismEval;
   bool get isProcessingGreeting => _isProcessingGreeting;
   String get realismEvalStreamText => _realismEvalStreamText;
+
   /// Stream text with any  blocks stripped (for display).
-  String get realismEvalStreamTextClean => _stripThinkBlocks(_realismEvalStreamText);
+  String get realismEvalStreamTextClean =>
+      _stripThinkBlocks(_realismEvalStreamText);
   String get characterEmotion => _characterEmotion;
 
   String getCurrentEmotion() => _characterEmotion;
@@ -1971,8 +1988,8 @@ class ChatService extends ChangeNotifier {
   /// Initialize the ONNX expression classifier service.
   void initExpressionClassifier() {
     _expressionClassifierService ??= ExpressionClassifierService(
-        _storageService,
-      );
+      _storageService,
+    );
   }
 
   /// Fire-and-forget: classify emotion using ONNX model.
@@ -2453,7 +2470,9 @@ class ChatService extends ChangeNotifier {
     _groupCharacterRAGPriorities = {};
 
     // Path B: Load per-character group system prompts from the clean model field
-    _groupCharacterSystemPrompts = Map<String, String>.from(group.characterSystemPrompts);
+    _groupCharacterSystemPrompts = Map<String, String>.from(
+      group.characterSystemPrompts,
+    );
 
     if (_characterRepository == null) return;
 
@@ -2497,8 +2516,30 @@ class ChatService extends ChangeNotifier {
 
     // v30: For newly created group sessions (no prior state), seed from the group's default realism data.
     // (The actual load of any prior session state happens in _loadLastSession below.)
-    if (_messages.isEmpty && _activeGroup != null && _groupRealism.isEmpty) {
+    if (_messages.isEmpty && _activeGroup != null) {
       _loadGroupRealismStateFromSession(null);
+
+      // Promote the group definition's realism/needs intent on first entry.
+      // The creator (and Group Card import) express "realism on" by writing non-empty
+      // defaultMemberRealismState. Without this promotion, the master flag stays false
+      // (its Dart initializer), the first session is saved with realism off, and both
+      // isGroupRealismActive and all per-char getters return nothing.
+      if (_groupRealism.isNotEmpty) {
+        _realismEnabled = true;
+        // Infer needs from whether the seeded per-char states actually contain needs data.
+        // (Creator omits the 'needs' sub-map entirely when the user disabled Needs in the wizard.)
+        _needsSimEnabled = _groupRealism.values.any((state) {
+          final n = state['needs'];
+          return n is Map && n.isNotEmpty;
+        });
+        if (_needsSimEnabled) {
+          _initializeNeedsVectorIfNeeded();
+        }
+        debugPrint(
+          '[GroupRealism] Promoted definition realism/needs on fresh group entry '
+          '(realism=$_realismEnabled, needs=$_needsSimEnabled, chars=${_groupRealism.length})',
+        );
+      }
     }
 
     // Seed objectives that came from an imported Group Card (one-time)
@@ -2581,30 +2622,6 @@ class ChatService extends ChangeNotifier {
 
     _isLoadingSession = false;
     notifyListeners();
-  }
-
-  /// Ensures that a newly created group with a custom first message actually
-  /// has that message as the opening (some flows like startNewChat() can clear
-  /// the greeting that was set during setActiveGroup).
-  void ensureCustomGroupOpeningMessage(GroupChat group) {
-    if (group.firstMessage.trim().isEmpty) return;
-    if (_messages.isNotEmpty) return;
-
-    final text = _applyUserReplacement(group.firstMessage);
-    _messages.add(
-      ChatMessage(
-        text: text,
-        sender: group.name,
-        isUser: false,
-        characterId: null,
-      ),
-    );
-    _scanLorebook(_messages.last.text);
-
-    if (_currentSessionId == null) {
-      _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-    }
-    debugPrint('[ChatService] Re-injected custom group first message after new chat setup');
   }
 
   /// Fork the current 1:1 chat into a new group chat, copying all messages.
@@ -2879,13 +2896,13 @@ class ChatService extends ChangeNotifier {
           final map = Map<String, dynamic>.from(decoded);
 
           // Main per-character realism data (needs, emotion, bond, trust, fixation, relationships, arousal, etc.)
-          final perChar = map['perChar'] ?? map; // support both wrapped and direct formats during transition
+          final perChar =
+              map['perChar'] ??
+              map; // support both wrapped and direct formats during transition
           if (perChar is Map) {
             _groupRealism = perChar.map(
-              (k, v) => MapEntry(
-                k.toString(),
-                Map<String, dynamic>.from(v as Map),
-              ),
+              (k, v) =>
+                  MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)),
             );
           }
 
@@ -2919,10 +2936,12 @@ class ChatService extends ChangeNotifier {
             _groupRagEnabled = map['ragEnabled'] as bool? ?? true;
           }
           if (map.containsKey('retrievalCount')) {
-            _groupRetrievalCount = (map['retrievalCount'] as num?)?.toInt() ?? 8;
+            _groupRetrievalCount =
+                (map['retrievalCount'] as num?)?.toInt() ?? 8;
           }
           if (map.containsKey('memoryBudgetPercent')) {
-            _groupMemoryBudgetPercent = (map['memoryBudgetPercent'] as num?)?.toDouble() ?? 10.0;
+            _groupMemoryBudgetPercent =
+                (map['memoryBudgetPercent'] as num?)?.toDouble() ?? 10.0;
           }
 
           final ragPrios = map['characterRAGPriorities'];
@@ -2952,7 +2971,9 @@ class ChatService extends ChangeNotifier {
           );
         }
       } catch (e) {
-        debugPrint('[GroupState v30] Failed to parse group realism state JSON: $e');
+        debugPrint(
+          '[GroupState v30] Failed to parse group realism state JSON: $e',
+        );
         _groupRealism = {};
       }
     }
@@ -2982,13 +3003,17 @@ class ChatService extends ChangeNotifier {
       // Include per-char objectives so each group member carries independent tasks.
       final perCharObjectives = <String, List<Map<String, dynamic>>>{};
       _groupObjectives.forEach((charId, list) {
-        perCharObjectives[charId] = list.map((o) => {
-          'id': o.id,
-          'objective': o.objective,
-          'isPrimary': o.isPrimary,
-          'active': o.active,
-          // tasks and other fields are stored in the objectives table; we keep lightweight here
-        }).toList();
+        perCharObjectives[charId] = list
+            .map(
+              (o) => {
+                'id': o.id,
+                'objective': o.objective,
+                'isPrimary': o.isPrimary,
+                'active': o.active,
+                // tasks and other fields are stored in the objectives table; we keep lightweight here
+              },
+            )
+            .toList();
       });
 
       groupRealismJson = jsonEncode({
@@ -3583,10 +3608,8 @@ class ChatService extends ChangeNotifier {
                 ? Map<String, dynamic>.from(m.metadata!)
                 : null,
             swipeMetadata: m.swipeMetadata
-                      .map(
-                        (e) => e != null ? Map<String, dynamic>.from(e) : null,
-                      )
-                      .toList(),
+                .map((e) => e != null ? Map<String, dynamic>.from(e) : null)
+                .toList(),
           ),
         )
         .toList();
@@ -3883,15 +3906,33 @@ class ChatService extends ChangeNotifier {
     _characterEvolutionCount = 0;
 
     if (_activeGroup != null && _groupCharacters.isNotEmpty) {
-      // Group mode: greeting from first character
-      final first = _groupCharacters.first;
-      if (first.firstMessage.isNotEmpty) {
+      // Group mode: respect explicit group.firstMessage (custom group greeting set
+      // by creator or Group Card) when present. Only fall back to the first
+      // participating character's firstMessage when the group has no custom opening.
+      String greetingText;
+      String greetingSender;
+      String? greetingCharId;
+
+      if (_activeGroup!.firstMessage.isNotEmpty) {
+        greetingText = _applyUserReplacement(_activeGroup!.firstMessage);
+        greetingSender = _activeGroup!.name;
+        greetingCharId = null;
+      } else {
+        final first = _groupCharacters.first;
+        greetingText = first.firstMessage.isNotEmpty
+            ? _buildFirstMessage(first)
+            : '';
+        greetingSender = first.name;
+        greetingCharId = _getCharacterIdFromCard(first);
+      }
+
+      if (greetingText.isNotEmpty) {
         _messages.add(
           ChatMessage(
-            text: _buildFirstMessage(first),
-            sender: first.name,
+            text: greetingText,
+            sender: greetingSender,
             isUser: false,
-            characterId: _getCharacterIdFromCard(first),
+            characterId: greetingCharId,
           ),
         );
         _scanLorebook(_messages.last.text);
@@ -4159,8 +4200,7 @@ class ChatService extends ChangeNotifier {
     }
 
     // ── Chaos Mode: check + pause for wheel if triggered ─────────────────
-    if (_chaosModeEnabled &&
-                _pendingChaosInjection == null) {
+    if (_chaosModeEnabled && _pendingChaosInjection == null) {
       if (checkAndTickChaosPressure()) {
         // Create a completer so sendMessage pauses here until the wheel resolves
         _chanceTimeCompleter = Completer<void>();
@@ -4234,8 +4274,9 @@ class ChatService extends ChangeNotifier {
           // latency to the pre-response realism phase.)
           _pendingRealismMetadata ??= {};
           _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-          _pendingRealismMetadata!['realism_state'] =
-              _captureRealismState(preTurn: preTurnVector);
+          _pendingRealismMetadata!['realism_state'] = _captureRealismState(
+            preTurn: preTurnVector,
+          );
           _saveChat();
         }
 
@@ -4282,8 +4323,9 @@ class ChatService extends ChangeNotifier {
         // Synthesize metadata after all evals complete
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-        _pendingRealismMetadata!['realism_state'] =
-            _captureRealismState(preTurn: preTurnVector);
+        _pendingRealismMetadata!['realism_state'] = _captureRealismState(
+          preTurn: preTurnVector,
+        );
 
         debugPrint(
           '[Realism:Metadata] Synthesized metadata before generation: bond_delta=${_pendingRealismMetadata?['bond_delta']}, trust_delta=${_pendingRealismMetadata?['trust_delta']}, keys=${_pendingRealismMetadata?.keys.toList()}',
@@ -4313,7 +4355,8 @@ class ChatService extends ChangeNotifier {
     // apply a small "real time passed" decay to needs. This prevents the
     // "everything stayed exactly the same during a 20-minute generation" feeling
     // that leads to zero-change chips.
-    if (_lastGenerationDurationSeconds > 300) { // > 5 minutes
+    if (_lastGenerationDurationSeconds > 300) {
+      // > 5 minutes
       _applyLongGenerationNeedsDecay();
     }
 
@@ -4637,15 +4680,17 @@ class ChatService extends ChangeNotifier {
         // Save pre-turn vector BEFORE _generateResponse (which clears
         // _pendingRealismMetadata).
         regenPreTurn =
-            _pendingRealismMetadata?['needs_pre_turn_vector'] as Map<String, int>?;
+            _pendingRealismMetadata?['needs_pre_turn_vector']
+                as Map<String, int>?;
 
         // Synthesize metadata after all regen evals complete — mirrors the
         // normal path (line 4020) so emotion_label and realism_state are in
         // _pendingRealismMetadata before _generateResponse consumes it.
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-        _pendingRealismMetadata!['realism_state'] =
-            _captureRealismState(preTurn: regenPreTurn);
+        _pendingRealismMetadata!['realism_state'] = _captureRealismState(
+          preTurn: regenPreTurn,
+        );
 
         // If cancellation was requested during realism evaluation, abort generation
         if (_realismEvalCancelled) {
@@ -4671,9 +4716,7 @@ class ChatService extends ChangeNotifier {
       // Apply directly to the message since _pendingRealismMetadata was consumed.
       // (For groups, the per-speaker path inside generate already attached the
       // correct per-character needs_deltas; we only compute scalar here for 1:1.)
-      if (_activeGroup == null &&
-          _needsSimEnabled &&
-          _needsVector.isNotEmpty) {
+      if (_activeGroup == null && _needsSimEnabled && _needsVector.isNotEmpty) {
         needsDeltas = _computeNeedsDeltasWithReasons(regenPreTurn);
       }
 
@@ -4808,7 +4851,9 @@ class ChatService extends ChangeNotifier {
       }
 
       if (_activeGroup != null) {
-        final groupCharPrompt = getSystemPromptForGroupCharacter(speakingCharacter).trim();
+        final groupCharPrompt = getSystemPromptForGroupCharacter(
+          speakingCharacter,
+        ).trim();
         if (groupCharPrompt.isNotEmpty) {
           systemPrompt +=
               '\n\n[Group-specific instructions for ${speakingCharacter.name}]\n$groupCharPrompt';
@@ -4829,7 +4874,9 @@ class ChatService extends ChangeNotifier {
         try {
           final json = jsonDecode(_activeGroup!.groupLorebook);
           final gl = Lorebook.fromJson(json as Map<String, dynamic>);
-          final active = gl.entries.where((e) => e.enabled && (e.isTriggered || e.constant));
+          final active = gl.entries.where(
+            (e) => e.enabled && (e.isTriggered || e.constant),
+          );
           activeLoreStrings.addAll(active.map((e) => e.content));
         } catch (_) {}
       }
@@ -4852,7 +4899,9 @@ class ChatService extends ChangeNotifier {
       if (inherit || _activeGroup == null) {
         final loreCharacters = _activeGroup != null
             ? _groupCharacters
-            : (_activeCharacter != null ? [_activeCharacter!] : <CharacterCard>[]);
+            : (_activeCharacter != null
+                  ? [_activeCharacter!]
+                  : <CharacterCard>[]);
         for (final ch in loreCharacters) {
           if (ch.lorebook != null) {
             final activeEntries = ch.lorebook!.entries.where(
@@ -5144,10 +5193,16 @@ class ChatService extends ChangeNotifier {
 
   Map<String, int> _getGroupNeeds(String charId) {
     final raw = _groupRealism[charId]?['needs'];
-    if (raw is Map) {
-      return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    final result = <String, int>{};
+    for (final k in _needKeys) {
+      final v = (raw is Map) ? raw[k] : null;
+      if (v is num) {
+        result[k] = v.toInt();
+      } else {
+        result[k] = _needDefaults[k] ?? 80;
+      }
     }
-    return {};
+    return result;
   }
 
   void _setGroupNeeds(String charId, Map<String, int> needs) {
@@ -5333,13 +5388,17 @@ class ChatService extends ChangeNotifier {
         systemPrompt = _storageService.systemPrompt;
       } else {
         final isApi = _llmProvider != null && !_llmProvider!.isLocal;
-        systemPrompt = isApi ? defaultApiSystemPrompt : defaultKoboldSystemPrompt;
+        systemPrompt = isApi
+            ? defaultApiSystemPrompt
+            : defaultKoboldSystemPrompt;
       }
 
       // Path B: When in a group, always attempt to layer the per-character group override
       // (and card fallback) on top. A group prompt no longer completely hides per-char instructions.
       if (_activeGroup != null) {
-        final groupCharPrompt = getSystemPromptForGroupCharacter(speakingCharacter).trim();
+        final groupCharPrompt = getSystemPromptForGroupCharacter(
+          speakingCharacter,
+        ).trim();
         if (groupCharPrompt.isNotEmpty) {
           systemPrompt +=
               '\n\n[Group-specific instructions for ${speakingCharacter.name}]\n$groupCharPrompt';
@@ -5367,7 +5426,9 @@ class ChatService extends ChangeNotifier {
         try {
           final json = jsonDecode(_activeGroup!.groupLorebook);
           final gl = Lorebook.fromJson(json as Map<String, dynamic>);
-          final active = gl.entries.where((e) => e.enabled && (e.isTriggered || e.constant));
+          final active = gl.entries.where(
+            (e) => e.enabled && (e.isTriggered || e.constant),
+          );
           activeLoreStrings.addAll(active.map((e) => e.content));
         } catch (_) {}
       }
@@ -6214,7 +6275,8 @@ class ChatService extends ChangeNotifier {
       _prefillPromptTokens = 0;
       if (_generationStartTime != null) {
         _lastGenerationDurationSeconds =
-            DateTime.now().difference(_generationStartTime!).inMilliseconds / 1000.0;
+            DateTime.now().difference(_generationStartTime!).inMilliseconds /
+            1000.0;
       }
       _generationStartTime = null;
       _lastGenerationDurationSeconds = 0.0;
@@ -6952,7 +7014,9 @@ class ChatService extends ChangeNotifier {
         );
       }
     } catch (e) {
-      debugPrint('[Objective] Failed to load (will run without objectives this session): $e');
+      debugPrint(
+        '[Objective] Failed to load (will run without objectives this session): $e',
+      );
       _activeObjectives = [];
     }
     notifyListeners();
@@ -7060,7 +7124,11 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Set a new objective for the current session (or for a specific character when in group mode).
-  Future<void> setObjective(String goal, {bool isPrimary = true, CharacterCard? targetCharacter}) async {
+  Future<void> setObjective(
+    String goal, {
+    bool isPrimary = true,
+    CharacterCard? targetCharacter,
+  }) async {
     if (goal.trim().isEmpty) return;
     if (_currentSessionId == null) return;
 
@@ -8533,8 +8601,7 @@ class ChatService extends ChangeNotifier {
     final sourceIds = <String>[currentId]; // always include self
 
     // Look up cross-character sources from DB
-    if (_activeCharacter != null &&
-        _activeCharacter!.dbId != null) {
+    if (_activeCharacter != null && _activeCharacter!.dbId != null) {
       try {
         final dbChar = await _db.getCharacterById(_activeCharacter!.dbId!);
         final ms = dbChar.memorySources;
@@ -8879,7 +8946,7 @@ class ChatService extends ChangeNotifier {
     try {
       llmService.abortGeneration();
       debugPrint('[Realism] abortGeneration invoked');
-        } catch (e) {
+    } catch (e) {
       // Ensure we always proceed to reset state even if abortion fails unexpectedly
       debugPrint('[Realism cancel] Unexpected error during abort: $e');
     } finally {
@@ -9277,7 +9344,9 @@ class ChatService extends ChangeNotifier {
       if (speakerId.isNotEmpty) {
         final speakerChar = _groupCharacters.firstWhere(
           (c) => _getCharacterIdFromCard(c) == speakerId,
-          orElse: () => _groupCharacters.isNotEmpty ? _groupCharacters.first : _activeCharacter!,
+          orElse: () => _groupCharacters.isNotEmpty
+              ? _groupCharacters.first
+              : _activeCharacter!,
         );
         charName = speakerChar.name;
       }
@@ -9285,7 +9354,9 @@ class ChatService extends ChangeNotifier {
     String statePrompt = '[OOC Note regarding Physical State:\n';
 
     // Protective window note for the newer layered systems
-    final bool protectiveWindowActive = _needsAfterglowTurnsRemaining > 0 || _arousalSuppressionTurnsRemaining > 0;
+    final bool protectiveWindowActive =
+        _needsAfterglowTurnsRemaining > 0 ||
+        _arousalSuppressionTurnsRemaining > 0;
     if (protectiveWindowActive && _cooldownTurnsRemaining > 0) {
       statePrompt +=
           ' $charName is currently inside a temporary protective afterglow/lust-haze window. Other physical and emotional needs (hunger, energy, social connection, the need to move or clean up) feel significantly muted or distant for the next few turns. This is not just emotional — it is a real dampening effect.\n';
@@ -9385,7 +9456,8 @@ class ChatService extends ChangeNotifier {
       }
 
       // When the old refractory has ended but newer protective layers are still active
-      if (_needsAfterglowTurnsRemaining > 0 || _arousalSuppressionTurnsRemaining > 0) {
+      if (_needsAfterglowTurnsRemaining > 0 ||
+          _arousalSuppressionTurnsRemaining > 0) {
         statePrompt +=
             ' Even though the immediate refractory sensitivity has passed, $charName is still inside a lingering afterglow / lust-haze window. Other needs (hunger, energy, the desire to get up and do things) feel noticeably muted or unimportant for a while longer.\n';
       }
@@ -10516,8 +10588,9 @@ class ChatService extends ChangeNotifier {
       // Synthesize metadata for timeline / chips (best-effort, same as 1:1 path)
       _pendingRealismMetadata ??= {};
       _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-      _pendingRealismMetadata!['realism_state'] =
-          _captureRealismState(preTurn: preTurnVector);
+      _pendingRealismMetadata!['realism_state'] = _captureRealismState(
+        preTurn: preTurnVector,
+      );
 
       if (_needsSimEnabled) {
         final needsDeltas = _computeNeedsDeltasWithReasons(preTurnVector);
@@ -10627,14 +10700,19 @@ class ChatService extends ChangeNotifier {
   Future<void> focusObjectivesForGroupCharacter(CharacterCard character) async {
     if (_activeGroup == null) return;
     final charId = _getCharacterIdFromCard(character);
-    final objs = await _db.getObjectivesForCharacter(charId, chatId: _currentSessionId);
+    final objs = await _db.getObjectivesForCharacter(
+      charId,
+      chatId: _currentSessionId,
+    );
     _activeObjectives = objs.where((o) => o.active).toList();
     notifyListeners();
   }
 
   /// Loads the active objectives for the given character in the current session.
   /// Safe to call from group objective UIs — does not mutate global _activeObjectives.
-  Future<List<Objective>> getActiveObjectivesFor(CharacterCard character) async {
+  Future<List<Objective>> getActiveObjectivesFor(
+    CharacterCard character,
+  ) async {
     if (_currentSessionId == null) return const [];
     final charId = _getCharacterIdFromCard(character);
     try {
@@ -10649,7 +10727,9 @@ class ChatService extends ChangeNotifier {
 
   /// Returns the immutable creation-time baseline realism values for a group member.
   /// Only the allowed seeding fields are exposed: affection (bond), trust, emotion, timeOfDay, dayCount.
-  Map<String, dynamic> getBaselineSeedForGroupCharacter(CharacterCard character) {
+  Map<String, dynamic> getBaselineSeedForGroupCharacter(
+    CharacterCard character,
+  ) {
     if (_activeGroup == null) return {};
     final charId = _getCharacterIdFromCard(character);
     try {
@@ -10660,7 +10740,8 @@ class ChatService extends ChangeNotifier {
           'affection': (data['affection'] as num?)?.toInt() ?? 50,
           'trust': (data['trust'] as num?)?.toInt() ?? 50,
           'emotion': (data['emotion'] as String?) ?? 'neutral',
-          'emotionIntensity': (data['emotionIntensity'] as String?) ?? 'moderate',
+          'emotionIntensity':
+              (data['emotionIntensity'] as String?) ?? 'moderate',
           'timeOfDay': (data['timeOfDay'] as String?) ?? 'morning',
           'dayCount': (data['dayCount'] as num?)?.toInt() ?? 1,
         };
@@ -10678,13 +10759,18 @@ class ChatService extends ChangeNotifier {
 
   /// Updates the immutable creation baseline for a group member.
   /// Only allowed fields are accepted. This should only be called during group creation seeding.
-  void setBaselineSeedForGroupCharacter(CharacterCard character, Map<String, dynamic> values) {
+  void setBaselineSeedForGroupCharacter(
+    CharacterCard character,
+    Map<String, dynamic> values,
+  ) {
     if (_activeGroup == null) return;
     final charId = _getCharacterIdFromCard(character);
 
     Map<String, dynamic> baseline;
     try {
-      baseline = Map<String, dynamic>.from(jsonDecode(_activeGroup!.baselineRealismState));
+      baseline = Map<String, dynamic>.from(
+        jsonDecode(_activeGroup!.baselineRealismState),
+      );
     } catch (_) {
       baseline = {};
     }
@@ -10745,18 +10831,24 @@ class ChatService extends ChangeNotifier {
         final list = entry.value as List? ?? [];
         for (final objData in list) {
           final objMap = objData as Map<String, dynamic>? ?? {};
-          final newId = 'obj_${DateTime.now().millisecondsSinceEpoch}_${charId.hashCode}';
+          final newId =
+              'obj_${DateTime.now().millisecondsSinceEpoch}_${charId.hashCode}';
           await _db.insertObjective(
             ObjectivesCompanion.insert(
               id: newId,
               characterId: charId,
               chatId: drift.Value(_currentSessionId!),
-              objective: objMap['objective']?.toString() ?? 'Imported objective',
+              objective:
+                  objMap['objective']?.toString() ?? 'Imported objective',
               tasks: drift.Value(objMap['tasks']?.toString() ?? '[]'),
               active: const drift.Value(true),
               isPrimary: drift.Value(objMap['isPrimary'] == true),
-              checkFrequency: drift.Value((objMap['checkFrequency'] as num?)?.toInt() ?? 3),
-              injectionDepth: drift.Value((objMap['injectionDepth'] as num?)?.toInt() ?? 4),
+              checkFrequency: drift.Value(
+                (objMap['checkFrequency'] as num?)?.toInt() ?? 3,
+              ),
+              injectionDepth: drift.Value(
+                (objMap['injectionDepth'] as num?)?.toInt() ?? 4,
+              ),
             ),
           );
         }
@@ -11020,7 +11112,9 @@ class ChatService extends ChangeNotifier {
   /// model was thinking" a visible (but small) effect on needs, preventing the
   /// all-zero chips feeling after 10-30+ minute generations.
   void _applyLongGenerationNeedsDecay() {
-    if (!_needsSimEnabled || !_realismEnabled || _lastGenerationDurationSeconds < 300) {
+    if (!_needsSimEnabled ||
+        !_realismEnabled ||
+        _lastGenerationDurationSeconds < 300) {
       return;
     }
 
@@ -11500,8 +11594,10 @@ class ChatService extends ChangeNotifier {
           final llmHygiene = _extractJsonInt(text, 'hygiene_delta');
           final llmBladder = _extractJsonInt(text, 'bladder_delta');
 
-          final hygieneDelta = llmHygiene ?? -18; // Strong default — cumming is messy
-          final bladderDelta = llmBladder ?? 0;   // Orgasm itself does not fill the bladder
+          final hygieneDelta =
+              llmHygiene ?? -18; // Strong default — cumming is messy
+          final bladderDelta =
+              llmBladder ?? 0; // Orgasm itself does not fill the bladder
 
           _applyNeedsDeltas({
             'fun': 16,
@@ -11615,7 +11711,8 @@ class ChatService extends ChangeNotifier {
       final llmBladder = _extractJsonInt(text, 'bladder_delta');
 
       final hygieneDelta = llmHygiene ?? (-8 * strength).round();
-      final bladderDelta = llmBladder ?? (2 * strength).round(); // very small by default
+      final bladderDelta =
+          llmBladder ?? (2 * strength).round(); // very small by default
 
       _applyNeedsDeltas({
         'fun': (12 * strength).round(),
@@ -11697,7 +11794,8 @@ class ChatService extends ChangeNotifier {
         int hygieneGain = (25 * strength).round();
 
         final bool recentSexualActivity =
-            _needsAfterglowTurnsRemaining > 0 || _postClimaxCrashTurnsRemaining > 0;
+            _needsAfterglowTurnsRemaining > 0 ||
+            _postClimaxCrashTurnsRemaining > 0;
 
         if (recentSexualActivity) {
           hygieneGain = (hygieneGain * 0.35).round().clamp(0, 100);
@@ -11709,7 +11807,8 @@ class ChatService extends ChangeNotifier {
           deltas['comfort'] = (deltas['comfort'] ?? 0) + (6 * strength).round();
           deltas['fun'] = (deltas['fun'] ?? 0) + (3 * strength).round();
         } else {
-          deltas['comfort'] = (deltas['comfort'] ?? 0) + (12 * strength).round();
+          deltas['comfort'] =
+              (deltas['comfort'] ?? 0) + (12 * strength).round();
           deltas['fun'] = (deltas['fun'] ?? 0) + (6 * strength).round();
         }
 
