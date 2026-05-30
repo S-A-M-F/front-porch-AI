@@ -258,8 +258,9 @@ class Groups extends Table {
   BoolColumn get chaosNsfwEnabled =>
       boolean().withDefault(const Constant(false))();
   TextColumn get groupLorebook => text().withDefault(const Constant(''))();
-  TextColumn get worldIds =>
-      text().withDefault(const Constant('[]'))(); // JSON array of world IDs for scoping
+  TextColumn get worldIds => text().withDefault(
+    const Constant('[]'),
+  )(); // JSON array of world IDs for scoping
   BoolColumn get inheritCharacterLorebooks =>
       boolean().withDefault(const Constant(true))();
 
@@ -391,7 +392,8 @@ class Objectives extends Table {
   TextColumn get id => text()();
   TextColumn get characterId =>
       text()(); // which character this objective belongs to
-  TextColumn get chatId => text().nullable()(); // session ID this objective belongs to
+  TextColumn get chatId =>
+      text().nullable()(); // session ID this objective belongs to
   TextColumn get objective => text()(); // the main goal
   TextColumn get tasks => text().withDefault(
     const Constant('[]'),
@@ -426,6 +428,75 @@ class StoryProjects extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Group-owned characters (decoupled from the singular CharacterRepository / library).
+///
+/// Per the clean-break architecture (2026-05): group members are fully separate entities.
+/// They live only in this table + private files under StorageService.groupsDir/<groupId>/avatars/.
+/// There is NO reference to library characters, no shared stable IDs, no automatic population,
+/// and no JSON blob for the card definition itself — all fields are typed columns.
+///
+/// - Internal id: UUID (v4) generated at copy/add time. Used for all per-member keys
+///   (realism in defaultMemberRealismState, characterSystemPrompts, objectives, RAG, etc.).
+/// - Exactly one primary avatar PNG per member (avatarFilename); multi-avatar/expressions
+///   explicitly not supported for groups.
+/// - The only path from a group member into the user's singular library is the explicit
+///   user-initiated "Separate to my library" (extract) action.
+/// - On group delete, the row(s) and the entire groups/<groupId>/ tree are removed (best effort).
+///
+/// External companion tools writing groups must not assume members; they write to this
+/// table for group card fidelity. The human will notify such tools after this feature is
+/// 100% complete and stable.
+@DataClassName('GroupMemberRow')
+class GroupMembers extends Table {
+  TextColumn get id =>
+      text()(); // UUID PK — stable for this member *inside this group only*
+  TextColumn get groupId => text()(); // references Groups.id
+
+  // Full card definition as typed columns (no JSON blob for the member "character" itself).
+  TextColumn get name => text()();
+  TextColumn get description => text().withDefault(const Constant(''))();
+  TextColumn get personality => text().withDefault(const Constant(''))();
+  TextColumn get scenario => text().withDefault(const Constant(''))();
+  TextColumn get firstMessage => text().withDefault(const Constant(''))();
+  TextColumn get mesExample => text().withDefault(const Constant(''))();
+  TextColumn get systemPrompt => text().withDefault(const Constant(''))();
+  TextColumn get postHistoryInstructions =>
+      text().withDefault(const Constant(''))();
+
+  TextColumn get alternateGreetings =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+  TextColumn get tags =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+
+  /// Basename of the single primary PNG stored in this group's private avatars dir.
+  /// Resolved at runtime via StorageService.groupsDir + groupId + 'avatars' + this filename.
+  /// Never a full path, never an expression list.
+  TextColumn get avatarFilename => text().nullable()();
+
+  TextColumn get ttsVoice => text().nullable()();
+
+  TextColumn get lorebook =>
+      text().nullable()(); // JSON (same shape as Characters.lorebook)
+  TextColumn get worldNames =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+
+  /// JSON of FrontPorchExtensions (realism defaults etc.) + any raw third-party extensions.
+  TextColumn get frontPorchExtensions => text().nullable()();
+  TextColumn get rawExtensions => text().nullable()();
+
+  /// Small JSON for any *group-scoped* per-member state that travels with the group definition
+  /// (e.g. initial realism seed fragments specific to this membership, or future overrides).
+  /// The primary evolving per-char realism + needs lives in sessions.group_realism_state
+  /// (keyed by these member UUIDs) and groups.defaultMemberRealismState (for seeds/export).
+  /// This column keeps the member rows free of "the card" blobs while still self-contained.
+  TextColumn get memberState => text().withDefault(const Constant('{}'))();
+
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // ── Database Definition ─────────────────────────────────────────────────
 
 @DriftDatabase(
@@ -443,6 +514,7 @@ class StoryProjects extends Table {
     StoryProjects,
     SyncMeta,
     AvatarImages,
+    GroupMembers, // group-owned characters (clean break from library; see class docs)
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -674,9 +746,13 @@ class AppDatabase extends _$AppDatabase {
           try {
             final sql = 'ALTER TABLE $table ADD COLUMN $def';
             await customStatement(sql);
-            debugPrint('[DB] Schema repair: added $table.$colName (recovered from incomplete past migration)');
+            debugPrint(
+              '[DB] Schema repair: added $table.$colName (recovered from incomplete past migration)',
+            );
           } catch (e) {
-            debugPrint('[DB] Schema repair: FAILED to add $table.$colName — $e (app will continue; some features may be limited until manual intervention)');
+            debugPrint(
+              '[DB] Schema repair: FAILED to add $table.$colName — $e (app will continue; some features may be limited until manual intervention)',
+            );
             // Intentionally not re-thrown. The user's irreplaceable chats must remain accessible.
           }
         }
@@ -685,7 +761,83 @@ class AppDatabase extends _$AppDatabase {
 
     stopwatch.stop();
     if (anyRepairDone) {
-      debugPrint('[DB] Schema repair completed in ${stopwatch.elapsedMilliseconds}ms — your database is now consistent with app v32+ expectations');
+      debugPrint(
+        '[DB] Schema repair completed in ${stopwatch.elapsedMilliseconds}ms — your database is now consistent with app v32+ expectations',
+      );
+    }
+
+    // ── New table for decoupled group members (clean break, no legacy, no blobs) ──
+    // This table + private per-group avatar files (groups/<groupId>/avatars/*.png)
+    // replace all previous characterIds + library materialization for groups.
+    // Created with IF NOT EXISTS + the backup-on-mutation guard for users on old DBs.
+    // Matches the GroupMembers Dart definition (snake_case) + created_at (repair path).
+    // Multi-avatar never supported here; only primary avatarFilename per member.
+    try {
+      final hasMembersTable = await customSelect(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='group_members'",
+      ).get();
+      if (hasMembersTable.isEmpty) {
+        if (!anyRepairDone) {
+          await _createPreRepairBackup();
+          anyRepairDone = true;
+        }
+        // External direct-SQL writers (e.g. Character Card Forge): see GroupMembers
+        // Dart class docs above for v33+ contract. Do not assume legacy characterIds behavior here.
+        // TODO: After this stabilizes in a tagged release, notify maintainers of external direct-SQL tools (Character Card Forge) about the new group_members table and its private-avatar contract.
+        await customStatement('''
+          CREATE TABLE IF NOT EXISTS group_members (
+            -- v33+ table (GroupMembers Dart docs): strict UUID PKs + private-avatar semantics only. No legacy characterIds.
+            id TEXT NOT NULL PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            personality TEXT NOT NULL DEFAULT '',
+            scenario TEXT NOT NULL DEFAULT '',
+            first_message TEXT NOT NULL DEFAULT '',
+            mes_example TEXT NOT NULL DEFAULT '',
+            system_prompt TEXT NOT NULL DEFAULT '',
+            post_history_instructions TEXT NOT NULL DEFAULT '',
+            alternate_greetings TEXT NOT NULL DEFAULT '[]',
+            tags TEXT NOT NULL DEFAULT '[]',
+            avatar_filename TEXT,
+            tts_voice TEXT,
+            lorebook TEXT,
+            world_names TEXT NOT NULL DEFAULT '[]',
+            front_porch_extensions TEXT,
+            raw_extensions TEXT,
+            member_state TEXT NOT NULL DEFAULT '{}',
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )
+        ''');
+        debugPrint(
+          '[DB] Schema repair: created group_members table (decoupled group characters; v33+ contract)',
+        );
+      }
+    } catch (e) {
+      debugPrint(
+        '[DB] Schema repair: FAILED to ensure group_members table — $e (continuing; groups may be limited)',
+      );
+    }
+
+    // Post-creation lightweight orphan diagnostic (one query, non-fatal, launch-time only).
+    try {
+      final res = await customSelect(
+        'SELECT COUNT(*) as cnt FROM group_members gm LEFT JOIN groups g ON gm.group_id = g.id WHERE g.id IS NULL',
+      ).get();
+      final cnt = res.isNotEmpty ? (res.first.data['cnt'] as int? ?? 0) : 0;
+      if (cnt > 0) {
+        debugPrint(
+          '[DB] WARNING: $cnt orphaned group_members row(s) with no matching group (pre-v33 DB integrity issue)',
+        );
+      }
+    } catch (_) {}
+
+    if (anyRepairDone) {
+      // Re-log if we did table creation after the column phase
+      debugPrint(
+        '[DB] Schema repair (including new tables) completed in ${stopwatch.elapsedMilliseconds}ms total',
+      );
     }
   }
 
@@ -700,7 +852,9 @@ class AppDatabase extends _$AppDatabase {
           .cast<String>()
           .toSet();
     } catch (e) {
-      debugPrint('[DB] Could not PRAGMA table_info for $tableName (table may be very old or locked): $e');
+      debugPrint(
+        '[DB] Could not PRAGMA table_info for $tableName (table may be very old or locked): $e',
+      );
       return <String>{};
     }
   }
@@ -716,13 +870,22 @@ class AppDatabase extends _$AppDatabase {
       final dbFile = File(path);
       if (!await dbFile.exists()) return;
 
-      final ts = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
+      final ts = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
       final backupPath = '$path.pre-schema-repair-$ts';
       await dbFile.copy(backupPath);
-      debugPrint('[DB] SAFETY BACKUP created before schema repair: $backupPath');
-      debugPrint('[DB] If anything ever goes wrong, you can rename this file back to front_porch.db to restore your exact previous state (all chats, objectives, groups, etc.).');
+      debugPrint(
+        '[DB] SAFETY BACKUP created before schema repair: $backupPath',
+      );
+      debugPrint(
+        '[DB] If anything ever goes wrong, you can rename this file back to front_porch.db to restore your exact previous state (all chats, objectives, groups, etc.).',
+      );
     } catch (e) {
-      debugPrint('[DB] Could not create pre-repair backup (non-fatal — repair will still attempt): $e');
+      debugPrint(
+        '[DB] Could not create pre-repair backup (non-fatal — repair will still attempt): $e',
+      );
     }
   }
 
@@ -1550,7 +1713,9 @@ class AppDatabase extends _$AppDatabase {
       'worlds',
     ]) {
       if (skipTables.contains(table)) {
-        debugPrint('[DB] Skipping purge of soft-deleted rows in $table (deletion signal protection for cloud sync)');
+        debugPrint(
+          '[DB] Skipping purge of soft-deleted rows in $table (deletion signal protection for cloud sync)',
+        );
         continue;
       }
       final count = await customUpdate(
@@ -1665,12 +1830,10 @@ class AppDatabase extends _$AppDatabase {
 
     // Soft-delete the primary character row so the flag travels with the DB.
     final now = DateTime.now();
-    final count = await (update(characters)..where((c) => c.id.equals(id))).write(
-      CharactersCompanion(
-        deletedAt: Value(now),
-        updatedAt: Value(now),
-      ),
-    );
+    final count = await (update(characters)..where((c) => c.id.equals(id)))
+        .write(
+          CharactersCompanion(deletedAt: Value(now), updatedAt: Value(now)),
+        );
     await bumpSyncVersion();
     return count;
   }
@@ -1910,6 +2073,11 @@ class AppDatabase extends _$AppDatabase {
       await (delete(messages)..where((m) => m.sessionId.equals(s.id))).go();
     }
     await (delete(sessions)..where((s) => s.groupId.equals(id))).go();
+
+    // Clean group-owned members (decoupled storage). Their private avatar files under
+    // groups/<id>/ are cleaned by the repository layer using StorageService.
+    await customStatement('DELETE FROM group_members WHERE group_id = ?', [id]);
+
     final count = await (delete(groups)..where((g) => g.id.equals(id))).go();
     await bumpSyncVersion();
     return count;
@@ -1928,13 +2096,33 @@ class AppDatabase extends _$AppDatabase {
     }
     await (delete(sessions)..where((s) => s.groupId.equals(id))).go();
 
+    // Clean group-owned members (decoupled storage). Avatar files cleaned by repo layer.
+    await customStatement('DELETE FROM group_members WHERE group_id = ?', [id]);
+
     final now = DateTime.now();
     final count = await (update(groups)..where((g) => g.id.equals(id))).write(
-      GroupsCompanion(
-        deletedAt: Value(now),
-        updatedAt: Value(now),
-      ),
+      GroupsCompanion(deletedAt: Value(now), updatedAt: Value(now)),
     );
+    await bumpSyncVersion();
+    return count;
+  }
+
+  // ── Group Member Queries (decoupled characters, UUID keys, no blobs) ──
+  // See GroupMembers table docs for contract. All per-member state keys use the UUID id.
+
+  Future<List<GroupMemberRow>> getGroupMembers(String groupId) =>
+      (select(groupMembers)..where((m) => m.groupId.equals(groupId))).get();
+
+  Future<int> insertGroupMember(GroupMembersCompanion member) async {
+    final result = await into(groupMembers).insert(member);
+    await bumpSyncVersion();
+    return result;
+  }
+
+  Future<int> deleteGroupMembersForGroup(String groupId) async {
+    final count = await (delete(
+      groupMembers,
+    )..where((m) => m.groupId.equals(groupId))).go();
     await bumpSyncVersion();
     return count;
   }
@@ -2126,9 +2314,8 @@ class AppDatabase extends _$AppDatabase {
       (select(objectives)
             ..where((o) => o.characterId.equals(characterId))
             ..where(
-              (o) => chatId == null
-                  ? o.chatId.isNull()
-                  : o.chatId.equals(chatId),
+              (o) =>
+                  chatId == null ? o.chatId.isNull() : o.chatId.equals(chatId),
             )
             ..orderBy([
               (o) => OrderingTerm(
@@ -2175,9 +2362,8 @@ class AppDatabase extends _$AppDatabase {
     objectives,
   )..where((o) => o.characterId.equals(characterId))).go();
 
-  Future<int> deleteObjectivesForChat(String chatId) => (delete(
-    objectives,
-  )..where((o) => o.chatId.equals(chatId))).go();
+  Future<int> deleteObjectivesForChat(String chatId) =>
+      (delete(objectives)..where((o) => o.chatId.equals(chatId))).go();
 
   // ── Story Project Queries ────────────────────────────────────────────
 

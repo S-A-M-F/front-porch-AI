@@ -28,6 +28,7 @@
 
 export 'emotion_labels.dart';
 export 'gguf_parser.dart';
+export 'character_id.dart';
 export 'json_sanitizer.dart';
 export 'kobold_layer_solver.dart';
 export 'persona_colors.dart';

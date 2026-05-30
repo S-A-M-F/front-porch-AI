@@ -49,6 +49,13 @@ class StorageService extends ChangeNotifier {
   Directory get charactersDir =>
       Directory(path.join(_rootPath ?? '', 'KoboldManager', 'Characters'));
 
+  /// Directory for all group-private data (decoupled from singular library characters).
+  /// Each group gets its own subdirectory (by group id) under here to store its
+  /// member avatar PNGs (primary only; no multi-avatar or expressions per spec).
+  /// Group data is NEVER written to or resolved from the global charactersDir or library.
+  /// The only bridge to library is the user's explicit "Separate to my library" action.
+  Directory get groupsDir => Directory(path.join(_rootPath ?? '', 'groups'));
+
   /// Resolve a character [imagePath] (stored in the DB) to a [File].
   ///
   /// The DB may contain either:
@@ -490,6 +497,7 @@ class StorageService extends ChangeNotifier {
     await modelsDir.create(recursive: true);
     await worldsDir.create(recursive: true);
     await charactersDir.create(recursive: true);
+    await groupsDir.create(recursive: true);
     await customBackgroundDir.create(recursive: true);
 
     // Load settings
@@ -849,6 +857,7 @@ class StorageService extends ChangeNotifier {
     await modelsDir.create(recursive: true);
     await worldsDir.create(recursive: true);
     await charactersDir.create(recursive: true);
+    await groupsDir.create(recursive: true);
 
     notifyListeners();
   }

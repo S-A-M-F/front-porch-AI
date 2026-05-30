@@ -20,12 +20,14 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/utils/character_id.dart';
 
 /// Tabbed group editor (edit-only flow).
 /// Matches the visual tabbed style, section cards, and field treatment of EditCharacterPage
@@ -100,19 +102,26 @@ class _EditGroupPageState extends State<EditGroupPage>
 
     final g = widget.group;
     // Load members (tolerate missing chars) — now in didChangeDependencies per standard pattern
-    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
-    for (final cid in g.characterIds) {
-      final match = charRepo.characters.firstWhere(
-        (c) =>
-            (c.dbId ??
-                (c.imagePath != null
-                    ? p.basenameWithoutExtension(c.imagePath!)
-                    : c.name)) ==
-            cid,
-        orElse: () => CharacterCard(name: cid),
-      );
-      _members.add(match);
-    }
+    // Wire member loading for edit surfaces (extends existing load in didChangeDependencies).
+    // groupRepo + private paths + toCharacterCard. Functional for pre-existing and new groups.
+    final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+    final storage = Provider.of<StorageService>(context, listen: false);
+    // Fire-and-forget async load (didChangeDependencies is sync)
+    () async {
+      final memberRows = await groupRepo.getMembersForGroup(g.id);
+      for (final m in memberRows) {
+        if (m.avatarFilename != null) {
+          final avatarPath = p.join(storage.groupsDir.path, g.id, 'avatars', m.avatarFilename!);
+          if (await File(avatarPath).exists()) {
+            if (mounted) {
+              setState(() {
+                _members.add(m.toCharacterCard(resolvedImagePath: avatarPath));
+              });
+            }
+          }
+        }
+      }
+    }();
 
     // Per-char prompt controllers (edit-only; no roster mutation)
     for (final entry in g.characterSystemPrompts.entries) {
@@ -121,11 +130,8 @@ class _EditGroupPageState extends State<EditGroupPage>
       );
     }
     for (final m in _members) {
-      final id =
-          m.dbId ??
-          (m.imagePath != null
-              ? p.basenameWithoutExtension(m.imagePath!)
-              : m.name);
+      // Use the canonical stable group ID.
+      final id = m.stableGroupId;
       _charPromptControllers.putIfAbsent(id, () => TextEditingController());
     }
 
@@ -181,7 +187,7 @@ class _EditGroupPageState extends State<EditGroupPage>
       name: _nameController.text.trim().isEmpty
           ? widget.group.name
           : _nameController.text.trim(),
-      characterIds: widget.group.characterIds,
+      // characterIds removed (decoupled group members).
       turnOrder: _turnOrder,
       autoAdvance: _autoAdvance,
       directorMode: _directorMode,

@@ -186,6 +186,17 @@ void main(List<String> args) async {
               previous ?? CharacterRepository(db, storage),
         ),
         ChangeNotifierProvider(create: (context) => UserPersonaService(db)),
+        // GroupChatRepository early (before ChatService) so the DI wiring in ChatService
+        // create/update can successfully Provider.of it. Critical for the decoupled
+        // member loading fallback in setActiveGroup.
+        ChangeNotifierProxyProvider<StorageService, GroupChatRepository>(
+          create: (context) => GroupChatRepository(
+            Provider.of<StorageService>(context, listen: false),
+            db,
+          ),
+          update: (context, storage, previous) =>
+              previous ?? GroupChatRepository(storage, db),
+        ),
         ChangeNotifierProvider(create: (context) => FolderService(db)),
         ChangeNotifierProxyProvider2<
           CharacterRepository,
@@ -279,6 +290,10 @@ void main(List<String> args) async {
             chatService.setCharacterRepository(
               Provider.of<CharacterRepository>(context, listen: false),
             );
+            // Wire GroupChatRepository for decoupled group member loading
+            chatService.setGroupChatRepository(
+              Provider.of<GroupChatRepository>(context, listen: false),
+            );
             // Wire MemoryService for RAG
             try {
               final sidecar = Provider.of<EmbeddingSidecar>(
@@ -303,6 +318,9 @@ void main(List<String> args) async {
               previous.setCharacterRepository(
                 Provider.of<CharacterRepository>(context, listen: false),
               );
+              previous.setGroupChatRepository(
+                Provider.of<GroupChatRepository>(context, listen: false),
+              );
               try {
                 previous.setTtsService(
                   Provider.of<TtsService>(context, listen: false),
@@ -323,6 +341,9 @@ void main(List<String> args) async {
             chatService.setCharacterRepository(
               Provider.of<CharacterRepository>(context, listen: false),
             );
+            chatService.setGroupChatRepository(
+              Provider.of<GroupChatRepository>(context, listen: false),
+            );
             return chatService;
           },
         ),
@@ -335,14 +356,6 @@ void main(List<String> args) async {
           ),
           update: (context, storage, previous) =>
               previous ?? ExpressionClassifierService(storage),
-        ),
-        ChangeNotifierProxyProvider<StorageService, GroupChatRepository>(
-          create: (context) => GroupChatRepository(
-            Provider.of<StorageService>(context, listen: false),
-            db,
-          ),
-          update: (context, storage, previous) =>
-              previous ?? GroupChatRepository(storage, db),
         ),
         ChangeNotifierProxyProvider4<
           StorageService,

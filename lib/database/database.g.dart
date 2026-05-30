@@ -10130,6 +10130,1161 @@ class AvatarImagesCompanion extends UpdateCompanion<AvatarImage> {
   }
 }
 
+class $GroupMembersTable extends GroupMembers
+    with TableInfo<$GroupMembersTable, GroupMemberRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GroupMembersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _personalityMeta = const VerificationMeta(
+    'personality',
+  );
+  @override
+  late final GeneratedColumn<String> personality = GeneratedColumn<String>(
+    'personality',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _scenarioMeta = const VerificationMeta(
+    'scenario',
+  );
+  @override
+  late final GeneratedColumn<String> scenario = GeneratedColumn<String>(
+    'scenario',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _firstMessageMeta = const VerificationMeta(
+    'firstMessage',
+  );
+  @override
+  late final GeneratedColumn<String> firstMessage = GeneratedColumn<String>(
+    'first_message',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _mesExampleMeta = const VerificationMeta(
+    'mesExample',
+  );
+  @override
+  late final GeneratedColumn<String> mesExample = GeneratedColumn<String>(
+    'mes_example',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _systemPromptMeta = const VerificationMeta(
+    'systemPrompt',
+  );
+  @override
+  late final GeneratedColumn<String> systemPrompt = GeneratedColumn<String>(
+    'system_prompt',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _postHistoryInstructionsMeta =
+      const VerificationMeta('postHistoryInstructions');
+  @override
+  late final GeneratedColumn<String> postHistoryInstructions =
+      GeneratedColumn<String>(
+        'post_history_instructions',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(''),
+      );
+  static const VerificationMeta _alternateGreetingsMeta =
+      const VerificationMeta('alternateGreetings');
+  @override
+  late final GeneratedColumn<String> alternateGreetings =
+      GeneratedColumn<String>(
+        'alternate_greetings',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
+  static const VerificationMeta _tagsMeta = const VerificationMeta('tags');
+  @override
+  late final GeneratedColumn<String> tags = GeneratedColumn<String>(
+    'tags',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _avatarFilenameMeta = const VerificationMeta(
+    'avatarFilename',
+  );
+  @override
+  late final GeneratedColumn<String> avatarFilename = GeneratedColumn<String>(
+    'avatar_filename',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _ttsVoiceMeta = const VerificationMeta(
+    'ttsVoice',
+  );
+  @override
+  late final GeneratedColumn<String> ttsVoice = GeneratedColumn<String>(
+    'tts_voice',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lorebookMeta = const VerificationMeta(
+    'lorebook',
+  );
+  @override
+  late final GeneratedColumn<String> lorebook = GeneratedColumn<String>(
+    'lorebook',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _worldNamesMeta = const VerificationMeta(
+    'worldNames',
+  );
+  @override
+  late final GeneratedColumn<String> worldNames = GeneratedColumn<String>(
+    'world_names',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _frontPorchExtensionsMeta =
+      const VerificationMeta('frontPorchExtensions');
+  @override
+  late final GeneratedColumn<String> frontPorchExtensions =
+      GeneratedColumn<String>(
+        'front_porch_extensions',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _rawExtensionsMeta = const VerificationMeta(
+    'rawExtensions',
+  );
+  @override
+  late final GeneratedColumn<String> rawExtensions = GeneratedColumn<String>(
+    'raw_extensions',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _memberStateMeta = const VerificationMeta(
+    'memberState',
+  );
+  @override
+  late final GeneratedColumn<String> memberState = GeneratedColumn<String>(
+    'member_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    groupId,
+    name,
+    description,
+    personality,
+    scenario,
+    firstMessage,
+    mesExample,
+    systemPrompt,
+    postHistoryInstructions,
+    alternateGreetings,
+    tags,
+    avatarFilename,
+    ttsVoice,
+    lorebook,
+    worldNames,
+    frontPorchExtensions,
+    rawExtensions,
+    memberState,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'group_members';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GroupMemberRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_groupIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('personality')) {
+      context.handle(
+        _personalityMeta,
+        personality.isAcceptableOrUnknown(
+          data['personality']!,
+          _personalityMeta,
+        ),
+      );
+    }
+    if (data.containsKey('scenario')) {
+      context.handle(
+        _scenarioMeta,
+        scenario.isAcceptableOrUnknown(data['scenario']!, _scenarioMeta),
+      );
+    }
+    if (data.containsKey('first_message')) {
+      context.handle(
+        _firstMessageMeta,
+        firstMessage.isAcceptableOrUnknown(
+          data['first_message']!,
+          _firstMessageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('mes_example')) {
+      context.handle(
+        _mesExampleMeta,
+        mesExample.isAcceptableOrUnknown(data['mes_example']!, _mesExampleMeta),
+      );
+    }
+    if (data.containsKey('system_prompt')) {
+      context.handle(
+        _systemPromptMeta,
+        systemPrompt.isAcceptableOrUnknown(
+          data['system_prompt']!,
+          _systemPromptMeta,
+        ),
+      );
+    }
+    if (data.containsKey('post_history_instructions')) {
+      context.handle(
+        _postHistoryInstructionsMeta,
+        postHistoryInstructions.isAcceptableOrUnknown(
+          data['post_history_instructions']!,
+          _postHistoryInstructionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('alternate_greetings')) {
+      context.handle(
+        _alternateGreetingsMeta,
+        alternateGreetings.isAcceptableOrUnknown(
+          data['alternate_greetings']!,
+          _alternateGreetingsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tags')) {
+      context.handle(
+        _tagsMeta,
+        tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta),
+      );
+    }
+    if (data.containsKey('avatar_filename')) {
+      context.handle(
+        _avatarFilenameMeta,
+        avatarFilename.isAcceptableOrUnknown(
+          data['avatar_filename']!,
+          _avatarFilenameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tts_voice')) {
+      context.handle(
+        _ttsVoiceMeta,
+        ttsVoice.isAcceptableOrUnknown(data['tts_voice']!, _ttsVoiceMeta),
+      );
+    }
+    if (data.containsKey('lorebook')) {
+      context.handle(
+        _lorebookMeta,
+        lorebook.isAcceptableOrUnknown(data['lorebook']!, _lorebookMeta),
+      );
+    }
+    if (data.containsKey('world_names')) {
+      context.handle(
+        _worldNamesMeta,
+        worldNames.isAcceptableOrUnknown(data['world_names']!, _worldNamesMeta),
+      );
+    }
+    if (data.containsKey('front_porch_extensions')) {
+      context.handle(
+        _frontPorchExtensionsMeta,
+        frontPorchExtensions.isAcceptableOrUnknown(
+          data['front_porch_extensions']!,
+          _frontPorchExtensionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('raw_extensions')) {
+      context.handle(
+        _rawExtensionsMeta,
+        rawExtensions.isAcceptableOrUnknown(
+          data['raw_extensions']!,
+          _rawExtensionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('member_state')) {
+      context.handle(
+        _memberStateMeta,
+        memberState.isAcceptableOrUnknown(
+          data['member_state']!,
+          _memberStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  GroupMemberRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GroupMemberRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      personality: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}personality'],
+      )!,
+      scenario: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scenario'],
+      )!,
+      firstMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}first_message'],
+      )!,
+      mesExample: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mes_example'],
+      )!,
+      systemPrompt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}system_prompt'],
+      )!,
+      postHistoryInstructions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}post_history_instructions'],
+      )!,
+      alternateGreetings: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}alternate_greetings'],
+      )!,
+      tags: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tags'],
+      )!,
+      avatarFilename: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}avatar_filename'],
+      ),
+      ttsVoice: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tts_voice'],
+      ),
+      lorebook: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}lorebook'],
+      ),
+      worldNames: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}world_names'],
+      )!,
+      frontPorchExtensions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}front_porch_extensions'],
+      ),
+      rawExtensions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}raw_extensions'],
+      ),
+      memberState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}member_state'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $GroupMembersTable createAlias(String alias) {
+    return $GroupMembersTable(attachedDatabase, alias);
+  }
+}
+
+class GroupMemberRow extends DataClass implements Insertable<GroupMemberRow> {
+  final String id;
+  final String groupId;
+  final String name;
+  final String description;
+  final String personality;
+  final String scenario;
+  final String firstMessage;
+  final String mesExample;
+  final String systemPrompt;
+  final String postHistoryInstructions;
+  final String alternateGreetings;
+  final String tags;
+
+  /// Basename of the single primary PNG stored in this group's private avatars dir.
+  /// Resolved at runtime via StorageService.groupsDir + groupId + 'avatars' + this filename.
+  /// Never a full path, never an expression list.
+  final String? avatarFilename;
+  final String? ttsVoice;
+  final String? lorebook;
+  final String worldNames;
+
+  /// JSON of FrontPorchExtensions (realism defaults etc.) + any raw third-party extensions.
+  final String? frontPorchExtensions;
+  final String? rawExtensions;
+
+  /// Small JSON for any *group-scoped* per-member state that travels with the group definition
+  /// (e.g. initial realism seed fragments specific to this membership, or future overrides).
+  /// The primary evolving per-char realism + needs lives in sessions.group_realism_state
+  /// (keyed by these member UUIDs) and groups.defaultMemberRealismState (for seeds/export).
+  /// This column keeps the member rows free of "the card" blobs while still self-contained.
+  final String memberState;
+  final DateTime updatedAt;
+  const GroupMemberRow({
+    required this.id,
+    required this.groupId,
+    required this.name,
+    required this.description,
+    required this.personality,
+    required this.scenario,
+    required this.firstMessage,
+    required this.mesExample,
+    required this.systemPrompt,
+    required this.postHistoryInstructions,
+    required this.alternateGreetings,
+    required this.tags,
+    this.avatarFilename,
+    this.ttsVoice,
+    this.lorebook,
+    required this.worldNames,
+    this.frontPorchExtensions,
+    this.rawExtensions,
+    required this.memberState,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['group_id'] = Variable<String>(groupId);
+    map['name'] = Variable<String>(name);
+    map['description'] = Variable<String>(description);
+    map['personality'] = Variable<String>(personality);
+    map['scenario'] = Variable<String>(scenario);
+    map['first_message'] = Variable<String>(firstMessage);
+    map['mes_example'] = Variable<String>(mesExample);
+    map['system_prompt'] = Variable<String>(systemPrompt);
+    map['post_history_instructions'] = Variable<String>(
+      postHistoryInstructions,
+    );
+    map['alternate_greetings'] = Variable<String>(alternateGreetings);
+    map['tags'] = Variable<String>(tags);
+    if (!nullToAbsent || avatarFilename != null) {
+      map['avatar_filename'] = Variable<String>(avatarFilename);
+    }
+    if (!nullToAbsent || ttsVoice != null) {
+      map['tts_voice'] = Variable<String>(ttsVoice);
+    }
+    if (!nullToAbsent || lorebook != null) {
+      map['lorebook'] = Variable<String>(lorebook);
+    }
+    map['world_names'] = Variable<String>(worldNames);
+    if (!nullToAbsent || frontPorchExtensions != null) {
+      map['front_porch_extensions'] = Variable<String>(frontPorchExtensions);
+    }
+    if (!nullToAbsent || rawExtensions != null) {
+      map['raw_extensions'] = Variable<String>(rawExtensions);
+    }
+    map['member_state'] = Variable<String>(memberState);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  GroupMembersCompanion toCompanion(bool nullToAbsent) {
+    return GroupMembersCompanion(
+      id: Value(id),
+      groupId: Value(groupId),
+      name: Value(name),
+      description: Value(description),
+      personality: Value(personality),
+      scenario: Value(scenario),
+      firstMessage: Value(firstMessage),
+      mesExample: Value(mesExample),
+      systemPrompt: Value(systemPrompt),
+      postHistoryInstructions: Value(postHistoryInstructions),
+      alternateGreetings: Value(alternateGreetings),
+      tags: Value(tags),
+      avatarFilename: avatarFilename == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avatarFilename),
+      ttsVoice: ttsVoice == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ttsVoice),
+      lorebook: lorebook == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lorebook),
+      worldNames: Value(worldNames),
+      frontPorchExtensions: frontPorchExtensions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(frontPorchExtensions),
+      rawExtensions: rawExtensions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawExtensions),
+      memberState: Value(memberState),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory GroupMemberRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GroupMemberRow(
+      id: serializer.fromJson<String>(json['id']),
+      groupId: serializer.fromJson<String>(json['groupId']),
+      name: serializer.fromJson<String>(json['name']),
+      description: serializer.fromJson<String>(json['description']),
+      personality: serializer.fromJson<String>(json['personality']),
+      scenario: serializer.fromJson<String>(json['scenario']),
+      firstMessage: serializer.fromJson<String>(json['firstMessage']),
+      mesExample: serializer.fromJson<String>(json['mesExample']),
+      systemPrompt: serializer.fromJson<String>(json['systemPrompt']),
+      postHistoryInstructions: serializer.fromJson<String>(
+        json['postHistoryInstructions'],
+      ),
+      alternateGreetings: serializer.fromJson<String>(
+        json['alternateGreetings'],
+      ),
+      tags: serializer.fromJson<String>(json['tags']),
+      avatarFilename: serializer.fromJson<String?>(json['avatarFilename']),
+      ttsVoice: serializer.fromJson<String?>(json['ttsVoice']),
+      lorebook: serializer.fromJson<String?>(json['lorebook']),
+      worldNames: serializer.fromJson<String>(json['worldNames']),
+      frontPorchExtensions: serializer.fromJson<String?>(
+        json['frontPorchExtensions'],
+      ),
+      rawExtensions: serializer.fromJson<String?>(json['rawExtensions']),
+      memberState: serializer.fromJson<String>(json['memberState']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'groupId': serializer.toJson<String>(groupId),
+      'name': serializer.toJson<String>(name),
+      'description': serializer.toJson<String>(description),
+      'personality': serializer.toJson<String>(personality),
+      'scenario': serializer.toJson<String>(scenario),
+      'firstMessage': serializer.toJson<String>(firstMessage),
+      'mesExample': serializer.toJson<String>(mesExample),
+      'systemPrompt': serializer.toJson<String>(systemPrompt),
+      'postHistoryInstructions': serializer.toJson<String>(
+        postHistoryInstructions,
+      ),
+      'alternateGreetings': serializer.toJson<String>(alternateGreetings),
+      'tags': serializer.toJson<String>(tags),
+      'avatarFilename': serializer.toJson<String?>(avatarFilename),
+      'ttsVoice': serializer.toJson<String?>(ttsVoice),
+      'lorebook': serializer.toJson<String?>(lorebook),
+      'worldNames': serializer.toJson<String>(worldNames),
+      'frontPorchExtensions': serializer.toJson<String?>(frontPorchExtensions),
+      'rawExtensions': serializer.toJson<String?>(rawExtensions),
+      'memberState': serializer.toJson<String>(memberState),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  GroupMemberRow copyWith({
+    String? id,
+    String? groupId,
+    String? name,
+    String? description,
+    String? personality,
+    String? scenario,
+    String? firstMessage,
+    String? mesExample,
+    String? systemPrompt,
+    String? postHistoryInstructions,
+    String? alternateGreetings,
+    String? tags,
+    Value<String?> avatarFilename = const Value.absent(),
+    Value<String?> ttsVoice = const Value.absent(),
+    Value<String?> lorebook = const Value.absent(),
+    String? worldNames,
+    Value<String?> frontPorchExtensions = const Value.absent(),
+    Value<String?> rawExtensions = const Value.absent(),
+    String? memberState,
+    DateTime? updatedAt,
+  }) => GroupMemberRow(
+    id: id ?? this.id,
+    groupId: groupId ?? this.groupId,
+    name: name ?? this.name,
+    description: description ?? this.description,
+    personality: personality ?? this.personality,
+    scenario: scenario ?? this.scenario,
+    firstMessage: firstMessage ?? this.firstMessage,
+    mesExample: mesExample ?? this.mesExample,
+    systemPrompt: systemPrompt ?? this.systemPrompt,
+    postHistoryInstructions:
+        postHistoryInstructions ?? this.postHistoryInstructions,
+    alternateGreetings: alternateGreetings ?? this.alternateGreetings,
+    tags: tags ?? this.tags,
+    avatarFilename: avatarFilename.present
+        ? avatarFilename.value
+        : this.avatarFilename,
+    ttsVoice: ttsVoice.present ? ttsVoice.value : this.ttsVoice,
+    lorebook: lorebook.present ? lorebook.value : this.lorebook,
+    worldNames: worldNames ?? this.worldNames,
+    frontPorchExtensions: frontPorchExtensions.present
+        ? frontPorchExtensions.value
+        : this.frontPorchExtensions,
+    rawExtensions: rawExtensions.present
+        ? rawExtensions.value
+        : this.rawExtensions,
+    memberState: memberState ?? this.memberState,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  GroupMemberRow copyWithCompanion(GroupMembersCompanion data) {
+    return GroupMemberRow(
+      id: data.id.present ? data.id.value : this.id,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
+      name: data.name.present ? data.name.value : this.name,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      personality: data.personality.present
+          ? data.personality.value
+          : this.personality,
+      scenario: data.scenario.present ? data.scenario.value : this.scenario,
+      firstMessage: data.firstMessage.present
+          ? data.firstMessage.value
+          : this.firstMessage,
+      mesExample: data.mesExample.present
+          ? data.mesExample.value
+          : this.mesExample,
+      systemPrompt: data.systemPrompt.present
+          ? data.systemPrompt.value
+          : this.systemPrompt,
+      postHistoryInstructions: data.postHistoryInstructions.present
+          ? data.postHistoryInstructions.value
+          : this.postHistoryInstructions,
+      alternateGreetings: data.alternateGreetings.present
+          ? data.alternateGreetings.value
+          : this.alternateGreetings,
+      tags: data.tags.present ? data.tags.value : this.tags,
+      avatarFilename: data.avatarFilename.present
+          ? data.avatarFilename.value
+          : this.avatarFilename,
+      ttsVoice: data.ttsVoice.present ? data.ttsVoice.value : this.ttsVoice,
+      lorebook: data.lorebook.present ? data.lorebook.value : this.lorebook,
+      worldNames: data.worldNames.present
+          ? data.worldNames.value
+          : this.worldNames,
+      frontPorchExtensions: data.frontPorchExtensions.present
+          ? data.frontPorchExtensions.value
+          : this.frontPorchExtensions,
+      rawExtensions: data.rawExtensions.present
+          ? data.rawExtensions.value
+          : this.rawExtensions,
+      memberState: data.memberState.present
+          ? data.memberState.value
+          : this.memberState,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupMemberRow(')
+          ..write('id: $id, ')
+          ..write('groupId: $groupId, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('personality: $personality, ')
+          ..write('scenario: $scenario, ')
+          ..write('firstMessage: $firstMessage, ')
+          ..write('mesExample: $mesExample, ')
+          ..write('systemPrompt: $systemPrompt, ')
+          ..write('postHistoryInstructions: $postHistoryInstructions, ')
+          ..write('alternateGreetings: $alternateGreetings, ')
+          ..write('tags: $tags, ')
+          ..write('avatarFilename: $avatarFilename, ')
+          ..write('ttsVoice: $ttsVoice, ')
+          ..write('lorebook: $lorebook, ')
+          ..write('worldNames: $worldNames, ')
+          ..write('frontPorchExtensions: $frontPorchExtensions, ')
+          ..write('rawExtensions: $rawExtensions, ')
+          ..write('memberState: $memberState, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    groupId,
+    name,
+    description,
+    personality,
+    scenario,
+    firstMessage,
+    mesExample,
+    systemPrompt,
+    postHistoryInstructions,
+    alternateGreetings,
+    tags,
+    avatarFilename,
+    ttsVoice,
+    lorebook,
+    worldNames,
+    frontPorchExtensions,
+    rawExtensions,
+    memberState,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GroupMemberRow &&
+          other.id == this.id &&
+          other.groupId == this.groupId &&
+          other.name == this.name &&
+          other.description == this.description &&
+          other.personality == this.personality &&
+          other.scenario == this.scenario &&
+          other.firstMessage == this.firstMessage &&
+          other.mesExample == this.mesExample &&
+          other.systemPrompt == this.systemPrompt &&
+          other.postHistoryInstructions == this.postHistoryInstructions &&
+          other.alternateGreetings == this.alternateGreetings &&
+          other.tags == this.tags &&
+          other.avatarFilename == this.avatarFilename &&
+          other.ttsVoice == this.ttsVoice &&
+          other.lorebook == this.lorebook &&
+          other.worldNames == this.worldNames &&
+          other.frontPorchExtensions == this.frontPorchExtensions &&
+          other.rawExtensions == this.rawExtensions &&
+          other.memberState == this.memberState &&
+          other.updatedAt == this.updatedAt);
+}
+
+class GroupMembersCompanion extends UpdateCompanion<GroupMemberRow> {
+  final Value<String> id;
+  final Value<String> groupId;
+  final Value<String> name;
+  final Value<String> description;
+  final Value<String> personality;
+  final Value<String> scenario;
+  final Value<String> firstMessage;
+  final Value<String> mesExample;
+  final Value<String> systemPrompt;
+  final Value<String> postHistoryInstructions;
+  final Value<String> alternateGreetings;
+  final Value<String> tags;
+  final Value<String?> avatarFilename;
+  final Value<String?> ttsVoice;
+  final Value<String?> lorebook;
+  final Value<String> worldNames;
+  final Value<String?> frontPorchExtensions;
+  final Value<String?> rawExtensions;
+  final Value<String> memberState;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const GroupMembersCompanion({
+    this.id = const Value.absent(),
+    this.groupId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.description = const Value.absent(),
+    this.personality = const Value.absent(),
+    this.scenario = const Value.absent(),
+    this.firstMessage = const Value.absent(),
+    this.mesExample = const Value.absent(),
+    this.systemPrompt = const Value.absent(),
+    this.postHistoryInstructions = const Value.absent(),
+    this.alternateGreetings = const Value.absent(),
+    this.tags = const Value.absent(),
+    this.avatarFilename = const Value.absent(),
+    this.ttsVoice = const Value.absent(),
+    this.lorebook = const Value.absent(),
+    this.worldNames = const Value.absent(),
+    this.frontPorchExtensions = const Value.absent(),
+    this.rawExtensions = const Value.absent(),
+    this.memberState = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GroupMembersCompanion.insert({
+    required String id,
+    required String groupId,
+    required String name,
+    this.description = const Value.absent(),
+    this.personality = const Value.absent(),
+    this.scenario = const Value.absent(),
+    this.firstMessage = const Value.absent(),
+    this.mesExample = const Value.absent(),
+    this.systemPrompt = const Value.absent(),
+    this.postHistoryInstructions = const Value.absent(),
+    this.alternateGreetings = const Value.absent(),
+    this.tags = const Value.absent(),
+    this.avatarFilename = const Value.absent(),
+    this.ttsVoice = const Value.absent(),
+    this.lorebook = const Value.absent(),
+    this.worldNames = const Value.absent(),
+    this.frontPorchExtensions = const Value.absent(),
+    this.rawExtensions = const Value.absent(),
+    this.memberState = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       groupId = Value(groupId),
+       name = Value(name);
+  static Insertable<GroupMemberRow> custom({
+    Expression<String>? id,
+    Expression<String>? groupId,
+    Expression<String>? name,
+    Expression<String>? description,
+    Expression<String>? personality,
+    Expression<String>? scenario,
+    Expression<String>? firstMessage,
+    Expression<String>? mesExample,
+    Expression<String>? systemPrompt,
+    Expression<String>? postHistoryInstructions,
+    Expression<String>? alternateGreetings,
+    Expression<String>? tags,
+    Expression<String>? avatarFilename,
+    Expression<String>? ttsVoice,
+    Expression<String>? lorebook,
+    Expression<String>? worldNames,
+    Expression<String>? frontPorchExtensions,
+    Expression<String>? rawExtensions,
+    Expression<String>? memberState,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (groupId != null) 'group_id': groupId,
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (personality != null) 'personality': personality,
+      if (scenario != null) 'scenario': scenario,
+      if (firstMessage != null) 'first_message': firstMessage,
+      if (mesExample != null) 'mes_example': mesExample,
+      if (systemPrompt != null) 'system_prompt': systemPrompt,
+      if (postHistoryInstructions != null)
+        'post_history_instructions': postHistoryInstructions,
+      if (alternateGreetings != null) 'alternate_greetings': alternateGreetings,
+      if (tags != null) 'tags': tags,
+      if (avatarFilename != null) 'avatar_filename': avatarFilename,
+      if (ttsVoice != null) 'tts_voice': ttsVoice,
+      if (lorebook != null) 'lorebook': lorebook,
+      if (worldNames != null) 'world_names': worldNames,
+      if (frontPorchExtensions != null)
+        'front_porch_extensions': frontPorchExtensions,
+      if (rawExtensions != null) 'raw_extensions': rawExtensions,
+      if (memberState != null) 'member_state': memberState,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GroupMembersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? groupId,
+    Value<String>? name,
+    Value<String>? description,
+    Value<String>? personality,
+    Value<String>? scenario,
+    Value<String>? firstMessage,
+    Value<String>? mesExample,
+    Value<String>? systemPrompt,
+    Value<String>? postHistoryInstructions,
+    Value<String>? alternateGreetings,
+    Value<String>? tags,
+    Value<String?>? avatarFilename,
+    Value<String?>? ttsVoice,
+    Value<String?>? lorebook,
+    Value<String>? worldNames,
+    Value<String?>? frontPorchExtensions,
+    Value<String?>? rawExtensions,
+    Value<String>? memberState,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return GroupMembersCompanion(
+      id: id ?? this.id,
+      groupId: groupId ?? this.groupId,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      personality: personality ?? this.personality,
+      scenario: scenario ?? this.scenario,
+      firstMessage: firstMessage ?? this.firstMessage,
+      mesExample: mesExample ?? this.mesExample,
+      systemPrompt: systemPrompt ?? this.systemPrompt,
+      postHistoryInstructions:
+          postHistoryInstructions ?? this.postHistoryInstructions,
+      alternateGreetings: alternateGreetings ?? this.alternateGreetings,
+      tags: tags ?? this.tags,
+      avatarFilename: avatarFilename ?? this.avatarFilename,
+      ttsVoice: ttsVoice ?? this.ttsVoice,
+      lorebook: lorebook ?? this.lorebook,
+      worldNames: worldNames ?? this.worldNames,
+      frontPorchExtensions: frontPorchExtensions ?? this.frontPorchExtensions,
+      rawExtensions: rawExtensions ?? this.rawExtensions,
+      memberState: memberState ?? this.memberState,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (personality.present) {
+      map['personality'] = Variable<String>(personality.value);
+    }
+    if (scenario.present) {
+      map['scenario'] = Variable<String>(scenario.value);
+    }
+    if (firstMessage.present) {
+      map['first_message'] = Variable<String>(firstMessage.value);
+    }
+    if (mesExample.present) {
+      map['mes_example'] = Variable<String>(mesExample.value);
+    }
+    if (systemPrompt.present) {
+      map['system_prompt'] = Variable<String>(systemPrompt.value);
+    }
+    if (postHistoryInstructions.present) {
+      map['post_history_instructions'] = Variable<String>(
+        postHistoryInstructions.value,
+      );
+    }
+    if (alternateGreetings.present) {
+      map['alternate_greetings'] = Variable<String>(alternateGreetings.value);
+    }
+    if (tags.present) {
+      map['tags'] = Variable<String>(tags.value);
+    }
+    if (avatarFilename.present) {
+      map['avatar_filename'] = Variable<String>(avatarFilename.value);
+    }
+    if (ttsVoice.present) {
+      map['tts_voice'] = Variable<String>(ttsVoice.value);
+    }
+    if (lorebook.present) {
+      map['lorebook'] = Variable<String>(lorebook.value);
+    }
+    if (worldNames.present) {
+      map['world_names'] = Variable<String>(worldNames.value);
+    }
+    if (frontPorchExtensions.present) {
+      map['front_porch_extensions'] = Variable<String>(
+        frontPorchExtensions.value,
+      );
+    }
+    if (rawExtensions.present) {
+      map['raw_extensions'] = Variable<String>(rawExtensions.value);
+    }
+    if (memberState.present) {
+      map['member_state'] = Variable<String>(memberState.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupMembersCompanion(')
+          ..write('id: $id, ')
+          ..write('groupId: $groupId, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('personality: $personality, ')
+          ..write('scenario: $scenario, ')
+          ..write('firstMessage: $firstMessage, ')
+          ..write('mesExample: $mesExample, ')
+          ..write('systemPrompt: $systemPrompt, ')
+          ..write('postHistoryInstructions: $postHistoryInstructions, ')
+          ..write('alternateGreetings: $alternateGreetings, ')
+          ..write('tags: $tags, ')
+          ..write('avatarFilename: $avatarFilename, ')
+          ..write('ttsVoice: $ttsVoice, ')
+          ..write('lorebook: $lorebook, ')
+          ..write('worldNames: $worldNames, ')
+          ..write('frontPorchExtensions: $frontPorchExtensions, ')
+          ..write('rawExtensions: $rawExtensions, ')
+          ..write('memberState: $memberState, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10149,6 +11304,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $StoryProjectsTable storyProjects = $StoryProjectsTable(this);
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
   late final $AvatarImagesTable avatarImages = $AvatarImagesTable(this);
+  late final $GroupMembersTable groupMembers = $GroupMembersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10167,6 +11323,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     storyProjects,
     syncMeta,
     avatarImages,
+    groupMembers,
   ];
 }
 
@@ -14883,6 +16040,515 @@ typedef $$AvatarImagesTableProcessedTableManager =
       AvatarImage,
       PrefetchHooks Function()
     >;
+typedef $$GroupMembersTableCreateCompanionBuilder =
+    GroupMembersCompanion Function({
+      required String id,
+      required String groupId,
+      required String name,
+      Value<String> description,
+      Value<String> personality,
+      Value<String> scenario,
+      Value<String> firstMessage,
+      Value<String> mesExample,
+      Value<String> systemPrompt,
+      Value<String> postHistoryInstructions,
+      Value<String> alternateGreetings,
+      Value<String> tags,
+      Value<String?> avatarFilename,
+      Value<String?> ttsVoice,
+      Value<String?> lorebook,
+      Value<String> worldNames,
+      Value<String?> frontPorchExtensions,
+      Value<String?> rawExtensions,
+      Value<String> memberState,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$GroupMembersTableUpdateCompanionBuilder =
+    GroupMembersCompanion Function({
+      Value<String> id,
+      Value<String> groupId,
+      Value<String> name,
+      Value<String> description,
+      Value<String> personality,
+      Value<String> scenario,
+      Value<String> firstMessage,
+      Value<String> mesExample,
+      Value<String> systemPrompt,
+      Value<String> postHistoryInstructions,
+      Value<String> alternateGreetings,
+      Value<String> tags,
+      Value<String?> avatarFilename,
+      Value<String?> ttsVoice,
+      Value<String?> lorebook,
+      Value<String> worldNames,
+      Value<String?> frontPorchExtensions,
+      Value<String?> rawExtensions,
+      Value<String> memberState,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$GroupMembersTableFilterComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get personality => $composableBuilder(
+    column: $table.personality,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scenario => $composableBuilder(
+    column: $table.scenario,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get firstMessage => $composableBuilder(
+    column: $table.firstMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mesExample => $composableBuilder(
+    column: $table.mesExample,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get systemPrompt => $composableBuilder(
+    column: $table.systemPrompt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get postHistoryInstructions => $composableBuilder(
+    column: $table.postHistoryInstructions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get alternateGreetings => $composableBuilder(
+    column: $table.alternateGreetings,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tags => $composableBuilder(
+    column: $table.tags,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get avatarFilename => $composableBuilder(
+    column: $table.avatarFilename,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ttsVoice => $composableBuilder(
+    column: $table.ttsVoice,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lorebook => $composableBuilder(
+    column: $table.lorebook,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get worldNames => $composableBuilder(
+    column: $table.worldNames,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get frontPorchExtensions => $composableBuilder(
+    column: $table.frontPorchExtensions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rawExtensions => $composableBuilder(
+    column: $table.rawExtensions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memberState => $composableBuilder(
+    column: $table.memberState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$GroupMembersTableOrderingComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get personality => $composableBuilder(
+    column: $table.personality,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scenario => $composableBuilder(
+    column: $table.scenario,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get firstMessage => $composableBuilder(
+    column: $table.firstMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mesExample => $composableBuilder(
+    column: $table.mesExample,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get systemPrompt => $composableBuilder(
+    column: $table.systemPrompt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get postHistoryInstructions => $composableBuilder(
+    column: $table.postHistoryInstructions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get alternateGreetings => $composableBuilder(
+    column: $table.alternateGreetings,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tags => $composableBuilder(
+    column: $table.tags,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get avatarFilename => $composableBuilder(
+    column: $table.avatarFilename,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ttsVoice => $composableBuilder(
+    column: $table.ttsVoice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lorebook => $composableBuilder(
+    column: $table.lorebook,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get worldNames => $composableBuilder(
+    column: $table.worldNames,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get frontPorchExtensions => $composableBuilder(
+    column: $table.frontPorchExtensions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rawExtensions => $composableBuilder(
+    column: $table.rawExtensions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memberState => $composableBuilder(
+    column: $table.memberState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$GroupMembersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get personality => $composableBuilder(
+    column: $table.personality,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get scenario =>
+      $composableBuilder(column: $table.scenario, builder: (column) => column);
+
+  GeneratedColumn<String> get firstMessage => $composableBuilder(
+    column: $table.firstMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mesExample => $composableBuilder(
+    column: $table.mesExample,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get systemPrompt => $composableBuilder(
+    column: $table.systemPrompt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get postHistoryInstructions => $composableBuilder(
+    column: $table.postHistoryInstructions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get alternateGreetings => $composableBuilder(
+    column: $table.alternateGreetings,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get tags =>
+      $composableBuilder(column: $table.tags, builder: (column) => column);
+
+  GeneratedColumn<String> get avatarFilename => $composableBuilder(
+    column: $table.avatarFilename,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ttsVoice =>
+      $composableBuilder(column: $table.ttsVoice, builder: (column) => column);
+
+  GeneratedColumn<String> get lorebook =>
+      $composableBuilder(column: $table.lorebook, builder: (column) => column);
+
+  GeneratedColumn<String> get worldNames => $composableBuilder(
+    column: $table.worldNames,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get frontPorchExtensions => $composableBuilder(
+    column: $table.frontPorchExtensions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get rawExtensions => $composableBuilder(
+    column: $table.rawExtensions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get memberState => $composableBuilder(
+    column: $table.memberState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$GroupMembersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GroupMembersTable,
+          GroupMemberRow,
+          $$GroupMembersTableFilterComposer,
+          $$GroupMembersTableOrderingComposer,
+          $$GroupMembersTableAnnotationComposer,
+          $$GroupMembersTableCreateCompanionBuilder,
+          $$GroupMembersTableUpdateCompanionBuilder,
+          (
+            GroupMemberRow,
+            BaseReferences<_$AppDatabase, $GroupMembersTable, GroupMemberRow>,
+          ),
+          GroupMemberRow,
+          PrefetchHooks Function()
+        > {
+  $$GroupMembersTableTableManager(_$AppDatabase db, $GroupMembersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GroupMembersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$GroupMembersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$GroupMembersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> groupId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> description = const Value.absent(),
+                Value<String> personality = const Value.absent(),
+                Value<String> scenario = const Value.absent(),
+                Value<String> firstMessage = const Value.absent(),
+                Value<String> mesExample = const Value.absent(),
+                Value<String> systemPrompt = const Value.absent(),
+                Value<String> postHistoryInstructions = const Value.absent(),
+                Value<String> alternateGreetings = const Value.absent(),
+                Value<String> tags = const Value.absent(),
+                Value<String?> avatarFilename = const Value.absent(),
+                Value<String?> ttsVoice = const Value.absent(),
+                Value<String?> lorebook = const Value.absent(),
+                Value<String> worldNames = const Value.absent(),
+                Value<String?> frontPorchExtensions = const Value.absent(),
+                Value<String?> rawExtensions = const Value.absent(),
+                Value<String> memberState = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GroupMembersCompanion(
+                id: id,
+                groupId: groupId,
+                name: name,
+                description: description,
+                personality: personality,
+                scenario: scenario,
+                firstMessage: firstMessage,
+                mesExample: mesExample,
+                systemPrompt: systemPrompt,
+                postHistoryInstructions: postHistoryInstructions,
+                alternateGreetings: alternateGreetings,
+                tags: tags,
+                avatarFilename: avatarFilename,
+                ttsVoice: ttsVoice,
+                lorebook: lorebook,
+                worldNames: worldNames,
+                frontPorchExtensions: frontPorchExtensions,
+                rawExtensions: rawExtensions,
+                memberState: memberState,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String groupId,
+                required String name,
+                Value<String> description = const Value.absent(),
+                Value<String> personality = const Value.absent(),
+                Value<String> scenario = const Value.absent(),
+                Value<String> firstMessage = const Value.absent(),
+                Value<String> mesExample = const Value.absent(),
+                Value<String> systemPrompt = const Value.absent(),
+                Value<String> postHistoryInstructions = const Value.absent(),
+                Value<String> alternateGreetings = const Value.absent(),
+                Value<String> tags = const Value.absent(),
+                Value<String?> avatarFilename = const Value.absent(),
+                Value<String?> ttsVoice = const Value.absent(),
+                Value<String?> lorebook = const Value.absent(),
+                Value<String> worldNames = const Value.absent(),
+                Value<String?> frontPorchExtensions = const Value.absent(),
+                Value<String?> rawExtensions = const Value.absent(),
+                Value<String> memberState = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GroupMembersCompanion.insert(
+                id: id,
+                groupId: groupId,
+                name: name,
+                description: description,
+                personality: personality,
+                scenario: scenario,
+                firstMessage: firstMessage,
+                mesExample: mesExample,
+                systemPrompt: systemPrompt,
+                postHistoryInstructions: postHistoryInstructions,
+                alternateGreetings: alternateGreetings,
+                tags: tags,
+                avatarFilename: avatarFilename,
+                ttsVoice: ttsVoice,
+                lorebook: lorebook,
+                worldNames: worldNames,
+                frontPorchExtensions: frontPorchExtensions,
+                rawExtensions: rawExtensions,
+                memberState: memberState,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$GroupMembersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GroupMembersTable,
+      GroupMemberRow,
+      $$GroupMembersTableFilterComposer,
+      $$GroupMembersTableOrderingComposer,
+      $$GroupMembersTableAnnotationComposer,
+      $$GroupMembersTableCreateCompanionBuilder,
+      $$GroupMembersTableUpdateCompanionBuilder,
+      (
+        GroupMemberRow,
+        BaseReferences<_$AppDatabase, $GroupMembersTable, GroupMemberRow>,
+      ),
+      GroupMemberRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -14913,4 +16579,6 @@ class $AppDatabaseManager {
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
   $$AvatarImagesTableTableManager get avatarImages =>
       $$AvatarImagesTableTableManager(_db, _db.avatarImages);
+  $$GroupMembersTableTableManager get groupMembers =>
+      $$GroupMembersTableTableManager(_db, _db.groupMembers);
 }

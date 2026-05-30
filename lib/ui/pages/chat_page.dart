@@ -4189,7 +4189,8 @@ class _ChatPageState extends State<ChatPage> {
     ChatService chatService,
   ) {
     final charRepo = Provider.of<CharacterRepository>(context, listen: false);
-    final currentIds = chatService.activeGroup?.characterIds ?? [];
+    // characterIds removed from GroupChat (decoupled). Use chatService or group members for active set.
+    final currentIds = <String>[]; // TODO: derive from active group members when needed
 
     // Get characters not already in the group
     final available = charRepo.characters.where((c) {

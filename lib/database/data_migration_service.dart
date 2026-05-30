@@ -313,7 +313,10 @@ class DataMigrationService {
           GroupsCompanion.insert(
             id: json['id'] ?? '',
             name: json['name'] ?? 'Group Chat',
-            characterIds: Value(jsonEncode(json['character_ids'] ?? [])),
+            // Legacy JSON groups predate decoupled group_members. Write dead '[]'.
+            // Members (if any) would have referenced library; clean break means these
+            // ancient groups import as empty-member shells (user re-creates via modern UI).
+            characterIds: const Value('[]'),
             turnOrder: Value(json['turn_order'] ?? 'roundRobin'),
             autoAdvance: Value(json['auto_advance'] ?? false),
             directorMode: Value(json['director_mode'] ?? false),

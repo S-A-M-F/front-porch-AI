@@ -2851,7 +2851,9 @@ class WebServerService extends ChangeNotifier {
       final group = GroupChat(
         id: 'group_${DateTime.now().millisecondsSinceEpoch}',
         name: body['name']?.toString() ?? 'Group Chat',
-        characterIds: List<String>.from(body['character_ids'] ?? []),
+        // character_ids from API ignored (clean-break decoupling; members live in group_members).
+        // External tools will be notified post-completion. New groups via API start memberless
+        // until dedicated member endpoints or UI flows are used.
         turnOrder: TurnOrder.values.firstWhere(
           (e) => e.name == (body['turn_order'] ?? 'roundRobin'),
           orElse: () => TurnOrder.roundRobin,
@@ -2886,9 +2888,7 @@ class WebServerService extends ChangeNotifier {
       if (existing == null) return _errorResponse(404, 'Group not found');
 
       existing.name = body['name']?.toString() ?? existing.name;
-      if (body['character_ids'] != null) {
-        existing.characterIds = List<String>.from(body['character_ids']);
-      }
+      // character_ids updates from API ignored (decoupled; no legacy field on GroupChat).
       if (body['turn_order'] != null) {
         existing.turnOrder = TurnOrder.values.firstWhere(
           (e) => e.name == body['turn_order'],
@@ -3002,6 +3002,46 @@ class WebServerService extends ChangeNotifier {
         scenario: body['scenario']?.toString(),
         turnOrder: turnOrder,
       );
+
+      // Post-fork private materialization for the additional members (extends this handler).
+      // Uses real group.id from fork result + generalized duplicate + row insert. Functional decoupled fork.
+      if (group != null) {
+        final db = await AppDatabase.instance();
+        for (final ch in additionalChars) {
+          final mid = const Uuid().v4();
+          final avDir = Directory(p.join(_storageService!.groupsDir.path, group.id, 'avatars'));
+          await avDir.create(recursive: true);
+          await _characterRepository!.duplicateCharacter(
+            ch,
+            targetDirOverride: avDir.path,
+            forcedBasename: mid,
+            skipLibraryInsert: true,
+          );
+          await db.insertGroupMember(
+            GroupMembersCompanion(
+              id: Value(mid),
+              groupId: Value(group.id),
+              name: Value(ch.name),
+              description: Value(ch.description),
+              personality: Value(ch.personality),
+              scenario: Value(ch.scenario),
+              firstMessage: Value(ch.firstMessage),
+              mesExample: Value(ch.mesExample),
+              systemPrompt: Value(ch.systemPrompt),
+              postHistoryInstructions: Value(ch.postHistoryInstructions),
+              alternateGreetings: Value(jsonEncode(ch.alternateGreetings)),
+              tags: Value(jsonEncode(ch.tags)),
+              avatarFilename: Value('$mid.png'),
+              ttsVoice: Value(ch.ttsVoice),
+              lorebook: Value(ch.lorebook != null ? jsonEncode(ch.lorebook!.toJson()) : null),
+              worldNames: Value(jsonEncode(ch.worldNames)),
+              frontPorchExtensions: Value(ch.frontPorchExtensions != null ? jsonEncode(ch.frontPorchExtensions!.toJson()) : null),
+              rawExtensions: Value(ch.rawExtensions != null ? jsonEncode(ch.rawExtensions!) : null),
+              memberState: Value('{}'),
+            ),
+          );
+        }
+      }
 
       if (group == null) return _errorResponse(500, 'Fork failed');
 

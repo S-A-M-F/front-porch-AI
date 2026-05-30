@@ -26,10 +26,15 @@ enum TurnOrder {
 }
 
 /// A lightweight wrapper representing a multi-character conversation.
+///
+/// After the clean-break decoupling (2026-05), group membership is no longer
+/// stored as characterIds referencing the singular library. The authoritative
+/// list of members for a group lives in the group_members table (loaded via
+/// GroupChatRepository or joined queries). GroupChat itself no longer carries
+/// or manages the member ID list.
 class GroupChat {
   final String id;
   String name;
-  List<String> characterIds; // references into CharacterRepository
   TurnOrder turnOrder;
   bool autoAdvance; // auto-trigger next character after one responds
   bool directorMode; // start in director mode when entering this group
@@ -62,10 +67,9 @@ class GroupChat {
   String baselineRealismState;
 
   /// Per-character system prompt overrides that only apply inside *this* group.
-  /// Keyed by stable charId (image basename without extension, matching how
-  /// characterIds are stored).
-  /// These take precedence over the character's normal `systemPrompt` (from their card)
-  /// when that character speaks in this group, but sit \"under\" the group-level `systemPrompt`.
+  /// Keyed by the GroupMember.id (UUID) of the member inside this group.
+  /// These take precedence over the member's normal `systemPrompt` (from their card)
+  /// when that member speaks in this group, but sit \"under\" the group-level `systemPrompt`.
   ///
   /// Stored in its own first-class column on the groups table (v32).
   /// The previous transitional storage inside defaultMemberRealismState JSON
@@ -93,7 +97,6 @@ class GroupChat {
   GroupChat({
     required this.id,
     required this.name,
-    required this.characterIds,
     this.turnOrder = TurnOrder.roundRobin,
     this.autoAdvance = false,
     this.directorMode = false,
@@ -114,7 +117,10 @@ class GroupChat {
     return {
       'id': id,
       'name': name,
-      'character_ids': characterIds,
+      // NOTE: character_ids intentionally removed (clean break 2026-05).
+      // Membership now lives exclusively in the group_members table (UUID keys).
+      // This toJson is primarily for debug/legacy paths; GroupCard is the
+      // portable interchange that carries full member definitions.
       'turn_order': turnOrder.name,
       'auto_advance': autoAdvance,
       'director_mode': directorMode,
@@ -146,11 +152,8 @@ class GroupChat {
     return GroupChat(
       id: json['id'] ?? '',
       name: json['name'] ?? 'Group Chat',
-      characterIds:
-          (json['character_ids'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
+      // character_ids from legacy JSON ignored (clean break — no adoption).
+      // Real members come from group_members table after load.
       turnOrder: TurnOrder.values.firstWhere(
         (e) => e.name == json['turn_order'],
         orElse: () => TurnOrder.roundRobin,

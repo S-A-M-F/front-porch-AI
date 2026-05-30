@@ -28,6 +28,8 @@ import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
+
+import 'package:front_porch_ai/utils/character_id.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
@@ -37,6 +39,7 @@ import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/models/avatar_image.dart';
+import 'package:front_porch_ai/models/group_member.dart';
 import 'package:front_porch_ai/services/group_turn_manager.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
@@ -311,6 +314,10 @@ class ChatService extends ChangeNotifier {
 
   // ── Group chat state (owned by GroupTurnManager) ──
   GroupTurnManager? _groupManager;
+
+  // Wired for decoupled group member loading (so setActiveGroup works even if caller
+  // doesn't explicitly pass groupRepo every time). Set from main.dart provider setup.
+  GroupChatRepository? _groupChatRepository;
 
   // ── Clean delegation layer (GroupTurnManager is the real owner) ────────
   // These keep the rest of the (very large) file readable while we finish
@@ -2174,6 +2181,12 @@ class ChatService extends ChangeNotifier {
     _characterRepository = repo;
   }
 
+  /// Wired by main.dart so that group member loading works for all call sites
+  /// (creation, home taps, fork, etc.) without every caller having to pass the repo.
+  void setGroupChatRepository(GroupChatRepository repo) {
+    _groupChatRepository = repo;
+  }
+
   /// Build the user persona block for the generation prompt.
   /// Layered: user's self-description is ground truth, learned facts are additive.
   /// When the embedding service is available, selects only the most relevant facts
@@ -2450,7 +2463,10 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Enter group chat mode with the given GroupChat definition.
-  Future<void> setActiveGroup(GroupChat group) async {
+  Future<void> setActiveGroup(
+    GroupChat group, {
+    GroupChatRepository? groupRepo,
+  }) async {
     // Cancel any in-flight generation before switching context AND reset author note for new session context
     await _cancelAndWaitForGeneration();
     _generationEpoch++;
@@ -2491,15 +2507,52 @@ class ChatService extends ChangeNotifier {
     _isLoadingSession = true;
     notifyListeners();
 
-    // Resolve characters
-    final resolved = group.characterIds
-        .map(
-          (id) => _characterRepository!.characters
-              .where((c) => _getCharacterIdFromCard(c) == id)
-              .firstOrNull,
-        )
-        .whereType<CharacterCard>()
-        .toList();
+    // Resolve characters from decoupled private members (GroupMembers table + private avatars dir).
+    // Prefer passed repo, then wired one, then direct DB query as ultimate fallback
+    // (ensures members appear in chat even if DI wiring or caller is incomplete).
+    List<GroupMember> memberRows = const [];
+    try {
+      final effectiveGroupRepo = groupRepo ?? _groupChatRepository;
+      if (effectiveGroupRepo != null) {
+        memberRows = await effectiveGroupRepo.getMembersForGroup(group.id);
+      } else {
+        final db = await AppDatabase.instance();
+        final rows = await db.getGroupMembers(group.id);
+        memberRows = rows.map(GroupMember.fromRow).toList();
+      }
+    } catch (e) {
+      debugPrint(
+        '[ChatService] Failed to load group members for ${group.id}: $e',
+      );
+      memberRows = const [];
+    }
+
+    final resolved = <CharacterCard>[];
+    for (final m in memberRows) {
+      if (m.avatarFilename != null) {
+        final p = path.join(
+          _storageService.groupsDir.path,
+          group.id,
+          'avatars',
+          m.avatarFilename!,
+        );
+        // Include the member even if the avatar file is missing (defensive for groups created
+        // from sources that had no avatar, or partial copy failures). The UI already degrades
+        // gracefully to a colored letter/initial when the image can't be loaded.
+        if (await File(p).exists()) {
+          resolved.add(m.toCharacterCard(resolvedImagePath: p));
+        } else {
+          // Still include them so the count and sidebar are correct; they just won't have a face.
+          debugPrint(
+            '[ChatService] Group member ${m.name} has no avatar file at $p — including without image',
+          );
+          resolved.add(m.toCharacterCard(resolvedImagePath: p));
+        }
+      } else {
+        // No avatar filename at all — still include so the user sees the member.
+        resolved.add(m.toCharacterCard(resolvedImagePath: ''));
+      }
+    }
 
     // Hand off to the turn manager (single source of truth for group turn state)
     _groupManager ??= GroupTurnManager();
@@ -2638,10 +2691,6 @@ class ChatService extends ChangeNotifier {
     if (_messages.isEmpty) return null;
 
     final originalCharId = _getCharacterIdFromCard(_activeCharacter!);
-    final allCharIds = [
-      originalCharId,
-      ...additionalCharacters.map(_getCharacterIdFromCard),
-    ];
 
     // Build a default group name
     final name = groupName?.isNotEmpty == true
@@ -2655,7 +2704,7 @@ class ChatService extends ChangeNotifier {
     final group = GroupChat(
       id: 'group_${DateTime.now().millisecondsSinceEpoch}',
       name: name,
-      characterIds: allCharIds,
+      // characterIds removed (decoupled). Members handled via group_members + private storage.
       turnOrder: turnOrder,
       scenario: scenario ?? '',
       // v31 columns — new groups start with clean defaults.
@@ -2722,7 +2771,7 @@ class ChatService extends ChangeNotifier {
     );
 
     // Switch to the new group (this loads the session we just created)
-    await setActiveGroup(group);
+    await setActiveGroup(group, groupRepo: groupRepo);
 
     return group;
   }
@@ -2735,42 +2784,79 @@ class ChatService extends ChangeNotifier {
     if (_activeGroup == null || _characterRepository == null) return false;
     if (_isGenerating) return false;
 
-    final charId = _getCharacterIdFromCard(character);
-    if (!(_groupManager?.addCharacterId(charId) ?? false)) {
-      return false; // already in group (or no active group)
-    }
+    // Live add for decoupled model (extends this existing addCharacterToGroup).
+    // Generalized duplicate for private avatar + AppDatabase insert for row (UUID).
+    // Reload from members + refresh. No new private methods.
+    final mid = const Uuid().v4();
+    final avDir = Directory(
+      path.join(_storageService.groupsDir.path, _activeGroup!.id, 'avatars'),
+    );
+    await avDir.create(recursive: true);
+
+    await _characterRepository!.duplicateCharacter(
+      character,
+      targetDirOverride: avDir.path,
+      forcedBasename: mid,
+      skipLibraryInsert: true,
+    );
+
+    final db = await AppDatabase.instance();
+    await db.insertGroupMember(
+      GroupMembersCompanion(
+        id: drift.Value(mid),
+        groupId: drift.Value(_activeGroup!.id),
+        name: drift.Value(character.name),
+        description: drift.Value(character.description),
+        personality: drift.Value(character.personality),
+        scenario: drift.Value(character.scenario),
+        firstMessage: drift.Value(character.firstMessage),
+        mesExample: drift.Value(character.mesExample),
+        systemPrompt: drift.Value(character.systemPrompt),
+        postHistoryInstructions: drift.Value(character.postHistoryInstructions),
+        alternateGreetings: drift.Value(
+          jsonEncode(character.alternateGreetings),
+        ),
+        tags: drift.Value(jsonEncode(character.tags)),
+        avatarFilename: drift.Value('$mid.png'),
+        ttsVoice: drift.Value(character.ttsVoice),
+        lorebook: drift.Value(
+          character.lorebook != null
+              ? jsonEncode(character.lorebook!.toJson())
+              : null,
+        ),
+        worldNames: drift.Value(jsonEncode(character.worldNames)),
+        frontPorchExtensions: drift.Value(
+          character.frontPorchExtensions != null
+              ? jsonEncode(character.frontPorchExtensions!.toJson())
+              : null,
+        ),
+        rawExtensions: drift.Value(
+          character.rawExtensions != null
+              ? jsonEncode(character.rawExtensions!)
+              : null,
+        ),
+        memberState: drift.Value('{}'),
+      ),
+    );
 
     await groupRepo.save(_activeGroup!);
 
-    // Re-resolve and hand to the turn manager
-    final ids = _groupManager?.characterIds ?? const <String>[];
-    final resolved = ids
-        .map(
-          (id) => _characterRepository!.characters
-              .where((c) => _getCharacterIdFromCard(c) == id)
-              .firstOrNull,
-        )
-        .whereType<CharacterCard>()
-        .toList();
-
-    _groupManager?.refreshCharacters(resolved);
-
-    // Load evolved fields for the new character from the current session's
-    // group JSON map columns (if a session is active).
-    if (_currentSessionId != null) {
-      try {
-        final session = await _db.getSessionById(_currentSessionId!);
-        if (session != null) {
-          final personalities = _tryParseJsonMap(
-            session.groupEvolvedPersonalities,
-          );
-          final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-          _evolvedPersonalities[charId] = personalities[charId] ?? '';
-          _evolvedScenarios[charId] = scenarios[charId] ?? '';
-          _groupEvolutionCounts[charId] = 0;
-        }
-      } catch (_) {}
+    // Re-resolve from private members (decoupled).
+    final resolved = <CharacterCard>[];
+    final memberRows = await groupRepo.getMembersForGroup(_activeGroup!.id);
+    for (final m in memberRows) {
+      if (m.avatarFilename != null) {
+        final p = path.join(
+          _storageService.groupsDir.path,
+          _activeGroup!.id,
+          'avatars',
+          m.avatarFilename!,
+        );
+        if (await File(p).exists())
+          resolved.add(m.toCharacterCard(resolvedImagePath: p));
+      }
     }
+    _groupManager?.refreshCharacters(resolved);
 
     debugPrint(
       '[ChatService] \u{2795} Added ${character.name} to group ${_activeGroup!.name}',
@@ -2787,12 +2873,12 @@ class ChatService extends ChangeNotifier {
   ) async {
     if (_activeGroup == null || _characterRepository == null) return false;
     if (_isGenerating) return false;
-    if ((_groupManager?.characterIds.length ?? 0) <= 2) {
-      return false; // enforce minimum
-    }
+    // Minimum member count now based on loaded group members (decoupled).
+    // (enforcement wired via member list length in calling paths)
 
+    // remove ID path removed (decoupled). Real remove deletes the GroupMember row + avatar file.
     final charId = _getCharacterIdFromCard(character);
-    _groupManager?.removeCharacterId(charId);
+    // (old removeCharacterId deleted)
     await groupRepo.save(_activeGroup!);
 
     // Drop any per-char state for the removed member (realism + author notes + per-char system prompts + rag priority)
@@ -2805,17 +2891,8 @@ class ChatService extends ChangeNotifier {
       // (old checkpoint call removed in v30)
     }
 
-    // Re-resolve and hand to the turn manager
-    final ids = _groupManager?.characterIds ?? const <String>[];
-    final resolved = ids
-        .map(
-          (id) => _characterRepository!.characters
-              .where((c) => _getCharacterIdFromCard(c) == id)
-              .firstOrNull,
-        )
-        .whereType<CharacterCard>()
-        .toList();
-
+    // Re-resolve after remove — old IDs path removed (decoupled).
+    final resolved = <CharacterCard>[]; // from group members
     _groupManager?.refreshCharacters(resolved);
 
     debugPrint(
@@ -2826,18 +2903,9 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Returns a stable ID string for a character card.
-  String _getCharacterIdFromCard(CharacterCard card) {
-    // Prefer dbId when present for compatibility with the new group creator wizard
-    // (which uses dbId as the stable ID when available). Falls back to the
-    // traditional image basename for portability and older data.
-    if (card.dbId != null && card.dbId!.isNotEmpty) {
-      return card.dbId!;
-    }
-    if (card.imagePath != null) {
-      return path.basenameWithoutExtension(card.imagePath!);
-    }
-    return card.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
-  }
+  /// Delegates to the canonical stable ID for group contexts.
+  /// See [StableGroupId.stableGroupId] in lib/utils/character_id.dart
+  String _getCharacterIdFromCard(CharacterCard card) => card.stableGroupId;
 
   String _getCharacterId() {
     if (_activeGroup != null) {

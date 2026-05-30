@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as path;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/models/character_card.dart';
@@ -12,6 +13,8 @@ import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/utils/character_id.dart';
 
 enum SearchScope { currentFolder, folderRecursive, allCharacters }
 
@@ -83,11 +86,18 @@ class CharacterCardGrid extends StatelessWidget {
   final void Function(CharacterCard character) onToggleSelect;
   final VoidCallback? onToggleSelectMode;
   final VoidCallback? onToggleOrganizeMode;
-  final void Function(String action, CharacterCard character) onContextMenuAction;
+  final void Function(String action, CharacterCard character)
+  onContextMenuAction;
   final void Function(String source) onImport;
   final void Function(String site) onOpenBrowser;
-  final void Function(CharacterCard character, CharacterFolder folder) onAcceptFolderDrop;
-  final void Function(FolderDialogAction action, {CharacterFolder? folder, String? parentId}) onFolderDialogAction;
+  final void Function(CharacterCard character, CharacterFolder folder)
+  onAcceptFolderDrop;
+  final void Function(
+    FolderDialogAction action, {
+    CharacterFolder? folder,
+    String? parentId,
+  })
+  onFolderDialogAction;
   final void Function(CharacterFolder folder) onFolderTap;
   final VoidCallback onFolderNavigateBack;
   final VoidCallback onCancelSelection;
@@ -106,18 +116,9 @@ class CharacterCardGrid extends StatelessWidget {
   /// Mirrors the existing `onContextMenuAction` pattern used for CharacterCard.
   final void Function(String action, GroupChat group)? onGroupContextMenuAction;
 
-  String _getCharacterIdFromCard(CharacterCard card) {
-    // Match the logic used in ChatService so that groups created via the
-    // new wizard (which can use dbId as the stable ID) resolve correctly
-    // when displayed on the home screen.
-    if (card.dbId != null && card.dbId!.isNotEmpty) {
-      return card.dbId!;
-    }
-    if (card.imagePath != null) {
-      return path.basenameWithoutExtension(card.imagePath!);
-    }
-    return card.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
-  }
+  /// Delegates to the canonical stable group ID.
+  /// See [StableGroupId.stableGroupId] in lib/utils/character_id.dart
+  String _getCharacterIdFromCard(CharacterCard card) => card.stableGroupId;
 
   int _extractImportEpoch(CharacterCard card) {
     if (card.imagePath == null) return 0;
@@ -138,13 +139,16 @@ class CharacterCardGrid extends StatelessWidget {
   List<CharacterCard> _getFilteredCharacters() {
     List<CharacterCard> characters;
 
-    final skipFolderFilter = searchScope == SearchScope.allCharacters && searchQuery.isNotEmpty;
+    final skipFolderFilter =
+        searchScope == SearchScope.allCharacters && searchQuery.isNotEmpty;
     if (activeFolderId != null && !skipFolderFilter) {
       List<String> folderFilenames;
       if (searchQuery.isNotEmpty && searchScope == SearchScope.currentFolder) {
         folderFilenames = folderService.getCharactersInFolder(activeFolderId!);
       } else {
-        folderFilenames = folderService.getCharactersInFolderRecursive(activeFolderId!);
+        folderFilenames = folderService.getCharactersInFolderRecursive(
+          activeFolderId!,
+        );
       }
       characters = repo.characters
           .where(
@@ -174,8 +178,8 @@ class CharacterCardGrid extends StatelessWidget {
         break;
       case 'recent':
         characters.sort((a, b) {
-          final aId = a.dbId ?? _getCharacterIdFromCard(a);
-          final bId = b.dbId ?? _getCharacterIdFromCard(b);
+          final aId = _getCharacterIdFromCard(a);
+          final bId = _getCharacterIdFromCard(b);
           final aTime = lastActivityCache[aId] ?? DateTime(1970);
           final bTime = lastActivityCache[bId] ?? DateTime(1970);
           return bTime.compareTo(aTime);
@@ -191,8 +195,8 @@ class CharacterCardGrid extends StatelessWidget {
     }
     if (sortMode == 'messages') {
       characters.sort((a, b) {
-        final aId = a.dbId ?? _getCharacterIdFromCard(a);
-        final bId = b.dbId ?? _getCharacterIdFromCard(b);
+        final aId = _getCharacterIdFromCard(a);
+        final bId = _getCharacterIdFromCard(b);
         final aCount = messageCountCache[aId] ?? 0;
         final bCount = messageCountCache[bId] ?? 0;
         return bCount.compareTo(aCount);
@@ -314,54 +318,55 @@ class CharacterCardGrid extends StatelessWidget {
                       child: SizedBox(
                         width: 100,
                         child: Row(
-                        children: [
-                          Icon(
-                            Icons.grid_view,
-                            size: 16,
-                            color: AppColors.iconSecondary(context),
-                          ),
-                          Expanded(
-                            child: SliderTheme(
-                              data: SliderThemeData(
-                                trackHeight: 3,
-                                thumbShape: const RoundSliderThumbShape(
-                                  enabledThumbRadius: 6,
+                          children: [
+                            Icon(
+                              Icons.grid_view,
+                              size: 16,
+                              color: AppColors.iconSecondary(context),
+                            ),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderThemeData(
+                                  trackHeight: 3,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 6,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 12,
+                                  ),
+                                  activeTrackColor: Colors.blueAccent
+                                      .withValues(alpha: 0.7),
+                                  inactiveTrackColor: AppColors.resolve(
+                                    context,
+                                    Colors.white.withValues(alpha: 0.12),
+                                    Colors.black.withValues(alpha: 0.12),
+                                  ),
+                                  thumbColor: Colors.blueAccent,
                                 ),
-                                overlayShape:
-                                    const RoundSliderOverlayShape(
-                                      overlayRadius: 12,
-                                    ),
-                                activeTrackColor: Colors.blueAccent
-                                    .withValues(alpha: 0.7),
-                                inactiveTrackColor: AppColors.resolve(
-                                  context,
-                                  Colors.white.withValues(alpha: 0.12),
-                                  Colors.black.withValues(alpha: 0.12),
+                                child: Slider(
+                                  value: gridScale,
+                                  min: 150,
+                                  max: 450,
+                                  onChanged: (v) => onGridScaleChanged(v),
+                                  onChangeEnd: (v) =>
+                                      onGridScaleChangeEnd?.call(v),
                                 ),
-                                thumbColor: Colors.blueAccent,
-                              ),
-                              child: Slider(
-                                value: gridScale,
-                                min: 150,
-                                max: 450,
-                                onChanged: (v) => onGridScaleChanged(v),
-                                onChangeEnd: (v) => onGridScaleChangeEnd?.call(v),
                               ),
                             ),
-                          ),
-                          Icon(
-                            Icons.view_module,
-                            size: 16,
-                            color: AppColors.iconSecondary(context),
-                          ),
-                        ],
+                            Icon(
+                              Icons.view_module,
+                              size: 16,
+                              color: AppColors.iconSecondary(context),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                   const Spacer(),
                   if (!isSelecting && !isOrganizing) ...[
                     IconButton(
-                      tooltip: 'Multi-select characters (for organizing, moving, etc.)',
+                      tooltip:
+                          'Multi-select characters (for organizing, moving, etc.)',
                       icon: const Icon(Icons.check_box_outlined),
                       visualDensity: VisualDensity.compact,
                       onPressed: onToggleSelectMode,
@@ -378,13 +383,10 @@ class CharacterCardGrid extends StatelessWidget {
                     if (activeFolderId == null)
                       IconButton(
                         tooltip: 'New Folder',
-                        icon: const Icon(
-                          Icons.create_new_folder_outlined,
-                        ),
+                        icon: const Icon(Icons.create_new_folder_outlined),
                         visualDensity: VisualDensity.compact,
-                        onPressed: () => onFolderDialogAction(
-                          FolderDialogAction.create,
-                        ),
+                        onPressed: () =>
+                            onFolderDialogAction(FolderDialogAction.create),
                       ),
                     if (activeFolderId != null)
                       IconButton(
@@ -440,7 +442,10 @@ class CharacterCardGrid extends StatelessWidget {
                         const PopupMenuItem(
                           value: 'browse_aicc',
                           child: ListTile(
-                            leading: Icon(Icons.public, color: Colors.blueAccent),
+                            leading: Icon(
+                              Icons.public,
+                              color: Colors.blueAccent,
+                            ),
                             title: Text('Browse AI Character Cards'),
                             dense: true,
                           ),
@@ -448,7 +453,10 @@ class CharacterCardGrid extends StatelessWidget {
                         const PopupMenuItem(
                           value: 'browse_chub',
                           child: ListTile(
-                            leading: Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                            leading: Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.redAccent,
+                            ),
                             title: Text('Chub.ai (Caution)'),
                             dense: true,
                           ),
@@ -465,14 +473,18 @@ class CharacterCardGrid extends StatelessWidget {
                 controller: searchController,
                 style: TextStyle(color: AppColors.textPrimary(context)),
                 decoration: InputDecoration(
-                  hintText: activeFolderId != null && searchScope != SearchScope.allCharacters
+                  hintText:
+                      activeFolderId != null &&
+                          searchScope != SearchScope.allCharacters
                       ? 'Search this folder...'
                       : 'Search by name or tag...',
                   hintStyle: TextStyle(color: AppColors.textTertiary(context)),
                   prefixIcon: activeFolderId != null
                       ? PopupMenuButton<SearchScope>(
                           icon: Icon(
-                            searchScope == SearchScope.allCharacters ? Icons.search : Icons.folder_open,
+                            searchScope == SearchScope.allCharacters
+                                ? Icons.search
+                                : Icons.folder_open,
                             color: searchScope == SearchScope.allCharacters
                                 ? Colors.blueAccent
                                 : Colors.amberAccent,
@@ -489,7 +501,8 @@ class CharacterCardGrid extends StatelessWidget {
                                   Icon(
                                     Icons.folder,
                                     size: 18,
-                                    color: searchScope == SearchScope.currentFolder
+                                    color:
+                                        searchScope == SearchScope.currentFolder
                                         ? Colors.amberAccent
                                         : AppColors.iconSecondary(context),
                                   ),
@@ -497,7 +510,9 @@ class CharacterCardGrid extends StatelessWidget {
                                   Text(
                                     'This Folder Only',
                                     style: TextStyle(
-                                      color: searchScope == SearchScope.currentFolder
+                                      color:
+                                          searchScope ==
+                                              SearchScope.currentFolder
                                           ? Colors.amberAccent
                                           : AppColors.textSecondary(context),
                                       fontSize: 13,
@@ -513,7 +528,9 @@ class CharacterCardGrid extends StatelessWidget {
                                   Icon(
                                     Icons.snippet_folder,
                                     size: 18,
-                                    color: searchScope == SearchScope.folderRecursive
+                                    color:
+                                        searchScope ==
+                                            SearchScope.folderRecursive
                                         ? Colors.amberAccent
                                         : AppColors.iconSecondary(context),
                                   ),
@@ -521,7 +538,9 @@ class CharacterCardGrid extends StatelessWidget {
                                   Text(
                                     'Folder & Subfolders',
                                     style: TextStyle(
-                                      color: searchScope == SearchScope.folderRecursive
+                                      color:
+                                          searchScope ==
+                                              SearchScope.folderRecursive
                                           ? Colors.amberAccent
                                           : AppColors.textSecondary(context),
                                       fontSize: 13,
@@ -537,7 +556,8 @@ class CharacterCardGrid extends StatelessWidget {
                                   Icon(
                                     Icons.search,
                                     size: 18,
-                                    color: searchScope == SearchScope.allCharacters
+                                    color:
+                                        searchScope == SearchScope.allCharacters
                                         ? Colors.blueAccent
                                         : AppColors.iconSecondary(context),
                                   ),
@@ -545,7 +565,9 @@ class CharacterCardGrid extends StatelessWidget {
                                   Text(
                                     'All Characters',
                                     style: TextStyle(
-                                      color: searchScope == SearchScope.allCharacters
+                                      color:
+                                          searchScope ==
+                                              SearchScope.allCharacters
                                           ? Colors.blueAccent
                                           : AppColors.textSecondary(context),
                                       fontSize: 13,
@@ -556,7 +578,10 @@ class CharacterCardGrid extends StatelessWidget {
                             ),
                           ],
                         )
-                      : Icon(Icons.search, color: AppColors.iconSecondary(context)),
+                      : Icon(
+                          Icons.search,
+                          color: AppColors.iconSecondary(context),
+                        ),
                   suffixIcon: searchQuery.isNotEmpty
                       ? IconButton(
                           icon: Icon(
@@ -575,17 +600,13 @@ class CharacterCardGrid extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
                 onChanged: onSearchQueryChanged,
               ),
             ),
             const SizedBox(height: 12),
-            Expanded(
-              child: _buildGrid(context, filteredCharacters),
-            ),
+            Expanded(child: _buildGrid(context, filteredCharacters)),
           ],
         ),
         if (isSelecting && selectedCharacterIds.isNotEmpty)
@@ -594,10 +615,7 @@ class CharacterCardGrid extends StatelessWidget {
             right: 0,
             bottom: 0,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
                 color: AppColors.surfaceContainerOf(context),
                 border: Border(
@@ -650,10 +668,7 @@ class CharacterCardGrid extends StatelessWidget {
             right: 0,
             bottom: 0,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
                 color: AppColors.surfaceContainerOf(context),
                 border: Border(
@@ -757,7 +772,10 @@ class CharacterCardGrid extends StatelessWidget {
           searchQuery.isNotEmpty
               ? 'No characters match "$searchQuery"'
               : 'This folder is empty',
-          style: TextStyle(color: AppColors.textTertiary(context), fontSize: 16),
+          style: TextStyle(
+            color: AppColors.textTertiary(context),
+            fontSize: 16,
+          ),
         ),
       );
     }
@@ -787,8 +805,8 @@ class CharacterCardGrid extends StatelessWidget {
           final groupOffset = index - folders.length;
           if (groupOffset < groups.length) {
             return _buildGroupCard(
-              context, 
-              groups[groupOffset], 
+              context,
+              groups[groupOffset],
               onGroupContextMenuAction,
             );
           }
@@ -820,9 +838,7 @@ class CharacterCardGrid extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: isHovering
-                  ? Colors.amber
-                  : AppColors.borderOf(context),
+              color: isHovering ? Colors.amber : AppColors.borderOf(context),
               width: isHovering ? 2 : 1,
             ),
           ),
@@ -841,7 +857,9 @@ class CharacterCardGrid extends StatelessWidget {
                     Icon(
                       Icons.folder,
                       size: iconSize,
-                      color: isHovering ? Colors.amber : AppColors.iconSecondary(context),
+                      color: isHovering
+                          ? Colors.amber
+                          : AppColors.iconSecondary(context),
                     ),
                     SizedBox(height: isTiny ? 4 : (isSmall ? 8 : 16)),
                     Padding(
@@ -881,8 +899,10 @@ class CharacterCardGrid extends StatelessWidget {
                               size: 18,
                             ),
                             tooltip: 'Rename',
-                            onPressed: () =>
-                                onFolderDialogAction(FolderDialogAction.rename, folder: folder),
+                            onPressed: () => onFolderDialogAction(
+                              FolderDialogAction.rename,
+                              folder: folder,
+                            ),
                           ),
                           IconButton(
                             icon: const Icon(
@@ -891,8 +911,10 @@ class CharacterCardGrid extends StatelessWidget {
                               size: 18,
                             ),
                             tooltip: 'Delete folder',
-                            onPressed: () =>
-                                onFolderDialogAction(FolderDialogAction.delete, folder: folder),
+                            onPressed: () => onFolderDialogAction(
+                              FolderDialogAction.delete,
+                              folder: folder,
+                            ),
                           ),
                         ],
                       ),
@@ -907,10 +929,7 @@ class CharacterCardGrid extends StatelessWidget {
     );
   }
 
-  Widget _buildCharacterCard(
-    BuildContext context,
-    CharacterCard character,
-  ) {
+  Widget _buildCharacterCard(BuildContext context, CharacterCard character) {
     return LongPressDraggable<CharacterCard>(
       data: character,
       feedback: Material(
@@ -930,11 +949,31 @@ class CharacterCardGrid extends StatelessWidget {
                     fit: BoxFit.cover,
                     alignment: Alignment.topCenter,
                     errorBuilder: (_, _, _) => Container(
-                      color: AppColors.resolve(context, Colors.black26, Colors.black12),
-                      child: Icon(Icons.person, color: AppColors.resolve(context, Colors.white24, Colors.black45), size: 48),
+                      color: AppColors.resolve(
+                        context,
+                        Colors.black26,
+                        Colors.black12,
+                      ),
+                      child: Icon(
+                        Icons.person,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.white24,
+                          Colors.black45,
+                        ),
+                        size: 48,
+                      ),
                     ),
                   )
-                : Icon(Icons.person, size: 64, color: AppColors.resolve(context, Colors.white24, Colors.black45)),
+                : Icon(
+                    Icons.person,
+                    size: 64,
+                    color: AppColors.resolve(
+                      context,
+                      Colors.white24,
+                      Colors.black45,
+                    ),
+                  ),
           ),
         ),
       ),
@@ -950,7 +989,7 @@ class CharacterCardGrid extends StatelessWidget {
     BuildContext context,
     CharacterCard character,
   ) {
-    final charId = character.dbId ?? _getCharacterIdFromCard(character);
+    final charId = _getCharacterIdFromCard(character);
     final msgCount = messageCountCache[charId] ?? 0;
 
     final stringId = _getCharacterIdFromCard(character);
@@ -993,20 +1032,36 @@ class CharacterCardGrid extends StatelessWidget {
                               fit: BoxFit.cover,
                               alignment: Alignment.topCenter,
                               errorBuilder: (_, _, _) => Container(
-                                color: AppColors.resolve(context, Colors.grey.shade800, Colors.grey.shade200),
+                                color: AppColors.resolve(
+                                  context,
+                                  Colors.grey.shade800,
+                                  Colors.grey.shade200,
+                                ),
                                 child: Icon(
                                   Icons.person,
                                   size: 32,
-                                  color: AppColors.resolve(context, Colors.white24, Colors.black45),
+                                  color: AppColors.resolve(
+                                    context,
+                                    Colors.white24,
+                                    Colors.black45,
+                                  ),
                                 ),
                               ),
                             )
                           : Container(
-                              color: AppColors.resolve(context, Colors.grey.shade800, Colors.grey.shade200),
+                              color: AppColors.resolve(
+                                context,
+                                Colors.grey.shade800,
+                                Colors.grey.shade200,
+                              ),
                               child: Icon(
                                 Icons.person,
                                 size: 32,
-                                color: AppColors.resolve(context, Colors.white24, Colors.black45),
+                                color: AppColors.resolve(
+                                  context,
+                                  Colors.white24,
+                                  Colors.black45,
+                                ),
                               ),
                             ),
                       Positioned(
@@ -1023,7 +1078,11 @@ class CharacterCardGrid extends StatelessWidget {
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
                               colors: [
-                                AppColors.resolve(context, Colors.black87, Colors.black54),
+                                AppColors.resolve(
+                                  context,
+                                  Colors.black87,
+                                  Colors.black54,
+                                ),
                                 Colors.transparent,
                               ],
                             ),
@@ -1055,20 +1114,36 @@ class CharacterCardGrid extends StatelessWidget {
                               fit: BoxFit.cover,
                               alignment: Alignment.topCenter,
                               errorBuilder: (_, _, _) => Container(
-                                color: AppColors.resolve(context, Colors.grey.shade800, Colors.grey.shade200),
+                                color: AppColors.resolve(
+                                  context,
+                                  Colors.grey.shade800,
+                                  Colors.grey.shade200,
+                                ),
                                 child: Icon(
                                   Icons.person,
                                   size: isCompact ? 32 : 64,
-                                  color: AppColors.resolve(context, Colors.white24, Colors.black45),
+                                  color: AppColors.resolve(
+                                    context,
+                                    Colors.white24,
+                                    Colors.black45,
+                                  ),
                                 ),
                               ),
                             )
                           : Container(
-                              color: AppColors.resolve(context, Colors.grey.shade800, Colors.grey.shade200),
+                              color: AppColors.resolve(
+                                context,
+                                Colors.grey.shade800,
+                                Colors.grey.shade200,
+                              ),
                               child: Icon(
                                 Icons.person,
                                 size: isCompact ? 32 : 64,
-                                color: AppColors.resolve(context, Colors.white24, Colors.black45),
+                                color: AppColors.resolve(
+                                  context,
+                                  Colors.white24,
+                                  Colors.black45,
+                                ),
                               ),
                             ),
                     ),
@@ -1108,7 +1183,9 @@ class CharacterCardGrid extends StatelessWidget {
                                       Text(
                                         '$msgCount',
                                         style: TextStyle(
-                                          color: AppColors.textTertiary(context),
+                                          color: AppColors.textTertiary(
+                                            context,
+                                          ),
                                           fontSize: isCompact ? 10 : 11,
                                         ),
                                       ),
@@ -1134,17 +1211,23 @@ class CharacterCardGrid extends StatelessWidget {
                                             decoration: BoxDecoration(
                                               color: AppColors.resolve(
                                                 context,
-                                                Colors.amber.withValues(alpha: 0.22),
+                                                Colors.amber.withValues(
+                                                  alpha: 0.22,
+                                                ),
                                                 const Color(0xFFFFF8E1),
                                               ),
                                               border: Border.all(
                                                 color: AppColors.resolve(
                                                   context,
-                                                  Colors.amber.withValues(alpha: 0.45),
-                                                  Colors.amber.shade600.withValues(alpha: 0.35),
+                                                  Colors.amber.withValues(
+                                                    alpha: 0.45,
+                                                  ),
+                                                  Colors.amber.shade600
+                                                      .withValues(alpha: 0.35),
                                                 ),
                                               ),
-                                              borderRadius: BorderRadius.circular(4),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
                                             ),
                                             child: Text(
                                               tag,
@@ -1193,17 +1276,23 @@ class CharacterCardGrid extends StatelessWidget {
                 height: 28,
                 decoration: BoxDecoration(
                   color: isSelectedCard
-                      ? (isOrganizing
-                            ? Colors.blueAccent
-                            : Colors.purpleAccent)
-                      : AppColors.resolve(context, Colors.black54, Colors.black12),
+                      ? (isOrganizing ? Colors.blueAccent : Colors.purpleAccent)
+                      : AppColors.resolve(
+                          context,
+                          Colors.black54,
+                          Colors.black12,
+                        ),
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: isSelectedCard
                         ? (isOrganizing
                               ? Colors.blueAccent
                               : Colors.purpleAccent)
-                        : AppColors.resolve(context, Colors.white38, Colors.black38),
+                        : AppColors.resolve(
+                            context,
+                            Colors.white38,
+                            Colors.black38,
+                          ),
                     width: 2,
                   ),
                 ),
@@ -1241,7 +1330,9 @@ class CharacterCardGrid extends StatelessWidget {
                           ),
                           title: Text(
                             'Edit Character',
-                            style: TextStyle(color: AppColors.textPrimary(context)),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                            ),
                           ),
                           dense: true,
                           contentPadding: EdgeInsets.zero,
@@ -1257,7 +1348,9 @@ class CharacterCardGrid extends StatelessWidget {
                           ),
                           title: Text(
                             'Duplicate Character',
-                            style: TextStyle(color: AppColors.textPrimary(context)),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                            ),
                           ),
                           dense: true,
                           contentPadding: EdgeInsets.zero,
@@ -1273,7 +1366,9 @@ class CharacterCardGrid extends StatelessWidget {
                           ),
                           title: Text(
                             'Export PNG',
-                            style: TextStyle(color: AppColors.textPrimary(context)),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                            ),
                           ),
                           dense: true,
                           contentPadding: EdgeInsets.zero,
@@ -1331,276 +1426,329 @@ class CharacterCardGrid extends StatelessWidget {
     GroupChat group,
     void Function(String action, GroupChat group)? onGroupContextMenuAction,
   ) {
-    final characters = <CharacterCard>[];
-    for (final id in group.characterIds) {
-      final match = repo.characters
-          .where((c) => _getCharacterIdFromCard(c) == id)
-          .firstOrNull;
-      if (match != null) characters.add(match);
-    }
+    return FutureBuilder<List<CharacterCard>>(
+      future: () async {
+        final storage = Provider.of<StorageService>(context, listen: false);
+        final rows = await groupRepo.getMembersForGroup(group.id);
+        final resolved = <CharacterCard>[];
+        for (final m in rows) {
+          if (m.avatarFilename != null) {
+            final p = path.join(
+              storage.groupsDir.path,
+              group.id,
+              'avatars',
+              m.avatarFilename!,
+            );
+            if (!await File(p).exists()) {
+              debugPrint(
+                '[CharacterCardGrid] Group card: member ${m.name} missing avatar at $p',
+              );
+            }
+            resolved.add(m.toCharacterCard(resolvedImagePath: p));
+          }
+        }
+        return resolved;
+      }(),
+      builder: (context, snapshot) {
+        final characters = snapshot.data ?? <CharacterCard>[];
+        return Card(
+          color: AppColors.cardOf(context),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.purpleAccent.withValues(alpha: 0.3)),
+          ),
+          child: InkWell(
+            onTap: () async {
+              await onTapGroup(group);
+            },
+            child: Stack(
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final h = constraints.maxHeight;
+                    final isCompactGroup = h < 220;
+                    final avatarSize = isCompactGroup ? 40.0 : 56.0;
+                    final avatarAreaH = isCompactGroup ? 50.0 : 80.0;
+                    final overlapStep = isCompactGroup ? 22.0 : 30.0;
+                    final nameFontSize = isCompactGroup ? 12.0 : 16.0;
+                    final subFontSize = isCompactGroup ? 10.0 : 13.0;
+                    final badgeFontSize = isCompactGroup ? 9.0 : 11.0;
+                    final iconSize = isCompactGroup ? 16.0 : 20.0;
 
-    return Card(
-      color: AppColors.cardOf(context),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.purpleAccent.withValues(alpha: 0.3)),
-      ),
-      child: InkWell(
-        onTap: () async {
-          await onTapGroup(group);
-        },
-        child: Stack(
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final h = constraints.maxHeight;
-                final isCompactGroup = h < 220;
-                final avatarSize = isCompactGroup ? 40.0 : 56.0;
-                final avatarAreaH = isCompactGroup ? 50.0 : 80.0;
-                final overlapStep = isCompactGroup ? 22.0 : 30.0;
-                final nameFontSize = isCompactGroup ? 12.0 : 16.0;
-                final subFontSize = isCompactGroup ? 10.0 : 13.0;
-                final badgeFontSize = isCompactGroup ? 9.0 : 11.0;
-                final iconSize = isCompactGroup ? 16.0 : 20.0;
-
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(height: isCompactGroup ? 8 : 16),
-                    SizedBox(
-                      height: avatarAreaH,
-                      width: double.infinity,
-                      child: Center(
-                        child: SizedBox(
-                          width:
-                              avatarSize +
-                              (characters.take(4).length - 1) * overlapStep,
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(height: isCompactGroup ? 8 : 16),
+                        SizedBox(
                           height: avatarAreaH,
-                          child: Stack(
-                            children: [
-                              for (
-                                int i = 0;
-                                i < characters.take(4).length;
-                                i++
-                              )
-                                Positioned(
-                                  left: i * overlapStep,
-                                  child: Container(
-                                    width: avatarSize,
-                                    height: avatarSize,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.purpleAccent,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    child: characters[i].imagePath != null
-                                        ? ClipOval(
-                                            child: Image.file(
-                                              onResolveCharImage(
-                                                characters[i].imagePath!,
-                                              ),
-                                              fit: BoxFit.cover,
-                                              alignment: Alignment.topCenter,
-                                              errorBuilder: (_, _, _) => Container(
-                                                color: AppColors.resolve(context, Colors.grey.shade700, Colors.grey.shade200),
+                          width: double.infinity,
+                          child: Center(
+                            child: SizedBox(
+                              width:
+                                  avatarSize +
+                                  (characters.take(4).length - 1) * overlapStep,
+                              height: avatarAreaH,
+                              child: Stack(
+                                children: [
+                                  for (
+                                    int i = 0;
+                                    i < characters.take(4).length;
+                                    i++
+                                  )
+                                    Positioned(
+                                      left: i * overlapStep,
+                                      child: Container(
+                                        width: avatarSize,
+                                        height: avatarSize,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.purpleAccent,
+                                            width: 2,
+                                          ),
+                                        ),
+                                        child: characters[i].imagePath != null
+                                            ? ClipOval(
+                                                child: Image.file(
+                                                  onResolveCharImage(
+                                                    characters[i].imagePath!,
+                                                  ),
+                                                  fit: BoxFit.cover,
+                                                  alignment:
+                                                      Alignment.topCenter,
+                                                  errorBuilder: (_, _, _) =>
+                                                      Container(
+                                                        color:
+                                                            AppColors.resolve(
+                                                              context,
+                                                              Colors
+                                                                  .grey
+                                                                  .shade700,
+                                                              Colors
+                                                                  .grey
+                                                                  .shade200,
+                                                            ),
+                                                        child: Icon(
+                                                          Icons.person,
+                                                          color:
+                                                              AppColors.resolve(
+                                                                context,
+                                                                Colors.white24,
+                                                                Colors.black45,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                ),
+                                              )
+                                            : Container(
+                                                color: AppColors.resolve(
+                                                  context,
+                                                  Colors.grey.shade700,
+                                                  Colors.grey.shade200,
+                                                ),
                                                 child: Icon(
                                                   Icons.person,
-                                                  color: AppColors.resolve(context, Colors.white24, Colors.black45),
+                                                  color: AppColors.resolve(
+                                                    context,
+                                                    Colors.white24,
+                                                    Colors.black45,
+                                                  ),
+                                                  size: avatarSize * 0.5,
                                                 ),
                                               ),
-                                            ),
-                                          )
-                                        : Container(
-                                            color: AppColors.resolve(context, Colors.grey.shade700, Colors.grey.shade200),
-                                            child: Icon(
-                                              Icons.person,
-                                              color: AppColors.resolve(context, Colors.white24, Colors.black45),
-                                              size: avatarSize * 0.5,
-                                            ),
-                                          ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: isCompactGroup ? 4 : 16),
+                        Icon(
+                          Icons.group,
+                          color: Colors.purpleAccent,
+                          size: iconSize,
+                        ),
+                        SizedBox(height: isCompactGroup ? 2 : 8),
+                        Flexible(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              group.name,
+                              style: TextStyle(
+                                color: AppColors.textPrimary(context),
+                                fontWeight: FontWeight.bold,
+                                fontSize: nameFontSize,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: isCompactGroup ? 1 : 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        if (!isCompactGroup) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '${characters.length} character${characters.length == 1 ? '' : 's'}',
+                            style: TextStyle(
+                              color: AppColors.textSecondary(context),
+                              fontSize: subFontSize,
+                            ),
+                          ),
+                        ],
+                        SizedBox(height: isCompactGroup ? 2 : 4),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isCompactGroup ? 4 : 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.purpleAccent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            group.turnOrder == TurnOrder.roundRobin
+                                ? 'Round Robin'
+                                : 'Random',
+                            style: TextStyle(
+                              color: Colors.purpleAccent.withValues(alpha: 0.8),
+                              fontSize: badgeFontSize,
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: isCompactGroup ? 4 : 0),
+                      ],
+                    );
+                  },
+                ),
+
+                // Right-click (secondary tap) context menu for groups — parity with character cards.
+                // Only active when not in bulk select/organize modes (same guard as characters).
+                if (!isSelecting &&
+                    !isOrganizing &&
+                    onGroupContextMenuAction != null)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onSecondaryTapUp: (details) {
+                        final position = details.globalPosition;
+                        showMenu<String>(
+                          context: context,
+                          position: RelativeRect.fromLTRB(
+                            position.dx,
+                            position.dy,
+                            position.dx,
+                            position.dy,
+                          ),
+                          color: AppColors.surfaceContainerOf(context),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          items: [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: ListTile(
+                                leading: Icon(
+                                  Icons.edit,
+                                  color: AppColors.iconSecondary(context),
+                                  size: 20,
+                                ),
+                                title: Text(
+                                  'Edit Group',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary(context),
                                   ),
                                 ),
-                            ],
-                          ),
-                        ),
-                      ),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'duplicate',
+                              child: ListTile(
+                                leading: Icon(
+                                  Icons.copy,
+                                  color: AppColors.iconSecondary(context),
+                                  size: 20,
+                                ),
+                                title: Text(
+                                  'Duplicate Group',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary(context),
+                                  ),
+                                ),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'export',
+                              child: ListTile(
+                                leading: Icon(
+                                  Icons.upload,
+                                  color: AppColors.iconSecondary(context),
+                                  size: 20,
+                                ),
+                                title: Text(
+                                  'Export PNG',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary(context),
+                                  ),
+                                ),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'extract',
+                              child: ListTile(
+                                leading: Icon(
+                                  Icons.call_split,
+                                  color: Colors.tealAccent,
+                                  size: 20,
+                                ),
+                                title: Text(
+                                  'Extract Characters',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary(context),
+                                  ),
+                                ),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: ListTile(
+                                leading: Icon(
+                                  Icons.delete,
+                                  color: Colors.redAccent,
+                                  size: 20,
+                                ),
+                                title: Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.redAccent),
+                                ),
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ],
+                        ).then((value) {
+                          if (value == null) return;
+                          onGroupContextMenuAction(value, group);
+                        });
+                      },
+                      child: const SizedBox.shrink(),
                     ),
-                    SizedBox(height: isCompactGroup ? 4 : 16),
-                    Icon(
-                      Icons.group,
-                      color: Colors.purpleAccent,
-                      size: iconSize,
-                    ),
-                    SizedBox(height: isCompactGroup ? 2 : 8),
-                    Flexible(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text(
-                          group.name,
-                          style: TextStyle(
-                            color: AppColors.textPrimary(context),
-                            fontWeight: FontWeight.bold,
-                            fontSize: nameFontSize,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: isCompactGroup ? 1 : 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    if (!isCompactGroup) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '${characters.length} character${characters.length == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          color: AppColors.textSecondary(context),
-                          fontSize: subFontSize,
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: isCompactGroup ? 2 : 4),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isCompactGroup ? 4 : 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.purpleAccent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        group.turnOrder == TurnOrder.roundRobin
-                            ? 'Round Robin'
-                            : 'Random',
-                        style: TextStyle(
-                          color: Colors.purpleAccent.withValues(alpha: 0.8),
-                          fontSize: badgeFontSize,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: isCompactGroup ? 4 : 0),
-                  ],
-                );
-              },
+                  ),
+              ],
             ),
-
-            // Right-click (secondary tap) context menu for groups — parity with character cards.
-            // Only active when not in bulk select/organize modes (same guard as characters).
-            if (!isSelecting && !isOrganizing && onGroupContextMenuAction != null)
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onSecondaryTapUp: (details) {
-                    final position = details.globalPosition;
-                    showMenu<String>(
-                      context: context,
-                      position: RelativeRect.fromLTRB(
-                        position.dx,
-                        position.dy,
-                        position.dx,
-                        position.dy,
-                      ),
-                      color: AppColors.surfaceContainerOf(context),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      items: [
-                        PopupMenuItem(
-                          value: 'edit',
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.edit,
-                              color: AppColors.iconSecondary(context),
-                              size: 20,
-                            ),
-                            title: Text(
-                              'Edit Group',
-                              style: TextStyle(color: AppColors.textPrimary(context)),
-                            ),
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'duplicate',
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.copy,
-                              color: AppColors.iconSecondary(context),
-                              size: 20,
-                            ),
-                            title: Text(
-                              'Duplicate Group',
-                              style: TextStyle(color: AppColors.textPrimary(context)),
-                            ),
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'export',
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.upload,
-                              color: AppColors.iconSecondary(context),
-                              size: 20,
-                            ),
-                            title: Text(
-                              'Export PNG',
-                              style: TextStyle(color: AppColors.textPrimary(context)),
-                            ),
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'extract',
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.call_split,
-                              color: Colors.tealAccent,
-                              size: 20,
-                            ),
-                            title: Text(
-                              'Extract Characters',
-                              style: TextStyle(color: AppColors.textPrimary(context)),
-                            ),
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.delete,
-                              color: Colors.redAccent,
-                              size: 20,
-                            ),
-                            title: Text(
-                              'Delete',
-                              style: TextStyle(color: Colors.redAccent),
-                            ),
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ],
-                    ).then((value) {
-                      if (value == null) return;
-                      onGroupContextMenuAction(value, group);
-                    });
-                  },
-                  child: const SizedBox.shrink(),
-                ),
-              ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

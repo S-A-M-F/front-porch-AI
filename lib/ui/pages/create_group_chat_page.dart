@@ -27,8 +27,12 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
+import 'package:front_porch_ai/utils/character_id.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/pages/chat_page.dart';
+import 'package:uuid/uuid.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:front_porch_ai/database/database.dart' as db;
 
 /// First-class, menu-driven Group Chat Creator (pure create flow).
 ///
@@ -174,9 +178,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     return list;
   }
 
-  String _stableId(CharacterCard c) =>
-      c.dbId ??
-      (c.imagePath != null ? p.basenameWithoutExtension(c.imagePath!) : c.name);
+  /// Delegates to the canonical stable group ID.
+  /// See [StableGroupId.stableGroupId] in lib/utils/character_id.dart
+  String _stableId(CharacterCard c) => c.stableGroupId;
 
   // ── SECTION NAV ────────────────────────────────────────────────────
 
@@ -902,10 +906,55 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       baselineJson = jsonEncode(baseline);
     }
 
+    final groupId = 'group_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Persist decoupled members to private storage + typed table (extends this existing method;
+    // reuses generalized duplicateCharacter for copy+ V2 embed into groups/<id>/avatars/).
+    // No new private methods. Library untouched (sole bridge remains explicit "Separate...").
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final database = Provider.of<db.AppDatabase>(context, listen: false);
+    for (final source in _members) {
+      final mid = const Uuid().v4();
+      final avDir = Directory(p.join(storage.groupsDir.path, groupId, 'avatars'));
+      await avDir.create(recursive: true);
+
+      await repo.duplicateCharacter(
+        source,
+        targetDirOverride: avDir.path,
+        forcedBasename: mid,
+        skipLibraryInsert: true,
+      );
+
+      // Insert typed GroupMember row using the database instance.
+      await database.insertGroupMember(
+        db.GroupMembersCompanion(
+          id: Value(mid),
+          groupId: Value(groupId),
+          name: Value(source.name),
+          description: Value(source.description),
+          personality: Value(source.personality),
+          scenario: Value(source.scenario),
+          firstMessage: Value(source.firstMessage),
+          mesExample: Value(source.mesExample),
+          systemPrompt: Value(source.systemPrompt),
+          postHistoryInstructions: Value(source.postHistoryInstructions),
+          alternateGreetings: Value(jsonEncode(source.alternateGreetings)),
+          tags: Value(jsonEncode(source.tags)),
+          avatarFilename: Value('$mid.png'),
+          ttsVoice: Value(source.ttsVoice),
+          lorebook: Value(source.lorebook != null ? jsonEncode(source.lorebook!.toJson()) : null),
+          worldNames: Value(jsonEncode(source.worldNames)),
+          frontPorchExtensions: Value(source.frontPorchExtensions != null ? jsonEncode(source.frontPorchExtensions!.toJson()) : null),
+          rawExtensions: Value(source.rawExtensions != null ? jsonEncode(source.rawExtensions!) : null),
+          memberState: const Value('{}'),
+        ),
+      );
+    }
+
     final group = GroupChat(
-      id: 'group_${DateTime.now().millisecondsSinceEpoch}',
+      id: groupId,
       name: name,
-      characterIds: _members.map(_stableId).toList(),
+      // characterIds removed (clean break). Members persisted above to group_members + private avatars.
       turnOrder: _turnOrder,
       autoAdvance: _autoAdvance,
       directorMode: _directorMode,
@@ -932,14 +981,17 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       );
       if (entry.value.isNotEmpty && entry.value != card.ttsVoice) {
         card.ttsVoice = entry.value;
-        await repo.updateCharacter(card);
+        // Library mutation intentionally skipped during group creation (private GroupMember rows
+        // already captured the voice from source card at duplicate time; avoids subtle "library pollution"
+        // side-effect per "never allow" + safety invariant. User can edit voice on the private group member later).
+        // await repo.updateCharacter(card);  -- removed to prevent library side-effect
       }
     }
 
     if (enterChat) {
       // Full "Create & Enter" path.
       final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveGroup(group);
+      await chatService.setActiveGroup(group, groupRepo: groupRepo);
       await chatService.startNewChat();
 
       if (mounted) {

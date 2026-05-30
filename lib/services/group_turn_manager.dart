@@ -31,11 +31,9 @@ class GroupTurnManager extends ChangeNotifier {
   GroupChat? get activeGroup => _group;
   List<CharacterCard> get characters => List.unmodifiable(_characters);
 
-  /// Current membership IDs from the underlying GroupChat (for add/remove flows).
-  /// Callers should prefer going through the manager for membership changes.
-  List<String> get characterIds => _group != null
-      ? List.unmodifiable(_group!.characterIds)
-      : const <String>[];
+  // characterIds + ID-based add/remove removed (clean-break decoupling of group members).
+  // Membership is now List<GroupMember> loaded from repo; IDs are UUIDs from the rows.
+  // Add/remove during live chat now copies assets to private group storage + DB row.
 
   bool get observerMode => _observerMode;
   bool get autoPlayActive => _autoPlayActive;
@@ -174,27 +172,6 @@ class GroupTurnManager extends ChangeNotifier {
     }
 
     notifyListeners();
-  }
-
-  /// Adds a character ID (the stable key stored in GroupChat.characterIds)
-  /// to the active group's membership list. Returns true if newly added.
-  ///
-  /// Does not persist (caller must save via GroupChatRepository) and does not
-  /// refresh the resolved characters list — call refreshCharacters afterwards.
-  bool addCharacterId(String charId) {
-    if (_group == null) return false;
-    if (_group!.characterIds.contains(charId)) return false;
-    _group!.characterIds.add(charId);
-    return true;
-  }
-
-  /// Removes a character ID from the active group's membership list.
-  /// Returns true if the ID was present and removed.
-  ///
-  /// Does not persist; caller must save and then call refreshCharacters.
-  bool removeCharacterId(String charId) {
-    if (_group == null) return false;
-    return _group!.characterIds.remove(charId);
   }
 
   void setObserverMode(bool value) {

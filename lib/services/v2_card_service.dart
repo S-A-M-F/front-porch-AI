@@ -43,8 +43,17 @@ class V2CardService {
     }
 
     if (avatar == null) {
+      // No source image available (character with no avatar, or broken path).
+      // Generate a pleasant deterministic placeholder from the name so the
+      // character is always visually distinct and never a pure black/gray box.
+      final name = card.name.isNotEmpty ? card.name : 'Character';
+      final hash = name.codeUnits.fold(0, (a, b) => a + b);
+      final r = (80 + (hash % 120)).clamp(60, 200);
+      final g = (70 + ((hash * 7) % 130)).clamp(60, 200);
+      final b = (90 + ((hash * 13) % 110)).clamp(70, 190);
+
       avatar = img.Image(width: 400, height: 600);
-      img.fill(avatar, color: img.ColorRgb8(50, 50, 50));
+      img.fill(avatar, color: img.ColorRgb8(r, g, b));
     }
 
     // Resize if too large to save space/time, optional but good practice
@@ -155,5 +164,4 @@ class V2CardService {
       return null;
     }
   }
-
 }
