@@ -714,6 +714,31 @@ class AppDatabase extends _$AppDatabase {
         'nsfw_cooldown_enabled INTEGER NOT NULL DEFAULT 0',
         'cooldown_turns_remaining INTEGER NOT NULL DEFAULT 0',
       ],
+      'group_members': [
+        // Per current GroupMembers Dart definition + created_at (to match the repair-path CREATE TABLE).
+        // This gives the PRAGMA+ALTER+backup guard for any future columns added to the table
+        // (addresses the previous limitation where only IF NOT EXISTS creation was used).
+        'group_id TEXT NOT NULL',
+        'name TEXT NOT NULL',
+        "description TEXT NOT NULL DEFAULT ''",
+        "personality TEXT NOT NULL DEFAULT ''",
+        "scenario TEXT NOT NULL DEFAULT ''",
+        "first_message TEXT NOT NULL DEFAULT ''",
+        "mes_example TEXT NOT NULL DEFAULT ''",
+        "system_prompt TEXT NOT NULL DEFAULT ''",
+        "post_history_instructions TEXT NOT NULL DEFAULT ''",
+        "alternate_greetings TEXT NOT NULL DEFAULT '[]'",
+        "tags TEXT NOT NULL DEFAULT '[]'",
+        'avatar_filename TEXT',
+        'tts_voice TEXT',
+        'lorebook TEXT',
+        "world_names TEXT NOT NULL DEFAULT '[]'",
+        'front_porch_extensions TEXT',
+        'raw_extensions TEXT',
+        "member_state TEXT NOT NULL DEFAULT '{}'",
+        'updated_at INTEGER NOT NULL DEFAULT 0',
+        'created_at INTEGER NOT NULL DEFAULT 0',
+      ],
     };
 
     for (final entry in columnsToEnsure.entries) {
