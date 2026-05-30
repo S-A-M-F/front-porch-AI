@@ -93,9 +93,11 @@ class ChatMessage {
   characterId; // which character card sent this (null = user or 1:1 mode)
   final List<int> swipeDurations; // thinking duration in ms per swipe
 
-  String get text => swipes.isNotEmpty ? swipes[swipeIndex] : '';
+  String get text => (swipes.isNotEmpty && swipeIndex >= 0 && swipeIndex < swipes.length)
+      ? swipes[swipeIndex]
+      : '';
   set text(String value) {
-    if (swipes.isNotEmpty) {
+    if (swipes.isNotEmpty && swipeIndex >= 0 && swipeIndex < swipes.length) {
       swipes[swipeIndex] = value;
     }
   }
@@ -138,8 +140,11 @@ class ChatMessage {
   bool get hasThinking => thinkingContent != null || thinkingDurationMs > 0;
 
   int get thinkingDurationMs =>
-      swipeIndex < swipeDurations.length ? swipeDurations[swipeIndex] : 0;
+      (swipeIndex >= 0 && swipeIndex < swipeDurations.length)
+          ? swipeDurations[swipeIndex]
+          : 0;
   set thinkingDurationMs(int value) {
+    if (swipeIndex < 0) return;
     while (swipeDurations.length <= swipeIndex) {
       swipeDurations.add(0);
     }
@@ -158,6 +163,7 @@ class ChatMessage {
   }
 
   set activeMetadata(Map<String, dynamic>? value) {
+    if (swipeIndex < 0) return;
     while (swipeMetadata.length <= swipeIndex) {
       swipeMetadata.add(null);
     }
@@ -177,7 +183,14 @@ class ChatMessage {
   }) : swipes = swipes ?? [text],
        swipeIndex = swipeIndex ?? 0,
        swipeDurations = swipeDurations ?? [0],
-       swipeMetadata = swipeMetadata ?? [metadata];
+       swipeMetadata = swipeMetadata ?? [metadata] {
+    // Always clamp swipeIndex to a valid range for the swipes list.
+    // This prevents RangeError crashes from corrupted DB rows or previous buggy state.
+    final int listLen = this.swipes.length;
+    if (this.swipeIndex < 0 || this.swipeIndex >= listLen) {
+      this.swipeIndex = 0;
+    }
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -3342,14 +3355,18 @@ class ChatService extends ChangeNotifier {
           swipeDurations = [0];
         }
 
+        final safeSwipeIndex = (m.swipeIndex >= 0 && m.swipeIndex < swipes.length)
+            ? m.swipeIndex
+            : 0;
+
         _messages.add(
           ChatMessage(
-            text: swipes.isNotEmpty ? swipes[m.swipeIndex] : '',
+            text: swipes.isNotEmpty ? swipes[safeSwipeIndex] : '',
             sender: m.sender,
             isUser: m.isUser,
             characterId: m.characterId,
             swipes: swipes,
-            swipeIndex: m.swipeIndex,
+            swipeIndex: safeSwipeIndex,
             swipeDurations: swipeDurations,
             metadata: m.metadata != null
                 ? Map<String, dynamic>.from(jsonDecode(m.metadata!))
@@ -3475,14 +3492,18 @@ class ChatService extends ChangeNotifier {
           swipeDurations = [0];
         }
 
+        final safeSwipeIndex = (m.swipeIndex >= 0 && m.swipeIndex < swipes.length)
+            ? m.swipeIndex
+            : 0;
+
         _messages.add(
           ChatMessage(
-            text: swipes.isNotEmpty ? swipes[m.swipeIndex] : '',
+            text: swipes.isNotEmpty ? swipes[safeSwipeIndex] : '',
             sender: m.sender,
             isUser: m.isUser,
             characterId: m.characterId,
             swipes: swipes,
-            swipeIndex: m.swipeIndex,
+            swipeIndex: safeSwipeIndex,
             swipeDurations: swipeDurations,
             metadata: m.metadata != null
                 ? Map<String, dynamic>.from(jsonDecode(m.metadata!))
@@ -3498,6 +3519,22 @@ class ChatService extends ChangeNotifier {
                 : null,
           ),
         );
+      }
+
+      // Post-load sanitization: force valid swipe indices and clamp absurdly long fixation text.
+      // This protects against any legacy corrupted rows or previous buggy saves, even if the
+      // individual message constructors already clamp.
+      for (final msg in _messages) {
+        if (msg.swipeIndex < 0 || msg.swipeIndex >= msg.swipes.length) {
+          msg.swipeIndex = 0;
+        }
+      }
+
+      // The fixation coming out of the LLM can sometimes be a full paragraph instead of a short topic.
+      // Truncate it to keep the UI and prompts sane.
+      if (_activeFixation.length > 200) {
+        _activeFixation = _activeFixation.substring(0, 200).trimRight() + '…';
+        _fixationLifespan = (_fixationLifespan > 0 ? _fixationLifespan : 3);
       }
 
       // ── Hydrate hidden group state checkpoint (DB-free: realism + per-char notes) ──
@@ -3670,7 +3707,9 @@ class ChatService extends ChangeNotifier {
             isUser: m.isUser,
             characterId: m.characterId,
             swipes: List.from(m.swipes),
-            swipeIndex: m.swipeIndex,
+            swipeIndex: (m.swipeIndex >= 0 && m.swipeIndex < m.swipes.length)
+                ? m.swipeIndex
+                : 0,
             swipeDurations: List.from(m.swipeDurations),
             metadata: m.metadata != null
                 ? Map<String, dynamic>.from(m.metadata!)
