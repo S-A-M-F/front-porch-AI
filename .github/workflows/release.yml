@@ -144,121 +144,184 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Python (with pip cache)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Cache ML Engines (Kokoro TTS, Piper TTS, Whisper STT, etc.)
+        id: ml-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ml-engines-cache
+          key: ml-engines-${{ matrix.platform }}-${{ hashFiles('kokoro_tts.py', 'piper_entry.py', 'whisper_stt.py', 'sentiment_classifier.py', 'tools/embed_server/Cargo.toml', 'tools/dt-grpc-python/**') }}
+          restore-keys: |
+            ml-engines-${{ matrix.platform }}-
+
       - name: Build Application
         run: flutter build ${{ matrix.platform }} --release
 
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
         run: |
-          DEST="${{ matrix.build_path }}/piper"
-          mkdir -p "$DEST"
+          CACHE_HIT="${{ steps.ml-cache.outputs.cache-hit }}"
+          CACHE_DIR="ml-engines-cache/${{ matrix.platform }}"
 
-          # Install TTS dependencies + PyInstaller
-          pip install --upgrade pip
-          pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
+          if [ "$CACHE_HIT" == "true" ] && [ -d "$CACHE_DIR" ]; then
+            echo "ML engines cache hit — skipping PyInstaller builds"
+            mkdir -p "${{ matrix.build_path }}"
+            cp -r "$CACHE_DIR/"* "${{ matrix.build_path }}/" || true
+          else
+            echo "ML engines cache miss — building from source"
+            DEST="${{ matrix.build_path }}/piper"
+            mkdir -p "$DEST"
 
-          # Build Kokoro TTS as a standalone directory bundle
-          echo "Building Kokoro TTS binary..."
-          pyinstaller kokoro_tts.py \
-            --onedir \
-            --name kokoro_tts \
-            --collect-all kokoro_onnx \
-            --collect-all soundfile \
-            --collect-all language_tags \
-            --collect-all csvw \
-            --collect-all segments \
-            --collect-all phonemizer \
-            --collect-all espeakng_loader \
-            --hidden-import kokoro_onnx \
-            --hidden-import soundfile \
-            --hidden-import numpy \
-            --hidden-import onnxruntime \
-            --distpath "$DEST" \
-            --workpath ./build_tmp/kokoro \
-            --specpath ./build_tmp/kokoro \
-            --clean \
-            --exclude-module torch \
-            --exclude-module torchvision \
-            --exclude-module torchaudio \
-            --noconfirm
-          echo "Kokoro built at: $DEST/kokoro_tts/"
+            # Install TTS dependencies + PyInstaller
+            pip install --upgrade pip
+            pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
 
-          # Build Piper TTS as a standalone directory bundle
-          echo "Building Piper TTS binary..."
-          pyinstaller piper_entry.py \
-            --onedir \
-            --name piper \
-            --collect-all piper \
-            --hidden-import piper \
-            --hidden-import pathvalidate \
-            --hidden-import piper_phonemize \
-            --hidden-import onnxruntime \
-            --distpath "$DEST" \
-            --workpath ./build_tmp/piper \
-            --specpath ./build_tmp/piper \
-            --clean \
-            --exclude-module torch \
-            --exclude-module torchvision \
-            --exclude-module torchaudio \
-            --noconfirm
-          echo "Piper built at: $DEST/piper/"
+            # Build Kokoro TTS as a standalone directory bundle
+            echo "Building Kokoro TTS binary..."
+            pyinstaller kokoro_tts.py \
+              --onedir \
+              --name kokoro_tts \
+              --collect-all kokoro_onnx \
+              --collect-all soundfile \
+              --collect-all language_tags \
+              --collect-all csvw \
+              --collect-all segments \
+              --collect-all phonemizer \
+              --collect-all espeakng_loader \
+              --hidden-import kokoro_onnx \
+              --hidden-import soundfile \
+              --hidden-import numpy \
+              --hidden-import onnxruntime \
+              --distpath "$DEST" \
+              --workpath ./build_tmp/kokoro \
+              --specpath ./build_tmp/kokoro \
+              --clean \
+              --exclude-module torch \
+              --exclude-module torchvision \
+              --exclude-module torchaudio \
+              --noconfirm
+            echo "Kokoro built at: $DEST/kokoro_tts/"
 
-          # Build Whisper STT as a standalone directory bundle
-          echo "Building Whisper STT binary..."
-          STT_DEST="${{ matrix.build_path }}"
-          pyinstaller whisper_stt.py \
-            --onedir \
-            --name whisper_stt \
-            --collect-all faster_whisper \
-            --hidden-import faster_whisper \
-            --hidden-import ctranslate2 \
-            --hidden-import huggingface_hub \
-            --hidden-import tokenizers \
-            --distpath "$STT_DEST" \
-            --workpath ./build_tmp/whisper \
-            --specpath ./build_tmp/whisper \
-            --clean \
-            --exclude-module torch \
-            --exclude-module torchvision \
-            --exclude-module torchaudio \
-            --noconfirm
-          echo "Whisper STT built at: $STT_DEST/whisper_stt/"
+            # Build Piper TTS as a standalone directory bundle
+            echo "Building Piper TTS binary..."
+            pyinstaller piper_entry.py \
+              --onedir \
+              --name piper \
+              --collect-all piper \
+              --hidden-import piper \
+              --hidden-import pathvalidate \
+              --hidden-import piper_phonemize \
+              --hidden-import onnxruntime \
+              --distpath "$DEST" \
+              --workpath ./build_tmp/piper \
+              --specpath ./build_tmp/piper \
+              --clean \
+              --exclude-module torch \
+              --exclude-module torchvision \
+              --exclude-module torchaudio \
+              --noconfirm
+            echo "Piper built at: $DEST/piper/"
 
-          # Build Embedding Server (Rust binary)
-          echo "Building Embedding Server (Rust)..."
-          cd tools/embed_server
-          cargo build --release
-          cd ../.. 
-          EMBED_BINARY="tools/embed_server/target/release/embed_server"
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            EMBED_BINARY="tools/embed_server/target/release/embed_server.exe"
+            # Build Whisper STT as a standalone directory bundle
+            echo "Building Whisper STT binary..."
+            STT_DEST="${{ matrix.build_path }}"
+            pyinstaller whisper_stt.py \
+              --onedir \
+              --name whisper_stt \
+              --collect-all faster_whisper \
+              --hidden-import faster_whisper \
+              --hidden-import ctranslate2 \
+              --hidden-import huggingface_hub \
+              --hidden-import tokenizers \
+              --distpath "$STT_DEST" \
+              --workpath ./build_tmp/whisper \
+              --specpath ./build_tmp/whisper \
+              --clean \
+              --exclude-module torch \
+              --exclude-module torchvision \
+              --exclude-module torchaudio \
+              --noconfirm
+            echo "Whisper STT built at: $STT_DEST/whisper_stt/"
+
+            # Build Embedding Server (Rust binary)
+            echo "Building Embedding Server (Rust)..."
+            cd tools/embed_server
+            cargo build --release
+            cd ../.. 
+            EMBED_BINARY="tools/embed_server/target/release/embed_server"
+            if [ "${{ matrix.platform }}" = "windows" ]; then
+              EMBED_BINARY="tools/embed_server/target/release/embed_server.exe"
+            fi
+            mkdir -p "$STT_DEST/embed_server"
+            cp "$EMBED_BINARY" "$STT_DEST/embed_server/"
+            echo "Embedding server built at: $STT_DEST/embed_server/"
+
+            # Build Sentiment Classifier (expression images ONNX)
+            echo "Building Sentiment Classifier binary..."
+            pyinstaller sentiment_classifier.py \
+              --onedir \
+              --name sentiment_classifier \
+              --collect-all huggingface_hub \
+              --collect-all transformers \
+              --collect-all numpy \
+              --collect-all onnxruntime \
+              --hidden-import huggingface_hub \
+              --hidden-import transformers \
+              --hidden-import numpy \
+              --hidden-import onnxruntime \
+              --distpath "$STT_DEST" \
+              --workpath ./build_tmp/sentiment \
+              --specpath ./build_tmp/sentiment \
+              --clean \
+              --exclude-module torch \
+              --exclude-module torchvision \
+              --exclude-module torchaudio \
+              --noconfirm
+            echo "Sentiment classifier built at: $STT_DEST/sentiment_classifier/"
+
+            # Save built engines to cache directory for next time
+            mkdir -p "$CACHE_DIR"
+            cp -r "${{ matrix.build_path }}/piper" "$CACHE_DIR/" 2>/dev/null || true
+            cp -r "$STT_DEST/whisper_stt" "$CACHE_DIR/" 2>/dev/null || true
+            cp -r "$STT_DEST/embed_server" "$CACHE_DIR/" 2>/dev/null || true
+            cp -r "$STT_DEST/sentiment_classifier" "$CACHE_DIR/" 2>/dev/null || true
           fi
-          mkdir -p "$STT_DEST/embed_server"
-          cp "$EMBED_BINARY" "$STT_DEST/embed_server/"
-          echo "Embedding server built at: $STT_DEST/embed_server/"
 
-          # Build Sentiment Classifier (expression images ONNX)
-          echo "Building Sentiment Classifier binary..."
-          pyinstaller sentiment_classifier.py \
-            --onedir \
-            --name sentiment_classifier \
-            --collect-all huggingface_hub \
-            --collect-all transformers \
-            --collect-all numpy \
-            --collect-all onnxruntime \
-            --hidden-import huggingface_hub \
-            --hidden-import transformers \
-            --hidden-import numpy \
-            --hidden-import onnxruntime \
-            --distpath "$STT_DEST" \
-            --workpath ./build_tmp/sentiment \
-            --specpath ./build_tmp/sentiment \
-            --clean \
-            --exclude-module torch \
-            --exclude-module torchvision \
-            --exclude-module torchaudio \
-            --noconfirm
-          echo "Sentiment classifier built at: $STT_DEST/sentiment_classifier/"
+          # For macOS, copy into the app bundle Resources (always runs)
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app 2>/dev/null | head -1)
+            if [ -n "$APP_NAME" ]; then
+              RESOURCES="$APP_NAME/Contents/Resources/piper"
+              mkdir -p "$RESOURCES"
+              cp -R "${{ matrix.build_path }}/piper/kokoro_tts" "$RESOURCES/kokoro_tts" 2>/dev/null || true
+              cp -R "${{ matrix.build_path }}/piper/piper" "$RESOURCES/piper" 2>/dev/null || true
+              chmod +x "$RESOURCES/kokoro_tts/kokoro_tts" 2>/dev/null || true
+              chmod +x "$RESOURCES/piper/piper" 2>/dev/null || true
+
+              STT_RESOURCES="$APP_NAME/Contents/Resources/whisper_stt"
+              mkdir -p "$STT_RESOURCES"
+              cp -R "${{ matrix.build_path }}/whisper_stt/"* "$STT_RESOURCES/" 2>/dev/null || true
+              chmod +x "$STT_RESOURCES/whisper_stt" 2>/dev/null || true
+
+              EMBED_RESOURCES="$APP_NAME/Contents/Resources/embed_server"
+              mkdir -p "$EMBED_RESOURCES"
+              cp -R "${{ matrix.build_path }}/embed_server/"* "$EMBED_RESOURCES/" 2>/dev/null || true
+              chmod +x "$EMBED_RESOURCES/embed_server" 2>/dev/null || true
+
+              SENTIMENT_RESOURCES="$APP_NAME/Contents/Resources/sentiment_classifier"
+              mkdir -p "$SENTIMENT_RESOURCES"
+              cp -R "${{ matrix.build_path }}/sentiment_classifier/"* "$SENTIMENT_RESOURCES/" 2>/dev/null || true
+              chmod +x "$SENTIMENT_RESOURCES/sentiment_classifier" 2>/dev/null || true
+            fi
+          fi
+
+          echo "ML engine bundling step complete"
 
           # For macOS, copy into the app bundle Resources
           if [ "${{ matrix.platform }}" = "macos" ]; then
