@@ -13,6 +13,18 @@ on:
 permissions:
   contents: write
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Required GitHub Secrets for macOS Notarization (same as nightly.yml)
+#
+#   MACOS_CERTIFICATE, MACOS_CERTIFICATE_PWD, MACOS_CERTIFICATE_NAME,
+#   APPLE_ID, APPLE_ID_PASSWORD, APPLE_TEAM_ID
+#
+# Security notes:
+# - We use `::add-mask::` to proactively mask MACOS_CERTIFICATE_NAME and APPLE_TEAM_ID
+#   in all logs for the macOS job.
+# - See nightly.yml for the full list and explanation.
+# ─────────────────────────────────────────────────────────────────────────────
+
 jobs:
   release:
     name: Build and Release
@@ -295,23 +307,54 @@ jobs:
           echo "Embedding server bundled at: $STT_DEST/embed_server/"
           ls -la "$STT_DEST/embed_server/"
 
-      - name: Re-sign macOS App (ad-hoc with entitlements)
+      # ── Real Developer ID Code Signing + Notarization (macOS only) ──
+      - name: Mask sensitive certificate values (prevent accidental log leakage)
         if: matrix.platform == 'macos'
+        run: |
+          # These values will be masked in all logs for this job, even if they
+          # accidentally appear in command output, error messages, or env dumps.
+          echo "::add-mask::${{ secrets.MACOS_CERTIFICATE_NAME }}"
+          echo "::add-mask::${{ secrets.APPLE_TEAM_ID }}"
+
+      - name: Import Apple Developer Certificate
+        if: matrix.platform == 'macos'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          security create-keychain -p "" "$KEYCHAIN_PATH" || true
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+
+          echo -n "$MACOS_CERTIFICATE" | base64 --decode -o $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -k "$KEYCHAIN_PATH" -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign -T /usr/bin/security || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH" || true
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain || true
+
+          echo "Certificate imported successfully"
+
+      - name: Code Sign macOS App (Developer ID)
+        if: matrix.platform == 'macos'
+        env:
+          MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
         run: |
           APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app | head -1)
           ENTITLEMENTS="${{ github.workspace }}/macos/Runner/Release.entitlements"
-          echo "Re-signing $APP_NAME after ML engine bundling..."
-          echo "Using entitlements: $ENTITLEMENTS"
-          # Sign inner frameworks/helpers first (inside-out signing)
+
+          echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate..."
+
           find "$APP_NAME/Contents/Frameworks" -name "*.framework" -o -name "*.dylib" | while read f; do
-            codesign --force --sign - "$f" 2>/dev/null || true
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" 2>/dev/null || true
           done
+
           find "$APP_NAME/Contents/Resources" -type f -perm +111 | while read f; do
-            codesign --force --sign - "$f" 2>/dev/null || true
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" 2>/dev/null || true
           done
-          # Sign the main app with entitlements (preserves file picker, network, etc.)
-          codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_NAME"
-          echo "✓ Ad-hoc signature applied with entitlements"
+
+          codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME"
+          echo "✓ App signed with Developer ID"
 
 
 
@@ -361,6 +404,27 @@ jobs:
             echo "DMG creation failed, falling back to zip"
             zip -r ../../../../../${{ matrix.asset_name }} "$APP_NAME"
           fi
+
+      - name: Notarize and Staple macOS DMG + App
+        if: matrix.platform == 'macos'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "Submitting DMG for notarization..."
+          xcrun notarytool submit Front_Porch_AI.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple Front_Porch_AI.dmg
+
+          APP_NAME=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
+          xcrun stapler staple "$APP_NAME"
+          echo "✓ Notarization and stapling complete"
 
       - name: Get Version
         id: get_version
