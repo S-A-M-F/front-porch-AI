@@ -102,17 +102,42 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Python (with pip cache)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Cache ML Engines (Kokoro TTS, Piper TTS, Whisper STT, etc.)
+        id: ml-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ml-engines-cache
+          key: ml-engines-${{ matrix.platform }}-${{ hashFiles('kokoro_tts.py', 'piper_entry.py', 'whisper_stt.py', 'sentiment_classifier.py', 'tools/embed_server/Cargo.toml', 'tools/dt-grpc-python/**') }}
+          restore-keys: |
+            ml-engines-${{ matrix.platform }}-
+
       - name: Build Application
         run: flutter build ${{ matrix.platform }} --release
 
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
         run: |
-          DEST="${{ matrix.build_path }}/piper"
-          mkdir -p "$DEST"
+          CACHE_HIT="${{ steps.ml-cache.outputs.cache-hit }}"
+          CACHE_DIR="ml-engines-cache/${{ matrix.platform }}"
 
-          # Install TTS dependencies + PyInstaller
-          pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
+          if [ "$CACHE_HIT" == "true" ] && [ -d "$CACHE_DIR" ]; then
+            echo "ML engines cache hit — skipping PyInstaller builds"
+            mkdir -p "${{ matrix.build_path }}"
+            cp -r "$CACHE_DIR/"* "${{ matrix.build_path }}/" || true
+          else
+            echo "ML engines cache miss — building from source"
+            DEST="${{ matrix.build_path }}/piper"
+            mkdir -p "$DEST"
+
+            # Install TTS dependencies + PyInstaller
+            pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
 
           # Build Kokoro TTS as a standalone directory bundle
           echo "Building Kokoro TTS binary..."
@@ -301,6 +326,13 @@ jobs:
 
 
 
+      - name: Clean xattrs from app bundle (required for notarization)
+        if: matrix.platform == 'macos'
+        run: |
+          APP_PATH="build/macos/Build/Products/Release/FrontPorchAI.app"
+          xattr -cr "$APP_PATH" || true
+          find "$APP_PATH" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
+
       - name: Build macOS DMG
         if: matrix.platform == 'macos'
         run: |
@@ -310,8 +342,13 @@ jobs:
           echo "Found app bundle: $APP_NAME"
           create-dmg \
             --volname "Front Porch AI" \
+            --background "../../../../../assets/macos/dmg-background.png" \
+            --window-pos 200 120 \
             --window-size 600 400 \
-            --app-drop-link 400 100 \
+            --icon-size 100 \
+            --icon "$APP_NAME" 140 180 \
+            --app-drop-link 460 180 \
+            --no-internet-enable \
             "../../../../../Front_Porch_AI_MacOS.dmg" \
             "$APP_NAME"
 
