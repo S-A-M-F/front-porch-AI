@@ -1688,6 +1688,15 @@ class WebServerService extends ChangeNotifier {
           'imageGenSize': s.imageGenSize,
           'imageGenStyle': s.imageGenStyle,
           'imageGenNegativePrompt': s.imageGenNegativePrompt,
+          // Draw Things gRPC specific (for remote/web control)
+          'drawThingsGrpcHost': s.drawThingsGrpcHost,
+          'drawThingsGrpcPort': s.drawThingsGrpcPort,
+          'drawThingsSampler': s.drawThingsSampler,
+          'drawThingsShift': s.drawThingsShift,
+          'drawThingsStrength': s.drawThingsStrength,
+          'drawThingsSeedMode': s.drawThingsSeedMode,
+          'drawThingsTeaCache': s.drawThingsTeaCache,
+          'drawThingsCfgZeroStar': s.drawThingsCfgZeroStar,
           // Samplers
           'temperature': s.temperature,
           'minP': s.minP,
@@ -1981,6 +1990,30 @@ class WebServerService extends ChangeNotifier {
       }
       if (body.containsKey('localImageGenUrl')) {
         await s.setLocalImageGenUrl(body['localImageGenUrl'].toString());
+      }
+      if (body.containsKey('drawThingsGrpcHost')) {
+        await s.setDrawThingsGrpcHost(body['drawThingsGrpcHost'].toString());
+      }
+      if (body.containsKey('drawThingsGrpcPort')) {
+        await s.setDrawThingsGrpcPort((body['drawThingsGrpcPort'] as num).toInt());
+      }
+      if (body.containsKey('drawThingsSampler')) {
+        await s.setDrawThingsSampler((body['drawThingsSampler'] as num).toInt());
+      }
+      if (body.containsKey('drawThingsShift')) {
+        await s.setDrawThingsShift((body['drawThingsShift'] as num).toDouble());
+      }
+      if (body.containsKey('drawThingsStrength')) {
+        await s.setDrawThingsStrength((body['drawThingsStrength'] as num).toDouble());
+      }
+      if (body.containsKey('drawThingsSeedMode')) {
+        await s.setDrawThingsSeedMode((body['drawThingsSeedMode'] as num).toInt());
+      }
+      if (body.containsKey('drawThingsTeaCache')) {
+        await s.setDrawThingsTeaCache(body['drawThingsTeaCache'] as bool);
+      }
+      if (body.containsKey('drawThingsCfgZeroStar')) {
+        await s.setDrawThingsCfgZeroStar(body['drawThingsCfgZeroStar'] as bool);
       }
       if (body.containsKey('imageGenSize')) {
         await s.setImageGenSize(body['imageGenSize'].toString());

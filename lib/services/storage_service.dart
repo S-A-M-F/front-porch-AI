@@ -252,6 +252,16 @@ class StorageService extends ChangeNotifier {
   String _imageGenSampler = 'Euler a'; // sampler name
   int _imageGenSeed = -1; // -1 = random
 
+  // Draw Things gRPC-specific persisted settings (separate from A1111 HTTP url + shared samplers)
+  String _drawThingsGrpcHost = '127.0.0.1';
+  int _drawThingsGrpcPort = 7859;
+  int _drawThingsSampler = 16; // Sampler.DDIM_TRAILING (see client.py)
+  double _drawThingsShift = 3.0;
+  double _drawThingsStrength = 1.0;
+  int _drawThingsSeedMode = 2; // SeedMode.SCALE_ALIKE
+  bool _drawThingsTeaCache = false;
+  bool _drawThingsCfgZeroStar = false;
+
   // Web server settings
   bool _webServerEnabled = false;
   int _webServerPort = 8085;
@@ -422,6 +432,16 @@ class StorageService extends ChangeNotifier {
   double get imageGenCfgScale => _imageGenCfgScale;
   String get imageGenSampler => _imageGenSampler;
   int get imageGenSeed => _imageGenSeed;
+
+  // Draw Things gRPC getters
+  String get drawThingsGrpcHost => _drawThingsGrpcHost;
+  int get drawThingsGrpcPort => _drawThingsGrpcPort;
+  int get drawThingsSampler => _drawThingsSampler;
+  double get drawThingsShift => _drawThingsShift;
+  double get drawThingsStrength => _drawThingsStrength;
+  int get drawThingsSeedMode => _drawThingsSeedMode;
+  bool get drawThingsTeaCache => _drawThingsTeaCache;
+  bool get drawThingsCfgZeroStar => _drawThingsCfgZeroStar;
 
   bool get webServerEnabled => _webServerEnabled;
   int get webServerPort => _webServerPort;
@@ -721,6 +741,16 @@ class StorageService extends ChangeNotifier {
     _imageGenCfgScale = _prefs?.getDouble(_k('image_gen_cfg_scale')) ?? 7.0;
     _imageGenSampler = _prefs?.getString(_k('image_gen_sampler')) ?? 'Euler a';
     _imageGenSeed = _prefs?.getInt(_k('image_gen_seed')) ?? -1;
+
+    // Draw Things gRPC persisted values
+    _drawThingsGrpcHost = _prefs?.getString(_k('draw_things_grpc_host')) ?? '127.0.0.1';
+    _drawThingsGrpcPort = _prefs?.getInt(_k('draw_things_grpc_port')) ?? 7859;
+    _drawThingsSampler = _prefs?.getInt(_k('draw_things_sampler')) ?? 16;
+    _drawThingsShift = _prefs?.getDouble(_k('draw_things_shift')) ?? 3.0;
+    _drawThingsStrength = _prefs?.getDouble(_k('draw_things_strength')) ?? 1.0;
+    _drawThingsSeedMode = _prefs?.getInt(_k('draw_things_seed_mode')) ?? 2;
+    _drawThingsTeaCache = _prefs?.getBool(_k('draw_things_tea_cache')) ?? false;
+    _drawThingsCfgZeroStar = _prefs?.getBool(_k('draw_things_cfg_zero_star')) ?? false;
 
     // Web server settings
     _webServerEnabled = _prefs?.getBool(_k('web_server_enabled')) ?? false;
@@ -1529,6 +1559,55 @@ class StorageService extends ChangeNotifier {
   Future<void> setImageGenSeed(int value) async {
     _imageGenSeed = value;
     await _prefs?.setInt(_k('image_gen_seed'), value);
+    notifyListeners();
+  }
+
+  // Draw Things gRPC setters (follow exact same _k + notify pattern)
+  Future<void> setDrawThingsGrpcHost(String value) async {
+    _drawThingsGrpcHost = value.trim();
+    await _prefs?.setString(_k('draw_things_grpc_host'), _drawThingsGrpcHost);
+    notifyListeners();
+  }
+
+  Future<void> setDrawThingsGrpcPort(int value) async {
+    _drawThingsGrpcPort = value;
+    await _prefs?.setInt(_k('draw_things_grpc_port'), value);
+    notifyListeners();
+  }
+
+  Future<void> setDrawThingsSampler(int value) async {
+    _drawThingsSampler = value;
+    await _prefs?.setInt(_k('draw_things_sampler'), value);
+    notifyListeners();
+  }
+
+  Future<void> setDrawThingsShift(double value) async {
+    _drawThingsShift = value;
+    await _prefs?.setDouble(_k('draw_things_shift'), value);
+    notifyListeners();
+  }
+
+  Future<void> setDrawThingsStrength(double value) async {
+    _drawThingsStrength = value.clamp(0.0, 1.0);
+    await _prefs?.setDouble(_k('draw_things_strength'), _drawThingsStrength);
+    notifyListeners();
+  }
+
+  Future<void> setDrawThingsSeedMode(int value) async {
+    _drawThingsSeedMode = value;
+    await _prefs?.setInt(_k('draw_things_seed_mode'), value);
+    notifyListeners();
+  }
+
+  Future<void> setDrawThingsTeaCache(bool value) async {
+    _drawThingsTeaCache = value;
+    await _prefs?.setBool(_k('draw_things_tea_cache'), value);
+    notifyListeners();
+  }
+
+  Future<void> setDrawThingsCfgZeroStar(bool value) async {
+    _drawThingsCfgZeroStar = value;
+    await _prefs?.setBool(_k('draw_things_cfg_zero_star'), value);
     notifyListeners();
   }
 

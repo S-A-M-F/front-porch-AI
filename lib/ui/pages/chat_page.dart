@@ -712,6 +712,7 @@ class _ChatPageState extends State<ChatPage> {
                                             : null;
                                       }
                                        return _MessageBubble(
+                                         key: ObjectKey(msg),
                                          message: msg,
                                          characterImage: senderImage,
                                          index: reversedIndex,
@@ -4309,18 +4310,19 @@ class _MessageBubble extends StatefulWidget {
   final ChatService? chatService;
 
   const _MessageBubble({
-     required this.message,
-     this.characterImage,
-     required this.index,
-     this.senderColor,
-     this.externalImagesAllowed,
-     this.onRequestImagePermission,
-     this.character,
-     this.chatService,
-   });
+    super.key,
+    required this.message,
+    this.characterImage,
+    required this.index,
+    this.senderColor,
+    this.externalImagesAllowed,
+    this.onRequestImagePermission,
+    this.character,
+    this.chatService,
+  });
 
-   @override
-   State<_MessageBubble> createState() => _MessageBubbleState();
+  @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
 }
 
 class _MessageBubbleState extends State<_MessageBubble> {

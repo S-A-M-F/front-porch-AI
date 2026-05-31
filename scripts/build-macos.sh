@@ -3,6 +3,7 @@
 #   - Rust embedding server
 #   - Kokoro TTS (via PyInstaller)
 #   - Piper TTS (via PyInstaller)
+#   - Draw Things gRPC client (via PyInstaller, for macOS Draw Things local image gen)
 #
 # Usage: ./scripts/build-macos.sh
 #
@@ -34,7 +35,7 @@ EMBED_DEST="$APP_BUNDLE/Contents/Resources/embed_server"
 mkdir -p "$EMBED_DEST"
 cp "$EMBED_SRC/target/release/embed_server" "$EMBED_DEST/"
 
-echo "==> Bundling ML Engines (Kokoro TTS + Piper TTS)..."
+echo "==> Bundling ML Engines (Kokoro TTS + Piper TTS + Draw Things gRPC client)..."
 echo "    This step can take several minutes and requires a working Python + pip environment."
 
 # Check for Python/pip
@@ -49,8 +50,8 @@ mkdir -p "$ML_DEST"
 
 # Install required Python packages for PyInstaller
 python3 -m pip install --upgrade pip || pip install --upgrade pip
-python3 -m pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate numpy onnxruntime || \
-  pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate numpy onnxruntime
+python3 -m pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate numpy onnxruntime grpcio grpcio-tools flatbuffers fpzip pillow || \
+  pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate numpy onnxruntime grpcio grpcio-tools flatbuffers fpzip pillow
 
 # Build Kokoro TTS
 echo "==> Building Kokoro TTS binary..."
@@ -96,17 +97,62 @@ pyinstaller piper_entry.py \
 
 echo "Piper built at: $ML_DEST/piper/"
 
+# Build Draw Things gRPC client (for local Draw Things macOS image gen via private gRPC+FlatBuffer)
+echo "==> Building Draw Things gRPC client (dt_grpc_client)..."
+pyinstaller tools/dt-grpc-python/dt_grpc_client.py \
+  --onedir \
+  --name dt_grpc_client \
+  --collect-all grpc \
+  --collect-all grpcio \
+  --collect-all flatbuffers \
+  --collect-all fpzip \
+  --collect-all numpy \
+  --collect-all PIL \
+  --hidden-import grpc \
+  --hidden-import grpc._cython \
+  --hidden-import grpcio \
+  --hidden-import flatbuffers \
+  --hidden-import fpzip \
+  --hidden-import numpy \
+  --hidden-import PIL \
+  --hidden-import PIL.Image \
+  --hidden-import imageService_pb2 \
+  --hidden-import imageService_pb2_grpc \
+  --hidden-import GenerationConfiguration \
+  --hidden-import SamplerType \
+  --hidden-import SeedMode \
+  --hidden-import LoRA \
+  --hidden-import LoRAMode \
+  --hidden-import client \
+  --distpath "$ML_DEST" \
+  --workpath ./build_tmp/dt_grpc \
+  --specpath ./build_tmp/dt_grpc \
+  --clean \
+  --exclude-module torch \
+  --exclude-module torchvision \
+  --exclude-module torchaudio \
+  --noconfirm
+
+echo "Draw Things gRPC client built at: $ML_DEST/dt_grpc_client/"
+
 # Copy ML engines into the app bundle
 ML_RESOURCES="$APP_BUNDLE/Contents/Resources/piper"
 mkdir -p "$ML_RESOURCES"
 cp -R "$ML_DEST/kokoro_tts" "$ML_RESOURCES/"
 cp -R "$ML_DEST/piper" "$ML_RESOURCES/"
 
+# Copy Draw Things gRPC CLI into its own Resources/dt_grpc/ tree (separate from piper)
+DT_RESOURCES="$APP_BUNDLE/Contents/Resources/dt_grpc"
+mkdir -p "$DT_RESOURCES"
+cp -R "$ML_DEST/dt_grpc_client" "$DT_RESOURCES/"
+
 # Make binaries executable
 chmod +x "$ML_RESOURCES/kokoro_tts/kokoro_tts" 2>/dev/null || true
 chmod +x "$ML_RESOURCES/piper/piper" 2>/dev/null || true
+chmod +x "$DT_RESOURCES/dt_grpc_client/dt_grpc_client" 2>/dev/null || true
 
 echo "==> ML Engines bundled successfully into $ML_RESOURCES"
+echo "==> Draw Things gRPC client bundled into $DT_RESOURCES"
 
 # Optional cleanup of temp build files
 rm -rf ./build_tmp

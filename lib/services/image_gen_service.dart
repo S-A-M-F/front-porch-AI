@@ -137,15 +137,23 @@ class ImageGenService extends ChangeNotifier {
         return _storage.remoteApiKey.isNotEmpty &&
             _storage.imageGenModel.isNotEmpty;
       case ImageGenBackend.a1111:
-      case ImageGenBackend.drawThings:
         return _storage.localImageGenUrl.isNotEmpty;
+      case ImageGenBackend.drawThings:
+        return _storage.drawThingsGrpcHost.isNotEmpty;
     }
   }
 
   DrawThingsGrpcService? _drawThingsGrpc;
 
   DrawThingsGrpcService get _ensureDrawThingsGrpc {
-    _drawThingsGrpc ??= DrawThingsGrpcService(host: '127.0.0.1', port: 7859);
+    final h = _storage.drawThingsGrpcHost;
+    final p = _storage.drawThingsGrpcPort;
+    // Recreate if host/port changed since last use (cheap; keeps things in sync with settings)
+    if (_drawThingsGrpc == null ||
+        _drawThingsGrpc!.host != h ||
+        _drawThingsGrpc!.port != p) {
+      _drawThingsGrpc = DrawThingsGrpcService(host: h, port: p);
+    }
     return _drawThingsGrpc!;
   }
 
@@ -164,6 +172,7 @@ class ImageGenService extends ChangeNotifier {
     required String prompt,
     String negativePrompt = '',
     String? size,
+    Uint8List? referenceImage, // for img2img / reference conditioning (wired for Draw Things; ignored by others for now)
     String? model,
     bool isPortrait = false,
   }) async {
@@ -188,13 +197,11 @@ class ImageGenService extends ChangeNotifier {
           notifyListeners();
 
           final modelCheckpoint = model ?? _storage.imageGenModel;
+          // Relaxed .ckpt check: gRPC file list returns the actual filenames Draw Things knows about
+          // (may be .ckpt, .safetensors, or bare names). Empty is allowed (uses current in DT).
           if (modelCheckpoint.isNotEmpty &&
-              !modelCheckpoint.toLowerCase().endsWith('.ckpt')) {
-            _statusMessage =
-                'Invalid model name for Draw Things: must end with .ckpt (got: $modelCheckpoint)';
-            _isGenerating = false;
-            notifyListeners();
-            return null;
+              !modelCheckpoint.toLowerCase().contains('.')) {
+            // Only warn on clearly bad names; let the CLI/DT surface the real error
           }
 
           try {
@@ -204,6 +211,14 @@ class ImageGenService extends ChangeNotifier {
             final steps = _storage.imageGenSteps;
             final cfgScale = _storage.imageGenCfgScale;
             final seed = _storage.imageGenSeed;
+
+            // DT-native advanced knobs (shared sliders still used for steps/cfg/seed/size)
+            final sampler = _storage.drawThingsSampler;
+            final shift = _storage.drawThingsShift;
+            final strength = _storage.drawThingsStrength;
+            final seedMode = _storage.drawThingsSeedMode;
+            final teaCache = _storage.drawThingsTeaCache;
+            final cfgZeroStar = _storage.drawThingsCfgZeroStar;
 
             imageBytes = await _generateViaDrawThingsGrpc(
               grpcService: grpcService,
@@ -215,9 +230,22 @@ class ImageGenService extends ChangeNotifier {
               steps: steps,
               cfgScale: cfgScale,
               seed: seed,
+              strength: strength,
+              shift: shift,
+              sampler: sampler,
+              seedMode: seedMode,
+              teaCache: teaCache,
+              cfgZeroStar: cfgZeroStar,
+              referenceImage: referenceImage,
             );
           } catch (e) {
-            _statusMessage = 'Draw Things connection failed: $e';
+            // Sanitize for user display (no full tracebacks, absolute paths, or raw CLI internals)
+            final msg = e.toString();
+            final safe = msg.contains('CLI') || msg.contains('Generation error')
+                ? 'Draw Things generation failed. Check that the gRPC server is enabled in Draw Things and the host/port are correct.'
+                : 'Draw Things connection or generation failed.';
+            _statusMessage = safe;
+            debugPrint('ImageGen: Draw Things error (sanitized for user): $e');
             _isGenerating = false;
             notifyListeners();
             return null;
@@ -1005,7 +1033,7 @@ class ImageGenService extends ChangeNotifier {
 
   /// Fetch models from a Draw Things server.
   ///
-  /// Uses gRPC to fetch models. Draw Things doesn't expose LoRAs via gRPC.
+  /// Uses the Draw Things gRPC CLI to fetch available .ckpt models (via the special Echo('models') response). LoRAs not surfaced here.
   Future<List<String>> fetchDrawThingsModels(String baseUrl) async {
     try {
       final grpcService = _ensureDrawThingsGrpc;
@@ -1294,6 +1322,7 @@ class ImageGenService extends ChangeNotifier {
   }
 
   /// Generate via Draw Things gRPC service (Python client bridge).
+  /// Extended with DT-native params + optional reference image (passed through to CLI).
   Future<Uint8List> _generateViaDrawThingsGrpc({
     required DrawThingsGrpcService grpcService,
     required String prompt,
@@ -1304,6 +1333,14 @@ class ImageGenService extends ChangeNotifier {
     int steps = 20,
     double cfgScale = 7.0,
     int seed = -1,
+    double strength = 1.0,
+    double shift = 3.0,
+    int sampler = 16,
+    int seedMode = 2,
+    bool teaCache = false,
+    double teaCacheThreshold = 0.15,
+    bool cfgZeroStar = false,
+    Uint8List? referenceImage,
   }) async {
     return await grpcService.generateImage(
       prompt: prompt,
@@ -1314,6 +1351,14 @@ class ImageGenService extends ChangeNotifier {
       steps: steps,
       cfgScale: cfgScale,
       seed: seed,
+      strength: strength,
+      shift: shift,
+      sampler: sampler,
+      seedMode: seedMode,
+      teaCache: teaCache,
+      teaCacheThreshold: teaCacheThreshold,
+      cfgZeroStar: cfgZeroStar,
+      referenceImageBytes: referenceImage,
     );
   }
 

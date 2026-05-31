@@ -20,6 +20,31 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
+
+/// DT-native samplers (exact mapping from tools/dt-grpc-python/client.py Sampler enum).
+/// Friendly labels for the dropdown; values are the ints sent to the CLI.
+const List<({String label, int value})> _drawThingsSamplers = [
+  (label: 'DDIM Trailing', value: 16),
+  (label: 'UniPC Trailing', value: 17),
+  (label: 'Euler a Trailing', value: 10),
+  (label: 'DPM++ 2M Trailing', value: 15),
+  (label: 'DPM++ SDE Trailing', value: 11),
+  (label: 'UniPC AYS', value: 18),
+  (label: 'Euler a AYS', value: 13),
+  (label: 'DPM++ 2M AYS', value: 12),
+  (label: 'DPM++ SDE AYS', value: 14),
+  (label: 'DPM++ 2M Karras', value: 0),
+  (label: 'DPM++ SDE Karras', value: 4),
+  (label: 'Euler a', value: 1),
+  (label: 'UniPC', value: 5),
+  (label: 'DDIM', value: 2),
+  (label: 'PLMS', value: 3),
+  (label: 'LCM', value: 6),
+  (label: 'TCD', value: 9),
+  (label: 'Euler a Substep', value: 7),
+  (label: 'DPM++ SDE Substep', value: 8),
+];
 
 /// Dialog for configuring image generation settings.
 class ImageGenSettingsDialog extends StatefulWidget {
@@ -146,25 +171,34 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   }
 
   Future<void> _testConnection() async {
-    final url = _localUrlController.text.trim();
-    if (url.isEmpty) return;
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final isDT = storage.imageGenBackend == 'drawthings';
+
+    String effectiveUrl = _localUrlController.text.trim();
+    if (isDT) {
+      // For Draw Things we use the dedicated host/port fields (the grpc service reads them from storage).
+      // We still need a non-empty string to pass the early return, but the value is ignored for DT.
+      effectiveUrl = effectiveUrl.isNotEmpty ? effectiveUrl : '127.0.0.1:7859';
+    }
+
+    if (effectiveUrl.isEmpty) return;
+
     setState(() {
       _testingConnection = true;
       _connectionOk = null;
     });
     final service = Provider.of<ImageGenService>(context, listen: false);
-    final ok = await service.testLocalConnection(url);
+    final ok = await service.testLocalConnection(effectiveUrl);
     if (mounted) {
       setState(() {
         _connectionOk = ok;
         _testingConnection = false;
       });
       if (ok) {
-        _fetchLocalModels(url);
-        _fetchLocalSamplers(url);
+        _fetchLocalModels(effectiveUrl);
+        _fetchLocalSamplers(effectiveUrl);
         // Fetch LoRAs for A1111-compatible backends (not Draw Things)
-        final storage = Provider.of<StorageService>(context, listen: false);
-        if (storage.imageGenBackend != 'drawthings') _fetchLocalLoras(url);
+        if (!isDT) _fetchLocalLoras(effectiveUrl);
       }
     }
   }
@@ -542,12 +576,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: isDrawThings
-                ? Colors.purple.withValues(alpha: 0.08)
-                : Colors.black26,
+                ? AppColors.resolve(context, const Color(0xFF3B2A5A), const Color(0xFFEDE7F6))  // subtle purple tint (dark/light)
+                : AppColors.surfaceContainerOf(context),
             borderRadius: BorderRadius.circular(8),
             border: Border(
               left: BorderSide(
-                color: isDrawThings ? Colors.purpleAccent : Colors.blue,
+                color: isDrawThings
+                    ? AppColors.resolve(context, const Color(0xFF9C27B0), const Color(0xFF7B1FA2))
+                    : Colors.blue,  // legacy accent kept for non-DT
                 width: 3,
               ),
             ),
@@ -557,22 +593,23 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             children: [
               Icon(
                 isDrawThings ? Icons.apple : Icons.info_outline,
-                color: isDrawThings ? Colors.purpleAccent : Colors.blue,
+                color: isDrawThings
+                    ? AppColors.resolve(context, const Color(0xFFCE93D8), const Color(0xFF7B1FA2))
+                    : Colors.blue,
                 size: 16,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   isDrawThings
-                      ? 'Open Draw Things → Settings → Advanced → enable HTTP API Server. '
-                            'If models load below, selecting one will switch Draw Things to it '
-                            'before each generation — a fresh "project" every time. '
-                            'If no models appear, select your model in Draw Things directly.'
+                      ? 'Open Draw Things → Settings → Developer → enable gRPC Server (default port 7859). '
+                            'The connection uses Draw Things\' private gRPC+FlatBuffer protocol (not the HTTP API). '
+                            'Models are listed from the gRPC file list; select one to use it for generation.'
                       : 'Start AUTOMATIC1111 with the --api flag (e.g. python launch.py --api). '
                             'Selecting a checkpoint below will switch models before each generation '
                             'via POST /sdapi/v1/options.',
                   style: TextStyle(
-                    color: isDrawThings ? Colors.white54 : Colors.white54,
+                    color: AppColors.textSecondary(context),
                     fontSize: 11,
                   ),
                 ),
@@ -583,80 +620,228 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
         const SizedBox(height: 16),
 
-        // Server URL + test button
-        const Text(
-          'Server URL',
-          style: TextStyle(
-            color: Colors.white54,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+        // Address fields — DT gets its own dedicated gRPC host/port (wired to the new storage keys)
+        if (isDrawThings) ...[
+          Text(
+            'Draw Things gRPC Host',
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13, fontWeight: FontWeight.w600),
           ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _localUrlController,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: isDrawThings
-                      ? 'http://127.0.0.1:7860'
-                      : 'http://127.0.0.1:7860',
-                  hintStyle: const TextStyle(color: Colors.white24),
-                  filled: true,
-                  fillColor: Colors.black26,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  isDense: true,
-                  suffixIcon: _connectionOk == null
-                      ? null
-                      : Icon(
-                          _connectionOk! ? Icons.check_circle : Icons.cancel,
-                          color: _connectionOk!
-                              ? Colors.green
-                              : Colors.redAccent,
-                          size: 18,
-                        ),
-                ),
-                onChanged: (val) {
-                  storage.setLocalImageGenUrl(val.trim());
-                  // Reset connection indicator on edit
-                  setState(() => _connectionOk = null);
-                },
-                onSubmitted: (_) => _testConnection(),
-              ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: TextEditingController(text: storage.drawThingsGrpcHost),
+            style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
+            decoration: InputDecoration(
+              hintText: '127.0.0.1',
+              hintStyle: TextStyle(color: AppColors.textTertiary(context)),
+              filled: true,
+              fillColor: AppColors.surfaceContainerOf(context),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              isDense: true,
             ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: _testingConnection ? null : _testConnection,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white10,
-                foregroundColor: Colors.white70,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
+            onChanged: (val) {
+              storage.setDrawThingsGrpcHost(val.trim());
+              setState(() {
+                _connectionOk = null;
+                _localModels = [];
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Port',
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: 120,
+            child: TextField(
+              controller: TextEditingController(text: storage.drawThingsGrpcPort.toString()),
+              style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: AppColors.surfaceContainerOf(context),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                isDense: true,
+              ),
+              onChanged: (val) {
+                final p = int.tryParse(val) ?? 7859;
+                storage.setDrawThingsGrpcPort(p);
+                setState(() {
+                  _connectionOk = null;
+                  _localModels = [];
+                });
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              ElevatedButton(
+                onPressed: _testingConnection ? null : _testConnection,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white10,
+                  foregroundColor: Colors.white70,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+                child: _testingConnection
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Test Connection', style: TextStyle(fontSize: 12)),
+              ),
+              const SizedBox(width: 12),
+              if (_connectionOk != null)
+                Icon(
+                  _connectionOk! ? Icons.check_circle : Icons.cancel,
+                  color: _connectionOk! ? Colors.green : Colors.redAccent,
+                  size: 20,
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Checkpoint / model selector (shown for Draw Things after address fields)
+          const Text(
+            'Checkpoint Model',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Fetched from Draw Things via gRPC after pressing Test Connection.',
+            style: TextStyle(color: Colors.white24, fontSize: 10),
+          ),
+          const SizedBox(height: 8),
+          if (_loadingLocalModels)
+            const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.purpleAccent,
                 ),
               ),
-              child: _testingConnection
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+            )
+          else if (_localModels.isEmpty)
+            Text(
+              'No models fetched yet. Press "Test Connection" above to list models from this Draw Things instance.',
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            )
+          else
+            DropdownButtonFormField<String>(
+              initialValue: _localModels.contains(storage.imageGenModel)
+                  ? storage.imageGenModel
+                  : null,
+              dropdownColor: const Color(0xFF374151),
+              style: const TextStyle(color: Colors.white),
+              isExpanded: true,
+              menuMaxHeight: 300,
+              decoration: InputDecoration(
+                hintText: 'Select a checkpoint',
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: Colors.black26,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              items: _localModels
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        m,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white),
                       ),
-                    )
-                  : const Text('Test', style: TextStyle(fontSize: 12)),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) storage.setImageGenModel(val);
+              },
             ),
-          ],
-        ),
+        ] else ...[
+          // A1111 and other HTTP local backends keep the original URL field
+          const Text(
+            'Server URL',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _localUrlController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'http://127.0.0.1:7860',
+                    hintStyle: const TextStyle(color: Colors.white24),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    isDense: true,
+                    suffixIcon: _connectionOk == null
+                        ? null
+                        : Icon(
+                            _connectionOk! ? Icons.check_circle : Icons.cancel,
+                            color: _connectionOk! ? Colors.green : Colors.redAccent,
+                            size: 18,
+                          ),
+                  ),
+                  onChanged: (val) {
+                    storage.setLocalImageGenUrl(val.trim());
+                    setState(() => _connectionOk = null);
+                  },
+                  onSubmitted: (_) => _testConnection(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _testingConnection ? null : _testConnection,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white10,
+                  foregroundColor: Colors.white70,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
+                child: _testingConnection
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Test', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
 
         const SizedBox(height: 16),
 
@@ -689,7 +874,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         else if (_localModels.isEmpty)
           Text(
             isDrawThings
-                ? 'No models listed via API — switch the model directly in Draw Things, then press "Load Selected Model" to apply it.'
+                ? 'No models fetched yet. Use the "Test Connection" button next to your Draw Things gRPC host/port above.'
                 : 'No models found — test the connection above to fetch them.',
             style: const TextStyle(color: Colors.white38, fontSize: 11),
           )
@@ -740,42 +925,46 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         // it manages memory itself when a new model is loaded.
         // Show a single "Load Selected" button for Draw Things;
         // show Unload + Switch for A1111 which supports both.
-        if (isDrawThings) ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              icon: _switchingModel
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.swap_horiz, size: 16),
-              label: const Text(
-                'Load Selected Model in Draw Things',
-                style: TextStyle(fontSize: 12),
+        if (isDrawThings)
+          Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: _switchingModel
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.swap_horiz, size: 16),
+                  label: const Text(
+                    'Load Selected Model in Draw Things',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.purpleAccent),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: (_switchingModel || storage.imageGenModel.isEmpty)
+                      ? null
+                      : _switchModel,
+                ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.purpleAccent),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+              const SizedBox(height: 4),
+              const Text(
+                'Sends the selected checkpoint to Draw Things via POST /sdapi/v1/options. '
+                'Draw Things will replace the current model automatically.',
+                style: TextStyle(color: Colors.white24, fontSize: 10),
               ),
-              onPressed: (_switchingModel || storage.imageGenModel.isEmpty)
-                  ? null
-                  : _switchModel,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Sends the selected checkpoint to Draw Things via POST /sdapi/v1/options. '
-            'Draw Things will replace the current model automatically.',
-            style: TextStyle(color: Colors.white24, fontSize: 10),
-          ),
-        ] else ...[
+            ],
+          )
+        else
           Row(
             children: [
               Expanded(
@@ -1160,7 +1349,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                 bottom: 8,
               ),
               children: isLocal
-                  ? _buildAdvancedFields(storage)
+                  ? _buildAdvancedFields(storage, isDrawThings: storage.imageGenBackend == 'drawthings')
                   : [
                       const Padding(
                         padding: EdgeInsets.all(8.0),
@@ -1328,7 +1517,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
   // ── Advanced generation fields ──────────────────────────────────────
 
-  List<Widget> _buildAdvancedFields(StorageService storage) {
+  List<Widget> _buildAdvancedFields(StorageService storage, {required bool isDrawThings}) {
     return [
       // Steps slider
       const SizedBox(height: 8),
@@ -1399,7 +1588,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         ],
       ),
 
-      // Sampler dropdown
+      // Sampler dropdown — DT uses its own native 19-value list + dedicated storage
       const SizedBox(height: 8),
       Row(
         children: [
@@ -1413,40 +1602,60 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           const SizedBox(width: 8),
           Expanded(
             flex: 3,
-            child: DropdownButtonFormField<String>(
-              initialValue: _localSamplers.contains(storage.imageGenSampler)
-                  ? storage.imageGenSampler
-                  : (storage.imageGenSampler.isNotEmpty ? null : 'Euler a'),
-              dropdownColor: const Color(0xFF374151),
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              isExpanded: true,
-              decoration: InputDecoration(
-                hintText: _loadingSamplers ? 'Loading...' : 'Select sampler',
-                hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
-                filled: true,
-                fillColor: Colors.black26,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                isDense: true,
-              ),
-              items: _localSamplers
-                  .map(
-                    (s) => DropdownMenuItem(
-                      value: s,
-                      child: Text(s, overflow: TextOverflow.ellipsis),
+            child: isDrawThings
+                ? DropdownButtonFormField<int>(
+                    initialValue: storage.drawThingsSampler,
+                    dropdownColor: AppColors.surfaceContainerOf(context),
+                    style: TextStyle(color: AppColors.textPrimary(context), fontSize: 12),
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      hintText: 'Select DT sampler',
+                      hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                      filled: true,
+                      fillColor: AppColors.surfaceContainerOf(context),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      isDense: true,
                     ),
+                    items: _drawThingsSamplers
+                        .map((s) => DropdownMenuItem(
+                              value: s.value,
+                              child: Text(s.label, overflow: TextOverflow.ellipsis),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) storage.setDrawThingsSampler(val);
+                    },
                   )
-                  .toList(),
-              onChanged: (val) {
-                if (val != null) storage.setImageGenSampler(val);
-              },
-            ),
+                : DropdownButtonFormField<String>(
+                    initialValue: _localSamplers.contains(storage.imageGenSampler)
+                        ? storage.imageGenSampler
+                        : (storage.imageGenSampler.isNotEmpty ? null : 'Euler a'),
+                    dropdownColor: const Color(0xFF374151),
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      hintText: _loadingSamplers ? 'Loading...' : 'Select sampler',
+                      hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
+                      filled: true,
+                      fillColor: Colors.black26,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      isDense: true,
+                    ),
+                    items: _localSamplers
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis)))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) storage.setImageGenSampler(val);
+                    },
+                  ),
           ),
         ],
       ),
@@ -1511,6 +1720,82 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           ),
         ],
       ),
+
+      // Draw Things Advanced subsection (plan deliverable — only when DT backend)
+      if (isDrawThings) ...[
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerOf(context),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.borderOf(context)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Draw Things Advanced', style: TextStyle(color: AppColors.textPrimary(context), fontSize: 12, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              // Shift
+              Row(
+                children: [
+                  Text('Shift', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Slider(
+                      value: storage.drawThingsShift.clamp(0.5, 10.0),
+                      min: 0.5, max: 10.0, divisions: 95,
+                      activeColor: AppColors.userBubble,
+                      inactiveColor: AppColors.resolve(context, const Color(0xFF374151), const Color(0xFFE5E7EB)),
+                      onChanged: (v) => storage.setDrawThingsShift(v),
+                    ),
+                  ),
+                  SizedBox(width: 36, child: Text(storage.drawThingsShift.toStringAsFixed(1), style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12), textAlign: TextAlign.end)),
+                ],
+              ),
+              // Strength
+              Row(
+                children: [
+                  Text('Strength', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Slider(
+                      value: storage.drawThingsStrength,
+                      min: 0.0, max: 1.0, divisions: 20,
+                      activeColor: AppColors.userBubble,
+                      inactiveColor: AppColors.resolve(context, const Color(0xFF374151), const Color(0xFFE5E7EB)),
+                      onChanged: (v) => storage.setDrawThingsStrength(v),
+                    ),
+                  ),
+                  SizedBox(width: 36, child: Text(storage.drawThingsStrength.toStringAsFixed(2), style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12), textAlign: TextAlign.end)),
+                ],
+              ),
+              // TeaCache (checkbox only — threshold uses sensible CLI default)
+              Row(
+                children: [
+                  Checkbox(
+                    value: storage.drawThingsTeaCache,
+                    onChanged: (v) => storage.setDrawThingsTeaCache(v ?? false),
+                    activeColor: AppColors.userBubble,
+                  ),
+                  Text('TeaCache', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12)),
+                ],
+              ),
+              // CFG Zero Star
+              Row(
+                children: [
+                  Checkbox(
+                    value: storage.drawThingsCfgZeroStar,
+                    onChanged: (v) => storage.setDrawThingsCfgZeroStar(v ?? false),
+                    activeColor: AppColors.userBubble,
+                  ),
+                  Text('CFG Zero Star', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     ];
   }
 }

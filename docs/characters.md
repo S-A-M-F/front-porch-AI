@@ -317,5 +317,6 @@ The columns and the `realism_state` key inside Group Cards were added precisely 
 
 See `lib/services/group_card_service.dart`, `lib/models/group_card.dart`, and the v30 columns in `lib/database/database.dart` for the canonical implementation.
 
-**Recommended reading for AI agents / Claude working on Forge integration:** `docs/CharacterCardForge_Claude_Integration_Guide.md` (or the draft handoff note).
+**Recommended reading for AI agents / Claude working on Forge integration:**  
+`docs/CharacterCardForge_GroupChat_Integration_Guide.md` — the definitive post-v30 guide covering the decoupled `group_members` architecture, private avatars, Group Card (`fpa_group`) format, ID remapping for Group Dynamics, and the “Separate to my library” splitting feature.
 
