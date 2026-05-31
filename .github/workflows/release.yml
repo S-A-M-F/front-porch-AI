@@ -295,7 +295,6 @@ jobs:
           echo "Embedding server bundled at: $STT_DEST/embed_server/"
           ls -la "$STT_DEST/embed_server/"
 
-      # ── Real Developer ID Code Signing + Notarization (macOS only) ──
       - name: Mask sensitive certificate values (prevent accidental log leakage)
         if: matrix.platform == 'macos'
         run: |
@@ -312,16 +311,39 @@ jobs:
         run: |
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-          security create-keychain -p "" "$KEYCHAIN_PATH" || true
+          # Create a temporary keychain
+          security create-keychain -p "" "$KEYCHAIN_PATH" 2>/dev/null || true
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "" "$KEYCHAIN_PATH"
 
+          # Decode and import the .p12 certificate
           echo -n "$MACOS_CERTIFICATE" | base64 --decode -o $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -k "$KEYCHAIN_PATH" -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign -T /usr/bin/security || true
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH" || true
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain || true
+          security import $RUNNER_TEMP/certificate.p12 -k "$KEYCHAIN_PATH" -P "$MACOS_CERTIFICATE_PWD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+
+          # Allow codesign to use the key without prompting
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH"
+
+          # Make the temporary keychain the default for this job
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
 
           echo "Certificate imported successfully"
+
+      - name: Verify certificate is available
+        if: matrix.platform == 'macos'
+        env:
+          MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+        run: |
+          echo "Looking for certificate identity..."
+          security find-identity -v -p codesigning
+
+          if ! security find-identity -v -p codesigning | grep -q "$MACOS_CERTIFICATE_NAME"; then
+            echo "ERROR: Certificate '$MACOS_CERTIFICATE_NAME' was not found in the keychain after import."
+            echo "This usually means the certificate name/hash in the secret does not exactly match."
+            exit 1
+          fi
+
+          echo "✓ Certificate identity found in keychain"
 
       - name: Code Sign macOS App (Developer ID)
         if: matrix.platform == 'macos'
@@ -333,15 +355,19 @@ jobs:
 
           echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate..."
 
-          find "$APP_NAME/Contents/Frameworks" -name "*.framework" -o -name "*.dylib" | while read f; do
+          # Sign frameworks and dylibs first (inside-out signing)
+          find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) | while read f; do
             codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" 2>/dev/null || true
           done
 
+          # Sign other executables in Resources
           find "$APP_NAME/Contents/Resources" -type f -perm +111 | while read f; do
             codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" 2>/dev/null || true
           done
 
+          # Sign the main app bundle
           codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME"
+
           echo "✓ App signed with Developer ID"
 
 
