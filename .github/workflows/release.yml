@@ -285,12 +285,41 @@ jobs:
               --noconfirm
             echo "Sentiment classifier built at: $STT_DEST/sentiment_classifier/"
 
+            # Build Draw Things gRPC client (for local Draw Things backend image gen)
+            echo "Building Draw Things gRPC client..."
+            pyinstaller tools/dt-grpc-python/dt_grpc_client.py \
+              --onedir \
+              --name dt_grpc_client \
+              --collect-all grpcio \
+              --collect-all flatbuffers \
+              --collect-all fpzip \
+              --collect-all numpy \
+              --collect-all PIL \
+              --hidden-import grpc \
+              --hidden-import grpcio \
+              --hidden-import flatbuffers \
+              --hidden-import fpzip \
+              --hidden-import numpy \
+              --hidden-import PIL \
+              --hidden-import imageService_pb2 \
+              --hidden-import client \
+              --distpath "$STT_DEST" \
+              --workpath ./build_tmp/dt_grpc \
+              --specpath ./build_tmp/dt_grpc \
+              --clean \
+              --exclude-module torch \
+              --exclude-module torchvision \
+              --exclude-module torchaudio \
+              --noconfirm
+            echo "Draw Things gRPC client built at: $STT_DEST/dt_grpc_client/"
+
             # Save built engines to cache directory for next time
             mkdir -p "$CACHE_DIR"
             cp -r "${{ matrix.build_path }}/piper" "$CACHE_DIR/" 2>/dev/null || true
             cp -r "$STT_DEST/whisper_stt" "$CACHE_DIR/" 2>/dev/null || true
             cp -r "$STT_DEST/embed_server" "$CACHE_DIR/" 2>/dev/null || true
             cp -r "$STT_DEST/sentiment_classifier" "$CACHE_DIR/" 2>/dev/null || true
+            cp -r "$STT_DEST/dt_grpc_client" "$CACHE_DIR/" 2>/dev/null || true
           fi
 
           # For macOS, copy into the app bundle Resources (always runs)
@@ -318,6 +347,12 @@ jobs:
               mkdir -p "$SENTIMENT_RESOURCES"
               cp -R "${{ matrix.build_path }}/sentiment_classifier/"* "$SENTIMENT_RESOURCES/" 2>/dev/null || true
               chmod +x "$SENTIMENT_RESOURCES/sentiment_classifier" 2>/dev/null || true
+
+              # Draw Things gRPC client
+              DT_RESOURCES="$APP_NAME/Contents/Resources/dt_grpc"
+              mkdir -p "$DT_RESOURCES"
+              cp -R "${{ matrix.build_path }}/dt_grpc_client" "$DT_RESOURCES/" 2>/dev/null || true
+              chmod +x "$DT_RESOURCES/dt_grpc_client/dt_grpc_client" 2>/dev/null || true
             fi
           fi
 
@@ -348,6 +383,12 @@ jobs:
               mkdir -p "$SENTIMENT_RESOURCES"
               cp -R "$STT_DEST/sentiment_classifier/"* "$SENTIMENT_RESOURCES/"
               chmod +x "$SENTIMENT_RESOURCES/sentiment_classifier"
+
+              # Draw Things gRPC client (separate folder so it doesn't conflict with other engines)
+              DT_RESOURCES="$APP_NAME/Contents/Resources/dt_grpc"
+              mkdir -p "$DT_RESOURCES"
+              cp -R "$STT_DEST/dt_grpc_client" "$DT_RESOURCES/"
+              chmod +x "$DT_RESOURCES/dt_grpc_client/dt_grpc_client" 2>/dev/null || true
             fi
           fi
 
