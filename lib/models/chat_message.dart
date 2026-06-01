@@ -31,7 +31,7 @@ enum GenerationPhase {
   /// For KoboldCPP this is the prefill/eval phase which can be long.
   prefilling,
 
-  /// Tokens arriving but inside <think>...</think> tags (reasoning model).
+  /// Tokens arriving but inside &lt;think&gt;...&lt;/think&gt; tags (reasoning model).
   thinking,
 
   /// Display buffer is accumulating tokens before smooth playback begins.
@@ -60,7 +60,7 @@ class ChatMessage {
     }
   }
 
-  /// Returns text with <think>...</think> blocks removed for display.
+  /// Returns text with &lt;think&gt;...&lt;/think&gt; blocks removed for display.
   /// Also handles in-progress thinking (no closing tag yet during streaming).
   String get displayText {
     final raw = text;
@@ -77,7 +77,7 @@ class ChatMessage {
     return result.trim();
   }
 
-  /// Returns the thinking content (between <think> tags), or null if none.
+  /// Returns the thinking content (between &lt;think&gt; tags), or null if none.
   /// Handles both completed and in-progress (streaming) think blocks.
   String? get thinkingContent {
     // Try completed think block first

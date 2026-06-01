@@ -369,3 +369,14 @@ If a PR introduces regressions:
 - [ ] No new files added to `lib/services/services.dart` barrel unless they are used from 3+ locations.
 - [ ] No state-management pattern change (still `ChangeNotifier`, not Riverpod).
 - [ ] Old API preserved via `@Deprecated` shim where callers exist outside the extracted file.
+
+## Lint Hygiene Pass (Stage 1 Worktree)
+
+During the god-file refactoring on `stage1-experiment`, a dedicated cleanup eliminated all warnings (unused_*, dead_code) from group_settings_dialog.dart and chat_page.dart by removing confirmed-dead placeholder methods/fields left from 2026 UX changes. Also fixed:
+
+- All 9 curly_braces_in_flow_control_structures (mechanical blocks added in tier color helper).
+- ~23 easy `withOpacity` → `withValues(alpha:)` deprecations limited to 4 small files (stable_db_import_dialog, chance_time_overlay, app_text_field, slider_with_input) — no god-file churn.
+- 12+ unintended_html_in_doc_comment via minimal &lt;/&gt; entities or {groupId} in path/type examples (database, models/chat_message + group_member, embedding_sidecar) — no prompt string changes or large diffs.
+- use_null_aware_elements and Radio deprecations left as wontfix (non-straightforward or would alter structure/prompt fidelity).
+
+Result: 138 → 85 issues (0 warnings). All changes followed "0 new private methods", barrel/AppColors rules, and were verified with analyze + model tests after each batch. This work is recorded here because it occurred inside the isolated stage1 worktree. See /tmp/grok-impl-summary-47207bb1.md for full details.

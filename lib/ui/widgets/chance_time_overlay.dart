@@ -262,15 +262,15 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         maxHeight: MediaQuery.of(context).size.height * 0.88,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D1117).withOpacity(0.97),
+        color: const Color(0xFF0D1117).withValues(alpha: 0.97),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: const Color(0xFFFFD166).withOpacity(0.4),
+          color: const Color(0xFFFFD166).withValues(alpha: 0.4),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFD166).withOpacity(0.15),
+            color: const Color(0xFFFFD166).withValues(alpha: 0.15),
             blurRadius: 40,
             spreadRadius: 4,
           ),
@@ -305,7 +305,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
           decoration: BoxDecoration(
             gradient: RadialGradient(
               colors: [
-                const Color(0xFFFFD166).withOpacity(0.3),
+                const Color(0xFFFFD166).withValues(alpha: 0.3),
                 Colors.transparent,
               ],
             ),
@@ -350,7 +350,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
               gradient: RadialGradient(
                 colors: [
                   Colors.transparent,
-                  const Color(0xFFFFD166).withOpacity(0.25),
+                  const Color(0xFFFFD166).withValues(alpha: 0.25),
                 ],
                 stops: const [0.85, 1.0],
               ),
@@ -421,7 +421,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
           borderRadius: BorderRadius.circular(50),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFFFD166).withOpacity(0.5),
+              color: const Color(0xFFFFD166).withValues(alpha: 0.5),
               blurRadius: 20,
               spreadRadius: 2,
             ),
@@ -484,7 +484,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                         letterSpacing: 1.2,
                         shadows: [
                           Shadow(
-                            color: catColor.withOpacity(0.6),
+                            color: catColor.withValues(alpha: 0.6),
                             blurRadius: 12,
                           ),
                         ],
@@ -510,15 +510,15 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: catColor.withOpacity(0.12),
+                    color: catColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: catColor.withOpacity(0.5),
+                      color: catColor.withValues(alpha: 0.5),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: catColor.withOpacity(0.18),
+                        color: catColor.withValues(alpha: 0.18),
                         blurRadius: 20,
                         spreadRadius: 2,
                       ),
@@ -595,7 +595,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                     width: double.infinity,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      color: catColor.withOpacity(0.25),
+                      color: catColor.withValues(alpha: 0.25),
                     ),
                   ),
                 ),
@@ -613,7 +613,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      color: const Color(0xFFFFD166).withOpacity(0.35),
+                      color: const Color(0xFFFFD166).withValues(alpha: 0.35),
                     ),
                   ),
                 ),
@@ -629,7 +629,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                       gradient: LinearGradient(
                         colors: [
                           Colors.transparent,
-                          const Color(0xFF9B5DE5).withOpacity(0.5 * (1 - t)),
+                          const Color(0xFF9B5DE5).withValues(alpha: 0.5 * (1 - t)),
                           Colors.transparent,
                         ],
                       ),
@@ -719,7 +719,7 @@ class _ConfettiPainter extends CustomPainter {
     for (final p in _pieces) {
       final y = p.startY + progress * p.speed * 1.6;
       if (y < 0 || y > 1.1) continue;
-      paint.color = p.color.withOpacity((1 - progress).clamp(0, 1));
+      paint.color = p.color.withValues(alpha: (1 - progress).clamp(0, 1));
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(

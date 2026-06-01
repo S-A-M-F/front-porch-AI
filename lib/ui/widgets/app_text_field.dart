@@ -256,7 +256,7 @@ class AppTextField extends StatelessWidget {
         misspelledTextStyle: showMisspellings
             ? TextStyle(
                 decoration: TextDecoration.underline,
-                decorationColor: Colors.redAccent.withOpacity(0.6),
+                decorationColor: Colors.redAccent.withValues(alpha: 0.6),
                 decorationStyle: TextDecorationStyle.wavy,
               )
             : const TextStyle(), // no visual — preserves custom coloring

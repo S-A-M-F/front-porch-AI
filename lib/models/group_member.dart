@@ -28,7 +28,7 @@ import 'package:front_porch_ai/models/lorebook.dart';
 ///
 /// All card data lives in typed columns in the group_members Drift table.
 /// Avatar is a single primary PNG in the group's private storage
-/// (groups/<groupId>/avatars/<memberId>.png, built with groupsDir + path.join; no dedicated helpers).
+/// (groups/&lt;groupId&gt;/avatars/&lt;memberId&gt;.png, built with groupsDir + path.join; no dedicated helpers).
 /// No multi-avatar or expressions.
 ///
 /// Internal id is a UUID (generated at the moment the member is copied into

@@ -1074,8 +1074,9 @@ class _ChatPageState extends State<ChatPage> {
                     left: i * 16.0,
                     child: Tooltip(
                       message: () {
-                        if (!chatService.isGroupRealismActive)
+                        if (!chatService.isGroupRealismActive) {
                           return chars[i].name;
+                        }
                         final emo = chatService.getEmotionForGroupCharacter(
                           chars[i],
                         );
@@ -2571,8 +2572,9 @@ class _ChatPageState extends State<ChatPage> {
                   // Image Generation Menu
                   Consumer<StorageService>(
                     builder: (context, storage, _) {
-                      if (!storage.imageGenEnabled)
+                      if (!storage.imageGenEnabled) {
                         return const SizedBox.shrink();
+                      }
                       return PopupMenuButton<ImageGenMode>(
                         icon: const Icon(
                           Icons.auto_awesome,
@@ -4033,112 +4035,6 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ],
       ),
-    );
-  }
-
-  void _showVoicePickerForCharacter(CharacterCard character) {
-    final tts = Provider.of<TtsService>(context, listen: false);
-    final voices = tts.activeVoices;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: AppColors.surfaceOf(context),
-          title: Text(
-            'Voice for ${character.name}',
-            style: const TextStyle(fontSize: 16),
-          ),
-          content: SizedBox(
-            width: 300,
-            height: 400,
-            child: voices.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No voices available.\nConfigure a TTS engine in TTS Settings first.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                  )
-                : ListView(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.block, color: Colors.white38),
-                        title: const Text(
-                          'Use global default',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        selected: character.ttsVoice == null,
-                        selectedTileColor: Colors.blueAccent.withValues(
-                          alpha: 0.1,
-                        ),
-                        onTap: () {
-                          Provider.of<CharacterRepository>(
-                            ctx,
-                            listen: false,
-                          ).setTtsVoice(character, null);
-                          Navigator.pop(ctx);
-                          setState(() {});
-                        },
-                      ),
-                      ...voices.map(
-                        (v) => ListTile(
-                          leading: Icon(
-                            v.gender == 'Female'
-                                ? Icons.female
-                                : v.gender == 'Male'
-                                ? Icons.male
-                                : Icons.record_voice_over,
-                            size: 18,
-                            color: v.gender == 'Female'
-                                ? Colors.pinkAccent
-                                : v.gender == 'Male'
-                                ? Colors.cyanAccent
-                                : Colors.amberAccent,
-                          ),
-                          title: Text(
-                            v.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                            ),
-                          ),
-                          subtitle: Text(
-                            () {
-                              final base = '${v.language} · ${v.gender}';
-                              final currentEngine = Provider.of<StorageService>(
-                                ctx,
-                                listen: false,
-                              ).ttsEngine;
-                              if (v.engine != currentEngine) {
-                                return '$base (incompatible with $currentEngine)';
-                              }
-                              return base;
-                            }(),
-                            style: const TextStyle(
-                              color: Colors.white38,
-                              fontSize: 10,
-                            ),
-                          ),
-                          selected: character.ttsVoice == v.id,
-                          selectedTileColor: Colors.blueAccent.withValues(
-                            alpha: 0.1,
-                          ),
-                          onTap: () {
-                            Provider.of<CharacterRepository>(
-                              ctx,
-                              listen: false,
-                            ).setTtsVoice(character, v.id);
-                            Navigator.pop(ctx);
-                            setState(() {});
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        );
-      },
     );
   }
 
@@ -9045,50 +8941,57 @@ class _RealismSectionState extends State<_RealismSection> {
           }
 
           // Negative tiers (mostly dark reds/browns in dark mode — they become readable darks on light)
-          if (tier >= -1)
+          if (tier >= -1) {
             return AppColors.resolve(
               context,
               Colors.orangeAccent.shade100,
               Colors.orange.shade700,
             );
-          if (tier >= -2)
+          }
+          if (tier >= -2) {
             return AppColors.resolve(
               context,
               Colors.redAccent.shade100,
               Colors.red.shade600,
             );
+          }
           if (tier >= -3) return Colors.redAccent;
           if (tier >= -4) return Colors.red;
-          if (tier >= -5)
+          if (tier >= -5) {
             return AppColors.resolve(
               context,
               Colors.red.shade900,
               Colors.red.shade800,
             );
-          if (tier >= -6)
+          }
+          if (tier >= -6) {
             return AppColors.resolve(
               context,
               Colors.brown.shade900,
               Colors.brown.shade700,
             );
-          if (tier >= -7)
+          }
+          if (tier >= -7) {
             return AppColors.resolve(
               context,
               Colors.deepOrange.shade900,
               Colors.deepOrange.shade700,
             );
-          if (tier >= -8)
+          }
+          if (tier >= -8) {
             return AppColors.resolve(
               context,
               Colors.amber.shade900,
               Colors.amber.shade800,
             );
-          if (tier >= -9)
+          }
+          if (tier >= -9) {
             return AppColors.resolve(
               context,
               Colors.orange.shade900,
               Colors.orange.shade800,
             );
+          }
           return AppColors.textPrimary(context);
         }
 

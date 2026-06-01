@@ -53,8 +53,8 @@ class EmbeddingSidecar extends ChangeNotifier {
   /// Resolve the path to the embed_server binary.
   ///
   /// Release layout:
-  ///   Windows/Linux: <exe_dir>/embed_server/embed_server(.exe)
-  ///   macOS:         <bundle>/Contents/Resources/embed_server/embed_server
+  ///   Windows/Linux: &lt;exe_dir&gt;/embed_server/embed_server(.exe)
+  ///   macOS:         &lt;bundle&gt;/Contents/Resources/embed_server/embed_server
   ///
   /// Dev mode: walk up from exe dir looking for embed_server.py
   String? get _binaryPath {
