@@ -106,19 +106,19 @@ echo "==> Building Draw Things gRPC client (dt_grpc_client)..."
 pyinstaller tools/dt-grpc-python/dt_grpc_client.py \
   --onedir \
   --name dt_grpc_client \
-  --paths tools/dt-grpc-python \
-  --add-data "tools/dt-grpc-python/client.py:." \
-  --add-data "tools/dt-grpc-python/imageService_pb2.py:." \
-  --add-data "tools/dt-grpc-python/imageService_pb2_grpc.py:." \
-  --add-data "tools/dt-grpc-python/GenerationConfiguration.py:." \
-  --add-data "tools/dt-grpc-python/SamplerType.py:." \
-  --add-data "tools/dt-grpc-python/SeedMode.py:." \
-  --add-data "tools/dt-grpc-python/LoRA.py:." \
-  --add-data "tools/dt-grpc-python/LoRAMode.py:." \
-  --add-data "tools/dt-grpc-python/Control.py:." \
-  --add-data "tools/dt-grpc-python/ControlInputType.py:." \
-  --add-data "tools/dt-grpc-python/ControlMode.py:." \
-  --add-data "tools/dt-grpc-python/ca_chain.pem:." \
+  --paths "$ROOT/tools/dt-grpc-python" \
+  --add-data "$ROOT/tools/dt-grpc-python/client.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/imageService_pb2.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/imageService_pb2_grpc.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/GenerationConfiguration.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/SamplerType.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/SeedMode.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/LoRA.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/LoRAMode.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/Control.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/ControlInputType.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/ControlMode.py:." \
+  --add-data "$ROOT/tools/dt-grpc-python/ca_chain.pem:." \
   --collect-all grpc \
   --collect-all grpcio \
   --collect-all flatbuffers \
