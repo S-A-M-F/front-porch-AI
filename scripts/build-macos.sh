@@ -98,10 +98,27 @@ pyinstaller piper_entry.py \
 echo "Piper built at: $ML_DEST/piper/"
 
 # Build Draw Things gRPC client (for local Draw Things macOS image gen via private gRPC+FlatBuffer)
+# --add-data: PyInstaller only includes what it can statically trace. dt_grpc_client.py imports
+# client.py and the pb2 files via sys.path.insert(0, dirname(__file__)), which is a runtime trick
+# that doesn't exist inside a frozen bundle. --add-data copies those files into the bundle so the
+# import resolves at runtime. Without this, the bundled binary crashes on ImportError for 'client'.
 echo "==> Building Draw Things gRPC client (dt_grpc_client)..."
 pyinstaller tools/dt-grpc-python/dt_grpc_client.py \
   --onedir \
   --name dt_grpc_client \
+  --paths tools/dt-grpc-python \
+  --add-data "tools/dt-grpc-python/client.py:." \
+  --add-data "tools/dt-grpc-python/imageService_pb2.py:." \
+  --add-data "tools/dt-grpc-python/imageService_pb2_grpc.py:." \
+  --add-data "tools/dt-grpc-python/GenerationConfiguration.py:." \
+  --add-data "tools/dt-grpc-python/SamplerType.py:." \
+  --add-data "tools/dt-grpc-python/SeedMode.py:." \
+  --add-data "tools/dt-grpc-python/LoRA.py:." \
+  --add-data "tools/dt-grpc-python/LoRAMode.py:." \
+  --add-data "tools/dt-grpc-python/Control.py:." \
+  --add-data "tools/dt-grpc-python/ControlInputType.py:." \
+  --add-data "tools/dt-grpc-python/ControlMode.py:." \
+  --add-data "tools/dt-grpc-python/ca_chain.pem:." \
   --collect-all grpc \
   --collect-all grpcio \
   --collect-all flatbuffers \
