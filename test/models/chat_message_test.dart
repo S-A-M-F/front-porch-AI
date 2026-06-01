@@ -13,17 +13,20 @@ import 'package:front_porch_ai/models/chat_message.dart';
 
 void main() {
   group('ChatMessage construction and swipes', () {
-    test('defaults swipes, swipeIndex, swipeDurations, swipeMetadata from text', () {
-      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
-      expect(msg.swipes, ['Hello']);
-      expect(msg.swipeIndex, 0);
-      expect(msg.swipeDurations, [0]);
-      expect(msg.swipeMetadata, [null]);
-      expect(msg.text, 'Hello');
-      expect(msg.sender, 'Luna');
-      expect(msg.isUser, false);
-      expect(msg.characterId, isNull);
-    });
+    test(
+      'defaults swipes, swipeIndex, swipeDurations, swipeMetadata from text',
+      () {
+        final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
+        expect(msg.swipes, ['Hello']);
+        expect(msg.swipeIndex, 0);
+        expect(msg.swipeDurations, [0]);
+        expect(msg.swipeMetadata, [null]);
+        expect(msg.text, 'Hello');
+        expect(msg.sender, 'Luna');
+        expect(msg.isUser, false);
+        expect(msg.characterId, isNull);
+      },
+    );
 
     test('accepts explicit swipes, index, durations, metadata', () {
       final msg = ChatMessage(
@@ -34,7 +37,11 @@ void main() {
         swipeIndex: 2,
         swipeDurations: [10, 20, 30],
         metadata: {'k': 'v'},
-        swipeMetadata: [null, null, {'x': 1}],
+        swipeMetadata: [
+          null,
+          null,
+          {'x': 1},
+        ],
       );
       expect(msg.swipes, ['A', 'B', 'C']);
       expect(msg.swipeIndex, 2);
@@ -127,17 +134,24 @@ void main() {
       expect(msg.thinkingContent, 'still thinking');
     });
 
-    test('hasThinking is true when thinkingContent present or duration > 0', () {
-      final withTag = ChatMessage(text: 'x <think>y</think>', sender: 'L', isUser: false);
-      expect(withTag.hasThinking, true);
+    test(
+      'hasThinking is true when thinkingContent present or duration > 0',
+      () {
+        final withTag = ChatMessage(
+          text: 'x <think>y</think>',
+          sender: 'L',
+          isUser: false,
+        );
+        expect(withTag.hasThinking, true);
 
-      final withDuration = ChatMessage(text: 'x', sender: 'L', isUser: false);
-      withDuration.thinkingDurationMs = 123;
-      expect(withDuration.hasThinking, true);
+        final withDuration = ChatMessage(text: 'x', sender: 'L', isUser: false);
+        withDuration.thinkingDurationMs = 123;
+        expect(withDuration.hasThinking, true);
 
-      final neither = ChatMessage(text: 'plain', sender: 'L', isUser: false);
-      expect(neither.hasThinking, false);
-    });
+        final neither = ChatMessage(text: 'plain', sender: 'L', isUser: false);
+        expect(neither.hasThinking, false);
+      },
+    );
   });
 
   group('ChatMessage thinkingDurationMs', () {
@@ -187,14 +201,22 @@ void main() {
         isUser: false,
         metadata: {'legacy': 1},
         swipes: ['m0', 'm1'],
-        swipeMetadata: [null, {'per': 2}],
+        swipeMetadata: [
+          null,
+          {'per': 2},
+        ],
         swipeIndex: 1,
       );
       expect(msg.activeMetadata, {'per': 2});
     });
 
     test('activeMetadata setter grows swipeMetadata list', () {
-      final msg = ChatMessage(text: 'm', sender: 'L', isUser: false, swipeIndex: 0);
+      final msg = ChatMessage(
+        text: 'm',
+        sender: 'L',
+        isUser: false,
+        swipeIndex: 0,
+      );
       msg.activeMetadata = {'set': 'value'};
       expect(msg.swipeMetadata[0], {'set': 'value'});
       expect(msg.activeMetadata, {'set': 'value'});
@@ -238,7 +260,10 @@ void main() {
         text: 'x',
         sender: 'L',
         isUser: false,
-        swipeMetadata: [null, {'a': 1}],
+        swipeMetadata: [
+          null,
+          {'a': 1},
+        ],
         swipeIndex: 1,
       );
       expect(msgWith.toJson().containsKey('swipe_metadata'), true);
@@ -261,35 +286,37 @@ void main() {
       expect(restored.swipes, ['round']);
     });
 
-    test('fromJson roundtrips swipes, index, durations, characterId, metadata', () {
-      final original = ChatMessage(
-        text: 's0',
-        sender: 'Char',
-        isUser: false,
-        characterId: 'c-uuid',
-        swipes: ['s0', 's1'],
-        swipeIndex: 1,
-        swipeDurations: [5, 15],
-        metadata: {'foo': 'bar'},
-        swipeMetadata: [null, {'sw': true}],
-      );
-      final restored = ChatMessage.fromJson(original.toJson());
-      expect(restored.swipes, ['s0', 's1']);
-      expect(restored.swipeIndex, 1);
-      expect(restored.text, 's1');
-      expect(restored.swipeDurations, [5, 15]);
-      expect(restored.characterId, 'c-uuid');
-      expect(restored.metadata, {'foo': 'bar'});
-      expect(restored.swipeMetadata[1], {'sw': true});
-      expect(restored.activeMetadata, {'sw': true});
-    });
+    test(
+      'fromJson roundtrips swipes, index, durations, characterId, metadata',
+      () {
+        final original = ChatMessage(
+          text: 's0',
+          sender: 'Char',
+          isUser: false,
+          characterId: 'c-uuid',
+          swipes: ['s0', 's1'],
+          swipeIndex: 1,
+          swipeDurations: [5, 15],
+          metadata: {'foo': 'bar'},
+          swipeMetadata: [
+            null,
+            {'sw': true},
+          ],
+        );
+        final restored = ChatMessage.fromJson(original.toJson());
+        expect(restored.swipes, ['s0', 's1']);
+        expect(restored.swipeIndex, 1);
+        expect(restored.text, 's1');
+        expect(restored.swipeDurations, [5, 15]);
+        expect(restored.characterId, 'c-uuid');
+        expect(restored.metadata, {'foo': 'bar'});
+        expect(restored.swipeMetadata[1], {'sw': true});
+        expect(restored.activeMetadata, {'sw': true});
+      },
+    );
 
     test('fromJson handles legacy single text + missing arrays gracefully', () {
-      final json = {
-        'text': 'legacy',
-        'sender': 'Old',
-        'is_user': false,
-      };
+      final json = {'text': 'legacy', 'sender': 'Old', 'is_user': false};
       final msg = ChatMessage.fromJson(json);
       expect(msg.text, 'legacy');
       expect(msg.swipes, ['legacy']);
@@ -305,7 +332,10 @@ void main() {
         'swipes': ['t', 't2'],
         'swipe_index': 1,
         'swipe_durations': [0, 0],
-        'swipe_metadata': [null, {'k': 9}],
+        'swipe_metadata': [
+          null,
+          {'k': 9},
+        ],
       };
       final msg = ChatMessage.fromJson(json);
       expect(msg.swipeMetadata.length, 2);
