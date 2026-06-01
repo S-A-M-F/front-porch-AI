@@ -684,6 +684,15 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  /// Initializes the needs vector to full (100) for a brand new scene/chat.
+  /// Used for explicit "Start New Chat" and first-session-for-character flows so
+  /// a fresh RP always begins with all needs maxed, rather than the tuned
+  /// "mid-scene starting point" in _needDefaults. Prevents the perception of
+  /// "needs bleed" on newly imported characters or new conversations.
+  void _initializeFreshNeedsVector() {
+    _needsVector = {for (final k in _needKeys) k: 100};
+  }
+
   String _serializeNeeds() {
     return jsonEncode(_needsVector);
   }
@@ -2192,6 +2201,10 @@ class ChatService extends ChangeNotifier {
     _currentSessionId = null;
     _summary = '';
     _summaryLastIndex = 0;
+    // Clear fork/branch state so it doesn't leak from previous character
+    // into a fresh character's first session (see startNewChat for details).
+    _parentSessionId = null;
+    _forkIndex = null;
     _isLoadingSession = true;
     notifyListeners();
 
@@ -2290,7 +2303,9 @@ class ChatService extends ChangeNotifier {
           _needsSimEnabled = ext.needsSimEnabled;
           _enjoysLowHygiene = ext.enjoysLowHygiene;
           if (_needsSimEnabled) {
-            _initializeNeedsVectorIfNeeded();
+            // Brand new conversation for this character (no prior session loaded):
+            // start needs at 100 so a just-imported card + first chat feels fresh.
+            _initializeFreshNeedsVector();
           } else {
             _needsVector.clear();
           }
@@ -2394,6 +2409,10 @@ class ChatService extends ChangeNotifier {
     );
     _messages.clear();
     _currentSessionId = null;
+    // Clear fork/branch state so it doesn't leak across group switches
+    // (see startNewChat and setActiveCharacter for rationale).
+    _parentSessionId = null;
+    _forkIndex = null;
     _isLoadingSession = true;
     notifyListeners();
 
@@ -3111,6 +3130,9 @@ class ChatService extends ChangeNotifier {
 
     if (sessions.isEmpty) {
       debugPrint('[ChatService] _loadLastSession: No previous sessions found');
+      // Ensure no stale fork/parent state remains from a prior character/group.
+      _parentSessionId = null;
+      _forkIndex = null;
       return;
     }
 
@@ -3765,6 +3787,16 @@ class ChatService extends ChangeNotifier {
     _summary = '';
     _summaryLastIndex = 0;
 
+    // Explicitly clear any prior branching/fork metadata. A "New Chat" is
+    // never a branch/fork from a previous session. This prevents stale
+    // _parentSessionId / _forkIndex (from a previous branched chat or
+    // different character) from being written into the brand-new session
+    // record via _saveChat(), which was causing new chats to incorrectly
+    // show "Branched at message #NNNN" in history lists even for characters
+    // with no prior chats.
+    _parentSessionId = null;
+    _forkIndex = null;
+
     // Mark this as a new chat to prevent memory retrieval
     _isNewChat = true;
     debugPrint('[startNewChat] Marked as new chat - memories will be filtered');
@@ -3827,7 +3859,10 @@ class ChatService extends ChangeNotifier {
       _needsSimEnabled = extSeed.needsSimEnabled;
       _enjoysLowHygiene = extSeed.enjoysLowHygiene;
       if (_needsSimEnabled) {
-        _initializeNeedsVectorIfNeeded();
+        // Fresh chat / new session: start all needs at 100 (full). The varied
+        // _needDefaults are the "sensible mid-scene" curve used for legacy
+        // restores or when the user toggles Needs on mid-chat.
+        _initializeFreshNeedsVector();
       } else {
         _needsVector.clear();
       }
@@ -10661,11 +10696,9 @@ class ChatService extends ChangeNotifier {
       _needsVector.clear();
       _needsVector.addAll(needs);
     } else if (_needsSimEnabled) {
-      // Sensible fresh start for a speaker who has never had needs ticked yet
-      _needsVector.clear();
-      for (final k in _needKeys) {
-        _needsVector[k] = 80;
-      }
+      // Fresh start for a group member who has never had needs for this group chat.
+      // Use full 100 to match 1:1 "new chat" behavior (prevents bleed perception).
+      _initializeFreshNeedsVector();
     }
   }
 
