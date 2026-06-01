@@ -247,6 +247,15 @@ class ChatService extends ChangeNotifier {
   TtsService? _ttsService;
   MemoryService? _memoryService;
 
+  /// Test-only overrides for driving the real LLM paths (realism evals +
+  /// chat generation) with canned responses without constructing a full
+  /// LLMProvider (heavy deps). Used by chat_service_*_test.dart and
+  /// chat_service_realism_engine_test.dart (the new real-engine suite).
+  @visibleForTesting
+  LLMService? testLlmServiceOverride;
+  @visibleForTesting
+  bool testIsLocalOverride = false;
+
   // Action suggestions
   List<String> _suggestedActions = [];
   bool _isGeneratingActions = false;
@@ -1921,7 +1930,7 @@ class ChatService extends ChangeNotifier {
       );
       return;
     }
-    final llmService = _llmProvider?.activeService ?? _koboldService;
+    final llmService = testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
     if (!llmService.isReady) {
       debugPrint('[Expression] reclassify: LLM not ready, skipping');
       return;
@@ -5187,7 +5196,7 @@ class ChatService extends ChangeNotifier {
         stopSequences.add('\n${_activeCharacter!.name}:');
       }
 
-      final llmService = _llmProvider?.activeService ?? _koboldService;
+      final llmService = testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
       final genParams = GenerationParams(
         prompt: prompt,
         systemPrompt: chatSystemPrompt,
@@ -5976,7 +5985,7 @@ class ChatService extends ChangeNotifier {
       final stopList = stopSequences.toList();
 
       // Get the active LLM service (local or remote)
-      final llmService = _llmProvider?.activeService ?? _koboldService;
+      final llmService = testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
 
       // For call mode with a dedicated call model, temporarily swap the model
       if (_callMode &&
@@ -6883,7 +6892,7 @@ class ChatService extends ChangeNotifier {
     if (_isGenerating) {
       _cancelRequested = true;
       // Abort the in-flight HTTP request so we don't have to wait for the next token
-      _llmProvider?.activeService.abortGeneration();
+      (testLlmServiceOverride ?? _llmProvider?.activeService)?.abortGeneration();
     }
   }
 
@@ -7587,7 +7596,7 @@ class ChatService extends ChangeNotifier {
     _isCheckingCompletion = true;
 
     try {
-      final llmService = _llmProvider?.activeService;
+      final llmService = testLlmServiceOverride ?? _llmProvider?.activeService;
       if (llmService == null || !llmService.isReady) return;
 
       final recentMessages = _messages.length > 8
@@ -8906,20 +8915,25 @@ class ChatService extends ChangeNotifier {
     String prompt, {
     void Function(String)? onChunk,
   }) async {
-    if (_llmProvider == null) return null;
-    final llm = _llmProvider!.activeService;
+    if (_llmProvider == null && testLlmServiceOverride == null) return null;
+    final llm = testLlmServiceOverride ?? _llmProvider!.activeService;
     // For remote backends, require full readiness (API key + model configured).
     // For local KoboldCPP: if state says not-running, do a live probe first —
     // the constructor probe is a best-effort fast path but can lose the race
     // against session load on hot restart. This on-demand probe is definitive.
-    if (_llmProvider!.isLocal) {
-      final kobold = _llmProvider!.koboldService;
-      if (!kobold.isProcessRunning) {
+    final bool effectiveIsLocal = testLlmServiceOverride != null
+        ? testIsLocalOverride
+        : _llmProvider!.isLocal;
+    if (effectiveIsLocal) {
+      final kobold = _llmProvider?.koboldService;
+      if (kobold != null && !kobold.isProcessRunning) {
         // Probe takes ~2–5 ms if KoboldCPP is up, times out after 5 s if not.
         await kobold.reconnectIfAlive();
       }
       // After probe, if still not running the server genuinely isn't up.
-      if (!kobold.isProcessRunning) return null;
+      if (kobold != null && !kobold.isProcessRunning) return null;
+      // If test override with local=true but no real kobold, we let it proceed
+      // (caller is responsible for the fake being "ready").
     } else {
       if (!llm.isReady) return null;
     }
@@ -8961,7 +8975,8 @@ class ChatService extends ChangeNotifier {
           '[Realism:Eval] Retrying after connection drop (attempt ${attempt + 1})...',
         );
         await Future.delayed(const Duration(seconds: 3));
-        if (_llmProvider!.isLocal) {
+        final bool retryIsLocal = testLlmServiceOverride != null ? testIsLocalOverride : (_llmProvider?.isLocal ?? false);
+        if (retryIsLocal && _llmProvider != null) {
           await _llmProvider!.koboldService.ensureServerIdle();
         }
         response = ''; // reset for clean retry
@@ -9048,7 +9063,7 @@ class ChatService extends ChangeNotifier {
     // Save in background - don't await
     Future.microtask(() => _saveChat());
 
-    final llmService = _llmProvider?.activeService ?? _koboldService;
+    final llmService = testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
     debugPrint('[Realism] Realism eval cancel requested');
     try {
       llmService.abortGeneration();
