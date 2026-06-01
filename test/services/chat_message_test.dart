@@ -5,7 +5,7 @@
 // Covers serialization, swipe handling, thinking tag stripping, and metadata.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/models/chat_message.dart';
 
 /// Helper to build text with thinking tags (tags rendered invisibly in terminal).
 String _thinkingText({required String content, bool inProgress = false}) {

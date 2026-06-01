@@ -6,7 +6,7 @@
 // restoration across session boundaries.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/models/chat_message.dart';
 
 // ── Stub: Minimal session management tracker ────────────────────────
 // Replicates the session-related fields and transitions from ChatService.
