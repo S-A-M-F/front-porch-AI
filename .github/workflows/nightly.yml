@@ -172,6 +172,16 @@ jobs:
           CXXFLAGS: "-Wno-unknown-warning-option"
         run: flutter build linux --release
 
+      - name: Rename macOS app bundle for Rawhide Nightly (collision avoidance)
+        if: matrix.platform == 'macos'
+        run: |
+          cd build/macos/Build/Products/Release
+          if [ -d FrontPorchAI.app ]; then
+            mv FrontPorchAI.app FrontPorchAI-Rawhide.app
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Front Porch AI Nightly" FrontPorchAI-Rawhide.app/Contents/Info.plist 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName Front Porch AI Nightly" FrontPorchAI-Rawhide.app/Contents/Info.plist 2>/dev/null || true
+          fi
+
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
         run: |
@@ -378,7 +388,7 @@ jobs:
         run: |
           choco install innosetup -y --no-progress
           $ISCC = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $ISCC /DPRE_RELEASE=1 /DMyAppVersion="${{ steps.version.outputs.VERSION }}" /DMyAppBuildDir="${{ github.workspace }}\${{ matrix.build_path }}" /DMyAppLicenseFile="${{ github.workspace }}\LICENSE" /DMyAppIconFile="${{ github.workspace }}\windows\runner\resources\app_icon.ico" "installers\windows\setup.iss"
+          & $ISCC /DPRE_RELEASE=1 /DNIGHTLY=1 /DMyAppVersion="${{ steps.version.outputs.VERSION }}" /DMyAppBuildDir="${{ github.workspace }}\${{ matrix.build_path }}" /DMyAppLicenseFile="${{ github.workspace }}\LICENSE" /DMyAppIconFile="${{ github.workspace }}\windows\runner\resources\app_icon.ico" "installers\windows\setup.iss"
           # The .iss produces Front_Porch_AI_Beta_Setup.exe when PRE_RELEASE=1 — rename it for Nightly
           Copy-Item "installers\windows\Front_Porch_AI_Beta_Setup.exe" -Destination "Front_Porch_AI_Nightly_Setup.exe" -Force
         shell: pwsh
@@ -466,7 +476,7 @@ jobs:
       - name: Clean xattrs from app bundle (required for notarization)
         if: matrix.platform == 'macos'
         run: |
-          APP_PATH="build/macos/Build/Products/Release/FrontPorchAI.app"
+          APP_PATH=$(ls -d build/macos/Build/Products/Release/*.app 2>/dev/null | head -1)
           xattr -cr "$APP_PATH" || true
           find "$APP_PATH" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
 
