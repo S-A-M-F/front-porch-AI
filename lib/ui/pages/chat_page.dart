@@ -11613,8 +11613,8 @@ class _ObjectiveCheckOverlayState extends State<_ObjectiveCheckOverlay>
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: Colors.white.withOpacity(
-                                  0.22 + 0.12 * _pulse.value,
+                                color: Colors.white.withValues(
+                                  alpha: 0.22 + 0.12 * _pulse.value,
                                 ),
                                 height: 1.65,
                               ),
@@ -11647,22 +11647,26 @@ class _AnimatedEvalPill extends StatelessWidget {
       builder: (_, _) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: pill.color.withOpacity(0.07 + 0.04 * pulseAnimation.value),
+          color: pill.color.withValues(
+            alpha: 0.07 + 0.04 * pulseAnimation.value,
+          ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: pill.color.withOpacity(0.2 + 0.1 * pulseAnimation.value),
+            color: pill.color.withValues(
+              alpha: 0.2 + 0.1 * pulseAnimation.value,
+            ),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(pill.icon, size: 12, color: pill.color.withOpacity(0.85)),
+            Icon(pill.icon, size: 12, color: pill.color.withValues(alpha: 0.85)),
             const SizedBox(width: 5),
             Text(
               pill.label,
               style: TextStyle(
                 fontSize: 11,
-                color: pill.color.withOpacity(0.9),
+                color: pill.color.withValues(alpha: 0.9),
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.3,
               ),
@@ -11769,7 +11773,7 @@ class _GenerationStatusBarState extends State<_GenerationStatusBar> {
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: accentColor.withOpacity(0.9),
+                    color: accentColor.withValues(alpha: 0.9),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -11791,7 +11795,7 @@ class _GenerationStatusBarState extends State<_GenerationStatusBar> {
                 Text(
                   '${cs.tokensGenerated} / ${cs.maxTokens}',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     fontSize: 11,
                     fontFamily: 'monospace',
                   ),
@@ -11831,7 +11835,7 @@ class _GenerationStatusBarState extends State<_GenerationStatusBar> {
       return LinearProgressIndicator(
         value: cs.generationProgress,
         minHeight: 4,
-        backgroundColor: Colors.white.withOpacity(0.08),
+        backgroundColor: Colors.white.withValues(alpha: 0.08),
         valueColor: AlwaysStoppedAnimation<Color>(
           Color.lerp(
             accentColor,
@@ -11845,8 +11849,8 @@ class _GenerationStatusBarState extends State<_GenerationStatusBar> {
     // Prefill/preparing/thinking: indeterminate (no reliable progress data)
     return LinearProgressIndicator(
       minHeight: 4,
-      backgroundColor: Colors.white.withOpacity(0.08),
-      valueColor: AlwaysStoppedAnimation<Color>(accentColor.withOpacity(0.7)),
+      backgroundColor: Colors.white.withValues(alpha: 0.08),
+      valueColor: AlwaysStoppedAnimation<Color>(accentColor.withValues(alpha: 0.7)),
     );
   }
 

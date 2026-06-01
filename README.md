@@ -1,12 +1,12 @@
-# Front Porch AI — Rawhide (Nightly)
+# Front Porch AI — God File Refactor (Development Branch)
 
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)
 ![Flutter](https://img.shields.io/badge/Made%20with-Flutter-02569B?logo=flutter)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![Nightly](https://img.shields.io/badge/Branch-Rawhide%20Nightly-orange)
-![Status](https://img.shields.io/badge/Status-Bleeding%20Edge-red)
+![Branch](https://img.shields.io/badge/Branch-refactor%2Fgod--file--modularization-blue)
+![Status](https://img.shields.io/badge/Status-Active%20Refactor-orange)
 
-**This is the automatic Nightly build branch.** All active development happens here. Fresh builds are generated every night from this branch.
+**This is the active long-lived branch for the major God File Modularization refactoring effort.** All structural refactoring and related cleanup work happens here. This branch is not (currently) the primary nightly release channel.
 
 **A privacy-first AI companion for Windows, Linux, and macOS.** Runs fully offline with local LLMs (KoboldCpp, etc.) by default, but also supports remote APIs like OpenRouter, Nano-GPT, and OpenAI with no lock-in when you want them.
 
@@ -30,37 +30,32 @@ If you use it, a star would mean a lot to the developer.
 ---
 
 <p align="center">
-  <strong>🌙 Rawhide Nightly Builds</strong><br><br>
-  <a href="https://github.com/linux4life1/front-porch-ai/releases?q=nightly"><strong>Download Latest Nightly</strong></a><br>
-  <sub>Automatic builds every night • Bleeding edge • For advanced users</sub>
+  <strong>🛠️ God File Refactor Branch</strong><br><br>
+  <a href="https://github.com/linux4life1/front-porch-ai/tree/refactor/god-file-modularization"><strong>View Branch on GitHub</strong></a><br>
+  <sub>Long-lived development branch for the major structural refactoring • See the plan in <code>docs/refactoring-guide.md</code></sub>
 </p>
 
-> **Warning**: This branch is not stable. Features may be incomplete or broken. Use at your own risk. Stable releases are on the `main` branch.
+> **Warning**: This is an active refactoring branch. The codebase is in flux as large god files are being broken apart. Use at your own risk for testing the refactor. Stable releases remain on `main`. Nightly builds may continue from other branches.
 
 ---
 
-## 🌙 What's New on Rawhide (Nightly)
+## 🛠️ Current Focus on This Branch
 
-This is the bleeding-edge development branch. All active development happens here first. Nightly builds are generated automatically every night from this branch.
+This is the long-lived development branch for the **God File Modularization** refactoring effort (see the detailed plan in `docs/refactoring-guide.md`).
 
-Current major work centers on the **Sims-Style Needs Simulation Engine** and the continued maturation of the **Realism Engine**, with a very strong emphasis on making group chats feel as deep and consistent as 1:1 conversations:
+**Primary goal**: Break apart the largest god files (`chat_service.dart`, `chat_page.dart`, etc.) into focused, testable modules while maintaining full behavioral parity — especially for the Realism Engine, Needs simulation, and group chat experience.
 
-- **Deep Needs Simulation** — Per-character needs (hunger, energy, social, comfort, etc.) with autonomous behavior, realistic decay, fulfillment logic, and catastrophe events. Needs now influence dialogue and internal state in a much more subtle, atmospheric way rather than feeling mechanical.
+Recent and ongoing work on this branch includes:
+- Stage 1: Extraction of core `ChatMessage` model and enums (`GenerationMode`, `GenerationPhase`) with dedicated tests.
+- Comprehensive lint hygiene pass (elimination of all real warnings, significant dead code removal).
+- Fixes to Group Settings persistence for custom system prompts, per-character prompts, and author's notes.
+- Continued maturation of group chat features and Realism/Needs parity.
 
-- **Realism Engine + Group Chat Parity** — Heavy ongoing investment in making the full Realism + Needs experience feel cohesive in groups. Recent focus areas include:
-  - Per-character group-scoped system prompts (new)
-  - Private inter-character relationship tracking with safety limits
-  - Improved needs and realism injection tone/quality in group contexts
-  - Better per-character realism state handling (including on message deletion)
-  - UI/UX refinements in Group Settings and the group chat sidebar
+This branch is **not** currently the primary source for public Nightly builds. Use it for testing the refactoring work itself.
 
-- **In-App Update Experience** — Friendly, non-technical “What’s New” changelogs now appear directly inside the update dialog. Rawhide maintains its own curated notes in `docs/Rawhide.md`.
+> **Note for contributors & AI agents**: Branch-specific notes and progress live in `docs/<branch-name>.md` (following the established per-branch convention). When landing user-visible changes, update the appropriate notes file.
 
-Nightly builds contain everything currently cooking on this branch.
-
-> **Note for contributors & AI agents**: When landing user-visible changes on Rawhide, also update `docs/Rawhide.md` with a short, friendly, non-technical summary. This text powers the in-app update dialog for people on nightly builds.
->
-> **CI gotcha**: Because scheduled nightlies read their workflow from `main`, any change to `.github/workflows/nightly.yml` (especially the version-patching logic) must also be present on `main`, or the next 07:00 UTC build will fail to compile.
+> **CI note**: Changes to release/nightly workflows still generally need to land on `main` for scheduled jobs to pick them up.
 
 ---
 
@@ -318,7 +313,7 @@ Starting with **v0.9.0**, this project is licensed under **AGPL-3.0** — meanin
 Pull requests are welcome! If you're a dev reading this far down, here's what you need to know:
 
 - **Branch workflow:** All PRs target the **`dev`** branch — never `main`. The `main` branch is for stable releases only.
-- **Rawhide nightlies & schedule triggers:** The automatic 07:00 UTC Rawhide builds are powered by `.github/workflows/nightly.yml`. GitHub **only** reads `on: schedule:` from the default branch (`main`). A current copy of the workflow (especially the version-patching step) must live on `main`, otherwise nightly compiles will fail with "Undefined name" errors for any new symbols added to `app_version.dart` or the updater. The job checks out `Rawhide` for source, but the workflow definition itself always comes from `main`.
+- **Nightly / scheduled builds & schedule triggers:** Automatic builds are powered by `.github/workflows/nightly.yml`. GitHub **only** reads `on: schedule:` from the default branch (`main`). A current copy of the workflow (especially the version-patching step) must live on `main`, otherwise nightly compiles will fail. The job typically checks out the active development branch for source, but the workflow definition itself always comes from `main`.
 - **Commit conventions:** Follow the guidelines in [AGENTS.md](AGENTS.md) for commit message format, code style, and naming conventions.
 - **Full guide:** See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, testing requirements, and the PR template.
 - **Before you PR:** Run `flutter analyze` and `flutter test` locally. The project is now at 0 warnings on the active rules. CI analyzes only changed `.dart` files on PRs (plus a full scheduled lint job). Introducing new warnings will fail CI.
