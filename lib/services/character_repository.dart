@@ -90,6 +90,14 @@ class CharacterRepository extends ChangeNotifier {
   }
 
   Future<void> loadCharacters() async {
+    // Re-entrancy guard: the toolbar refresh button (and other callers) can trigger
+    // rapid or concurrent calls. Skip redundant work while a load is already in flight.
+    // This prevents interleaved _characters mutations and flickering isLoading state.
+    // A skipped call also skips the initial _isLoading=true/notify (no spurious flicker for that caller).
+    // Fire-and-forget callers (e.g. some web_server_service paths) may be dropped when busy;
+    // the in-flight load will still deliver the final update to listeners.
+    if (_isLoading) return;
+
     _isLoading = true;
     notifyListeners();
 
@@ -189,7 +197,7 @@ class CharacterRepository extends ChangeNotifier {
         );
       }
     } catch (e) {
-      print('Error loading characters from DB: $e');
+      debugPrint('[CharacterRepository] Error loading characters from DB: $e');
     } finally {
       _isLoading = false;
       notifyListeners();

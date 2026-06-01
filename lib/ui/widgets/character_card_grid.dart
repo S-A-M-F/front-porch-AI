@@ -8,13 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/models/character_card.dart';
-import 'package:front_porch_ai/models/group_chat.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/folder_service.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/utils/character_id.dart';
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/utils/utils.dart';
 
 enum SearchScope { currentFolder, folderRecursive, allCharacters }
 
@@ -364,6 +360,17 @@ class CharacterCardGrid extends StatelessWidget {
                     ),
                   const Spacer(),
                   if (!isSelecting && !isOrganizing) ...[
+                    // Full reload via loadCharacters() (DB re-query + fresh PNG extensions/avatars)
+                    // so external direct writers (Character Card Forge, web imports, etc.) are
+                    // picked up immediately without app restart. Matches the established pattern
+                    // used by cloud sync, web_server_service, and main.dart startup.
+                    IconButton(
+                      tooltip:
+                          'Refresh character list (pick up external changes, e.g. Character Card Forge)',
+                      icon: const Icon(Icons.refresh),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => repo.loadCharacters(),
+                    ),
                     IconButton(
                       tooltip:
                           'Multi-select characters (for organizing, moving, etc.)',
