@@ -304,22 +304,50 @@ jobs:
             echo "Sentiment classifier built at: $STT_DEST/sentiment_classifier/"
 
             # Build Draw Things gRPC client (proper PyInstaller bundle for release .app)
+            # --add-data includes the sibling .py source files (client.py, pb2 files, etc.)
+            # that dt_grpc_client.py imports via sys.path.insert(0, dirname(__file__)).
+            # Without --add-data these files are absent inside the frozen bundle, causing
+            # ImportError in .app builds (while flutter run works because the raw .py files
+            # are on disk and sys.path.insert finds them).
+            # --paths tells PyInstaller to trace imports from the sibling directory at
+            # bundle time, so hidden-import client / imageService_pb2 are actually found.
             echo "Building Draw Things gRPC client..."
             pyinstaller tools/dt-grpc-python/dt_grpc_client.py \
               --onedir \
               --name dt_grpc_client \
+              --paths tools/dt-grpc-python \
+              --add-data "tools/dt-grpc-python/client.py:." \
+              --add-data "tools/dt-grpc-python/imageService_pb2.py:." \
+              --add-data "tools/dt-grpc-python/imageService_pb2_grpc.py:." \
+              --add-data "tools/dt-grpc-python/GenerationConfiguration.py:." \
+              --add-data "tools/dt-grpc-python/SamplerType.py:." \
+              --add-data "tools/dt-grpc-python/SeedMode.py:." \
+              --add-data "tools/dt-grpc-python/LoRA.py:." \
+              --add-data "tools/dt-grpc-python/LoRAMode.py:." \
+              --add-data "tools/dt-grpc-python/Control.py:." \
+              --add-data "tools/dt-grpc-python/ControlInputType.py:." \
+              --add-data "tools/dt-grpc-python/ControlMode.py:." \
+              --add-data "tools/dt-grpc-python/ca_chain.pem:." \
               --collect-all grpcio \
               --collect-all flatbuffers \
               --collect-all fpzip \
               --collect-all numpy \
               --collect-all PIL \
               --hidden-import grpc \
+              --hidden-import grpc._cython \
               --hidden-import grpcio \
               --hidden-import flatbuffers \
               --hidden-import fpzip \
               --hidden-import numpy \
               --hidden-import PIL \
+              --hidden-import PIL.Image \
               --hidden-import imageService_pb2 \
+              --hidden-import imageService_pb2_grpc \
+              --hidden-import GenerationConfiguration \
+              --hidden-import SamplerType \
+              --hidden-import SeedMode \
+              --hidden-import LoRA \
+              --hidden-import LoRAMode \
               --hidden-import client \
               --distpath "$STT_DEST" \
               --workpath ./build_tmp/dt_grpc \
@@ -455,6 +483,13 @@ jobs:
         run: |
           APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app | head -1)
           ENTITLEMENTS="${{ github.workspace }}/macos/Runner/Release.entitlements"
+          # Sidecar entitlements: required for all PyInstaller bundles under hardened
+          # runtime. PyInstaller's boot-loader needs:
+          #   - cs.disable-library-validation   (load unsigned .so extension modules
+          #                                      bundled inside _internal/)
+          #   - cs.allow-unsigned-executable-memory (mmap the .pyc archive as exec)
+          # Without these, macOS kills the sidecar immediately when the app runs.
+          SIDECAR_ENT="${{ github.workspace }}/macos/Runner/Sidecar.entitlements"
 
           echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate..."
 
@@ -463,12 +498,23 @@ jobs:
             codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" 2>/dev/null || true
           done
 
-          # Sign other executables in Resources
+          # Sign all native binaries in Resources: executables, .so and .dylib helpers.
+          # PyInstaller --onedir bundles place .so extension modules inside _internal/
+          # without the executable bit set, so the old -perm +111 filter missed them.
+          # Notarization requires every Mach-O binary to be signed; unsigned .so files
+          # cause Gatekeeper to block the sidecar even after notarization.
+          # We use the Sidecar.entitlements (not the app entitlements) for these because
+          # they are separate processes and need the PyInstaller-specific runtime flags.
+          find "$APP_NAME/Contents/Resources" -type f \( -name "*.so" -o -name "*.dylib" \) | while read f; do
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
+              --entitlements "$SIDECAR_ENT" "$f" 2>/dev/null || true
+          done
           find "$APP_NAME/Contents/Resources" -type f -perm +111 | while read f; do
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" 2>/dev/null || true
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
+              --entitlements "$SIDECAR_ENT" "$f" 2>/dev/null || true
           done
 
-          # Sign the main app bundle
+          # Sign the main app bundle last (outermost)
           codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME"
 
           echo "✓ App signed with Developer ID"
