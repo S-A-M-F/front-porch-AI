@@ -99,6 +99,14 @@ Key work in the hygiene commit and related:
 
 6. **Commit & push:** Branch pushed to GitHub as `refactor/god-file-modularization` so other developers and reviewers have full visibility into the work, the tests, and the exact changes (rather than hidden local worktrees only).
 
+7. **Post-Stage-1 verification crash fix (immediate, per user decision):** While testing the just-pushed worktree build, a hard Flutter widget assertion was hit in the 1:1 chat app bar:
+   `'backgroundImage != null || onBackgroundImageError == null': is not true.`
+   Root cause (pre-existing, unrelated to the model extraction): `CircleAvatar` in `_buildAppBar` (chat_page.dart:1001) unconditionally passed `onBackgroundImageError: (_, _) {}` even when `backgroundImage` was `null` (i.e., any character without a custom `imagePath`).
+   - Only this one site was affected (group app bar and all other avatars in the file were already correct).
+   - Fixed in the worktree with a minimal conditional (plus property reordering to satisfy the linter). No new private methods, no behavior change for characters that *do* have avatars, zero new lint issues introduced on the changed file.
+   - Pushed as `cb58652`. This keeps the refactor branch from crashing on launch for the common "no custom avatar" case.
+   - Recorded here to keep the progress document updated throughout the pipeline.
+
 ### Hygiene Summary (End of Stage 1 Non-Trivial Work)
 
 - **New private methods added:** 0 (strict adherence — no helpers created when existing logic could be extended or when deletion sufficed).
@@ -109,6 +117,7 @@ Key work in the hygiene commit and related:
 - **Duplication avoided:** The prompt persistence fix reused the existing `ChatService` setters rather than adding new group-specific paths.
 - **Riverpod:** Not touched (per explicit plan: structural refactor first, state management migration after Stage 7).
 - **Realism/Needs/Group parity:** No changes to simulation logic. The only behavioral edit was a bugfix that restored the documented/intended persistence behavior for group-scoped prompts.
+- **This micro-fix (CircleAvatar assertion):** +0 new private methods, +0 deletions, 2-line conditional + reordering only. `flutter analyze` on the touched file remained clean for warnings (the transient `sort_child_properties_last` info was resolved in the same edit). The change eliminates a hard runtime assertion without affecting any Stage 1 extraction artifacts.
 
 All rules from `AGENTS.md`, `CLAUDE.md`, and the refactoring guide were followed.
 
