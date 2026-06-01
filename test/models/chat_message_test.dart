@@ -34,7 +34,7 @@ void main() {
         swipeIndex: 2,
         swipeDurations: [10, 20, 30],
         metadata: {'k': 'v'},
-        swipeMetadata: [null, {'x': 1}, null],
+        swipeMetadata: [null, null, {'x': 1}],
       );
       expect(msg.swipes, ['A', 'B', 'C']);
       expect(msg.swipeIndex, 2);
@@ -186,6 +186,7 @@ void main() {
         sender: 'L',
         isUser: false,
         metadata: {'legacy': 1},
+        swipes: ['m0', 'm1'],
         swipeMetadata: [null, {'per': 2}],
         swipeIndex: 1,
       );
