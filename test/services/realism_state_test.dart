@@ -190,14 +190,12 @@ class _RealismStateStub {
       _needsVector.clear();
     }
 
-    // Preserve arousal/fixation if character has extensions
-    if (character.hasFrontPorchExtensions) {
-      // Preserved — don't reset
-    } else {
-      _arousalLevel = 0;
-      _fixationLifespan = 0;
-      _activeFixation = '';
-    }
+    // Always reset runtime per-chat fields (arousal/fixation) on explicit new chat.
+    // Declarative bond/trust/emotion/day are seeded above from ext or defaults.
+    // Matches production startNewChat after removal of the hasFrontPorchExtensions preserve bug.
+    _arousalLevel = 0;
+    _fixationLifespan = 0;
+    _activeFixation = '';
 
     if (_realismEnabled) {
       _relationshipTier = _calculateTier(_affectionScore);
@@ -528,31 +526,36 @@ void main() {
       expect(stub.timeOfDay, 'afternoon');
     });
 
-    test('preserves arousal/fixation when character has extensions', () {
-      final stub = _RealismStateStub();
-      stub._arousalLevel = 5;
-      stub._activeFixation = 'curiosity';
-      stub._fixationLifespan = 3;
+    test(
+      'always resets arousal/fixation on new chat (even for cards with extensions)',
+      () {
+        final stub = _RealismStateStub();
+        stub._arousalLevel = 5;
+        stub._activeFixation = 'curiosity';
+        stub._fixationLifespan = 3;
 
-      final char = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Hi',
-        frontPorchExtensions: FrontPorchExtensions(realismEnabled: true),
-      );
+        final char = CharacterCard(
+          name: 'Luna',
+          firstMessage: 'Hi',
+          frontPorchExtensions: FrontPorchExtensions(realismEnabled: true),
+        );
 
-      stub.seedForNewChat(char);
+        stub.seedForNewChat(char);
 
-      expect(
-        stub.arousalLevel,
-        5,
-        reason: 'arousal must be preserved for characters with extensions',
-      );
-      expect(
-        stub.activeFixation,
-        'curiosity',
-        reason: 'fixation must be preserved for characters with extensions',
-      );
-    });
+        expect(
+          stub.arousalLevel,
+          0,
+          reason:
+              'runtime arousal/fixation must always reset on explicit new chat (no bleed from prior session)',
+        );
+        expect(
+          stub.activeFixation,
+          '',
+          reason:
+              'runtime arousal/fixation must always reset on explicit new chat (no bleed from prior session)',
+        );
+      },
+    );
 
     test('resets arousal/fixation when character has no extensions', () {
       final stub = _RealismStateStub();
@@ -642,26 +645,33 @@ void main() {
   // ─── Realism State — state preservation across transitions ─────────
 
   group('state preservation', () {
-    test('arousal preserved when extensions exist, reset when not', () {
-      final stub = _RealismStateStub();
+    test(
+      'runtime arousal/fixation always reset on new chat (no bleed even for extended cards)',
+      () {
+        final stub = _RealismStateStub();
 
-      // First: character with extensions — arousal preserved
-      final charWithExt = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Hi',
-        frontPorchExtensions: FrontPorchExtensions(realismEnabled: true),
-      );
+        // Character with extensions — runtime fields still reset (declarative bond etc. come from ext)
+        final charWithExt = CharacterCard(
+          name: 'Luna',
+          firstMessage: 'Hi',
+          frontPorchExtensions: FrontPorchExtensions(realismEnabled: true),
+        );
 
-      stub._arousalLevel = 5;
-      stub.seedForNewChat(charWithExt);
-      expect(stub.arousalLevel, 5);
+        stub._arousalLevel = 5;
+        stub.seedForNewChat(charWithExt);
+        expect(
+          stub.arousalLevel,
+          0,
+          reason: 'no bleed: runtime fields reset even when extensions present',
+        );
 
-      // Second: character without extensions — arousal resets
-      final charNoExt = CharacterCard(name: 'Luna', firstMessage: 'Hi');
+        // Without extensions — also reset (same behavior)
+        final charNoExt = CharacterCard(name: 'Luna', firstMessage: 'Hi');
 
-      stub.seedForNewChat(charNoExt);
-      expect(stub.arousalLevel, 0);
-    });
+        stub.seedForNewChat(charNoExt);
+        expect(stub.arousalLevel, 0);
+      },
+    );
 
     test('bond/trust preserved across new chat for extended characters', () {
       final stub = _RealismStateStub();

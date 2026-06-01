@@ -93,7 +93,8 @@ class ChatMessage {
   characterId; // which character card sent this (null = user or 1:1 mode)
   final List<int> swipeDurations; // thinking duration in ms per swipe
 
-  String get text => (swipes.isNotEmpty && swipeIndex >= 0 && swipeIndex < swipes.length)
+  String get text =>
+      (swipes.isNotEmpty && swipeIndex >= 0 && swipeIndex < swipes.length)
       ? swipes[swipeIndex]
       : '';
   set text(String value) {
@@ -141,8 +142,8 @@ class ChatMessage {
 
   int get thinkingDurationMs =>
       (swipeIndex >= 0 && swipeIndex < swipeDurations.length)
-          ? swipeDurations[swipeIndex]
-          : 0;
+      ? swipeDurations[swipeIndex]
+      : 0;
   set thinkingDurationMs(int value) {
     if (swipeIndex < 0) return;
     while (swipeDurations.length <= swipeIndex) {
@@ -1930,7 +1931,8 @@ class ChatService extends ChangeNotifier {
       );
       return;
     }
-    final llmService = testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
+    final llmService =
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
     if (!llmService.isReady) {
       debugPrint('[Expression] reclassify: LLM not ready, skipping');
       return;
@@ -2395,7 +2397,9 @@ class ChatService extends ChangeNotifier {
         }
       }
 
-      // Reset realism state to prevent bleeding from previous character
+      // Reset realism state to prevent bleeding from previous character.
+      // Keep in sync with: startNewChat runtime reset block (~4000), load*Session restores,
+      // delete flows, and the 1:1 scalar zero in setActiveGroup.
       final prevArousal = _arousalLevel;
       final prevFixation = _activeFixation;
       final prevFixationLife = _fixationLifespan;
@@ -2408,8 +2412,34 @@ class ChatService extends ChangeNotifier {
       _needsAfterglowTurnsRemaining = 0;
       _arousalSuppressionTurnsRemaining = 0;
       _postClimaxCrashTurnsRemaining = 0;
+      _realismEnabled = false;
+      _affectionScore = 0;
+      _relationshipTier = 0;
+      _longTermScore = 0;
+      _longTermTier = 0;
+      _trustLevel = 0;
+      _characterEmotion = '';
+      _emotionIntensity = '';
+      _dayCount = 1;
+      _timeOfDay = 'morning';
+      _startDayOfWeek = DateTime.now().weekday;
+      _chaosModeEnabled = false;
+      _chaosPressure = 0;
+      _nsfwCooldownEnabled = false;
+      _passageOfTimeEnabled = true; // default (global ceiling applied on seed)
+      _pendingTrustRepair = false;
+      _spatialStance = '';
+      _turnsSinceLongTermCheck = 0;
+      _shortTermDeltasSummary = 0;
+      _moodDecayCounter = 0;
+      _turnsSinceDecayCheck = 0;
+      _cooldownTurnsRemaining = 0;
+      _cooldownTurnsTotal = 0;
+      _greetingEvalPending = false;
+      _isProcessingGreeting = false;
+      _pendingRealismMetadata = null;
       debugPrint(
-        '[ChatService] setActiveCharacter: Reset realism state (was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
+        '[ChatService] setActiveCharacter: Reset realism state (baseline + runtime transients cleared; was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
       );
 
       // Try to load last session
@@ -2472,6 +2502,12 @@ class ChatService extends ChangeNotifier {
           // Scan first message for lore
           _scanLorebook(_messages.last.text);
         }
+        // Note: for the direct 0-session setActiveCharacter path (fresh import via home grid <=1 session),
+        // _greetingEvalPending is left false here. The post-greeting baseline eval is scheduled only
+        // in startNewChat (for explicit New Chat flows). Fresh-import cards rely on the retro path
+        // in setRealismEnabled (or manual enable after first messages) when _hasRealismBaseline==false.
+        // This matches pre-existing behavior for the import entry point; the critical bleed fix
+        // ensures the baseline check is now correctly false for no-ext cards.
         // Save the initial message session
         _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
         await _saveChat();
@@ -2516,6 +2552,15 @@ class ChatService extends ChangeNotifier {
 
     // Clear 1:1 mode
     _activeCharacter = null;
+    // Defensive: zero key 1:1 scalars so rapid 1:1↔group toggles cannot observe
+    // stale values in the brief window before group per-speaker loads take over.
+    // (Full reset happens on return to any 1:1 via setActiveCharacter.)
+    _arousalLevel = 0;
+    _activeFixation = '';
+    _fixationLifespan = 0;
+    _affectionScore = 0;
+    _trustLevel = 0;
+    _characterEmotion = '';
 
     // Auto-start local backend when entering a group chat
     _llmProvider?.ensureManagedBackendIsRunning();
@@ -3364,7 +3409,8 @@ class ChatService extends ChangeNotifier {
           swipeDurations = [0];
         }
 
-        final safeSwipeIndex = (m.swipeIndex >= 0 && m.swipeIndex < swipes.length)
+        final safeSwipeIndex =
+            (m.swipeIndex >= 0 && m.swipeIndex < swipes.length)
             ? m.swipeIndex
             : 0;
 
@@ -3501,7 +3547,8 @@ class ChatService extends ChangeNotifier {
           swipeDurations = [0];
         }
 
-        final safeSwipeIndex = (m.swipeIndex >= 0 && m.swipeIndex < swipes.length)
+        final safeSwipeIndex =
+            (m.swipeIndex >= 0 && m.swipeIndex < swipes.length)
             ? m.swipeIndex
             : 0;
 
@@ -3943,6 +3990,8 @@ class ChatService extends ChangeNotifier {
       _trustLevel = extSeed.trustLevel.clamp(-100, 100);
       _dayCount = extSeed.dayCount.clamp(1, 9999);
       _timeOfDay = extSeed.timeOfDay;
+      _startDayOfWeek = DateTime.now()
+          .weekday; // anchor narrative weekday for the fresh session
       _characterEmotion = extSeed.characterEmotion;
       _emotionIntensity = extSeed.emotionIntensity;
       _nsfwCooldownEnabled = extSeed.nsfwCooldownEnabled;
@@ -3960,25 +4009,24 @@ class ChatService extends ChangeNotifier {
       }
       _needsAfterglowTurnsRemaining = 0;
       _arousalSuppressionTurnsRemaining = 0;
-      if (_activeCharacter!.hasFrontPorchExtensions) {
-        // Character has baseline extensions, indicating an ongoing managed relationship where
-        // emotional continuity is expected across sessions. Do NOT reset arousal/fixation.
-        debugPrint(
-          '[startNewChat] Preserving arousal/fixation due to extensions: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
-        );
-      } else {
-        // Reset arousal/fixation to defaults for fresh chat (not seeded from extensions)
-        debugPrint(
-          '[startNewChat] Resetting arousal/fixation (was: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan)',
-        );
-        _arousalLevel = 0;
-        _fixationLifespan = 0;
-        _activeFixation = '';
-        _cooldownTurnsRemaining = 0;
-        debugPrint(
-          '[startNewChat] After reset: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
-        );
-      }
+      _postClimaxCrashTurnsRemaining = 0;
+      _pendingTrustRepair = false;
+      // Always reset per-chat runtime realism fields (arousal/fixation/cooldowns) for a fresh
+      // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter ~2400
+      // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.)
+      // Declarative initial bond/trust/emotion/day etc are already seeded above from the card's
+      // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
+      // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
+      debugPrint(
+        '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan)',
+      );
+      _arousalLevel = 0;
+      _fixationLifespan = 0;
+      _activeFixation = '';
+      _cooldownTurnsRemaining = 0;
+      debugPrint(
+        '[startNewChat] After reset: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      );
 
       // Recalculate tiers from seeded scores (only needed for realism-enabled chars)
       if (_realismEnabled) {
@@ -4084,6 +4132,7 @@ class ChatService extends ChangeNotifier {
     // consumed the moment the user enables Realism.
     // Skip if character already has pre-seeded V2.5 extensions — those baseline
     // values are intentional and should not be overwritten by auto-eval.
+    // (See also: setActiveCharacter 0-session path comment for why direct imports rely on retro path.)
     if (_activeGroup == null &&
         _messages.isNotEmpty &&
         _activeCharacter!.frontPorchExtensions == null) {
@@ -5196,7 +5245,10 @@ class ChatService extends ChangeNotifier {
         stopSequences.add('\n${_activeCharacter!.name}:');
       }
 
-      final llmService = testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
+      final llmService =
+          testLlmServiceOverride ??
+          _llmProvider?.activeService ??
+          _koboldService;
       final genParams = GenerationParams(
         prompt: prompt,
         systemPrompt: chatSystemPrompt,
@@ -5985,7 +6037,10 @@ class ChatService extends ChangeNotifier {
       final stopList = stopSequences.toList();
 
       // Get the active LLM service (local or remote)
-      final llmService = testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
+      final llmService =
+          testLlmServiceOverride ??
+          _llmProvider?.activeService ??
+          _koboldService;
 
       // For call mode with a dedicated call model, temporarily swap the model
       if (_callMode &&
@@ -6892,7 +6947,8 @@ class ChatService extends ChangeNotifier {
     if (_isGenerating) {
       _cancelRequested = true;
       // Abort the in-flight HTTP request so we don't have to wait for the next token
-      (testLlmServiceOverride ?? _llmProvider?.activeService)?.abortGeneration();
+      (testLlmServiceOverride ?? _llmProvider?.activeService)
+          ?.abortGeneration();
     }
   }
 
@@ -8975,7 +9031,9 @@ class ChatService extends ChangeNotifier {
           '[Realism:Eval] Retrying after connection drop (attempt ${attempt + 1})...',
         );
         await Future.delayed(const Duration(seconds: 3));
-        final bool retryIsLocal = testLlmServiceOverride != null ? testIsLocalOverride : (_llmProvider?.isLocal ?? false);
+        final bool retryIsLocal = testLlmServiceOverride != null
+            ? testIsLocalOverride
+            : (_llmProvider?.isLocal ?? false);
         if (retryIsLocal && _llmProvider != null) {
           await _llmProvider!.koboldService.ensureServerIdle();
         }
@@ -9063,7 +9121,8 @@ class ChatService extends ChangeNotifier {
     // Save in background - don't await
     Future.microtask(() => _saveChat());
 
-    final llmService = testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
+    final llmService =
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
     debugPrint('[Realism] Realism eval cancel requested');
     try {
       llmService.abortGeneration();

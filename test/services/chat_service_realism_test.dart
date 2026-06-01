@@ -93,16 +93,14 @@ class _RealismEngineStub {
       }
     }
 
-    if (hasFrontPorchExtensions) {
-      // Character has baseline extensions — preserve arousal/fixation.
-      // Do NOT reset.
-    } else {
-      // Reset arousal/fixation for fresh chat
-      _arousalLevel = 0;
-      _fixationLifespan = 0;
-      _activeFixation = '';
-      _cooldownTurnsRemaining = 0;
-    }
+    // Always reset runtime per-chat fields on new chat (arousal/fixation/cooldowns).
+    // Declarative fields (bond/trust/emotion) seeded above from extensions or defaults.
+    // Matches production after removal of the hasFrontPorchExtensions preserve bug that
+    // caused fixation bleed on explicit "New Chat".
+    _arousalLevel = 0;
+    _fixationLifespan = 0;
+    _activeFixation = '';
+    _cooldownTurnsRemaining = 0;
 
     if (_realismEnabled && hasFrontPorchExtensions) {
       _relationshipTier = _calculateTier(_affectionScore);
@@ -310,30 +308,36 @@ void main() {
       expect(stub.cooldownTurnsRemaining, 0);
     });
 
-    test('does NOT reset arousal/fixation when extensions present', () {
-      final stub = _RealismEngineStub();
+    test(
+      'always resets arousal/fixation/cooldowns on new chat (even when extensions present)',
+      () {
+        final stub = _RealismEngineStub();
 
-      // Set some realism state
-      stub.applyRealismMetadata(arousalDelta: 3, emotionLabel: 'flustered');
-      stub._activeFixation = 'the mysterious amulet';
-      stub._fixationLifespan = 4;
+        // Set some runtime state from prior session
+        stub.applyRealismMetadata(arousalDelta: 3, emotionLabel: 'flustered');
+        stub._activeFixation = 'the mysterious amulet';
+        stub._fixationLifespan = 4;
+        stub._cooldownTurnsRemaining = 2;
 
-      // Start new chat WITH extensions
-      stub.startNewChatSession(
-        characterExtensions: FrontPorchExtensions(
-          realismEnabled: true,
-          shortTermBond: 20,
-          longTermBond: 15,
-          trustLevel: 10,
-        ),
-        hasFrontPorchExtensions: true,
-      );
+        // Start new chat WITH extensions
+        stub.startNewChatSession(
+          characterExtensions: FrontPorchExtensions(
+            realismEnabled: true,
+            shortTermBond: 20,
+            longTermBond: 15,
+            trustLevel: 10,
+          ),
+          hasFrontPorchExtensions: true,
+        );
 
-      // Arousal should be preserved (seeded from extensions, not reset)
-      // Note: extensions seed shortTermBond=20, so affection becomes 20
-      expect(stub.affectionScore, 20);
-      expect(stub.realismEnabled, isTrue);
-    });
+        // Runtime fields always reset (no bleed); declarative seeded from extensions
+        expect(stub.affectionScore, 20);
+        expect(stub.realismEnabled, isTrue);
+        expect(stub.arousalLevel, 0);
+        expect(stub.activeFixation, '');
+        expect(stub.cooldownTurnsRemaining, 0);
+      },
+    );
 
     test('preserves realism extensions from character', () {
       final stub = _RealismEngineStub();
@@ -359,16 +363,16 @@ void main() {
     });
 
     test(
-      'preserves arousal/fixation when extensions present (emotional continuity)',
+      'always resets runtime arousal/fixation on new chat (no emotional-continuity bleed for runtime fields)',
       () {
         final stub = _RealismEngineStub();
 
-        // Simulate arousal from a previous chat session
+        // Simulate runtime state from a previous chat session (the exact bleed repro)
         stub._arousalLevel = 7;
         stub._activeFixation = 'something old';
         stub._fixationLifespan = 3;
 
-        // New chat with extensions — arousal is PRESERVED for emotional continuity
+        // New chat with extensions — runtime fields are RESET (declarative bond etc. come from card)
         stub.startNewChatSession(
           characterExtensions: FrontPorchExtensions(
             realismEnabled: true,
@@ -379,15 +383,15 @@ void main() {
           hasFrontPorchExtensions: true,
         );
 
-        // Arousal is preserved because extensions indicate ongoing relationship
+        // Runtime fields reset (the fix); declarative fields seeded from extensions
         expect(
           stub.arousalLevel,
-          7,
+          0,
           reason:
-              'arousal is preserved for emotional continuity when extensions exist',
+              'runtime arousal/fixation must not bleed into new chat even when extensions present',
         );
-        // But bond scores ARE seeded from extensions
-        expect(stub.affectionScore, 10);
+        expect(stub.activeFixation, '');
+        expect(stub.affectionScore, 10); // declarative from card
       },
     );
   });
