@@ -1002,10 +1002,11 @@ class _ChatPageState extends State<ChatPage> {
             backgroundImage: character.imagePath != null
                 ? FileImage(_resolveCharImage(character.imagePath!))
                 : null,
+            onBackgroundImageError:
+                character.imagePath != null ? (_, _) {} : null,
             child: character.imagePath == null
                 ? const Icon(Icons.person)
                 : null,
-            onBackgroundImageError: (_, _) {},
           ),
           const SizedBox(width: 12),
           Column(
