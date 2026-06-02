@@ -53,12 +53,14 @@ lib/
 ├── providers/
 │   └── app_state.dart           # Global app state (ChangeNotifier)
 ├── services/                    # Business logic (~50 services)
-│   ├── chat/                    # Domain subservices managing chat mechanics
+│   ├── chat/                    # Domain subservices managing chat mechanics (leaf services extracted in Stage 3 god-file modularization; orchestration + group state remains in god for now)
 │   │   ├── chaos_mode_service.dart # Pure simulation core for Chaos Mode / Chance Time events
-│   │   └── needs_simulation.dart # Sims-style per-character needs simulation logic
+│   │   ├── expression_classifier.dart # ONNX/LLM emotion classification (and reclassification)
+│   │   ├── needs_simulation.dart # Sims-style per-character needs simulation logic (decay, buffers, apply/compute deltas)
+│   │   └── relationship_service.dart # Bond/trust/fixation/spatial/inter-char relationship tracking
 │   ├── cloud_providers/         # Implementations of cloud storage backends (Google Drive, OneDrive, WebDAV)
 │   ├── grpc/                    # gRPC-generated code and services for external API integrations (e.g. Draw Things)
-│   ├── chat_service.dart        # Core chat logic, context building, message streaming
+│   ├── chat_service.dart        # Core chat logic, context building, message streaming, Realism orchestration, _groupRealism map, post-gen wiring
 │   ├── kobold_service.dart      # KoboldCpp API client
 │   ├── llm_provider.dart        # Abstraction over Kobold/OpenRouter/external APIs
 │   ├── character_repository.dart # Character CRUD via Drift
@@ -70,7 +72,6 @@ lib/
 │   ├── cloud_sync_service.dart  # Google Drive / WebDAV sync
 │   ├── hardware_service.dart    # GPU detection, VRAM estimation
 │   ├── backend_manager.dart     # KoboldCpp lifecycle (start/stop/restart)
-│   ├── expression_classifier.dart # ONNX/LLM emotion classification
 │   └── ...
 ├── ui/
 │   ├── chat_components/         # Componentized chat UI elements (refactored out of main pages/widgets)
@@ -90,9 +91,11 @@ lib/
 
 ### Critical Services
 
-- **ChatService** (`lib/services/chat_service.dart`): Orchestrates chat sessions, builds context windows, handles message streaming, and triggers Realism Engine evaluations.
-- **NeedsSimulation** (`lib/services/chat/needs_simulation.dart`): Domain service owning Sims-style needs (hunger, bladder, energy, social, fun, hygiene, comfort) decay, post-climax arousal suppression/afterglow buffers, and catastrophe narrative triggers.
+- **ChatService** (`lib/services/chat_service.dart`): Orchestrates chat sessions, builds context windows, handles message streaming, Realism Engine evaluations + post-generation needs/climax/sexual/daily checks, _groupRealism map + load/save scalars for group per-char state, chip delta attachment, and all cross-service wiring/callbacks.
+- **NeedsSimulation** (`lib/services/chat/needs_simulation.dart`): Domain service owning Sims-style needs (hunger, bladder, energy, social, fun, hygiene, comfort) decay, post-climax arousal suppression/afterglow buffers, catastrophe narrative triggers, applyNeedsDeltas, and computeNeedsDeltasWithReasons (for chips + snapshots). Pure class; all cross-state (group, time, arousal, enjoysLowHygiene) via callbacks.
 - **ChaosModeService** (`lib/services/chat/chaos_mode_service.dart`): Domain service owning Chaos Mode pressure growth, Chance Time wheel random event selection, and custom event text prompt injection.
+- **RelationshipService** (`lib/services/chat/relationship_service.dart`): Bond/trust/fixation/spatial stance/inter-character feelings. Extracted; scalars loaded/saved via group impersonation paths in ChatService.
+- **ExpressionClassifier** (`lib/services/chat/expression_classifier.dart`): ONNX + LLM emotion classification and reclassification (inertia, manual overrides, avatar selection). Extracted with many granular callbacks.
 - **KoboldService** (`lib/services/kobold_service.dart`): HTTP client for KoboldCpp API (`/api/v1/generate`, `/api/extras/abort`, etc.)
 - **StorageService** (`lib/services/storage_service.dart`): Manages data directories. Beta builds use `FrontPorchAI-Beta/` with `beta_` prefixed SharedPreferences keys
 - **EmbeddingSidecar** (`lib/services/embedding_sidecar.dart`): Manages the Rust `embed_server` subprocess for ONNX-based text embeddings (RAG memory)
@@ -116,19 +119,85 @@ Key tables: `characters`, `chats`, `chat_messages`, `lorebooks`, `worlds`, `grou
 
 ### Realism Engine
 
-A multi-component system spanning chat_service.dart, needs_simulation.dart, chaos_mode_service.dart, and the LLM provider:
-- Emotion tracking with inertia between turns
-- Bond/trust relationship scoring (bond clamped to ±300, arousal ±100)
-- Deterministic time progression (advances every 6 turns)
+A multi-component system spanning `chat_service.dart` (orchestration + _groupRealism + post-gen hooks + message metadata), the extracted domain services under `services/chat/`, and the LLM provider:
+- Emotion tracking with inertia between turns (ExpressionClassifier)
+- Bond/trust relationship scoring (bond clamped to ±300, arousal ±100) (RelationshipService)
+- Deterministic time progression (advances every 6 turns) (still mostly in god; TimeService planned)
 - Fixation engine (emotional obsessions)
 - Character evolution (trait development)
 - Chaos Mode ("Chance Time" random events handled via `ChaosModeService`)
-- Sims-style Needs Simulation (decay, stepped descriptions, and narrative catastrophe triggers handled via `NeedsSimulation`)
+- Sims-style Needs Simulation (decay, stepped descriptions, afterglow/lust-haze/post-climax-crash buffers, catastrophe narrative triggers, hygiene inversion for "enjoys low hygiene" handled via `NeedsSimulation`)
 - Escape hatch: `cancelRealismEval()` aborts in-flight evals via `_isCancellingRealismEval` flag + `abortGeneration()`
 
 **Known gotcha**: GBNF grammar constraints cause many KoboldCPP models to return empty eval responses. Evals use stop sequences + regex parsing (no grammar). Remote APIs work fine without grammar.
 
 **One-shot vs Normal Path Parity (strict)**: When `_storageService.realismOneShotEval` is true, `_evaluateOneShotCall` **must** produce 1:1 equivalent outputs for Bond/Trust/Emotion/Arousal/Fixation/Spatial Stance/Time/Needs deltas as the normal multi-call path (`_evaluateRelationshipCall` + `_evaluateEmotionalStateCall` + `_evaluatePhysicalStateCall` + `_evaluateNarrativeCall`). Differences in what gets evaluated or how deltas are computed between the two paths are bugs. The one-shot path exists purely for token/latency optimization — it must not change observable Realism or Needs behavior.
+
+**Realism & Needs Parity (1:1 vs Group)**: The observable behavior (bond/trust deltas, emotion inertia, needs decay + scene rewards + buffers + catas, time advance every 6, climax refractory, etc.) must be identical whether the character is in a 1:1 chat or a group (per-speaker). Orchestration differs (scalar fields vs _groupRealism map + load/save + impersonation of _activeCharacter + speaker-specific preTurn for chips), but the simulation results and UI must not diverge. Any change touching these areas requires auditing both paths + the "keep reset blocks in sync" sites in chat_service.dart.
+
+### Path Map for Tracing Realism/Needs/Group Post-Generation, Chips, Sidebar & Climax Checks
+
+Because god-file modularization (Stage 3) moved core simulation into plain classes under `lib/services/chat/` while leaving orchestration, the _groupRealism map, message metadata, UI attachment, and cross-speaker coordination in the god (`chat_service.dart`), tracing bugs in post-turn effects, needs deltas, climax/sexual/daily verification, chip computation, or sidebar updates requires following a specific set of execution paths.
+
+**We built/updated this map while diagnosing the double-climax-eval + group needs not persisting + wrong chips/sidebar bug (the one that required temp impersonation before _runPostGenNeedsChecks, the groupSpeakerPreDecayNeeds snapshot before tick, the post-gen _saveScalarsIntoGroupRealism, and the if(delta==0) skip in chips).**
+
+Use this map the next time you see symptoms like:
+- Needs chips or sidebar not updating / showing stale values after a turn (especially in groups)
+- "Model output 0 for bladder" or other single-need anomalies in logs + chips
+- Climax (or sexual/daily) LLM eval firing twice for the same response
+- Group member needs not reflecting scene rewards (fun/social/hygiene from sex, eating, bathing) or decay
+- Chips showing cross-character deltas or all "X 0"
+
+**Core files & responsibilities (post-extraction state):**
+
+- **God file orchestration + group state + pre/post wiring + chip attachment** (`lib/services/chat_service.dart` — the majority of the tracing surface):
+  - Pre-turn capture (in sendMessage, before/around realism eval block): `preTurnVector`, `groupSpeakerPreDecayNeeds = _getGroupNeeds(sid from nextCharacter)` (before `tickDecay`), store in pending.
+  - Group per-speaker pre-gen (called from _generateResponse after pickNext): `_evaluateRealismForUpcomingGroupSpeaker` does `_loadGroupRealismIntoScalars(charId)` (sets _needsSimulation vector + other scalars from map), captures local preTurnVector (post-decay), runs the relationship/emotion/etc. evals under impersonation, `_saveScalarsIntoGroupRealism` (for pre effects), puts realism_state (with embedded 'needs' vector + deltas-at-capture-time) + top-level needs_deltas=0s into _pendingRealismMetadata (stamped on the new ChatMessage at creation).
+  - Post-gen finalization (late in _generateResponse, after tokens, before tts etc.): 
+    - For group non-obs: temp re-set `_activeCharacter = speakingCharacter; _loadGroupRealismIntoScalars(...)` so the *checks* see the correct character for prompt text ("Did $charName reach climax...") and personality injection.
+    - `await _runPostGenNeedsChecks(finalResponse)` — this is the central dispatcher: climax (if conditions), then sexual, daily, fulfillment. All three _check* methods contain the LLM _fireLLMEval + parse + applyNeedsDeltas (or set cooldown/crash).
+    - `_needsSimulation.applyLongGenerationNeedsDecay(...)`
+    - Then `_saveScalarsIntoGroupRealism(speaker from _messages.last.sender)` — **this is the critical persist that was missing**; without it scene deltas never made it into _groupRealism.
+  - Chip delta computation/attach (right after await _generateResponse in the sendMessage caller, and similar in regen paths): the big `if (_needsSimEnabled && _messages.isNotEmpty)` block. For 1:1 uses the outer preTurnVector. For group uses the pre-decay snapshot (or fallback from the just-created msg's realism_state['needs']['vector']). Sets `activeMetadata['needs_deltas']` (what the bubble reads). Also the needs_pre_turn_vector for regen revert.
+  - Group helpers you will hit constantly: `_groupRealism`, `_getGroupNeeds`/`_setGroupNeeds`, `_loadGroupRealismIntoScalars`/`_saveScalarsIntoGroupRealism`, `getNeedsForGroupCharacter`/`getTopUrgentNeedsForGroupCharacter` (used by UI), `_getCurrentSpeakerIdForRealism` (used by tickDecay group branch + cbs), `nextCharacter`.
+  - The individual check methods also live here (until nsfw_service extraction in later step): _checkClimaxInResponse (the one with the refractory + llm hygiene/bladder deltas), _checkSexualActivityInResponse, _checkDailyActivityEffects (the one that consults enjoysLowHygiene and afterglow for bathe hygiene gain), _verifyNeedFulfillmentCall.
+  - Reset sites (there are many documented "keep these in sync" comments listing needs/chaos/relationship/expression/time): startNew, setActiveGroup, loadLastSession, empty sessions, etc. All must call the corresponding reset on the extracted services + clear _groupRealism etc.
+
+- **Domain simulation (no ChangeNotifier, callback-driven, testable in isolation)** (`lib/services/chat/needs_simulation.dart`):
+  - `applyNeedsDeltas(Map, {fromSexualActivity})` — the source of the "[Realism:Needs] Applied deltas: {...}" and afterglow buffer logs. Clamps, triggers afterglow if high positive impact from sexual, calls onSaveChat + onNotify.
+  - `computeNeedsDeltasWithReasons(preTurn)` — exactly what feeds the chips (and the 'deltas' inside realism_state['needs']). Compares pre vs current _vector, chooses reason (Afterglow buffer, Post-orgasm exhaustion, Natural decay, Stable, Scene action...).
+  - `tickDecay()` — has the explicit group vs 1:1 branch: `if (getIsGroupNonObserverMode()) { sid = getCurrentSpeakerIdForRealism(); needs = getGroupNeeds(sid); mutate the map copy; setGroupNeeds; return; } else { full scalar + catas + enjoys mutation + buffers tickdown }`.
+  - Buffers and state: afterglowTurnsRemaining, postClimaxCrash, arousalSuppression, pendingCatastrophe, vector.
+  - Fresh start: `initializeFresh()` (all 100) vs legacy 80s.
+  - Callbacks (passed at construction in ChatService): getTimeOfDay, getIsGroupNonObserverMode, getCurrentSpeakerIdForRealism, getGroupNeeds/setGroupNeeds, getEnjoysLowHygiene, getNeedsSimEnabled, setArousalLevel, etc. This is how it stays decoupled from the god and from group vs 1:1.
+
+- **Display consumers (chips + sidebar + cards)**:
+  - Per-message needs chips (the "Fun +7" "Bladder 0" row under AI messages): `lib/ui/chat_components/bubbles/message_bubble.dart` in `_buildRealismIndicator`. Reads `metadata['needs_deltas']` (the map of need -> {delta, reason}). The forEach now does `if (delta == 0) return;` before building a chip (prevents clutter; only changed needs appear in the dedicated second row). Falls back to single classic realism row when no needs movement.
+  - Sidebar (the always-visible current levels + progress bars when Needs Simulation enabled): `lib/ui/chat_components/sidebar/realism_section.dart` (RealismSectionState, inside Consumer<ChatService>). Renders the list of needs with LinearProgressIndicator using `chat.needsVector` (1:1) or the group getters. Also contains the master toggle and the per-char enjoys low hygiene in some contexts.
+  - Group member cards (the rich cards in the member list or when focusing a speaker in group): `lib/ui/widgets/group_member_card.dart`. Calls `chat.getNeedsForGroupCharacter(...)` then `NeedsGrid(needs: needs...)`.
+  - The actual bar/grid widgets: `lib/ui/widgets/needs_bar.dart` (NeedsBar for single, NeedsGrid for the 2-col layout used in cards).
+
+- **Other related surfaces**:
+  - Regen/swipe/timeline: the preTurnNeeds restore from 'needs_pre_turn_vector' or realism_state, then re-compute deltas after the re-_generateResponse.
+  - "Enjoys low hygiene" static pref: CharacterCard.frontPorchExtensions, defaultMemberRealismState JSON perChar in group settings/creation, read by getEnjoysLowHygiene cb (used in daily bathe hygieneGain and some needs prompts).
+  - The _runPostGenNeedsChecks + the four check methods are the current home of the LLM "did they do X in the response" evals that produce the needs side-effects.
+
+**Tracing recipe (from the actual debug session)**:
+1. Reproduce with logging on (the [Realism:Needs], [Realism:Climax], [Realism:RawEval] prints are your friends).
+2. At the post-gen block in chat_service.dart, print the current _activeCharacter?.name and the speaker of the message being finalized.
+3. Check whether _saveScalarsIntoGroupRealism was reached for the right sid (add a temp print if needed).
+4. For chips: print what pre vector was passed to computeNeedsDeltasWithReasons and what the resulting map looks like.
+5. For sidebar/group cards: after the turn, call getNeedsForGroupCharacter in a debug print or the REPL and compare to the scalar _needsSimulation.vector at that moment.
+6. If in group, walk the load → (tick on map) → per-speaker load (which sets scalar) → gen → post apply (on scalar) → saveScalars (writes map) flow.
+7. Remember the impersonation dance is only for the *checks* (so LLM prompts name the right character); the scalars are already the right speaker's when post runs.
+
+When you touch any of the above for a realism/needs/group change, you **must**:
+- Keep the 1:1 and group paths producing equivalent observable deltas/behavior.
+- Update this path map in CLAUDE.md if the tracing surface changes.
+- Run the dead-code audit + the mandatory analyze/format/build gates.
+- Consider whether the new logic belongs in a future extracted service or should stay in god coordination.
+
+This section exists because these paths are the most common source of subtle "needs stopped working after refactor X" or "group vs 1:1 divergence" bugs. Keep it current.
 
 ### Story Pipeline (Porch Stories)
 
