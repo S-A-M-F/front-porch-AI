@@ -53,6 +53,7 @@ import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/expression_classifier.dart'; // leaf for ExpressionService (post-extraction)
 import 'package:front_porch_ai/services/chat/time_service.dart';
+import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -342,55 +343,17 @@ class ChatService extends ChangeNotifier {
   // state now owned by the service; god thins to delegation + shims.
 
   // Passage of time (core state + advance/nudge/OOC/resolve/reset/seed/load logic extracted to TimeService).
-  // See "keep reset blocks in sync" comments (now also lists time). All scalars, clock, narrativeWeekday,
+  // See "keep reset blocks in sync" comments (now also lists time/nsfw). All scalars, clock, narrativeWeekday,
   // resolve, nudge, detect, pre-turn advance, injection builder, and helpers now owned by the service;
   // god thins to delegation + 5 @Deprecated shims. 0 new private methods added in god for time.
   // time injection only thin wrapper here; full in step8.
 
-  // NSFW cooldown & lust
-  bool _nsfwCooldownEnabled = false;
-  int _cooldownTurnsRemaining = 0;
-  int _cooldownTurnsTotal =
-      0; // original refractory duration (for phased prompt)
-  int _arousalLevel =
-      0; // -100 to +100 scale (tier-based, matching relationship system)
-
-  /// Calculate arousal tier from level score (-100 to +100)
-  int get arousalTier {
-    // Convert -100 to +100 scale to tier index -10 to +10
-    // Each tier represents 10 points
-    final raw = _arousalLevel ~/ 10; // integer division
-    final tierIndex = raw > 10 ? 10 : (raw < -10 ? -10 : raw);
-    return tierIndex;
-  }
-
-  /// Get arousal tier name matching the relationship system
-  String get arousalTierName {
-    final tier = arousalTier;
-    // Use same tier names as relationship system but adapted for arousal
-    if (tier >= 10) return 'Feverish';
-    if (tier == 9) return 'Ecstatic';
-    if (tier == 8) return 'Overwhelming';
-    if (tier == 7) return 'Overcome';
-    if (tier == 6) return 'Intense';
-    if (tier == 5) return 'Aroused';
-    if (tier == 4) return 'Stimulated';
-    if (tier == 3) return 'Interested';
-    if (tier == 2) return 'Aware';
-    if (tier == 1) return 'Noticed';
-    if (tier == 0) return 'Neutral';
-    if (tier == -1) return 'Disinterested';
-    if (tier == -2) return 'Apathetic';
-    if (tier == -3) return 'Distant';
-    if (tier == -4) return 'Cold';
-    if (tier == -5) return 'Rejected';
-    if (tier == -6) return 'Repelled';
-    if (tier == -7) return 'Revolted';
-    if (tier == -8) return 'Abhorrent';
-    if (tier == -9) return 'Loathing';
-    if (tier <= -10) return 'Deserted';
-    return 'Unknown';
-  }
+  // NSFW cooldown & lust (core state + tier calc + reset/seed/load/restore + group per-char scalars
+  // + applyClimax/decrement extracted to NsfwService).
+  // See "keep reset blocks in sync" comments (now also lists nsfw). All scalars, tier getters,
+  // cooldown mutations, arousal, and helpers now owned by the service; god thins to delegation
+  // + 5 @Deprecated shims. 0 new private methods added in god for nsfw.
+  // climax/sexual/daily LLM checks + _runPostGen + nsfw injection stay thin in god (step 8 for full builders).
 
   // ── Chaos Mode / Chance Time (core state extracted) ──────────────────────
   // _chaosModeEnabled / _chaosNsfwEnabled / _chaosPressure / _pendingChaosInjection / _chaosEventDelivered
@@ -436,14 +399,29 @@ class ChatService extends ChangeNotifier {
     },
   );
 
+  // ── NSFW cooldown & arousal (extracted to NsfwService) ─────────────────────
+  // State (cooldown enabled/remaining/total, arousalLevel), tier calc, reset/seed/load/restore,
+  // group per-speaker load/save scalars, applyClimax/decrement live in _nsfwService (plain class).
+  // ChatService owns via late final + delegates. (Declared before needs for init safety because
+  // needs closes over the getArousal/getNsfw/getCooldown/setArousal cbs.)
+  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct
+  // without god privates. 0 new private methods in god.
+  // climax/sexual/daily checks stay in god (step 8 for full nsfw injection).
+  // 3 group cbs only (onNotify/onSaveChat removed as dead/unused; god owns save/notify for post-gen climax/sexual fidelity per plan boundaries).
+  late final _nsfwService = NsfwService(
+    getGroupInt: _getGroupInt,
+    getGroupValue: (charId, key) => _groupRealism[charId]?[key],
+    setGroupValue: _setGroupRealismValue,
+  );
+
   late final _needsSimulation = NeedsSimulation(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
     getTimeOfDay: () => _timeService.timeOfDay,
     getRealismEnabled: () => _realismEnabled,
-    getArousalLevel: () => _arousalLevel,
-    getNsfwCooldownEnabled: () => _nsfwCooldownEnabled,
-    getCooldownTurnsRemaining: () => _cooldownTurnsRemaining,
+    getArousalLevel: () => _nsfwService.arousalLevel,
+    getNsfwCooldownEnabled: () => _nsfwService.nsfwCooldownEnabled,
+    getCooldownTurnsRemaining: () => _nsfwService.cooldownTurnsRemaining,
     getObserverMode: () => _observerMode,
     getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
     getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
@@ -452,7 +430,7 @@ class ChatService extends ChangeNotifier {
     getEnjoysLowHygiene: () => enjoysLowHygiene,
     getNeedsSimEnabled: () => _needsSimEnabled,
     setArousalLevel: (v) {
-      _arousalLevel = v;
+      _nsfwService.setArousalLevel(v);
     },
   );
 
@@ -1169,11 +1147,13 @@ class ChatService extends ChangeNotifier {
   bool get _hasRealismBaseline =>
       _characterEmotion.isNotEmpty ||
       _relationshipService.affectionScore != 0 ||
-      _arousalLevel != 0 ||
+      _nsfwService.arousalLevel != 0 ||
       _relationshipService.activeFixation.isNotEmpty;
 
-  bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
-  int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
+  @Deprecated('Access via NsfwService directly')
+  bool get nsfwCooldownEnabled => _nsfwService.nsfwCooldownEnabled;
+  @Deprecated('Access via NsfwService directly')
+  int get cooldownTurnsRemaining => _nsfwService.cooldownTurnsRemaining;
 
   // Chaos Mode (shims delegate to extracted service; UI coordination flags stay here)
   @Deprecated('Access via ChaosModeService directly')
@@ -1257,7 +1237,13 @@ class ChatService extends ChangeNotifier {
   /// Called by the overlay once it has opened. Clears the auto-trigger flag.
   void consumeChanceTimeTrigger() => _chanceTimePendingTrigger = false;
 
-  int get arousalLevel => _arousalLevel;
+  @Deprecated('Access via NsfwService directly')
+  int get arousalLevel => _nsfwService.arousalLevel;
+  @Deprecated('Access via NsfwService directly')
+  int get arousalTier => _nsfwService.arousalTier;
+  @Deprecated('Access via NsfwService directly')
+  String get arousalTierName => _nsfwService.arousalTierName;
+
   @Deprecated('Access via RelationshipService directly')
   String get activeFixation => _relationshipService.activeFixation;
 
@@ -1581,12 +1567,11 @@ class ChatService extends ChangeNotifier {
       // Keep the reset sites (startNewChat, load*Session paths incl. empty for groups, setActiveGroup, setActiveCharacter, delete flows, ext-seed, fork/insert)
       // in sync when moving more state in later Stage 3 steps. See needs_simulation.dart for the
       // current owner of vector + buffers (and _needsSimEnabled/_enjoysLowHygiene control fields).
-      // Relationship + Expression + Time via service reset helpers (expression: manual/caches/onnx/lastAvatar/random;
-      // time: clock/day/passage/turns/anchor + narrative weekday). All secondary time config zeroed on fresh group/0-session paths.
-      final prevArousal = _arousalLevel;
+      // Relationship + Expression + Time + Nsfw via service reset helpers (expression: manual/caches/onnx/lastAvatar/random;
+      // time: clock/day/passage/turns/anchor + narrative weekday; nsfw: cooldown/arousal/tier). All secondary time/nsfw config zeroed on fresh group/0-session paths.
+      final prevArousal = _nsfwService.arousalLevel;
       final prevFixation = _relationshipService.activeFixation;
       final prevFixationLife = _relationshipService.fixationLifespan;
-      _arousalLevel = 0;
       _needsSimEnabled = false;
       _enjoysLowHygiene = false;
       _needsSimulation.clearVector();
@@ -1595,17 +1580,17 @@ class ChatService extends ChangeNotifier {
       _characterEmotion = '';
       _emotionIntensity = '';
       // Time reset via extracted service (keeps multiple reset blocks in sync).
-      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time).
+      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw).
       _timeService.resetForFreshChat();
       // Chaos reset via extracted service (keeps multiple reset blocks in sync).
       // See chaos_mode_service.dart and "keep reset blocks" comments.
       _chaosModeService.resetForFreshChat();
-      _nsfwCooldownEnabled = false;
+      // Nsfw reset via extracted service (keeps multiple reset blocks in sync).
+      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw).
+      _nsfwService.resetForFreshChat();
       _relationshipService.resetForFreshChat();
       _expressionService.resetForFreshChat();
       _moodDecayCounter = 0;
-      _cooldownTurnsRemaining = 0;
-      _cooldownTurnsTotal = 0;
       _greetingEvalPending = false;
       _isProcessingGreeting = false;
       _pendingRealismMetadata = null;
@@ -1638,7 +1623,9 @@ class ChatService extends ChangeNotifier {
           );
           _characterEmotion = ext.characterEmotion;
           _emotionIntensity = ext.emotionIntensity;
-          _nsfwCooldownEnabled = ext.nsfwCooldownEnabled;
+          _nsfwService.seedFromV2OrExt(
+            nsfwCooldownEnabled: ext.nsfwCooldownEnabled,
+          );
           _chaosModeService.seedFromGroupOrExt(ext.chaosModeEnabled, false);
           _needsSimEnabled = ext.needsSimEnabled;
           _enjoysLowHygiene = ext.enjoysLowHygiene;
@@ -1731,14 +1718,15 @@ class ChatService extends ChangeNotifier {
     // Defensive: zero key 1:1 scalars so rapid 1:1↔group toggles cannot observe
     // stale values in the brief window before group per-speaker loads take over.
     // (Full reset happens on return to any 1:1 via setActiveCharacter.)
-    _arousalLevel = 0;
     _characterEmotion = '';
     // Relationship scalars/fixation (affection/trust/tiers/fixation/spatial/pending) via extracted service.
     // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
-    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat/load paths (now includes time for group fresh/0-session).
+    // Nsfw (arousal/cooldown) via service.
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat/load paths (now includes time/nsfw for group fresh/0-session).
     _relationshipService.resetForFreshChat();
     _expressionService.resetForFreshChat();
     _timeService.resetForFreshChat();
+    _nsfwService.resetForFreshChat();
 
     // Auto-start local backend when entering a group chat
     _llmProvider?.ensureManagedBackendIsRunning();
@@ -2401,14 +2389,16 @@ class ChatService extends ChangeNotifier {
         dayCount: drift.Value(_timeService.dayCount),
         startDayOfWeek: drift.Value(_timeService.startDayOfWeekAnchor),
         passageOfTimeEnabled: drift.Value(_timeService.passageOfTimeEnabled),
-        nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
+        nsfwCooldownEnabled: drift.Value(_nsfwService.nsfwCooldownEnabled),
         needsSimEnabled: drift.Value(_needsSimEnabled),
         needsVector: drift.Value(
           _needsSimEnabled ? _needsSimulation.serialize() : null,
         ),
         groupRealismState: drift.Value(groupRealismJson),
-        arousalLevel: drift.Value(_arousalLevel),
-        cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
+        arousalLevel: drift.Value(_nsfwService.arousalLevel),
+        cooldownTurnsRemaining: drift.Value(
+          _nsfwService.cooldownTurnsRemaining,
+        ),
         trustLevel: drift.Value(_relationshipService.trustLevel),
         activeFixation: drift.Value(_relationshipService.activeFixation),
         fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
@@ -2487,8 +2477,10 @@ class ChatService extends ChangeNotifier {
       _expressionService.resetForFreshChat();
       // Time (secondary config: passage, weekday anchors, turns, day/time scalars) reset for fresh 0-session/new-group paths.
       // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
+      // Nsfw (cooldown/arousal) reset for same (incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue).
       // See "keep reset blocks in sync" (setActiveGroup, startNewChat, load* , setActive* all must hit this).
       _timeService.resetForFreshChat();
+      _nsfwService.resetForFreshChat();
       return;
     }
 
@@ -2535,7 +2527,11 @@ class ChatService extends ChangeNotifier {
           lastSession.passageOfTimeEnabled &&
           _storageService.passageOfTimeDefault,
     );
-    _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
+    _nsfwService.loadNsfwScalars(
+      nsfwCooldownEnabled: lastSession.nsfwCooldownEnabled,
+      arousalLevel: lastSession.arousalLevel,
+      cooldownTurnsRemaining: lastSession.cooldownTurnsRemaining,
+    );
     _needsSimEnabled = lastSession.needsSimEnabled;
     if (_needsSimEnabled) {
       _needsSimulation.initializeIfNeeded();
@@ -2550,11 +2546,9 @@ class ChatService extends ChangeNotifier {
         _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
 
     _needsSimulation.resetBuffers();
-    _arousalLevel = lastSession.arousalLevel;
-    _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
     // trust/fixation/spatial/pending/affection/tiers already loaded via _relationshipService.loadScalars above.
     debugPrint(
-      '[ChatService] _loadLastSession: Loaded session with arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
+      '[ChatService] _loadLastSession: Loaded session with arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
     _chaosModeService.loadScalars(
       modeEnabled: lastSession.chaosModeEnabled,
@@ -2835,7 +2829,11 @@ class ChatService extends ChangeNotifier {
             session.passageOfTimeEnabled &&
             _storageService.passageOfTimeDefault,
       );
-      _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
+      _nsfwService.loadNsfwScalars(
+        nsfwCooldownEnabled: session.nsfwCooldownEnabled,
+        arousalLevel: session.arousalLevel,
+        cooldownTurnsRemaining: session.cooldownTurnsRemaining,
+      );
       _needsSimEnabled = session.needsSimEnabled;
       if (_needsSimEnabled) {
         _needsSimulation.initializeIfNeeded();
@@ -2850,8 +2848,6 @@ class ChatService extends ChangeNotifier {
           _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
 
       _needsSimulation.resetBuffers();
-      _arousalLevel = session.arousalLevel;
-      _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
       // trust/fixation etc already via _relationshipService.loadScalars above.
 
       // Load per-session evolution (1:1 mode only — group handled by _loadGroupEvolvedFields)
@@ -3042,7 +3038,7 @@ class ChatService extends ChangeNotifier {
     if (_activeCharacter == null && _activeGroup == null) return;
 
     debugPrint(
-      '[startNewChat] START: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
+      '[startNewChat] START: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
 
     // Refresh _activeCharacter from the repository so we pick up any edits
@@ -3195,7 +3191,9 @@ class ChatService extends ChangeNotifier {
       );
       _characterEmotion = extSeed.characterEmotion;
       _emotionIntensity = extSeed.emotionIntensity;
-      _nsfwCooldownEnabled = extSeed.nsfwCooldownEnabled;
+      _nsfwService.seedFromV2OrExt(
+        nsfwCooldownEnabled: extSeed.nsfwCooldownEnabled,
+      );
       _chaosModeService.seedFromGroupOrExt(extSeed.chaosModeEnabled, false);
       _needsSimEnabled = extSeed.needsSimEnabled;
       _enjoysLowHygiene = extSeed.enjoysLowHygiene;
@@ -3214,17 +3212,17 @@ class ChatService extends ChangeNotifier {
       // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.
       // Needs vector/buffers reset via _needsSimulation also kept in sync across sites.)
       // Time secondary fields (passage/anchor/turns/day/time) zeroed via _timeService.resetForFreshChat in non-ext path + _load empty + setActiveGroup.
+      // Nsfw runtime (arousal/cooldown) zeroed via service for fresh (see resetRuntime + resetForFreshChat).
       // Declarative initial bond/trust/emotion/day etc are already seeded above from the card's
       // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
       // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
       // Expression (manual/caches/onnx/lastAvatar) reset via service for no-bleed (new for step 4).
       debugPrint(
-        '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan})',
+        '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan})',
       );
-      _arousalLevel = 0;
-      _cooldownTurnsRemaining = 0;
+      _nsfwService.resetRuntimeArousalAndCooldown();
       debugPrint(
-        '[startNewChat] After reset: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
+        '[startNewChat] After reset: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
       );
 
       // Recalculate tiers from seeded scores (only needed for realism-enabled chars)
@@ -3250,11 +3248,12 @@ class ChatService extends ChangeNotifier {
         // Will be populated later with greeting in non-group modes
         // Preserve realism state for proper post-greeting eval (don't reset here)
       } else {
-        // Relationship + Expression + Time reset via service helpers (keeps blocks in sync with setActive* / load paths).
+        // Relationship + Expression + Time + Nsfw reset via service helpers (keeps reset blocks in sync with setActiveCharacter:1572 etc / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue").
         // Time now explicitly reset in group 0-session/empty paths + setActiveGroup defensive + _loadLast empty (cross-check needs bugfix hygiene).
         _relationshipService.resetForFreshChat();
         _expressionService.resetForFreshChat();
         _timeService.resetForFreshChat();
+        _nsfwService.resetForFreshChat();
         // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
         // Time reset helper kept in sync with other blocks.
       }
@@ -3317,11 +3316,11 @@ class ChatService extends ChangeNotifier {
 
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
     debugPrint(
-      '[startNewChat] BEFORE SAVE: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
+      '[startNewChat] BEFORE SAVE: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
     await _saveChat();
     debugPrint(
-      '[startNewChat] AFTER SAVE: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
+      '[startNewChat] AFTER SAVE: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
     notifyListeners();
 
@@ -3615,9 +3614,7 @@ class ChatService extends ChangeNotifier {
 
       _applyMoodDecay();
       _needsSimulation.tickDecay();
-      if (_cooldownTurnsRemaining > 0) {
-        _cooldownTurnsRemaining--;
-      }
+      _nsfwService.decrementCooldownIfActive();
       _isEvaluatingRealism = true;
       _realismEvalStreamText = '';
       notifyListeners();
@@ -3911,18 +3908,20 @@ class ChatService extends ChangeNotifier {
           // The climax checker stores the pre-climax arousal so we can restore it.
           final climaxTriggered =
               lastMsg.activeMetadata!['climax_triggered'] as bool? ?? false;
-          if (climaxTriggered && _nsfwCooldownEnabled) {
+          if (climaxTriggered && _nsfwService.nsfwCooldownEnabled) {
             final preClimaxArousal =
                 lastMsg.activeMetadata!['pre_climax_arousal'] as int? ?? 0;
-            _arousalLevel = preClimaxArousal;
-            _cooldownTurnsRemaining = 0;
-            _cooldownTurnsTotal = 0;
+            _nsfwService.setArousalLevel(preClimaxArousal);
+            _nsfwService.setCooldownTurnsRemaining(0);
+            _nsfwService.setCooldownTurnsTotal(0);
             debugPrint(
               '[Realism:Regen] Reverted climax state: arousal restored to $preClimaxArousal, cooldown cleared',
             );
-          } else if (arousalDelta != 0 && _nsfwCooldownEnabled) {
+          } else if (arousalDelta != 0 && _nsfwService.nsfwCooldownEnabled) {
             // Normal arousal delta revert (no climax involved)
-            _arousalLevel = (_arousalLevel - arousalDelta).clamp(-100, 100);
+            _nsfwService.setArousalLevel(
+              (_nsfwService.arousalLevel - arousalDelta).clamp(-100, 100),
+            );
           }
 
           // Needs pre-turn vector revert — mirrors the bond/trust/arousal delta
@@ -3959,14 +3958,7 @@ class ChatService extends ChangeNotifier {
             wasNudged: wasNudged,
           );
 
-          _arousalLevel =
-              previousMessageState['arousalLevel'] as int? ?? _arousalLevel;
-          _cooldownTurnsRemaining =
-              previousMessageState['cooldownTurnsRemaining'] as int? ??
-              _cooldownTurnsRemaining;
-          _cooldownTurnsTotal =
-              previousMessageState['cooldownTurnsTotal'] as int? ??
-              _cooldownTurnsRemaining;
+          _nsfwService.restoreNsfwFromMessageState(previousMessageState);
 
           // Needs simulation snapshot (clean port)
           // Guard + no enabled override: prevents stale resurrection on regen after toggle-off.
@@ -3981,7 +3973,7 @@ class ChatService extends ChangeNotifier {
           }
 
           debugPrint(
-            '[Realism:Regen] ✓ Restored baseline from previous accepted message: bond=${_relationshipService.affectionScore}, emotion=$_characterEmotion, trust=${_relationshipService.trustLevel}, arousal=$_arousalLevel',
+            '[Realism:Regen] ✓ Restored baseline from previous accepted message: bond=${_relationshipService.affectionScore}, emotion=$_characterEmotion, trust=${_relationshipService.trustLevel}, arousal=${_nsfwService.arousalLevel}',
           );
         } else {
           debugPrint(
@@ -4011,9 +4003,7 @@ class ChatService extends ChangeNotifier {
         // so post-generation deltas are non-zero.
         _applyMoodDecay();
         _needsSimulation.tickDecay();
-        if (_cooldownTurnsRemaining > 0) {
-          _cooldownTurnsRemaining--;
-        }
+        _nsfwService.decrementCooldownIfActive();
 
         // Record the (restored) needs baseline as the pre-turn vector BEFORE
         // generation so the post-generation checks can compute proper deltas.
@@ -8641,7 +8631,7 @@ class ChatService extends ChangeNotifier {
   /// per character (1-8 turns based on personality), so the prompt uses the
   /// ratio of remaining/total to determine the phase.
   String _getNsfwCooldownInjection() {
-    if (!_realismEnabled || !_nsfwCooldownEnabled) return '';
+    if (!_realismEnabled || !_nsfwService.nsfwCooldownEnabled) return '';
 
     String charName = _activeCharacter?.name ?? 'the character';
     if (_activeGroup != null && !_observerMode) {
@@ -8664,16 +8654,16 @@ class ChatService extends ChangeNotifier {
     final bool protectiveWindowActive =
         _needsSimulation.afterglowTurnsRemaining > 0 ||
         _needsSimulation.arousalSuppressionTurnsRemaining > 0;
-    if (protectiveWindowActive && _cooldownTurnsRemaining > 0) {
+    if (protectiveWindowActive && _nsfwService.cooldownTurnsRemaining > 0) {
       statePrompt +=
           ' $charName is currently inside a temporary protective afterglow/lust-haze window. Other physical and emotional needs (hunger, energy, social connection, the need to move or clean up) feel significantly muted or distant for the next few turns. This is not just emotional — it is a real dampening effect.\n';
     }
 
-    if (_cooldownTurnsRemaining > 0) {
-      final total = _cooldownTurnsTotal > 0
-          ? _cooldownTurnsTotal
-          : _cooldownTurnsRemaining;
-      final ratio = _cooldownTurnsRemaining / total;
+    if (_nsfwService.cooldownTurnsRemaining > 0) {
+      final total = _nsfwService.cooldownTurnsTotal > 0
+          ? _nsfwService.cooldownTurnsTotal
+          : _nsfwService.cooldownTurnsRemaining;
+      final ratio = _nsfwService.cooldownTurnsRemaining / total;
 
       if (ratio > 0.66) {
         // ── Phase 1: Immediate post-orgasm (just happened) ──
@@ -8712,31 +8702,31 @@ class ChatService extends ChangeNotifier {
       }
 
       statePrompt +=
-          ' ($charName\'s refractory recovery: $_cooldownTurnsRemaining of $total turns remaining.)\n';
+          ' ($charName\'s refractory recovery: ${_nsfwService.cooldownTurnsRemaining} of $total turns remaining.)\n';
     } else {
       String arousalDesc;
-      if (_arousalLevel <= -2) {
+      if (_nsfwService.arousalLevel <= -2) {
         arousalDesc =
             'completely unaroused and physically repulsed. They will actively reject, recoil from, or shut down any sexual advance';
-      } else if (_arousalLevel == 0) {
+      } else if (_nsfwService.arousalLevel == 0) {
         arousalDesc =
             'physically neutral — sex is the furthest thing from their mind. Any sexual advance feels out of place';
-      } else if (_arousalLevel <= 15) {
+      } else if (_nsfwService.arousalLevel <= 15) {
         arousalDesc =
             'mildly flustered — a low hum of warmth, maybe a lingering glance or quickened pulse, but easily suppressed. '
             'They might entertain flirty banter but aren\'t actively seeking physical escalation';
-      } else if (_arousalLevel <= 35) {
+      } else if (_nsfwService.arousalLevel <= 35) {
         arousalDesc =
             'noticeably aroused — flushed skin, shallow breathing, heightened sensitivity to touch. '
             'They are receptive and encouraging but still in control of themselves. '
             'If not in active sexual contact, this manifests as charged tension, loaded silences, and deliberate proximity';
-      } else if (_arousalLevel <= 60) {
+      } else if (_nsfwService.arousalLevel <= 60) {
         arousalDesc =
             'heavily aroused — pulse racing, body aching for contact, struggling to focus on anything else. '
             'If in active sexual contact, they are vocal, aggressive, and chasing release. '
             'If NOT in active sexual contact, they are visibly distracted, restless, making excuses to touch or be near, '
             'and fighting the urge to escalate — the tension is unbearable but they haven\'t acted on it yet';
-      } else if (_arousalLevel <= 80) {
+      } else if (_nsfwService.arousalLevel <= 80) {
         arousalDesc =
             'overwhelmed with desire — trembling, desperate, barely holding composure. '
             'If in active sexual contact, they are on the edge and could climax with continued stimulation. '
@@ -8758,7 +8748,7 @@ class ChatService extends ChangeNotifier {
             "built to that point through {{user}}'s direct actions. $charName is desperate "
             'and aching but still in the moment, not past it.\n';
       }
-      if (arousalTier < 6) {
+      if (_nsfwService.arousalTier < 6) {
         statePrompt += ' $charName is currently $arousalDesc.\n';
       }
 
@@ -8893,11 +8883,13 @@ class ChatService extends ChangeNotifier {
       }
 
       int arousalDelta = 0;
-      if (_nsfwCooldownEnabled) {
+      if (_nsfwService.nsfwCooldownEnabled) {
         final arDelta = _extractJsonInt(text, 'arousal_delta');
         if (arDelta != null) {
           arousalDelta = arDelta.clamp(-25, 25);
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
+          _nsfwService.setArousalLevel(
+            (_nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
+          );
         }
       }
 
@@ -8974,12 +8966,12 @@ class ChatService extends ChangeNotifier {
         'Current relationship tension: $shortTermTierName | Trust level: ${_relationshipService.trustLevel}\n';
 
     // ── Arousal instruction (enriched with current level + behavioral visibility) ──
-    final arousalField = _nsfwCooldownEnabled
+    final arousalField = _nsfwService.nsfwCooldownEnabled
         ? ', "arousal_delta": <number -25 to +25>'
         : '';
-    final arousalInstr = _nsfwCooldownEnabled
+    final arousalInstr = _nsfwService.nsfwCooldownEnabled
         ? '3. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
-              '   Current arousal: $_arousalLevel/100. '
+              '   Current arousal: ${_nsfwService.arousalLevel}/100. '
               'Arousal measures DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   Be bold with arousal deltas — intimate moments should produce significant shifts (+10 to +20).\n'
               '   High arousal = the character is intensely turned on, NOT that they are about to climax '
@@ -9037,11 +9029,13 @@ class ChatService extends ChangeNotifier {
         _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
       }
 
-      if (_nsfwCooldownEnabled) {
+      if (_nsfwService.nsfwCooldownEnabled) {
         final arDelta = _extractJsonInt(text, 'arousal_delta');
         if (arDelta != null) {
           final arousalDelta = arDelta.clamp(-10, 10);
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
+          _nsfwService.setArousalLevel(
+            (_nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
+          );
           if (arousalDelta != 0) {
             _pendingRealismMetadata ??= {};
             _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
@@ -9221,13 +9215,13 @@ class ChatService extends ChangeNotifier {
     final relationshipCtx =
         '$emotionCtx${postureCtx}Current relationship tension: $shortTermTierName | Trust level: ${_relationshipService.trustLevel}\n\n';
 
-    final arousalField = _nsfwCooldownEnabled
+    final arousalField = _nsfwService.nsfwCooldownEnabled
         ? ', "arousal_delta": <number -25 to +25>'
         : '';
     // Arousal is field 8 (after posture), objective is 9, fixation 10, reason 11
-    final arousalInstr = _nsfwCooldownEnabled
+    final arousalInstr = _nsfwService.nsfwCooldownEnabled
         ? '8. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
-              '   Current arousal: $_arousalLevel/100. '
+              '   Current arousal: ${_nsfwService.arousalLevel}/100. '
               'Arousal = DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   Be bold — intimate moments should produce significant shifts (+10 to +20).\n'
               '   CRITICAL: Arousal MUST be VISIBLE in character behavior. At 60+, show heavy breathing, stuttering, flushed skin, desperate body language.\n'
@@ -9236,7 +9230,7 @@ class ChatService extends ChangeNotifier {
         : '';
 
     // Determine the next field number after arousal (or after posture if arousal disabled)
-    final objNum = _nsfwCooldownEnabled ? 9 : 8;
+    final objNum = _nsfwService.nsfwCooldownEnabled ? 9 : 8;
     final fixNum = objNum + 1;
     final reasonNum = fixNum + 1;
 
@@ -9312,11 +9306,13 @@ class ChatService extends ChangeNotifier {
       }
 
       int arousalDelta = 0;
-      if (_nsfwCooldownEnabled) {
+      if (_nsfwService.nsfwCooldownEnabled) {
         final arDelta = _extractJsonInt(text, 'arousal_delta');
         if (arDelta != null) {
           arousalDelta = arDelta.clamp(-25, 25);
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
+          _nsfwService.setArousalLevel(
+            (_nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
+          );
         }
       }
 
@@ -9551,9 +9547,9 @@ class ChatService extends ChangeNotifier {
       'timeOfDay': _timeService.timeOfDay,
       'dayCount': _timeService.dayCount,
       'startDayOfWeek': _timeService.startDayOfWeekAnchor,
-      'arousalLevel': _arousalLevel,
-      'cooldownTurnsRemaining': _cooldownTurnsRemaining,
-      'cooldownTurnsTotal': _cooldownTurnsTotal,
+      'arousalLevel': _nsfwService.arousalLevel,
+      'cooldownTurnsRemaining': _nsfwService.cooldownTurnsRemaining,
+      'cooldownTurnsTotal': _nsfwService.cooldownTurnsTotal,
       'trustLevel': _relationshipService.trustLevel,
       'activeFixation': _relationshipService.activeFixation,
       'fixationLifespan': _relationshipService.fixationLifespan,
@@ -9722,7 +9718,9 @@ class ChatService extends ChangeNotifier {
   void _loadGroupRealismIntoScalars(String charId) {
     // Relationship (affection/trust/fix/tiers etc) now via service load helper (uses the same _getGroup* internally via cbs).
     _relationshipService.loadRelationshipScalarsForSpeaker(charId);
-    _arousalLevel = _getGroupInt(charId, 'arousal');
+    // Nsfw (arousal + cooldown + nsfwEnabled per char) via service (extends prior arousal-only for full group parity).
+    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
+    _nsfwService.loadNsfwScalarsForSpeaker(charId);
 
     _characterEmotion = _getGroupString(charId, 'emotion');
     _emotionIntensity = _getGroupString(
@@ -9747,7 +9745,9 @@ class ChatService extends ChangeNotifier {
   void _saveScalarsIntoGroupRealism(String charId) {
     // Relationship scalars (affection/long/trust/fix/tiers/spatial) now via service.
     _relationshipService.saveRelationshipScalarsToGroup(charId);
-    _setGroupRealismValue(charId, 'arousal', _arousalLevel);
+    // Nsfw scalars (arousal + cooldown + enabled) now via service (for group per-char persistence parity).
+    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
+    _nsfwService.saveNsfwScalarsToGroup(charId);
 
     if (_characterEmotion.isNotEmpty) {
       _setGroupRealismValue(charId, 'emotion', _characterEmotion);
@@ -9982,21 +9982,22 @@ class ChatService extends ChangeNotifier {
     // Catastrophe (step 0) is never suppressed — the disaster must be narrated.
     final bool suppressionActive =
         _needsSimulation.arousalSuppressionTurnsRemaining > 0 ||
-        (_arousalLevel >= NeedsSimulation.arousalSuppressionThreshold &&
+        (_nsfwService.arousalLevel >=
+                NeedsSimulation.arousalSuppressionThreshold &&
             (_needsSimulation.afterglowTurnsRemaining > 0 ||
-                _cooldownTurnsRemaining > 0));
+                _nsfwService.cooldownTurnsRemaining > 0));
 
     // Preserve (and keep strong) the special erotic bladder + high-arousal tension case.
     // This one deliberately uses the *original* step so desperate holding while
     // extremely turned on can still create charged, kinky flavor even when other
     // needs are being softened by lust.
     if (top.key == 'bladder' &&
-        _nsfwCooldownEnabled &&
-        _arousalLevel >= 40 &&
+        _nsfwService.nsfwCooldownEnabled &&
+        _nsfwService.arousalLevel >= 40 &&
         step <= 2) {
       final tension = step <= 1
           ? 'She is *desperately* holding on while extremely aroused — the combination is overwhelming and humiliating.'
-          : 'The combination of bladder desperation and current arousal (level: $_arousalLevel/10) creates a charged, uncomfortable tension.';
+          : 'The combination of bladder desperation and current arousal (level: ${_nsfwService.arousalLevel}/10) creates a charged, uncomfortable tension.';
       return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
     }
 
@@ -10004,7 +10005,7 @@ class ChatService extends ChangeNotifier {
     if (suppressionActive && step >= 1 && step <= 3) {
       // Dampen urgency by 1-2 steps when the character is deep in a lust haze.
       // Stronger effect at very high arousal (tier 6+ or raw >= 60).
-      final int dampen = (_arousalLevel >= 60) ? 2 : 1;
+      final int dampen = (_nsfwService.arousalLevel >= 60) ? 2 : 1;
       effectiveStep = (effectiveStep + dampen).clamp(0, 5);
     }
 
@@ -10140,11 +10141,7 @@ class ChatService extends ChangeNotifier {
 
     _timeService.restoreTimeFromRealismState(state);
 
-    _arousalLevel = state['arousalLevel'] as int? ?? _arousalLevel;
-    _cooldownTurnsRemaining =
-        state['cooldownTurnsRemaining'] as int? ?? _cooldownTurnsRemaining;
-    _cooldownTurnsTotal =
-        state['cooldownTurnsTotal'] as int? ?? _cooldownTurnsRemaining;
+    _nsfwService.restoreNsfwFromRealismState(state);
 
     // v3.0 Restorations (relationship via service; already covered by restoreFromMessageState above for most).
     // (Direct sets removed; service owns the scalars.)
@@ -10171,8 +10168,8 @@ class ChatService extends ChangeNotifier {
   Future<void> _runPostGenNeedsChecks(String responseText) async {
     // Climax check
     if (_realismEnabled &&
-        _nsfwCooldownEnabled &&
-        _cooldownTurnsRemaining <= 0 &&
+        _nsfwService.nsfwCooldownEnabled &&
+        _nsfwService.cooldownTurnsRemaining <= 0 &&
         (_activeGroup == null || !_observerMode)) {
       await _checkClimaxInResponse(responseText);
     }
@@ -10185,7 +10182,7 @@ class ChatService extends ChangeNotifier {
     // Daily activity effects
     if (_needsSimEnabled &&
         _realismActiveThisMode &&
-        _cooldownTurnsRemaining <= 0) {
+        _nsfwService.cooldownTurnsRemaining <= 0) {
       await _checkDailyActivityEffects(responseText);
     }
 
@@ -10250,7 +10247,7 @@ class ChatService extends ChangeNotifier {
         }
 
         // Save pre-climax state on the message so regen can restore it
-        final preClimaxArousal = _arousalLevel;
+        final preClimaxArousal = _nsfwService.arousalLevel;
         if (_messages.isNotEmpty && !_messages.last.isUser) {
           final msg = _messages.last;
           final meta = Map<String, dynamic>.from(msg.activeMetadata ?? {});
@@ -10259,9 +10256,7 @@ class ChatService extends ChangeNotifier {
           msg.swipeMetadata[msg.swipeIndex] = meta;
         }
 
-        _cooldownTurnsTotal = turns;
-        _cooldownTurnsRemaining = turns;
-        _arousalLevel = -3;
+        _nsfwService.applyClimaxEffects(turns: turns);
 
         // Apply sexual activity cross-effects + start Afterglow Buffer.
         // Energy is deliberately given a solid positive here (orgasm as a
@@ -10346,7 +10341,7 @@ class ChatService extends ChangeNotifier {
 
     // Still avoid double-applying immediately after a confirmed climax in the
     // *current* state (climax handler already applied the strong effects).
-    if (_cooldownTurnsRemaining > 0) return;
+    if (_nsfwService.cooldownTurnsRemaining > 0) return;
 
     final charName = _activeCharacter!.name;
 
@@ -10555,12 +10550,7 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> setNsfwCooldownEnabled(bool enabled) async {
-    _nsfwCooldownEnabled = enabled;
-    if (!enabled) {
-      _cooldownTurnsRemaining = 0;
-      _cooldownTurnsTotal = 0;
-      _arousalLevel = 0;
-    }
+    _nsfwService.setNsfwCooldownEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
