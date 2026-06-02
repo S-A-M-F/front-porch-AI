@@ -508,19 +508,14 @@ jobs:
           done
 
           # Sign all native binaries in Resources: executables, .so and .dylib helpers.
-          # PyInstaller --onedir bundles place .so extension modules inside _internal/
-          # without the executable bit set, so the old -perm +111 filter missed them.
-          # Notarization requires every Mach-O binary to be signed; unsigned .so files
-          # cause Gatekeeper to block the sidecar even after notarization.
-          # We use the Sidecar.entitlements (not the app entitlements) for these because
-          # they are separate processes and need the PyInstaller-specific runtime flags.
-          find "$APP_NAME/Contents/Resources" -type f \( -name "*.so" -o -name "*.dylib" \) | while read f; do
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-              --entitlements "$SIDECAR_ENT" "$f" 2>/dev/null || true
-          done
-          find "$APP_NAME/Contents/Resources" -type f -perm +111 | while read f; do
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-              --entitlements "$SIDECAR_ENT" "$f" 2>/dev/null || true
+          # We use "file" to target only Mach-O binaries, avoiding failures on scripts/text files,
+          # and allowing us to remove "2>/dev/null || true" so real errors fail the build.
+          find "$APP_NAME/Contents/Resources" -type f | while read f; do
+            if file "$f" | grep -q "Mach-O"; then
+              echo "Signing native binary: $f"
+              codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
+                --entitlements "$SIDECAR_ENT" "$f"
+            fi
           done
 
           # Sign the main app bundle last (outermost)
