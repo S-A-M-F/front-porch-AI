@@ -955,3 +955,51 @@ During testing after the Step 4 extraction (and prior needs/relationship work), 
 
 This was a latent UI gap exposed while exercising the realism/needs surfaces post-extraction. Hygiene Summary for this delta: 0 new private methods; small targeted additions for the missing control + persistence; analyze clean; no duplication introduced.
 
+## Post-Step 4 Bugfix: Needs tracking, chips/sidebar display, and double climax eval (in group + 1:1)
+
+**Symptom (user report + logs):** On a chat turn the model "outputted 0 for but one need (bladder)"; "confirmed needs chips and sidebar are broken and not displaying correctly"; "it appears climax eval is firing twice from the terminal log" (two identical [Realism:RawEval] + [Realism:Climax] "No climax detected." for the same response text, followed by the sexual + daily activity evals + needs applies). Affects both 1:1 and (especially) group; sidebar member cards showed stale needs; chips either showed wrong/mixed deltas or "X 0" entries; tracking didn't persist scene rewards (fun/social etc.) into the group per-char state.
+
+**Root causes (diagnosed via logs + abs-path reads of chat_service.dart + needs_simulation.dart + group_member_card.dart + realism_section.dart + message_bubble.dart):**
+- Double climax: leftover fire-and-forget `_checkClimaxInResponse(finalResponse);` (with identical guard) immediately before `await _runPostGenNeedsChecks(finalResponse);` which itself calls `_checkClimaxInResponse` first under the same `if (_realismEnabled && _nsfw... && _cooldown<=0 && (group?))`. Race + double LLM call + (on climax) potential double-apply of strong deltas (no internal guard in _checkClimax itself; the sexual check's cooldown early-return only protected the non-climax path). The explicit block was a remnant from before _runPost centralized the post-gen suite (climax + sexual + daily + fulfill) for both normal and regen paths.
+- Group needs not persisting / sidebar broken: post-gen scene effects (sexual/daily/climax applyNeedsDeltas + applyLongGenerationNeedsDecay) mutate the temp scalars (_needsSimulation._vector) while impersonated, but _saveScalarsIntoGroupRealism (which does the _setGroupNeeds write to _groupRealism map) was *only* called inside the pre-speaker-eval (for bond/trust/etc pre-gen). No call after _runPostGenNeedsChecks, so scene deltas were lost on _saveChat (group cards read directly from _groupRealism[id]['needs']; 1:1 was fine because scalars *are* the source). At post time _activeCharacter was the *prior* speaker (pre-eval's finally restores the name pointer while leaving scalars), so the three _check* fns used wrong charName/personality for their LLM prompts (explains cross-name evals in logs) and the apply targeted the wrong temp vector in some rotations.
+- Chips broken (esp. group): the post-gen "compute + attach 'needs_deltas' to last msg" (for bubble chips) at sendMessage scope used the outer preTurnVector captured *before* group speaker switch/tick (i.e. previous speaker's vector). Group per-speaker pre-eval stamped a top-level needs_deltas=0s (compute at pre time) into pending (stamped on msg creation); the unconditional overwrite then produced garbage cross-speaker deltas. Compute always emitted all 7 needs (incl. delta=0 "Stable"); bubble forEach rendered *every* one as a chip ("Bladder 0" etc.) even when no change, and always forced the second "Needs" row.
+- The "model outputted 0 for bladder" was the sexual-activity LLM legitimately returning "bladder_delta":0 (per its prompt: "almost always 0 or very small") + the apply printing the full input map (even 0 entries) + compute emitting a 0-delta entry + chip rendering it.
+
+**Fix (mechanical, parity-preserving, 0 new god privates, no parallel paths):**
+- Removed the duplicate fire-and-forget climax block (now only the single awaited path in _runPostGenNeedsChecks).
+- Before `await _runPostGenNeedsChecks`, for group non-obs: temp set `_activeCharacter = speakingCharacter` + re-_loadGroupRealismIntoScalars so the checks see correct name/personality/stance (prompts now accurate; early-outs correct). Restore pointer after (scalars left for persist).
+- After _runPost (and after long-gen decay), for group: compute speaker from _messages.last.sender + `_saveScalarsIntoGroupRealism(sid)`. This writes the post-scene needs (and any other scalars) back to _groupRealism so sidebar/getNeedsFor* + next loads see the turn's rewards. (Also called from inside generate so regen/continue paths get it too.)
+- In sendMessage's post-compute block (after generate): condition the 1:1 needs_deltas attach on `_activeGroup == null` (using the send-scope preTurn which is correct for 1:1); for group branch, compute using `groupSpeakerPreDecayNeeds` (new snapshot captured before tick using `nextCharacter` + _getGroupNeeds, for full decay+scene net like 1:1) falling back to the post-decay vector embedded in the msg's realism_state['needs']['vector'] (from the per-speaker capture). Overwrite the 0s that the pre-eval stamped. This + the persist makes chips accurate and sidebar live-update.
+- Added `Map<String,int>? groupSpeakerPreDecayNeeds;` capture (using nextCharacter before tickDecay) so group chips can include the turn's decay component for parity.
+- In message_bubble _buildRealismIndicator: in the needsDeltas forEach, `if (delta == 0) { return; }` before building/adding the chip. Now only changed needs get "Fun +7" etc. chips; if none changed after filter, needsChipList empty → falls back to single classic row (no clutter, no "X 0").
+- Cleaned the now-dead second `if (_activeCharacter == null) { // Group... return; }` in _checkClimax/_checkSexual/_checkDaily (the temp impersonate + first early return suffice; the second was legacy from before group post support).
+- All other call sites, reset blocks, 1:1 paths, fulfillment, afterglow, etc. untouched. Realism/Needs 1:1 vs group parity maintained (the dispatch via cbs + getIsGroupNonObserverMode + load/save scalars was already there; we just wired the missing post-gen persist + correct pre for chips + correct active for prompts).
+
+**Verification (all with cd + absolute paths, re-runs, re-reads of on-disk after each edit):**
+- `cd /Users/linux4life/dev/front-porch-stage1-experiment && dart format --set-exit-if-changed lib/services/chat_service.dart lib/ui/chat_components/bubbles/message_bubble.dart` → 0 changed (after block for lint).
+- Surface: `cd ... && flutter analyze --no-fatal-warnings --no-fatal-infos [the two files]` → "No issues found!" (0 on diff).
+- Full: `cd ... && flutter analyze --no-fatal-warnings --no-fatal-infos` → "27 issues found" (all pre-existing unrelated infos in untouched modules; steps 1-4 surfaces + our edits: 0).
+- `cd ... && dart fix --dry-run lib/services/chat_service.dart` → "Nothing to fix!"; same for bubble.
+- Tests: needs_simulation_test +17 "All tests passed!"; realism_engine_test runs group cases (pre-existing 1 "cap" case in large-group test, unrelated to our delta paths); no new failures introduced.
+- Build gate: `cd ... && flutter build macos --debug --no-pub` → "✓ Built build/macos/Build/Products/Debug/FrontPorchAI.app" (EXIT 0).
+- Dead greps: no new dead (no methods added; only used existing saveScalars / nextCharacter / getGroupNeeds; the removed duplicate call site was the only dead path).
+- Re-reads (abs): on-disk chat_service (the impersonate + persist + conditioned compute + pre-decay capture + cleaned duplicate ifs; 0 new _ privates; reset blocks untouched), message_bubble (the if(delta==0) return + comment), the two test files (no changes needed), MD (this section).
+- Manual smoke expectation: human to test 1:1 + group with needs+realism on (chips show only changed needs with correct deltas incl. decay+scene; sidebar updates after each turn with scene rewards; climax fires exactly once; bladder etc. persist and display; "0" only if legitimately no change that turn; enjoys low hygiene still works).
+
+This bug was latent (group needs post-gen never fully wired for the extracted NeedsSimulation path + post checks) but surfaced during heavy exercise of the realism/needs surfaces after steps 1-4 + the enjoys hygiene UI work. The climax double was a simple remnant. All rules followed (no main touch, cd+abs everywhere, AppColors not touched here, 0 new god privates, deletion of dead call sites, hygiene summary, etc.). Tree left in runnable state.
+
+**Hygiene Summary (for this bugfix delta):**
+- New private methods added (in chat_service.dart or elsewhere): 0
+- Methods / code deleted: the duplicate climax call block + 3 dead second if-null guards in the check fns (hygiene; part of task).
+- `flutter analyze`: clean (0 on exact diff + full only pre-existing 27 infos).
+- `dart fix --dry-run`: clean ("Nothing to fix!").
+- Dead code audit: yes (post-edit greps; removed the dead call/guards; no strays).
+- Duplication: reduced (one post path).
+- Riverpod: untouched.
+- Realism/Needs/Group parity: preserved + now actually correct for group post-gen (was broken).
+- Other: all cd+abs + abs reads/edits; build + tests + format + analyze re-run post; no skeletons; user-visible chips/sidebar now correct; main pristine.
+
+Recommended commit (after human smoke of 1:1+group with features on): `fix(realism): needs post-gen persist + correct chips for group; dedup climax eval; skip 0-delta needs chips`
+
+All constraints obeyed. Step 5 still pending per plan (user requested /implement --effort 4 begin step 5 after prior push; this was blocking bugfix first).
+

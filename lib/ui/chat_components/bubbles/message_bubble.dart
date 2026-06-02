@@ -1007,6 +1007,9 @@ class _MessageBubbleState extends State<MessageBubble> {
     if (needsDeltas != null && needsDeltas.isNotEmpty) {
       needsDeltas.forEach((need, data) {
         final delta = (data is Map) ? (data['delta'] as int? ?? 0) : 0;
+        if (delta == 0) {
+          return; // only show needs that actually changed this turn (avoids "Bladder 0" clutter; mirrors bond/trust/lust skipping 0s)
+        }
         final reason = (data is Map) ? (data['reason'] as String? ?? '') : '';
 
         IconData icon;

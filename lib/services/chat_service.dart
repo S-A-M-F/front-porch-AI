@@ -3577,11 +3577,28 @@ class ChatService extends ChangeNotifier {
     // can use the same delta-revert mechanism the classic realism fields
     // (bond/trust/arousal) use.
     Map<String, int>? preTurnVector;
+    // For group chips, snapshot the *pre-decay* needs for the *upcoming* speaker (from map)
+    // before tickDecay runs. This lets the post-gen chip deltas include the turn's decay + scene
+    // effects (1:1 parity). The per-speaker pre-eval will see the post-decay value after load.
+    Map<String, int>? groupSpeakerPreDecayNeeds;
     if (_realismActiveThisMode) {
       if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
         preTurnVector = Map<String, int>.from(_needsSimulation.vector);
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['needs_pre_turn_vector'] = preTurnVector;
+      }
+
+      if (_activeGroup != null &&
+          _needsSimEnabled &&
+          isGroupRealismActive &&
+          !_observerMode) {
+        final upcoming = nextCharacter;
+        if (upcoming != null) {
+          final sid = _getCharacterIdFromCard(upcoming);
+          if (sid.isNotEmpty) {
+            groupSpeakerPreDecayNeeds = _getGroupNeeds(sid);
+          }
+        }
       }
 
       _applyMoodDecay();
@@ -3716,14 +3733,39 @@ class ChatService extends ChangeNotifier {
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
     // This ensures UI chips show accurate deltas.
     if (_needsSimEnabled && _messages.isNotEmpty) {
-      final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
-        preTurnVector,
-      );
-      if (needsDeltas.isNotEmpty) {
-        _messages.last.activeMetadata ??= {};
-        _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
-        await _saveChat();
-        notifyListeners();
+      if (_activeGroup == null) {
+        // 1:1 path: preTurnVector captured in this scope (pre-tick) is correct.
+        final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+          preTurnVector,
+        );
+        if (needsDeltas.isNotEmpty) {
+          _messages.last.activeMetadata ??= {};
+          _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
+          await _saveChat();
+          notifyListeners();
+        }
+      } else {
+        // Group: use the pre-decay snapshot for this speaker (captured before tick using nextCharacter)
+        // so chips reflect the full net turn effect (decay + scene deltas) for 1:1 parity.
+        // Fall back to the vector embedded in the per-speaker realism_state snapshot (post-decay)
+        // if the pre-decay snapshot wasn't available (e.g. edge rotation).
+        final preVec =
+            groupSpeakerPreDecayNeeds ??
+            ((_messages.last.activeMetadata?['realism_state']
+                        as Map<String, dynamic>?)?['needs']?['vector']
+                    as Map?)
+                ?.cast<String, int>();
+        if (preVec != null && preVec.isNotEmpty) {
+          final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+            preVec,
+          );
+          if (needsDeltas.isNotEmpty) {
+            _messages.last.activeMetadata ??= {};
+            _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
+            await _saveChat();
+            notifyListeners();
+          }
+        }
       }
     }
   }
@@ -5586,16 +5628,48 @@ class ChatService extends ChangeNotifier {
           }
         }
 
-        // Post-generation climax check — runs against the AI's actual response
-        // so the character can climax naturally before the refractory cooldown applies
-        if (_realismEnabled &&
-            _nsfwCooldownEnabled &&
-            _cooldownTurnsRemaining <= 0 &&
-            (_activeGroup == null || !_observerMode)) {
-          _checkClimaxInResponse(finalResponse); // fire-and-forget
+        // For group non-observer turns, temporarily re-impersonate the speaker of the *just generated*
+        // response so the post-gen needs checks (_checkClimaxInResponse, _checkSexualActivityInResponse,
+        // _checkDailyActivityEffects, _verifyNeedFulfillmentCall) use the correct _activeCharacter
+        // (for name, personality injection in climax prompt, and any speaker-specific guards).
+        // The pre-speaker-eval left the *scalars* (incl. needs vector) loaded for this speaker but
+        // restored the _activeCharacter pointer to the prior speaker; checks rely on the pointer.
+        // We restore the pointer after the checks (scalars remain correct for the persist below).
+        CharacterCard? prePostActiveChar;
+        if (_activeGroup != null && !_observerMode) {
+          prePostActiveChar = _activeCharacter;
+          _activeCharacter = speakingCharacter;
+          final sid = _getCharacterIdFromCard(speakingCharacter);
+          if (sid.isNotEmpty) {
+            _loadGroupRealismIntoScalars(sid);
+          }
         }
 
         await _runPostGenNeedsChecks(finalResponse);
+
+        if (prePostActiveChar != null) {
+          _activeCharacter = prePostActiveChar;
+        }
+
+        // For group non-observer, persist the post-scene + long-gen-decay needs changes (and any
+        // other scalars mutated by the checks) back into _groupRealism for this speaker. This is
+        // what makes sidebar member cards + getNeedsForGroupCharacter() + future loads see the
+        // effects of the just-generated response. (Pre-eval saved the pre-turn state for bond/etc;
+        // this captures the *response* effects on needs.)
+        if (_activeGroup != null &&
+            !_observerMode &&
+            finalResponse.isNotEmpty &&
+            _messages.isNotEmpty) {
+          final lastSender = _messages.last.sender;
+          final speakerCard = _groupCharacters.firstWhere(
+            (c) => c.name == lastSender,
+            orElse: () => _groupCharacters.first,
+          );
+          final sid = _getCharacterIdFromCard(speakerCard);
+          if (sid.isNotEmpty) {
+            _saveScalarsIntoGroupRealism(sid);
+          }
+        }
 
         // Check if summary needs updating (fire-and-forget)
         _maybeUpdateSummary();
@@ -10295,10 +10369,6 @@ class ChatService extends ChangeNotifier {
   Future<void> _checkClimaxInResponse(String responseText) async {
     if (responseText.trim().isEmpty) return;
     if (_activeCharacter == null) return;
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
     final charName = _activeCharacter!.name;
 
     String personalityInjection = '';
@@ -10446,10 +10516,6 @@ class ChatService extends ChangeNotifier {
     // *current* state (climax handler already applied the strong effects).
     if (_cooldownTurnsRemaining > 0) return;
 
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
     final charName = _activeCharacter!.name;
 
     final currentStance = _relationshipService.spatialStance.isNotEmpty
@@ -10517,10 +10583,6 @@ class ChatService extends ChangeNotifier {
     if (responseText.trim().isEmpty) return;
     if (_activeCharacter == null) return;
 
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
     final charName = _activeCharacter!.name;
 
     final prompt =
