@@ -457,6 +457,11 @@ void main() {
 
         final hungerBefore = chat.needsVector['hunger'] ?? 100;
 
+        // Buffers/pending should be clean (no sexual yet in this decay-only sequence).
+        expect(chat.pendingNeedsCatastrophe, isNull);
+        expect(chat.needsArousalSuppressionTurnsRemaining, 0);
+        expect(chat.needsPostClimaxCrashTurnsRemaining, 0);
+
         // The next send will trigger _verifyNeedFulfillmentCall because hunger is now low.
         // Fake returns hunger_fulfilled: true for that exact prompt.
         await chat.sendMessage('Anything new?');

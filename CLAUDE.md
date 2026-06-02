@@ -47,11 +47,17 @@ lib/
 ├── database/
 │   ├── database.dart            # Drift schema (characters, chats, messages, lorebooks, worlds, etc.)
 │   ├── database.g.dart          # Generated Drift code
-│   └── data_migration_service.dart
+│   ├── database_cleanup.dart    # Helper utility for database cleanup operations
+│   └── data_migration_service.dart # Service managing data migrations between schemas
 ├── models/                      # Data models (character_card.dart, lorebook.dart, world.dart, etc.)
 ├── providers/
 │   └── app_state.dart           # Global app state (ChangeNotifier)
 ├── services/                    # Business logic (~50 services)
+│   ├── chat/                    # Domain subservices managing chat mechanics
+│   │   ├── chaos_mode_service.dart # Pure simulation core for Chaos Mode / Chance Time events
+│   │   └── needs_simulation.dart # Sims-style per-character needs simulation logic
+│   ├── cloud_providers/         # Implementations of cloud storage backends (Google Drive, OneDrive, WebDAV)
+│   ├── grpc/                    # gRPC-generated code and services for external API integrations (e.g. Draw Things)
 │   ├── chat_service.dart        # Core chat logic, context building, message streaming
 │   ├── kobold_service.dart      # KoboldCpp API client
 │   ├── llm_provider.dart        # Abstraction over Kobold/OpenRouter/external APIs
@@ -67,16 +73,26 @@ lib/
 │   ├── expression_classifier.dart # ONNX/LLM emotion classification
 │   └── ...
 ├── ui/
+│   ├── chat_components/         # Componentized chat UI elements (refactored out of main pages/widgets)
+│   │   ├── chat_components.dart # Main barrel for chat components
+│   │   ├── bubbles/             # Chat bubbles (message bubbles, styled message content)
+│   │   ├── overlays/            # Overlays (RAG setup, generation status, realism processing, check overlay)
+│   │   ├── sidebar/             # Chat sidebar tab sections (memory, realism, chaos, nsfw, scene time, etc.)
+│   │   └── widgets/             # Granular interactive chat buttons and pills
 │   ├── layout/main_layout.dart  # Main shell with sidebar + content area
-│   ├── pages/                   # Screen pages (chat_page, home_page, settings_page, etc.)
+│   ├── pages/                   # Screen pages (chat_page, home_page, settings_page, character_creator_page, etc.)
 │   ├── dialogs/                 # Modal dialogs
-│   └── widgets/                 # Reusable components (sidebar, chance_time_overlay, etc.)
+│   ├── theme/
+│   │   └── app_colors.dart      # Central theme definitions and dark/light color resolution helpers
+│   └── widgets/                 # Reusable layout widgets (inputs, cards, sliders, selector dropdowns, etc.)
 └── utils/                       # Helpers (emotion_labels, vram_estimator, gguf_parser, etc.)
 ```
 
 ### Critical Services
 
-- **ChatService** (`lib/services/chat_service.dart`): Orchestrates chat sessions, builds context windows, handles message streaming, lorebook injection, Realism Engine evaluation triggers
+- **ChatService** (`lib/services/chat_service.dart`): Orchestrates chat sessions, builds context windows, handles message streaming, and triggers Realism Engine evaluations.
+- **NeedsSimulation** (`lib/services/chat/needs_simulation.dart`): Domain service owning Sims-style needs (hunger, bladder, energy, social, fun, hygiene, comfort) decay, post-climax arousal suppression/afterglow buffers, and catastrophe narrative triggers.
+- **ChaosModeService** (`lib/services/chat/chaos_mode_service.dart`): Domain service owning Chaos Mode pressure growth, Chance Time wheel random event selection, and custom event text prompt injection.
 - **KoboldService** (`lib/services/kobold_service.dart`): HTTP client for KoboldCpp API (`/api/v1/generate`, `/api/extras/abort`, etc.)
 - **StorageService** (`lib/services/storage_service.dart`): Manages data directories. Beta builds use `FrontPorchAI-Beta/` with `beta_` prefixed SharedPreferences keys
 - **EmbeddingSidecar** (`lib/services/embedding_sidecar.dart`): Manages the Rust `embed_server` subprocess for ONNX-based text embeddings (RAG memory)
@@ -100,13 +116,14 @@ Key tables: `characters`, `chats`, `chat_messages`, `lorebooks`, `worlds`, `grou
 
 ### Realism Engine
 
-A multi-component system spanning chat_service.dart and the LLM provider:
+A multi-component system spanning chat_service.dart, needs_simulation.dart, chaos_mode_service.dart, and the LLM provider:
 - Emotion tracking with inertia between turns
 - Bond/trust relationship scoring (bond clamped to ±300, arousal ±100)
 - Deterministic time progression (advances every 6 turns)
 - Fixation engine (emotional obsessions)
 - Character evolution (trait development)
-- Chaos Mode ("Chance Time" random events)
+- Chaos Mode ("Chance Time" random events handled via `ChaosModeService`)
+- Sims-style Needs Simulation (decay, stepped descriptions, and narrative catastrophe triggers handled via `NeedsSimulation`)
 - Escape hatch: `cancelRealismEval()` aborts in-flight evals via `_isCancellingRealismEval` flag + `abortGeneration()`
 
 **Known gotcha**: GBNF grammar constraints cause many KoboldCPP models to return empty eval responses. Evals use stop sequences + regex parsing (no grammar). Remote APIs work fine without grammar.
@@ -230,6 +247,13 @@ Because the user has **no ability to read or evaluate Dart code**, the following
 - Any duplication or dead code you chose not to remove and why
 
 ## Code Style & Conventions
+
+### Code File Size Limits & Single Responsibility Principle
+
+To prevent the creation of massive "God files" (historically, some `.dart` files exceeded 9,000 lines of code), the following strict constraints must be followed:
+- **Do One Thing and Do It Well**: Adhere to the Single Responsibility Principle. Every class, widget, or service must have exactly one primary purpose. Extract complex sub-domains (e.g., Needs simulation, Chaos Mode, specific calculations, or complex widgets) into distinct, focused classes or files rather than piling them into existing god files.
+- **Strict File Size Cap**: Every Dart source code file (excluding auto-generated code like `.g.dart` or third-party packages) **must be kept under 500 lines of code (LOC)**.
+- **Action on Existing Files**: If modifying an existing file that exceeds 500 LOC (such as `chat_service.dart`), you should not grow it further. Focus on extracting cohesive chunks of logic into new, specialized classes under 500 lines, ensuring any new logic and its adjacent functions do one thing and do it well.
 
 ### Reuse Existing Code
 - **Prefer existing variables and scaffolds** — do not add new complexity when not necessary

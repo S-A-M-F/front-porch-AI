@@ -48,6 +48,8 @@ import 'package:front_porch_ai/services/memory_service.dart';
 import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
+import 'package:front_porch_ai/services/chat/needs_simulation.dart';
+import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -416,307 +418,67 @@ class ChatService extends ChangeNotifier {
     return 'Unknown';
   }
 
-  // ── Chaos Mode / Chance Time ──
-  bool _chaosModeEnabled = false;
-  bool _chaosNsfwEnabled = false; // include spicy/NSFW events in the pool
-  int _chaosPressure = 0; // 0–100; grows each turn without a trigger
+  // ── Chaos Mode / Chance Time (core state extracted) ──────────────────────
+  // _chaosModeEnabled / _chaosNsfwEnabled / _chaosPressure / _pendingChaosInjection / _chaosEventDelivered
+  // now owned by _chaosModeService. The two UI coordination flags below stay in god
+  // (cross widget boundary for overlay + send pause).
   String?
   _pendingChanceTimeEvent; // set when wheel lands; cleared after UI reads it
   bool _chanceTimePendingTrigger =
       false; // true for one cycle to pop the overlay
-  String?
-  _pendingChaosInjection; // event text to inject into the next response prompt
-  bool _chaosEventDelivered =
-      false; // true after the event has been used in at least one generation
 
-  // Needs catastrophe (Phase 2 stepping system) — set when a need hits exactly 0
-  // during decay. Contains the mandatory OOC narrative the AI must roleplay.
-  // Cleared after the generation that consumes it.
-  String? _pendingNeedsCatastrophe;
-
-  // ── Advanced Needs Interplay (v2) ──────────────────────────────────────────
-  // Tracks "afterglow" period after significant sexual/intimate activity.
-  // During this time, decay on Hunger, Energy, and Social is reduced so sex
-  // feels like a net positive without immediately triggering wack-a-mole needs.
-  int _needsAfterglowTurnsRemaining = 0;
-
-  // Arousal-driven suppression of other needs urgency (prompt injection only,
-  // plus light dampening of internal state multipliers). Activated by sexual
-  // activity. Makes long erotic scenes feel realistically "consumed by desire"
-  // instead of the character complaining about hunger/bladder/energy.
-  int _arousalSuppressionTurnsRemaining = 0;
-
-  // Delayed post-climax crash (lethargy / "post-nut sleepiness").
-  // Started on confirmed physical orgasm (intensity-scaled).
-  // Effect + countdown are deliberately gated behind expiration of both
-  // afterglow and arousal suppression so the protective "glow + haze" is respected.
-  int _postClimaxCrashTurnsRemaining = 0;
-
-  // ── Sims/Needs Simulation (clean port on 0.9.8) ──
+  // ── Sims/Needs Simulation (extracted to NeedsSimulation) ───────────────────
+  // State (_needsVector, buffers, pendingCatastrophe) + consts + decay/step/catastrophe
+  // logic live in _needsSimulation (plain class). ChatService owns it and delegates.
+  // _needsSimEnabled and _enjoysLowHygiene kept here (control + char-derived).
   bool _needsSimEnabled = false;
   bool _enjoysLowHygiene =
       false; // inversion for hygiene (enjoys being dirty/sweaty/musky)
-  Map<String, int> _needsVector = {};
 
-  // Canonical constants for the Sims/Needs simulation. Single source of truth
-  // to eliminate all magic numbers and duplicated key lists / maps / thresholds.
-  static const List<String> _needKeys = [
-    'hunger',
-    'bladder',
-    'energy',
-    'social',
-    'fun',
-    'hygiene',
-    'comfort',
-  ];
+  late final _needsSimulation = NeedsSimulation(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    getTimeOfDay: () => _timeOfDay,
+    getRealismEnabled: () => _realismEnabled,
+    getArousalLevel: () => _arousalLevel,
+    getNsfwCooldownEnabled: () => _nsfwCooldownEnabled,
+    getCooldownTurnsRemaining: () => _cooldownTurnsRemaining,
+    getObserverMode: () => _observerMode,
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getGroupNeeds: _getGroupNeeds,
+    setGroupNeeds: _setGroupNeeds,
+    getEnjoysLowHygiene: () => enjoysLowHygiene,
+    getNeedsSimEnabled: () => _needsSimEnabled,
+    setArousalLevel: (v) {
+      _arousalLevel = v;
+    },
+  );
 
-  static const Map<String, int> _needDefaults = {
-    'hunger': 75,
-    'bladder': 80,
-    'energy': 80,
-    'social': 65,
-    'fun': 65,
-    'hygiene': 75,
-    'comfort': 70,
-  };
+  // Public aliases (now delegate to the extracted canonical source of truth).
+  static const int needUrgentThreshold = NeedsSimulation.needUrgentThreshold;
+  static const int needCriticalThreshold =
+      NeedsSimulation.needCriticalThreshold;
+  static const int needFulfillmentScanThreshold =
+      NeedsSimulation.needFulfillmentScanThreshold;
+  static const List<String> needKeys = NeedsSimulation.needKeys;
 
-  // Base decay per tick (when no time-of-day variant applies).
-  // Tuned for long scenes (intimate, story, etc.) so needs don't feel like "wack-a-mole".
-  // Bladder and hunger are the most noticeable; they decay slower than the original aggressive values.
-  static const Map<String, int> _needDecay = {
-    'hunger': 4,
-    'bladder': 6,
-    'energy': 3,
-    'social': 2,
-    'fun': 2,
-    'hygiene': 1,
-    'comfort': 2,
-  };
-
-  // Morning-specific overrides (hunger drains faster after sleep / breakfast window).
-  static const Map<String, int> _needDecayMorning = {'hunger': 6};
-
-  // Night-specific overrides (energy drains faster at night).
-  static const Map<String, int> _needDecayNight = {'energy': 6};
-
-  static const Map<String, int> _needRestore = {
-    'hunger': 50,
-    'bladder': 70,
-    'energy': 40,
-    'social': 45,
-    'fun': 40,
-    'hygiene': 35,
-    'comfort': 35,
-  };
-
-  static const int _needRestoreDefault = 30;
-
-  /// Thresholds for urgency, criticality, and LLM fulfillment scanning.
-  static const int _needUrgentThreshold = 35;
-  static const int _needCriticalThreshold = 20;
-  static const int _needFulfillmentScanThreshold = 40;
-
-  // Arousal suppression tuning (used by the "high arousal makes other needs
-  // feel distant" erotic realism feature).
-  static const int _arousalSuppressionThreshold = 35; // raw _arousalLevel
-  static const int _arousalSuppressionDefaultTurns = 6;
-
-  // Post-climax crash tuning (see _tickNeedsDecay and climax handler).
-  static const double _postClimaxCrashDecayMultiplier =
-      1.8; // +80% on energy/fun/social
-
-  // Public aliases to the canonical thresholds + keys list for UI presentation
-  // (e.g. progress bar coloring at critical), external consumers, and tests.
-  // These reference the single source of truth; literals live only in the
-  // private _ definitions below.
-  static const int needUrgentThreshold = _needUrgentThreshold;
-  static const int needCriticalThreshold = _needCriticalThreshold;
-  static const int needFulfillmentScanThreshold = _needFulfillmentScanThreshold;
-  static const List<String> needKeys = _needKeys;
-
-  // ── Graduated Stepping Model (Phase 2 — "number two" per user request) ───────
-  // Needs now have 5 discrete urgency steps derived from the 0–100 value.
-  // Step 0 = catastrophic (involuntary event has occurred), 1 = desperate/critical,
-  // 2 = urgent/pressing, 3 = noticeable urge, 4 = mild background awareness.
-  // 5 = comfortable (no injection).
-  // Stepping makes the simulation feel alive: subtle thoughts → physical tells →
-  // desperate pleading → disaster when it hits 0.
-  // All data here is the single source of truth alongside the older maps.
-
-  /// Upper bounds (inclusive) for each step. Value <= threshold means that step.
-  /// [0] = step 0 (catastrophe), [1] = step 1, ..., [4] = step 4.
-  static const List<int> _needStepUpperBounds = [0, 15, 30, 45, 65];
-
-  /// Per-need stepped prompt strings (index = step 0..4, most to least urgent).
-  /// These replace the old binary urgent/critical wording.
-  static const Map<String, List<String>> _needSteppedText = {
-    'hunger': [
-      // 0 — catastrophic
-      'A violent stomach cramp doubles her over. She is genuinely starving — vision swimming, knees weak, barely able to stay upright. The hunger has become a real physical crisis.',
-      // 1 — desperate
-      'Sharp, gnawing cramps twist through her. She feels light-headed and shaky, and her thoughts keep drifting uncontrollably to food. She is struggling to focus on anything else.',
-      // 2 — urgent
-      'Her stomach feels painfully hollow and tight. A constant, distracting ache that makes her restless and short-tempered. She keeps thinking about when she might be able to eat.',
-      // 3 — noticeable
-      'A steady, empty feeling sits in her stomach. Her thoughts occasionally wander toward food and she feels a bit distracted or low-energy.',
-      // 4 — mild
-      'A quiet, background emptiness in her stomach. It is not urgent, but she is aware of it and would welcome a chance to eat soon.',
-    ],
-    'bladder': [
-      // 0 — catastrophic
-      'She loses control completely. A sudden, hot rush — she is wetting herself right now in the current scene. The humiliation is immediate and overwhelming.',
-      // 1 — desperate
-      'She is fighting with everything she has not to lose control. Thighs pressed tight, constantly shifting, voice tight with strain. She is very close to having an accident.',
-      // 2 — urgent
-      'A strong, insistent pressure has built up. She is visibly uncomfortable and keeps looking for a polite way to excuse herself soon.',
-      // 3 — noticeable
-      'A steady, distracting pressure low in her belly. She feels the need more and more and would like to find a bathroom before too long.',
-      // 4 — mild
-      'A faint but persistent urge to use the restroom sits at the back of her mind, making her slightly restless.',
-    ],
-    'energy': [
-      // 0 — catastrophic
-      'Her body gives out completely. Mid-sentence her eyes flutter and she collapses — slumping to the floor or into {{user}}\'s arms, fully unconscious from exhaustion.',
-      // 1 — desperate
-      'She is barely staying awake. Head nodding, speech slow and heavy, eyes unfocused. She may drift off at any moment.',
-      // 2 — urgent
-      'A heavy, crushing tiredness has settled over her. Every movement feels like effort and her thoughts are slow. She desperately wants to rest.',
-      // 3 — noticeable
-      'A deep weariness is weighing on her. She moves a little slower and seems less animated than usual, clearly running low on energy.',
-      // 4 — mild
-      'A comfortable, heavy tiredness sits behind her eyes. She would happily curl up and rest if the opportunity arose.',
-    ],
-    'social': [
-      // 0
-      'The loneliness has become overwhelming. She feels hollow and raw, on the edge of breaking down if she cannot have real, meaningful connection with someone soon.',
-      // 1
-      'She feels painfully isolated. The lack of real connection is starting to hurt, and she may become unusually quiet, clingy, or emotionally fragile.',
-      // 2
-      'A deep ache for genuine connection sits in her chest. Casual interaction feels hollow and she keeps seeking more meaningful moments or closeness.',
-      // 3
-      'She is feeling the absence of real companionship. She seems a little more eager for meaningful conversation or physical closeness than usual.',
-      // 4
-      'A quiet, gentle craving for real connection makes her a bit more warm and attentive than normal.',
-    ],
-    'fun': [
-      // 0
-      'The boredom has become torturous. She feels dangerously restless and may suddenly do something reckless or wildly inappropriate just to feel *something* again.',
-      // 1
-      'She is deeply restless and bored out of her mind. She fidgets constantly and will suggest almost anything to break the monotony.',
-      // 2
-      'A heavy restlessness has settled over her. Everything feels dull and she keeps looking for any excuse to do something more stimulating.',
-      // 3
-      'She is noticeably bored and fidgety. The current situation feels flat and she is actively hoping for a change of pace.',
-      // 4
-      'A mild restlessness makes her a little more eager for something fun or different to happen.',
-    ],
-    'hygiene': [
-      // 0
-      'She feels filthy and overwhelmed by it. The grime or smell is so strong it is making her physically uncomfortable and self-conscious to the point of distress.',
-      // 1
-      'She feels genuinely dirty and is very aware of it. She keeps wanting to cover herself or pull away from contact until she can clean up.',
-      // 2
-      'A persistent feeling of being grimy clings to her. She is self-conscious and keeps thinking about when she can wash or change.',
-      // 3
-      'She is starting to feel noticeably unkempt. A quiet discomfort with her own state makes her want to freshen up soon.',
-      // 4
-      'A faint, background sense of being a little grubby makes her mildly self-conscious.',
-    ],
-    'comfort': [
-      // 0
-      'The physical discomfort has become unbearable. She cannot stay like this any longer and will do whatever it takes to find relief, even if it disrupts everything else happening.',
-      // 1
-      'Her body is in real distress — too hot, too cold, cramped, or aching badly. She is constantly shifting and struggling to focus on anything else.',
-      // 2
-      'A strong physical discomfort is wearing on her. She keeps adjusting her position or environment, clearly unable to settle.',
-      // 3
-      'She is noticeably uncomfortable. A persistent physical irritation (temperature, pressure, stiffness) makes it hard for her to fully relax.',
-      // 4
-      'A mild but persistent physical discomfort sits in the background, making her slightly restless.',
-    ],
-  };
-
-  /// Catastrophic narrative (the event that just occurred when the need hit 0).
-  /// This text is injected as a mandatory OOC event the AI must roleplay immediately.
-  static const Map<String, String> _needCatastropheNarrative = {
-    'hunger':
-        'A violent stomach cramp drops her to her knees or against {{user}}. She hasn\'t eaten in far too long; her blood sugar crashes and she nearly faints or becomes too weak to stand. The hunger has turned into a real physical emergency.',
-    'bladder':
-        'She loses control completely. A sudden, hot, unstoppable rush — she is wetting herself right now, in the current scene, in front of {{user}} or anyone present. The fabric darkens, liquid runs down her legs, the smell fills the air, and her face is a mask of horror and humiliation. The accident is happening / has just happened.',
-    'energy':
-        'Her body simply shuts down. Mid-sentence her eyes roll back and she collapses — slumping to the floor, onto furniture, or into {{user}}\'s arms — completely unconscious from exhaustion. She is out cold and will not wake for some time.',
-    'social':
-        'The isolation finally breaks her. She bursts into tears or a raw, desperate plea for real connection, unable to pretend any longer that she is okay alone.',
-    'fun':
-        'The boredom has driven her to something reckless or wildly inappropriate — she does something dangerous, sexual, or chaotic purely to feel *anything* again.',
-    'hygiene':
-        'The accumulated grime and smell finally overwhelm her. She gags, tears up, or has a small breakdown about how disgusting she feels, refusing further contact until she can wash.',
-    'comfort':
-        'The physical misery becomes too much. She cries out, pushes away from whatever is hurting her (the chair, the ropes, the position, the temperature), and demands — or takes — immediate relief no matter what else is happening in the scene.',
-  };
-
-  /// After a catastrophe fires, the need is lifted to this floor value.
-  /// These are now set high because the character actually resolved the crisis
-  /// in the scene (went to the bathroom, ate, passed out and rested, cleaned up, etc.).
-  /// The user should feel like "she got proper relief" instead of "still almost critical".
-  static const Map<String, int> _needPostCatastropheFloor = {
-    'hunger': 70,
-    'bladder': 85, // proper bathroom visit → she feels much better
-    'energy': 65, // after collapsing she rests and recovers
-    'social': 60,
-    'fun': 55,
-    'hygiene': 70,
-    'comfort': 70,
-  };
-
-  // Maintenance: _needKeys (and the *Defaults/*Decay*/*Restore* maps + the three
-  // threshold consts) are the single source of truth for all need simulation data.
-  // The decay logic (now fully map-driven via containsKey for time-of-day variants),
-  // fulfillment scan, restore helper, _getNeedsInjection secondary filter, and
-  // the presentation switch (for per-need directive text) plus the one-off bladder
-  // special-case must stay in sync with _needKeys when extending the set of needs.
-  // The switch in _getNeedsInjection remains the only place with per-key presentation
-  // strings (new needs fall through to _ => '' until a case is added).
-
-  void _initializeNeedsVectorIfNeeded() {
-    if (_needsVector.isEmpty) {
-      _needsVector = Map<String, int>.from(_needDefaults);
-    }
-  }
-
-  /// Initializes the needs vector to full (100) for a brand new scene/chat.
-  /// Used for explicit "Start New Chat" and first-session-for-character flows so
-  /// a fresh RP always begins with all needs maxed, rather than the tuned
-  /// "mid-scene starting point" in _needDefaults. Prevents the perception of
-  /// "needs bleed" on newly imported characters or new conversations.
-  void _initializeFreshNeedsVector() {
-    _needsVector = {for (final k in _needKeys) k: 100};
-  }
-
-  String _serializeNeeds() {
-    return jsonEncode(_needsVector);
-  }
-
-  void _restoreNeedsFromJson(String? json) {
-    if (json == null || json.isEmpty) {
-      _initializeNeedsVectorIfNeeded();
-      return;
-    }
-    try {
-      final decoded = jsonDecode(json) as Map<String, dynamic>;
-      _needsVector = decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
-    } catch (_) {
-      _initializeNeedsVectorIfNeeded();
-    }
-  }
+  // ── Chaos Mode / Chance Time (extracted to ChaosModeService) ───────────────
+  // Pressure gauge, auto-roll, event pools (120 + NSFW conditional), spin/apply/check
+  // logic live in _chaosModeService (plain class). ChatService owns it and delegates.
+  // UI coordination (_chanceTimeCompleter, _chanceTimePendingTrigger, _pendingChanceTimeEvent)
+  // and prompt injection builder (_getChanceTimeInjection) stay in god for now (step 8).
+  late final _chaosModeService = ChaosModeService(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    onSetPendingRealismMetadata: (key, value) {
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata![key] = value;
+    },
+  );
 
   Completer<void>?
-  _chanceTimeCompleter; // pauses sendMessage while wheel is active
-
-  /// Base chance % per turn. Grows by [_chaosGrowthPerTurn] each turn.
-  static const int _chaosBaseChance = 5;
-  static const int _chaosGrowthPerTurn = 5;
-  static const int _chaosPressureCap = 100;
+  _chanceTimeCompleter; // pauses sendMessage while wheel is active (UI coordination, stays in god)
 
   // ── v3 Behavioral Mechanics ──
   int _trustLevel = 0; // -100 to 100
@@ -962,14 +724,14 @@ class ChatService extends ChangeNotifier {
     final id = _getCharacterIdFromCard(character);
     final raw = _groupRealism[id]?['needs'];
     final result = <String, int>{};
-    for (final k in _needKeys) {
+    for (final k in needKeys) {
       final v = (raw is Map) ? raw[k] : null;
       if (v is num) {
         result[k] = v.toInt();
       } else {
         // Fill any missing official needs so the UI always shows the complete set.
         // This handles legacy/incomplete group data after previous cleanups.
-        result[k] = _needDefaults[k] ?? 80;
+        result[k] = NeedsSimulation.needDefaults[k] ?? 80;
       }
     }
     return result;
@@ -1317,8 +1079,9 @@ class ChatService extends ChangeNotifier {
   bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
   int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
 
-  // Chaos Mode
-  bool get chaosModeEnabled => _chaosModeEnabled;
+  // Chaos Mode (shims delegate to extracted service; UI coordination flags stay here)
+  @Deprecated('Access via ChaosModeService directly')
+  bool get chaosModeEnabled => _chaosModeService.chaosModeEnabled;
 
   /// Whether the per-session Needs (Sims-style) simulation is active.
   /// When true and `enjoysLowHygiene` is also true, low hygiene becomes desirable.
@@ -1355,10 +1118,15 @@ class ChatService extends ChangeNotifier {
   ///
   /// Exposed primarily for UI (the header bars) and internal prompt building.
   /// Consumers should check [needsSimEnabled] before using the contents.
-  Map<String, int> get needsVector =>
-      Map<String, int>.unmodifiable(_needsVector);
-  bool get chaosNsfwEnabled => _chaosNsfwEnabled;
-  int get chaosPressure => _chaosPressure;
+  @Deprecated(
+    'Access via NeedsSimulation directly (or use the high-level needs* APIs)',
+  )
+  Map<String, int> get needsVector => _needsSimulation.vector;
+
+  bool get chaosNsfwEnabled => _chaosModeService.chaosNsfwEnabled;
+
+  @Deprecated('Access via ChaosModeService directly')
+  int get chaosPressure => _chaosModeService.chaosPressure;
 
   /// Non-null for exactly one notification cycle. UI reads then calls clearChanceTimeEvent().
   String? get pendingChanceTimeEvent => _pendingChanceTimeEvent;
@@ -1367,25 +1135,28 @@ class ChatService extends ChangeNotifier {
   bool get chanceTimePendingTrigger => _chanceTimePendingTrigger;
 
   /// True when a chaos event is queued for the next response (blocks manual spin + auto-trigger).
-  bool get hasPendingChaosEvent => _pendingChaosInjection != null;
+  @Deprecated('Access via ChaosModeService directly')
+  bool get hasPendingChaosEvent => _chaosModeService.hasPendingChaosEvent;
 
   /// Non-null when a needs catastrophe (e.g. accident, collapse) was just triggered by hitting 0.
   /// The string is the mandatory narrative the AI must roleplay on the next turn.
-  String? get pendingNeedsCatastrophe => _pendingNeedsCatastrophe;
+  @Deprecated('Access via NeedsSimulation directly')
+  String? get pendingNeedsCatastrophe => _needsSimulation.pendingCatastrophe;
 
   /// Whether arousal-driven needs suppression ("lust haze") is currently active.
   /// Other needs will read as less urgent (or be omitted) in the OOC prompt injection.
   bool get needsArousalSuppressionActive =>
-      _arousalSuppressionTurnsRemaining > 0;
+      _needsSimulation.arousalSuppressionActive;
 
   /// Remaining turns of arousal suppression. Primarily for diagnostics, tests, and future UI.
   int get needsArousalSuppressionTurnsRemaining =>
-      _arousalSuppressionTurnsRemaining;
+      _needsSimulation.arousalSuppressionTurnsRemaining;
 
   /// Remaining turns of post-climax crash (lethargy). Effect only applies after
   /// afterglow + lust haze have fully expired. For diagnostics/tests.
-  int get needsPostClimaxCrashTurnsRemaining => _postClimaxCrashTurnsRemaining;
-  bool get needsPostClimaxCrashActive => _postClimaxCrashTurnsRemaining > 0;
+  int get needsPostClimaxCrashTurnsRemaining =>
+      _needsSimulation.postClimaxCrashTurnsRemaining;
+  bool get needsPostClimaxCrashActive => _needsSimulation.postClimaxCrashActive;
 
   /// Called by the overlay once it has opened. Clears the auto-trigger flag.
   void consumeChanceTimeTrigger() => _chanceTimePendingTrigger = false;
@@ -2234,8 +2005,9 @@ class ChatService extends ChangeNotifier {
       }
 
       // Reset realism state to prevent bleeding from previous character.
-      // Keep in sync with: startNewChat runtime reset block (~4000), load*Session restores,
-      // delete flows, and the 1:1 scalar zero in setActiveGroup.
+      // Keep the three reset sites (startNewChat, load*Session paths, setActiveGroup, delete flows)
+      // in sync when moving more state in later Stage 3 steps. See needs_simulation.dart for the
+      // current owner of vector + buffers (and _needsSimEnabled/_enjoysLowHygiene control fields).
       final prevArousal = _arousalLevel;
       final prevFixation = _activeFixation;
       final prevFixationLife = _fixationLifespan;
@@ -2244,10 +2016,8 @@ class ChatService extends ChangeNotifier {
       _activeFixation = '';
       _needsSimEnabled = false;
       _enjoysLowHygiene = false;
-      _needsVector.clear();
-      _needsAfterglowTurnsRemaining = 0;
-      _arousalSuppressionTurnsRemaining = 0;
-      _postClimaxCrashTurnsRemaining = 0;
+      _needsSimulation.clearVector();
+      _needsSimulation.resetBuffers();
       _realismEnabled = false;
       _affectionScore = 0;
       _relationshipTier = 0;
@@ -2259,8 +2029,9 @@ class ChatService extends ChangeNotifier {
       _dayCount = 1;
       _timeOfDay = 'morning';
       _startDayOfWeek = DateTime.now().weekday;
-      _chaosModeEnabled = false;
-      _chaosPressure = 0;
+      // Chaos reset via extracted service (keeps multiple reset blocks in sync).
+      // See chaos_mode_service.dart and "keep reset blocks" comments.
+      _chaosModeService.resetForFreshChat();
       _nsfwCooldownEnabled = false;
       _passageOfTimeEnabled = true; // default (global ceiling applied on seed)
       _pendingTrustRepair = false;
@@ -2299,15 +2070,15 @@ class ChatService extends ChangeNotifier {
           // globally, it stays off regardless of what the character card says.
           _passageOfTimeEnabled =
               ext.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
-          _chaosModeEnabled = ext.chaosModeEnabled;
+          _chaosModeService.seedFromGroupOrExt(ext.chaosModeEnabled, false);
           _needsSimEnabled = ext.needsSimEnabled;
           _enjoysLowHygiene = ext.enjoysLowHygiene;
           if (_needsSimEnabled) {
             // Brand new conversation for this character (no prior session loaded):
             // start needs at 100 so a just-imported card + first chat feels fresh.
-            _initializeFreshNeedsVector();
+            _needsSimulation.initializeFresh();
           } else {
-            _needsVector.clear();
+            _needsSimulation.clearVector();
           }
           // Recalculate tiers from seeded scores
           _relationshipTier = _calculateTier(_affectionScore);
@@ -2473,8 +2244,10 @@ class ChatService extends ChangeNotifier {
 
     // Seed group definition defaults for Chaos (can be overridden by per-session values loaded below).
     // This makes the chaosModeEnabled / chaosNsfwEnabled on the GroupChat model actually functional.
-    _chaosModeEnabled = group.chaosModeEnabled;
-    _chaosNsfwEnabled = group.chaosNsfwEnabled;
+    _chaosModeService.seedFromGroupOrExt(
+      group.chaosModeEnabled,
+      group.chaosNsfwEnabled,
+    );
 
     // v30: For newly created group sessions (no prior state), seed from the group's default realism data.
     // (The actual load of any prior session state happens in _loadLastSession below.)
@@ -2495,7 +2268,7 @@ class ChatService extends ChangeNotifier {
           return n is Map && n.isNotEmpty;
         });
         if (_needsSimEnabled) {
-          _initializeNeedsVectorIfNeeded();
+          _needsSimulation.initializeIfNeeded();
         }
         debugPrint(
           '[GroupRealism] Promoted definition realism/needs on fresh group entry '
@@ -3057,7 +2830,9 @@ class ChatService extends ChangeNotifier {
         passageOfTimeEnabled: drift.Value(_passageOfTimeEnabled),
         nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
         needsSimEnabled: drift.Value(_needsSimEnabled),
-        needsVector: drift.Value(_needsSimEnabled ? _serializeNeeds() : null),
+        needsVector: drift.Value(
+          _needsSimEnabled ? _needsSimulation.serialize() : null,
+        ),
         groupRealismState: drift.Value(groupRealismJson),
         arousalLevel: drift.Value(_arousalLevel),
         cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
@@ -3065,8 +2840,8 @@ class ChatService extends ChangeNotifier {
         activeFixation: drift.Value(_activeFixation),
         fixationLifespan: drift.Value(_fixationLifespan),
         spatialStance: drift.Value(_spatialStance),
-        chaosModeEnabled: drift.Value(_chaosModeEnabled),
-        chaosPressure: drift.Value(_chaosPressure),
+        chaosModeEnabled: drift.Value(_chaosModeService.chaosModeEnabled),
+        chaosPressure: drift.Value(_chaosModeService.chaosPressure),
         trustRepairPending: drift.Value(_pendingTrustRepair),
         createdAt: drift.Value(createdAt),
         updatedAt: drift.Value(DateTime.now()),
@@ -3170,10 +2945,10 @@ class ChatService extends ChangeNotifier {
     _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
     _needsSimEnabled = lastSession.needsSimEnabled;
     if (_needsSimEnabled) {
-      _initializeNeedsVectorIfNeeded();
-      _restoreNeedsFromJson(lastSession.needsVector);
+      _needsSimulation.initializeIfNeeded();
+      _needsSimulation.restoreFromJson(lastSession.needsVector);
     } else {
-      _needsVector.clear();
+      _needsSimulation.clearVector();
     }
 
     // Re-sync from the character's current setting so that toggling
@@ -3181,9 +2956,7 @@ class ChatService extends ChangeNotifier {
     _enjoysLowHygiene =
         _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
 
-    _needsAfterglowTurnsRemaining = 0;
-    _arousalSuppressionTurnsRemaining = 0;
-    _postClimaxCrashTurnsRemaining = 0;
+    _needsSimulation.resetBuffers();
     _arousalLevel = lastSession.arousalLevel;
     _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
     _trustLevel = lastSession.trustLevel;
@@ -3194,8 +2967,10 @@ class ChatService extends ChangeNotifier {
     );
     _spatialStance = lastSession.spatialStance;
     _pendingTrustRepair = lastSession.trustRepairPending;
-    _chaosModeEnabled = lastSession.chaosModeEnabled;
-    _chaosPressure = lastSession.chaosPressure;
+    _chaosModeService.loadScalars(
+      modeEnabled: lastSession.chaosModeEnabled,
+      pressure: lastSession.chaosPressure,
+    );
 
     // Realism Engine 2.0 Compatibility Migration
     // Old scale was 0-15. New scale is 0-150.
@@ -3491,10 +3266,10 @@ class ChatService extends ChangeNotifier {
       _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
       _needsSimEnabled = session.needsSimEnabled;
       if (_needsSimEnabled) {
-        _initializeNeedsVectorIfNeeded();
-        _restoreNeedsFromJson(session.needsVector);
+        _needsSimulation.initializeIfNeeded();
+        _needsSimulation.restoreFromJson(session.needsVector);
       } else {
-        _needsVector.clear();
+        _needsSimulation.clearVector();
       }
 
       // Re-sync from the character's current setting so toggling
@@ -3502,8 +3277,7 @@ class ChatService extends ChangeNotifier {
       _enjoysLowHygiene =
           _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
 
-      _needsAfterglowTurnsRemaining = 0;
-      _arousalSuppressionTurnsRemaining = 0;
+      _needsSimulation.resetBuffers();
       _arousalLevel = session.arousalLevel;
       _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
       _trustLevel = session.trustLevel;
@@ -3855,24 +3629,23 @@ class ChatService extends ChangeNotifier {
       // globally, it stays off regardless of what the character card says.
       _passageOfTimeEnabled =
           extSeed.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
-      _chaosModeEnabled = extSeed.chaosModeEnabled;
+      _chaosModeService.seedFromGroupOrExt(extSeed.chaosModeEnabled, false);
       _needsSimEnabled = extSeed.needsSimEnabled;
       _enjoysLowHygiene = extSeed.enjoysLowHygiene;
       if (_needsSimEnabled) {
         // Fresh chat / new session: start all needs at 100 (full). The varied
         // _needDefaults are the "sensible mid-scene" curve used for legacy
         // restores or when the user toggles Needs on mid-chat.
-        _initializeFreshNeedsVector();
+        _needsSimulation.initializeFresh();
       } else {
-        _needsVector.clear();
+        _needsSimulation.clearVector();
       }
-      _needsAfterglowTurnsRemaining = 0;
-      _arousalSuppressionTurnsRemaining = 0;
-      _postClimaxCrashTurnsRemaining = 0;
+      _needsSimulation.resetBuffers();
       _pendingTrustRepair = false;
       // Always reset per-chat runtime realism fields (arousal/fixation/cooldowns) for a fresh
-      // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter ~2400
-      // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.)
+      // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter
+      // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.
+      // Needs vector/buffers reset via _needsSimulation also kept in sync across sites.)
       // Declarative initial bond/trust/emotion/day etc are already seeded above from the card's
       // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
       // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
@@ -4213,10 +3986,8 @@ class ChatService extends ChangeNotifier {
     // ── Clear consumed chaos event from the previous turn ───────────────
     // Only clear if the event was already delivered in a response.
     // This preserves manual-spin events that haven't been used yet.
-    if (_chaosEventDelivered) {
-      _pendingChaosInjection = null;
-      _chaosEventDelivered = false;
-    }
+    // Delegated to service (core state moved).
+    _chaosModeService.clearDeliveredPendingIfAny();
 
     // ── OOC Time-Skip Detection ───────────────────────────────────────────
     if (_realismActiveThisMode) {
@@ -4224,7 +3995,9 @@ class ChatService extends ChangeNotifier {
     }
 
     // ── Chaos Mode: check + pause for wheel if triggered ─────────────────
-    if (_chaosModeEnabled && _pendingChaosInjection == null) {
+    // Guard + tick delegated (pendingInjection check via service getter).
+    if (_chaosModeService.chaosModeEnabled &&
+        _chaosModeService.pendingChaosInjection == null) {
       if (checkAndTickChaosPressure()) {
         // Create a completer so sendMessage pauses here until the wheel resolves
         _chanceTimeCompleter = Completer<void>();
@@ -4250,14 +4023,14 @@ class ChatService extends ChangeNotifier {
     // (bond/trust/arousal) use.
     Map<String, int>? preTurnVector;
     if (_realismActiveThisMode) {
-      if (_needsSimEnabled && _needsVector.isNotEmpty) {
-        preTurnVector = Map<String, int>.from(_needsVector);
+      if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
+        preTurnVector = Map<String, int>.from(_needsSimulation.vector);
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['needs_pre_turn_vector'] = preTurnVector;
       }
 
       _applyMoodDecay();
-      _tickNeedsDecay();
+      _needsSimulation.tickDecay();
       if (_cooldownTurnsRemaining > 0) {
         _cooldownTurnsRemaining--;
       }
@@ -4376,19 +4149,20 @@ class ChatService extends ChangeNotifier {
     await _generateResponse(GenerationMode.normal);
 
     // If the generation took a very long real-world time (long prefill etc.),
-    // apply a small "real time passed" decay to needs. This prevents the
-    // "everything stayed exactly the same during a 20-minute generation" feeling
-    // that leads to zero-change chips.
-    if (_lastGenerationDurationSeconds > 300) {
-      // > 5 minutes
-      _applyLongGenerationNeedsDecay();
-    }
+    // apply a small "real time passed" decay to needs (gate inside applyLong...).
+    // This prevents the "everything stayed exactly the same during a 20-minute
+    // generation" feeling that leads to zero-change chips.
+    _needsSimulation.applyLongGenerationNeedsDecay(
+      _lastGenerationDurationSeconds,
+    );
 
     // Compute needs_deltas AFTER generation so the post-generation checks
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
     // This ensures UI chips show accurate deltas.
     if (_needsSimEnabled && _messages.isNotEmpty) {
-      final needsDeltas = _computeNeedsDeltasWithReasons(preTurnVector);
+      final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+        preTurnVector,
+      );
       if (needsDeltas.isNotEmpty) {
         _messages.last.activeMetadata ??= {};
         _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
@@ -4547,7 +4321,7 @@ class ChatService extends ChangeNotifier {
           final preTurnNeeds =
               lastMsg.activeMetadata!['needs_pre_turn_vector'] as Map?;
           if (preTurnNeeds != null && _needsSimEnabled) {
-            _needsVector = Map<String, int>.from(preTurnNeeds);
+            _needsSimulation.setVector(Map<String, int>.from(preTurnNeeds));
             debugPrint(
               '[Realism:Regen] Restored needs vector from pre-turn snapshot on rejected message',
             );
@@ -4617,7 +4391,7 @@ class ChatService extends ChangeNotifier {
             final needsData = previousMessageState['needs'] as Map;
             if (needsData['vector'] is Map) {
               final vector = Map<String, int>.from(needsData['vector'] as Map);
-              _needsVector = vector;
+              _needsSimulation.setVector(vector);
             }
           }
 
@@ -4651,17 +4425,17 @@ class ChatService extends ChangeNotifier {
         // This ensures _needsVector differs from the saved pre-turn vector
         // so post-generation deltas are non-zero.
         _applyMoodDecay();
-        _tickNeedsDecay();
+        _needsSimulation.tickDecay();
         if (_cooldownTurnsRemaining > 0) {
           _cooldownTurnsRemaining--;
         }
 
         // Record the (restored) needs baseline as the pre-turn vector BEFORE
         // generation so the post-generation checks can compute proper deltas.
-        if (_needsSimEnabled && _needsVector.isNotEmpty) {
+        if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
           _pendingRealismMetadata ??= {};
           _pendingRealismMetadata!['needs_pre_turn_vector'] =
-              Map<String, int>.from(_needsVector);
+              Map<String, int>.from(_needsSimulation.vector);
         }
 
         if (_storageService.realismOneShotEval) {
@@ -4740,8 +4514,12 @@ class ChatService extends ChangeNotifier {
       // Apply directly to the message since _pendingRealismMetadata was consumed.
       // (For groups, the per-speaker path inside generate already attached the
       // correct per-character needs_deltas; we only compute scalar here for 1:1.)
-      if (_activeGroup == null && _needsSimEnabled && _needsVector.isNotEmpty) {
-        needsDeltas = _computeNeedsDeltasWithReasons(regenPreTurn);
+      if (_activeGroup == null &&
+          _needsSimEnabled &&
+          _needsSimulation.vector.isNotEmpty) {
+        needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+          regenPreTurn,
+        );
       }
 
       // After generation, merge the new response as a swipe on the original message
@@ -5221,12 +4999,12 @@ class ChatService extends ChangeNotifier {
   Map<String, int> _getGroupNeeds(String charId) {
     final raw = _groupRealism[charId]?['needs'];
     final result = <String, int>{};
-    for (final k in _needKeys) {
+    for (final k in needKeys) {
       final v = (raw is Map) ? raw[k] : null;
       if (v is num) {
         result[k] = v.toInt();
       } else {
-        result[k] = _needDefaults[k] ?? 80;
+        result[k] = NeedsSimulation.needDefaults[k] ?? 80;
       }
     }
     return result;
@@ -5666,10 +5444,10 @@ class ChatService extends ChangeNotifier {
 
         // Mandatory Needs Catastrophe (Phase 2 stepping) — when a need hit 0 during
         // the previous decay tick, we force the AI to roleplay the disaster right now.
-        if (_pendingNeedsCatastrophe != null) {
+        if (_needsSimulation.pendingCatastrophe != null) {
           needsCatastropheBlock =
               '[MANDATORY CATASTROPHIC NEED EVENT — THIS HAS ALREADY OCCURRED THIS TURN:\n'
-              '$_pendingNeedsCatastrophe\n'
+              '${_needsSimulation.pendingCatastrophe}\n'
               'You MUST narrate the immediate physical sensations, the visible evidence '
               '(wet patch/puddle on clothes or floor, her collapsing or fainting, smell, '
               'mortified/embarrassed expression, how {{user}} and anyone else present reacts), '
@@ -5678,7 +5456,7 @@ class ChatService extends ChangeNotifier {
               'the event is canon and has just happened or is happening right now. '
               'Do not fade to black, do not ask for permission, do not skip it.]\n';
           // Consume it for this generation
-          _pendingNeedsCatastrophe = null;
+          _needsSimulation.consumePendingCatastrophe();
         }
 
         // Calculate token cost of all fixed sections to determine chat history budget
@@ -9395,8 +9173,8 @@ class ChatService extends ChangeNotifier {
 
     // Protective window note for the newer layered systems
     final bool protectiveWindowActive =
-        _needsAfterglowTurnsRemaining > 0 ||
-        _arousalSuppressionTurnsRemaining > 0;
+        _needsSimulation.afterglowTurnsRemaining > 0 ||
+        _needsSimulation.arousalSuppressionTurnsRemaining > 0;
     if (protectiveWindowActive && _cooldownTurnsRemaining > 0) {
       statePrompt +=
           ' $charName is currently inside a temporary protective afterglow/lust-haze window. Other physical and emotional needs (hunger, energy, social connection, the need to move or clean up) feel significantly muted or distant for the next few turns. This is not just emotional — it is a real dampening effect.\n';
@@ -9496,16 +9274,16 @@ class ChatService extends ChangeNotifier {
       }
 
       // When the old refractory has ended but newer protective layers are still active
-      if (_needsAfterglowTurnsRemaining > 0 ||
-          _arousalSuppressionTurnsRemaining > 0) {
+      if (_needsSimulation.afterglowTurnsRemaining > 0 ||
+          _needsSimulation.arousalSuppressionTurnsRemaining > 0) {
         statePrompt +=
             ' Even though the immediate refractory sensitivity has passed, $charName is still inside a lingering afterglow / lust-haze window. Other needs (hunger, energy, the desire to get up and do things) feel noticeably muted or unimportant for a while longer.\n';
       }
 
       // Explicit post-crash warning when the protective layers have expired
-      if (_postClimaxCrashTurnsRemaining > 0 &&
-          _needsAfterglowTurnsRemaining == 0 &&
-          _arousalSuppressionTurnsRemaining == 0) {
+      if (_needsSimulation.postClimaxCrashTurnsRemaining > 0 &&
+          _needsSimulation.afterglowTurnsRemaining == 0 &&
+          _needsSimulation.arousalSuppressionTurnsRemaining == 0) {
         statePrompt +=
             ' A delayed wave of heavy, sated physical exhaustion is now hitting $charName. They may become slow, sleepy, reluctant to move, and deeply content to stay exactly where they are ($_spatialStance). This is the classic post-orgasm crash — warm, heavy, and very real.\n';
       }
@@ -9520,14 +9298,15 @@ class ChatService extends ChangeNotifier {
   /// Placed AFTER the character name suffix for maximum recency weight.
   /// Consumed after one use (cleared after response generation).
   String _getChanceTimeInjection() {
-    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty) {
+    // Delegation to extracted service for pending + delivered flag (builder stays here for step 8).
+    if (_chaosModeService.pendingChaosInjection == null ||
+        _chaosModeService.pendingChaosInjection!.isEmpty) {
       return '';
     }
     final charName = _activeCharacter?.name ?? 'the character';
-    final event = _pendingChaosInjection!;
-    // Mark as delivered so it can be cleared on the NEXT sendMessage.
-    // Persists through regens/swipes until the user sends a new message.
-    _chaosEventDelivered = true;
+    final event = _chaosModeService.pendingChaosInjection!;
+    // Mark as delivered via service so it can be cleared on the NEXT sendMessage.
+    _chaosModeService.markEventDelivered();
     return '\n[OOC — URGENT NARRATIVE INTERRUPT:\n'
         'THE FOLLOWING EVENT JUST HAPPENED RIGHT NOW, THIS VERY MOMENT, during the scene:\n'
         '>>> $event <<<\n\n'
@@ -10506,19 +10285,22 @@ class ChatService extends ChangeNotifier {
     // (see setNeedsSimEnabled and ext seeding). Snapshots only carry the vector
     // for timeline continuity while the sim is on. This prevents historical
     // snapshots from resurrecting a stale enabled state after a mid-chat toggle-off.
-    if (_needsSimEnabled && _needsVector.isNotEmpty) {
+    if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
       state['needs'] = {
-        'vector': _needsVector,
+        'vector': _needsSimulation.vector,
         // Transient buffers are now snapshotted so regen/swipe during or after
         // erotic scenes restores the correct "sex haze" and "post-sex glow" state.
-        'afterglowTurns': _needsAfterglowTurnsRemaining,
-        'arousalSuppressionTurns': _arousalSuppressionTurnsRemaining,
-        'postClimaxCrashTurns': _postClimaxCrashTurnsRemaining,
+        'afterglowTurns': _needsSimulation.afterglowTurnsRemaining,
+        'arousalSuppressionTurns':
+            _needsSimulation.arousalSuppressionTurnsRemaining,
+        'postClimaxCrashTurns': _needsSimulation.postClimaxCrashTurnsRemaining,
       };
 
       // Attach per-turn deltas + reasons for the beautiful Needs chips
       // (exactly parallel to bond_delta / trust_delta + reasons).
-      final needsDeltas = _computeNeedsDeltasWithReasons(preTurn);
+      final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+        preTurn,
+      );
       if (needsDeltas.isNotEmpty) {
         (state['needs'] as Map<String, dynamic>)['deltas'] = needsDeltas;
       }
@@ -10570,8 +10352,8 @@ class ChatService extends ChangeNotifier {
 
     // Capture this speaker's pre-turn needs vector (before decay + eval)
     Map<String, int>? preTurnVector;
-    if (_needsSimEnabled && _needsVector.isNotEmpty) {
-      preTurnVector = Map<String, int>.from(_needsVector);
+    if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
+      preTurnVector = Map<String, int>.from(_needsSimulation.vector);
     }
 
     // Temporarily load this speaker's personal objectives so the narrative
@@ -10633,7 +10415,9 @@ class ChatService extends ChangeNotifier {
       );
 
       if (_needsSimEnabled) {
-        final needsDeltas = _computeNeedsDeltasWithReasons(preTurnVector);
+        final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+          preTurnVector,
+        );
         if (needsDeltas.isNotEmpty) {
           _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
         }
@@ -10693,12 +10477,11 @@ class ChatService extends ChangeNotifier {
     // Needs vector (if any persisted for this char)
     final needs = _getGroupNeeds(charId);
     if (needs.isNotEmpty) {
-      _needsVector.clear();
-      _needsVector.addAll(needs);
+      _needsSimulation.setVector(needs);
     } else if (_needsSimEnabled) {
       // Fresh start for a group member who has never had needs for this group chat.
       // Use full 100 to match 1:1 "new chat" behavior (prevents bleed perception).
-      _initializeFreshNeedsVector();
+      _needsSimulation.initializeFresh();
     }
   }
 
@@ -10727,8 +10510,8 @@ class ChatService extends ChangeNotifier {
     _setGroupRealismValue(charId, 'longTermTier', _longTermTier);
 
     // Persist current needs vector for this speaker
-    if (_needsVector.isNotEmpty) {
-      _setGroupNeeds(charId, Map<String, int>.from(_needsVector));
+    if (_needsSimulation.vector.isNotEmpty) {
+      _setGroupNeeds(charId, Map<String, int>.from(_needsSimulation.vector));
     }
   }
 
@@ -10899,365 +10682,6 @@ class ChatService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ── Sims/Needs Simulation Core Logic (ported cleanly) ─────────────────────
-
-  void _tickNeedsDecay() {
-    if (!_needsSimEnabled || !_realismEnabled) return;
-
-    // Group mode (non-director): decay the current speaker's needs vector
-    if (_activeGroup != null && !_observerMode) {
-      final id = _getCurrentSpeakerIdForRealism();
-      var needs = _getGroupNeeds(id);
-      if (needs.isEmpty) {
-        needs = Map.fromEntries(
-          _needKeys.map((k) => MapEntry(k, 80)),
-        ); // sensible start
-      }
-
-      final isNight = _timeOfDay == 'night';
-      final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
-
-      for (final key in _needKeys) {
-        final current = needs[key] ?? 80;
-        int decay = _needDecay[key] ?? 0;
-
-        if (isMorning && _needDecayMorning.containsKey(key)) {
-          decay = _needDecayMorning[key] ?? decay;
-        } else if (isNight && _needDecayNight.containsKey(key)) {
-          decay = _needDecayNight[key] ?? decay;
-        }
-
-        if (_needsAfterglowTurnsRemaining > 0 &&
-            (key == 'hunger' || key == 'energy' || key == 'social')) {
-          decay = (decay * 0.45).round();
-        }
-
-        final next = (current - decay).clamp(0, 100);
-        needs[key] = next;
-      }
-      _setGroupNeeds(id, needs);
-      return; // group path done
-    }
-
-    // 1:1 scalar path
-    final isNight = _timeOfDay == 'night';
-    final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
-
-    for (final key in _needKeys) {
-      final current = _needsVector[key];
-      if (current == null) continue;
-
-      int decay = _needDecay[key] ?? 0;
-
-      // Time-of-day variants
-      if (isMorning && _needDecayMorning.containsKey(key)) {
-        decay = _needDecayMorning[key] ?? decay;
-      } else if (isNight && _needDecayNight.containsKey(key)) {
-        decay = _needDecayNight[key] ?? decay;
-      }
-
-      // Afterglow Buffer: significantly reduce decay on Hunger, Energy, and Social
-      // after good sexual/intimate activity so it feels like a net positive.
-      if (_needsAfterglowTurnsRemaining > 0 &&
-          (key == 'hunger' || key == 'energy' || key == 'social')) {
-        decay = (decay * 0.45).round(); // ~55% reduction
-      }
-
-      // Arousal suppression dampening (erotic "lust haze" effect).
-      // When active, internal state multipliers (energy affecting hunger, etc.)
-      // are softened so the simulation itself feels less punishing while the
-      // character is overwhelmed by desire. Prompt injection is the primary
-      // visible effect; this is the light simulation-side counterpart.
-      final bool suppressionActiveThisTick =
-          _arousalSuppressionTurnsRemaining > 0 ||
-          (_arousalLevel >= _arousalSuppressionThreshold &&
-              (_needsAfterglowTurnsRemaining > 0 ||
-                  _cooldownTurnsRemaining > 0));
-
-      // Post-climax crash (delayed lethargy) — applies ONLY after the full
-      // protective window (afterglow + lust haze) has expired.
-      final bool postCrashActiveThisTick =
-          _postClimaxCrashTurnsRemaining > 0 &&
-          _needsAfterglowTurnsRemaining == 0 &&
-          _arousalSuppressionTurnsRemaining == 0;
-
-      // State-based decay modifiers (interplay)
-      final energy = _needsVector['energy'] ?? 50;
-      final fun = _needsVector['fun'] ?? 50;
-
-      // Low energy makes hunger feel worse (body needs fuel)
-      if (key == 'hunger' && energy <= 30) {
-        final mult = suppressionActiveThisTick
-            ? 1.15
-            : 1.35; // softened under lust haze
-        decay = (decay * mult).round();
-      }
-
-      // Low energy makes physical comfort worse
-      if (key == 'comfort' && energy <= 25) {
-        final mult = suppressionActiveThisTick ? 1.10 : 1.25;
-        decay = (decay * mult).round();
-      }
-
-      // Very low fun / boredom makes social need decay faster
-      if (key == 'social' && fun <= 20) {
-        final mult = suppressionActiveThisTick ? 1.20 : 1.4;
-        decay = (decay * mult).round();
-      }
-
-      // High bladder makes overall comfort worse
-      final bladder = _needsVector['bladder'] ?? 50;
-      if (key == 'comfort' && bladder <= 20) {
-        final mult = suppressionActiveThisTick ? 1.10 : 1.2;
-        decay = (decay * mult).round();
-      }
-
-      // Post-climax crash (delayed lethargy) — elevated decay on energy/fun/social.
-      // This creates the realistic "we just fucked for hours and now I'm dead"
-      // feeling. Gated so it never fights the afterglow or lust haze.
-      if (postCrashActiveThisTick &&
-          (key == 'energy' || key == 'fun' || key == 'social')) {
-        decay = (decay * _postClimaxCrashDecayMultiplier).round();
-      }
-
-      _needsVector[key] = (current - decay).clamp(0, 100);
-    }
-
-    // Tick down afterglow buffer at the end of the turn
-    if (_needsAfterglowTurnsRemaining > 0) {
-      _needsAfterglowTurnsRemaining--;
-      if (_needsAfterglowTurnsRemaining == 0) {
-        debugPrint('[Realism:Needs] Afterglow buffer expired');
-      }
-    }
-
-    // Tick down arousal suppression (lust haze) buffer
-    if (_arousalSuppressionTurnsRemaining > 0) {
-      _arousalSuppressionTurnsRemaining--;
-      if (_arousalSuppressionTurnsRemaining == 0) {
-        debugPrint('[Realism:Needs] Arousal suppression (lust haze) expired');
-      }
-    }
-
-    // Tick down post-climax crash (only counts down once protective windows expire)
-    if (_needsAfterglowTurnsRemaining == 0 &&
-        _arousalSuppressionTurnsRemaining == 0 &&
-        _postClimaxCrashTurnsRemaining > 0) {
-      _postClimaxCrashTurnsRemaining--;
-      if (_postClimaxCrashTurnsRemaining == 0) {
-        debugPrint(
-          '[Realism:Needs] Post-climax crash (lethargy / post-nut sleepiness) expired',
-        );
-      }
-    }
-
-    // ── Phase 2 Catastrophe Trigger (graduated stepping) ─────────────────────
-    // If any need has just hit exactly 0 during this decay tick, fire the
-    // catastrophic involuntary event for the worst one. The engine immediately
-    // lifts the value to a post-event floor so the bar moves and the character
-    // is in a "just suffered the consequence" state. The pending narrative will
-    // force the next AI response to roleplay the disaster (pissing, fainting, etc.).
-    if (_pendingNeedsCatastrophe == null &&
-        _needsSimEnabled &&
-        _realismEnabled) {
-      String? worstNeed;
-      int worstValue = 999;
-      for (final key in _needKeys) {
-        final v = _needsVector[key] ?? 100;
-        if (v <= 0 && v < worstValue) {
-          worstValue = v;
-          worstNeed = key;
-        }
-      }
-      if (worstNeed != null) {
-        _pendingNeedsCatastrophe = _buildCatastropheText(worstNeed);
-        int floor = _postCatastropheFloor(worstNeed);
-
-        // Give significantly better relief when the event was a successful resolution
-        // rather than a pure accident/collapse (heuristic on the catastrophe text).
-        final text = _pendingNeedsCatastrophe!.toLowerCase();
-        final wasAccidentOrCollapse =
-            text.contains('accident') ||
-            text.contains('wetting') ||
-            text.contains('lost control') ||
-            text.contains('collapsed') ||
-            text.contains('faint') ||
-            text.contains('out cold');
-
-        if (!wasAccidentOrCollapse) {
-          floor = (floor + 12).clamp(
-            0,
-            100,
-          ); // successful relief feels much better
-        }
-
-        _needsVector[worstNeed] = floor;
-        debugPrint(
-          '[Realism:Needs] ⚠️ CATASTROPHE triggered for $worstNeed → lifted to $floor (accident=$wasAccidentOrCollapse)',
-        );
-      }
-    }
-
-    debugPrint('[Realism:Needs] Tick decay applied');
-
-    // Enjoys low hygiene inversion - mild scaling bonuses when dirty
-    if (_enjoysLowHygiene) {
-      final hygiene = _needsVector['hygiene'] ?? 50;
-      if (hygiene < 50) {
-        final bonus = ((50 - hygiene) / 10).round().clamp(0, 5); // mild scaling
-        _arousalLevel = (_arousalLevel + bonus).clamp(-100, 100);
-        // Fun and Comfort also get a lift (simulated via small vector adjustment if needed, or LLM feels it)
-      }
-      if (hygiene >= 60) {
-        final penalty = ((hygiene - 60) / 10).round().clamp(0, 5);
-        _arousalLevel = (_arousalLevel - penalty).clamp(-100, 100);
-      }
-    }
-
-    _saveChat(); // persist vector changes
-    if (_pendingNeedsCatastrophe != null) {
-      notifyListeners(); // bar jumps + UI can react before generation starts
-    }
-  }
-
-  /// Returns the current stepped urgency (0 = catastrophic ... 5 = fine) for a need.
-  /// Pure function of the current value — no extra state required.
-  int _getNeedStep(String need, int value) {
-    for (int s = 0; s < _needStepUpperBounds.length; s++) {
-      if (value <= _needStepUpperBounds[s]) return s;
-    }
-    return 5; // comfortable
-  }
-
-  /// Returns the catastrophic narrative text for the given need (the event that
-  /// just occurred when it hit 0).
-  String _buildCatastropheText(String need) {
-    return _needCatastropheNarrative[need] ??
-        'Something catastrophic just happened because her $need need hit zero.';
-  }
-
-  /// Returns the floor value the need should be lifted to immediately after the
-  /// catastrophe is triggered (so the bar moves and the character is in a
-  /// post-event "relief" (still uncomfortable) state).
-  int _postCatastropheFloor(String need) {
-    return _needPostCatastropheFloor[need] ?? 30;
-  }
-
-  /// Computes per-need deltas since the start of this turn and generates
-  /// human-readable reasons. Used to power the Needs chips under bot messages
-  /// (exactly like bond_delta / trust_delta + reasons for classic realism).
-  /// Applies a small additional decay when a generation (especially the prefill)
-  /// took a very long real-world time. This gives the "time passed while the
-  /// model was thinking" a visible (but small) effect on needs, preventing the
-  /// all-zero chips feeling after 10-30+ minute generations.
-  void _applyLongGenerationNeedsDecay() {
-    if (!_needsSimEnabled ||
-        !_realismEnabled ||
-        _lastGenerationDurationSeconds < 300) {
-      return;
-    }
-
-    // Very conservative extra decay for long real-time waits.
-    // Only affects the most "physical" needs that make sense to decay over real hours.
-    final extraDecay = <String, int>{
-      'hunger': 2,
-      'bladder': 3,
-      'energy': 1,
-      'hygiene': 1,
-    };
-
-    for (final entry in extraDecay.entries) {
-      final key = entry.key;
-      final amount = entry.value;
-      if (_needsVector.containsKey(key)) {
-        final before = _needsVector[key]!;
-        _needsVector[key] = (before - amount).clamp(0, 100);
-        debugPrint(
-          '[Realism:Needs] Long generation extra decay: $key $before → ${_needsVector[key]} (took ${_lastGenerationDurationSeconds.toStringAsFixed(0)}s)',
-        );
-      }
-    }
-  }
-
-  Map<String, Map<String, dynamic>> _computeNeedsDeltasWithReasons(
-    Map<String, int>? preTurn,
-  ) {
-    if (preTurn == null || preTurn.isEmpty) return {};
-
-    final deltas = <String, Map<String, dynamic>>{};
-
-    for (final key in _needKeys) {
-      final before = preTurn[key] ?? _needDefaults[key] ?? 50;
-      final after = _needsVector[key] ?? before;
-      final delta = after - before;
-
-      String reason;
-      if (delta == 0) {
-        reason = 'Stable';
-      } else if (delta > 0) {
-        reason = 'Scene action';
-      } else if (_postClimaxCrashTurnsRemaining > 0 &&
-          _needsAfterglowTurnsRemaining == 0 &&
-          _arousalSuppressionTurnsRemaining == 0) {
-        reason = 'Post-orgasm exhaustion';
-      } else if (_needsAfterglowTurnsRemaining > 0 &&
-          (key == 'hunger' || key == 'energy' || key == 'social')) {
-        reason = 'Afterglow buffer';
-      } else if (_arousalSuppressionTurnsRemaining > 0) {
-        reason = 'Arousal suppression (lust haze)';
-      } else {
-        reason = 'Natural decay';
-      }
-
-      deltas[key] = {'delta': delta, 'reason': reason};
-    }
-
-    return deltas;
-  }
-
-  /// Applies a map of need deltas (positive or negative) to the current vector.
-  /// If [fromSexualActivity] is true and the deltas are meaningful, this will
-  /// start or refresh the Afterglow Buffer.
-  void _applyNeedsDeltas(
-    Map<String, int> deltas, {
-    bool fromSexualActivity = false,
-  }) {
-    if (!_needsSimEnabled || !_realismEnabled || deltas.isEmpty) return;
-
-    bool changed = false;
-    int totalPositiveImpact = 0;
-
-    for (final entry in deltas.entries) {
-      final key = entry.key;
-      if (!_needKeys.contains(key)) continue;
-
-      final current = _needsVector[key] ?? 50;
-      final newValue = (current + entry.value).clamp(0, 100);
-      if (newValue != current) {
-        _needsVector[key] = newValue;
-        changed = true;
-        if (entry.value > 0) totalPositiveImpact += entry.value;
-      }
-    }
-
-    if (!changed) return;
-
-    // Start/refresh afterglow buffer + arousal suppression (lust haze) on
-    // meaningful positive sexual activity. Suppression makes other needs feel
-    // distant in the prompt (and lightly in simulation) while desire is high.
-    if (fromSexualActivity && totalPositiveImpact >= 8) {
-      _needsAfterglowTurnsRemaining = 4; // 3-4 turns is the sweet spot
-      _arousalSuppressionTurnsRemaining = _arousalSuppressionDefaultTurns;
-      debugPrint(
-        '[Realism:Needs] Afterglow buffer + arousal suppression started/refreshed ($totalPositiveImpact impact)',
-      );
-    }
-
-    debugPrint('[Realism:Needs] Applied deltas: $deltas');
-    _saveChat();
-    notifyListeners();
-  }
-
   String _getNeedsInjection() {
     if (!_needsSimEnabled || !_realismEnabled) return '';
 
@@ -11277,13 +10701,13 @@ class ChatService extends ChangeNotifier {
       final sorted = needs.entries.toList()
         ..sort((a, b) => a.value.compareTo(b.value));
       final top = sorted.first;
-      final step = _getNeedStep(top.key, top.value);
+      final step = _needsSimulation.getNeedStep(top.key, top.value);
 
       // Only inject when the need is noticeable or worse (step 3 or lower).
       // This prevents mild needs (e.g. 62% hunger) from constantly interrupting roleplay.
       if (step >= 4) return '';
 
-      final label = _needSteppedText[top.key]?[step] ?? top.key;
+      final label = NeedsSimulation.needSteppedText[top.key]?[step] ?? top.key;
 
       return '[Background State for $name: $label (level ${top.value}) — this is a subtle physical or emotional condition that may gently influence her mood, thoughts, small behaviors, and focus this turn. Do not force her to directly comment on it unless it naturally fits the scene.]\n';
     }
@@ -11291,11 +10715,11 @@ class ChatService extends ChangeNotifier {
     // 1:1 path
     final charName = _activeCharacter?.name ?? 'the character';
 
-    final sorted = _needsVector.entries.toList()
+    final sorted = _needsSimulation.vector.entries.toList()
       ..sort((a, b) => a.value.compareTo(b.value));
 
     final top = sorted.first;
-    final step = _getNeedStep(top.key, top.value);
+    final step = _needsSimulation.getNeedStep(top.key, top.value);
 
     // Hygiene inversion support ("Enjoys low hygiene")
     int effectiveStep = step;
@@ -11310,9 +10734,10 @@ class ChatService extends ChangeNotifier {
 
     // Catastrophe (step 0) is never suppressed — the disaster must be narrated.
     final bool suppressionActive =
-        _arousalSuppressionTurnsRemaining > 0 ||
-        (_arousalLevel >= _arousalSuppressionThreshold &&
-            (_needsAfterglowTurnsRemaining > 0 || _cooldownTurnsRemaining > 0));
+        _needsSimulation.arousalSuppressionTurnsRemaining > 0 ||
+        (_arousalLevel >= NeedsSimulation.arousalSuppressionThreshold &&
+            (_needsSimulation.afterglowTurnsRemaining > 0 ||
+                _cooldownTurnsRemaining > 0));
 
     // Preserve (and keep strong) the special erotic bladder + high-arousal tension case.
     // This one deliberately uses the *original* step so desperate holding while
@@ -11341,7 +10766,7 @@ class ChatService extends ChangeNotifier {
     if (effectiveStep >= 5) return '';
 
     // Get the graduated text for this *effective* step (so suppressed needs read milder)
-    final texts = _needSteppedText[top.key] ?? const <String>[];
+    final texts = NeedsSimulation.needSteppedText[top.key] ?? const <String>[];
     final baseText = effectiveStep < texts.length
         ? texts[effectiveStep]
         : texts.last;
@@ -11362,7 +10787,11 @@ class ChatService extends ChangeNotifier {
     String secondaryNote = '';
     if (effectiveStep >= 1 && effectiveStep <= 3) {
       final secondary = sorted
-          .where((e) => e.key != top.key && _getNeedStep(e.key, e.value) <= 3)
+          .where(
+            (e) =>
+                e.key != top.key &&
+                _needsSimulation.getNeedStep(e.key, e.value) <= 3,
+          )
           .firstOrNull;
       if (secondary != null) {
         secondaryNote = ' (She is also feeling the ${secondary.key} need.)';
@@ -11372,9 +10801,9 @@ class ChatService extends ChangeNotifier {
     // Optional explicit "post-sex crash" flavor when energy surfaces during the active crash phase
     // (afterglow + haze have expired). Keeps the erotic "sated exhaustion" feeling.
     final String postCrashSuffix =
-        (_postClimaxCrashTurnsRemaining > 0 &&
-            _needsAfterglowTurnsRemaining == 0 &&
-            _arousalSuppressionTurnsRemaining == 0 &&
+        (_needsSimulation.postClimaxCrashTurnsRemaining > 0 &&
+            _needsSimulation.afterglowTurnsRemaining == 0 &&
+            _needsSimulation.arousalSuppressionTurnsRemaining == 0 &&
             (top.key == 'energy' || top.key == 'fun'))
         ? ' (This heavy, sated exhaustion has the warm, post-orgasm quality — limbs like lead, deep drowsiness after intense release.)'
         : '';
@@ -11389,8 +10818,8 @@ class ChatService extends ChangeNotifier {
       return;
     }
 
-    final pendingNeeds = _needsVector.entries
-        .where((e) => e.value <= _needFulfillmentScanThreshold)
+    final pendingNeeds = _needsSimulation.vector.entries
+        .where((e) => e.value <= needFulfillmentScanThreshold)
         .map((e) => e.key)
         .toList();
     if (pendingNeeds.isEmpty) return;
@@ -11428,8 +10857,9 @@ class ChatService extends ChangeNotifier {
       for (final need in pendingNeeds) {
         final fulfilled = _extractJsonBool(text, '${need}_fulfilled') ?? false;
         if (fulfilled) {
-          final restore = _needRestoreAmount(need);
-          _needsVector[need] = (_needsVector[need]! + restore).clamp(0, 100);
+          final restore = _needsSimulation.needRestoreAmount(need);
+          final current = _needsSimulation.vector[need] ?? 50;
+          _needsSimulation.setNeedValue(need, current + restore);
           debugPrint('[Realism:Needs] ✅ $need fulfilled (+$restore)');
         } else {
           debugPrint('[Realism:Needs] ✗ $need NOT fulfilled');
@@ -11439,10 +10869,6 @@ class ChatService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[Realism:Needs] Fulfillment verification failed: $e');
     }
-  }
-
-  int _needRestoreAmount(String need) {
-    return _needRestore[need] ?? _needRestoreDefault;
   }
 
   void _restoreRealismStateFromMessage(ChatMessage? msg) {
@@ -11498,21 +10924,7 @@ class ChatService extends ChangeNotifier {
         state['needs'] is Map &&
         _needsSimEnabled) {
       final needsData = state['needs'] as Map;
-      if (needsData['vector'] is Map) {
-        final vector = Map<String, int>.from(needsData['vector'] as Map);
-        _needsVector = vector;
-      }
-      // Restore transient erotic buffers so time-travel (regen/swipe) during
-      // or immediately after sex scenes feels consistent.
-      _needsAfterglowTurnsRemaining =
-          (needsData['afterglowTurns'] as int?) ??
-          _needsAfterglowTurnsRemaining;
-      _arousalSuppressionTurnsRemaining =
-          (needsData['arousalSuppressionTurns'] as int?) ??
-          _arousalSuppressionTurnsRemaining;
-      _postClimaxCrashTurnsRemaining =
-          (needsData['postClimaxCrashTurns'] as int?) ??
-          _postClimaxCrashTurnsRemaining;
+      _needsSimulation.restoreFromSnapshot(needsData);
     }
 
     debugPrint(
@@ -11638,7 +11050,7 @@ class ChatService extends ChangeNotifier {
           final bladderDelta =
               llmBladder ?? 0; // Orgasm itself does not fill the bladder
 
-          _applyNeedsDeltas({
+          _needsSimulation.applyNeedsDeltas({
             'fun': 16,
             'social': 9,
             'bladder': bladderDelta,
@@ -11663,10 +11075,10 @@ class ChatService extends ChangeNotifier {
           }
 
           if (crashDur > 0) {
-            _postClimaxCrashTurnsRemaining =
-                _postClimaxCrashTurnsRemaining > crashDur
-                ? _postClimaxCrashTurnsRemaining
-                : crashDur;
+            final current = _needsSimulation.postClimaxCrashTurnsRemaining;
+            _needsSimulation.setPostClimaxCrashTurns(
+              current > crashDur ? current : crashDur,
+            );
             debugPrint(
               '[Realism:Needs] Post-climax crash scheduled ($crashDur turns, intensity=$intensity)',
             );
@@ -11754,7 +11166,7 @@ class ChatService extends ChangeNotifier {
       final bladderDelta =
           llmBladder ?? (2 * strength).round(); // very small by default
 
-      _applyNeedsDeltas({
+      _needsSimulation.applyNeedsDeltas({
         'fun': (12 * strength).round(),
         'social': (7 * strength).round(),
         'bladder': bladderDelta,
@@ -11834,8 +11246,8 @@ class ChatService extends ChangeNotifier {
         int hygieneGain = (25 * strength).round();
 
         final bool recentSexualActivity =
-            _needsAfterglowTurnsRemaining > 0 ||
-            _postClimaxCrashTurnsRemaining > 0;
+            _needsSimulation.afterglowTurnsRemaining > 0 ||
+            _needsSimulation.postClimaxCrashTurnsRemaining > 0;
 
         if (recentSexualActivity) {
           hygieneGain = (hygieneGain * 0.35).round().clamp(0, 100);
@@ -11856,7 +11268,7 @@ class ChatService extends ChangeNotifier {
       }
 
       if (deltas.isNotEmpty) {
-        _applyNeedsDeltas(deltas);
+        _needsSimulation.applyNeedsDeltas(deltas);
         debugPrint(
           '[Realism:Needs] Daily activities detected → applied cross-effects: $deltas',
         );
@@ -12063,13 +11475,7 @@ class ChatService extends ChangeNotifier {
   /// Matches the side-effect style of [setNsfwCooldownEnabled] and [setChaosModeEnabled].
   Future<void> setNeedsSimEnabled(bool enabled) async {
     _needsSimEnabled = enabled;
-    if (enabled) {
-      _initializeNeedsVectorIfNeeded();
-    } else {
-      _needsVector.clear();
-      _needsAfterglowTurnsRemaining = 0;
-      _arousalSuppressionTurnsRemaining = 0;
-    }
+    _needsSimulation.setEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
@@ -12223,17 +11629,19 @@ class ChatService extends ChangeNotifier {
     );
   }
 
-  // ── Chaos Mode / Chance Time ──────────────────────────────────────────────
+  // ── Chaos Mode / Chance Time (thin delegation to extracted service) ──────
+  // Control sets delegate fully (like needsSimEnabled precedent). Actions thin to
+  // handle the UI-coordination flags (pendingEvent, completer) that stay in god.
+  // All impl (pressure math, pools, roll, apply core, etc.) deleted from here.
 
   Future<void> setChaosModeEnabled(bool enabled) async {
-    _chaosModeEnabled = enabled;
-    if (!enabled) _chaosPressure = 0;
+    _chaosModeService.setModeEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
 
   Future<void> setChaosNsfwEnabled(bool enabled) async {
-    _chaosNsfwEnabled = enabled;
+    _chaosModeService.setNsfwEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
@@ -12246,258 +11654,24 @@ class ChatService extends ChangeNotifier {
 
   /// Returns 8 randomly-sampled events for the wheel UI to display.
   List<String> spinWheelEvents() {
-    final pool = List<String>.from(_chanceTimeEventPool);
-    if (_chaosNsfwEnabled) pool.addAll(_chanceTimeNsfwPool);
-    pool.shuffle();
-    return pool.take(8).toList();
+    return _chaosModeService.spinWheelEvents();
   }
 
   /// Called by the wheel overlay once the animation lands on an event.
-  /// Stores the event as a prompt injection for the next response and
-  /// resumes the paused sendMessage flow.
+  /// Thin wrapper: compute display ({{char}} replace), set UI flag, delegate core
+  /// (pressure/injection/metadata/save/notify) to service, then complete completer.
   Future<void> applyChanceTimeResult(String event, String charName) async {
     final display = event.replaceAll('{{char}}', charName);
     _pendingChanceTimeEvent = display;
-    _chaosPressure = 0;
-
-    // Store in metadata so the delta chip appears on the AI's next message
-    _pendingRealismMetadata ??= {};
-    _pendingRealismMetadata!['chance_time_event'] = display;
-
-    // Store as a prompt injection — the character will weave this into their
-    // natural response to the user's message instead of getting a separate
-    // dedicated reaction message.
-    _pendingChaosInjection = display;
-
-    await _saveChat();
-    notifyListeners();
-    debugPrint('[ChanceTime] Applied: $display — injecting into next response');
-
-    // Resume the paused sendMessage flow
+    await _chaosModeService.applyPreparedEvent(display);
+    // Resume the paused sendMessage flow (UI coordination stays in god)
     _chanceTimeCompleter?.complete();
   }
 
-  /// Per-turn auto-trigger check. Returns true if the wheel should pop this turn.
+  /// Per-turn auto-trigger check. Delegates to service (verbatim roll/pressure logic).
   bool checkAndTickChaosPressure() {
-    if (!_chaosModeEnabled) return false;
-    _chaosPressure = (_chaosPressure + _chaosGrowthPerTurn).clamp(
-      0,
-      _chaosPressureCap,
-    );
-    final effectiveChance = (_chaosBaseChance + _chaosPressure).clamp(
-      0,
-      _chaosPressureCap,
-    );
-    // Use microseconds for better entropy than milliseconds
-    final roll = (DateTime.now().microsecondsSinceEpoch % 100);
-    final fires = roll < effectiveChance;
-    if (fires) {
-      debugPrint(
-        '[ChanceTime] Auto-trigger! pressure=$_chaosPressure% roll=$roll',
-      );
-    }
-    return fires;
+    return _chaosModeService.checkAndTickChaosPressure();
   }
 
-  // ── Chance Time Event Pool (120 events) ───────────────────────────────────
-
-  static const List<String> _chanceTimeEventPool = [
-    // 🟢 Fortune — lucky breaks, good vibes, unexpected wins
-    '{{char}} just found something valuable they completely forgot they owned',
-    '{{char}} was mistaken for someone important and is being treated accordingly',
-    '{{char}} stumbled into a crowd of admirers who are totally convinced they are famous',
-    'Something {{char}} lost a long time ago has just turned up in the most unexpected place',
-    '{{char}} received a completely unexpected compliment that made their entire day',
-    '{{char}} just discovered a hidden stash of food or treats at exactly the right moment',
-    '{{char}} pulled off something impressive entirely by accident and everyone thinks it was intentional',
-    'A stranger just paid for {{char}}\'s meal or expenses without any explanation',
-    '{{char}} arrived somewhere late only to discover being late was absolutely the right call',
-    '{{char}} just found out they won something they entered and completely forgot about',
-    'An incredibly beautiful view or spectacle has appeared right where {{char}} is standing',
-    '{{char}} accidentally said the perfect thing at the perfect moment',
-    '{{char}} is having the best hair or appearance day of their life today',
-    'Something that was going terribly for {{char}} has inexplicably turned completely around',
-    '{{char}} discovered a shortcut or trick that makes everything significantly easier',
-    '{{char}} just got offered a seat, a table, or a spot that would normally go to someone far more important',
-    'The weather turned absolutely perfect the moment {{char}} stepped outside',
-    '{{char}} ran into someone they\'ve been hoping to bump into for a long time',
-    'An animal has taken an immediate and enthusiastic liking to {{char}}',
-    '{{char}} made a guess that turned out to be completely correct',
-    '{{char}} just overheard something that is extremely good news for them',
-    'Someone has arrived to help {{char}} with exactly the thing they were struggling with',
-    '{{char}} was offered more than they asked for and no one is sure why',
-    'A small act of kindness {{char}} performed long ago has just come back around in a big way',
-    '{{char}} woke up unusually well-rested and is in an extremely good mood for no particular reason',
-    '{{char}} got the best seat, the best portion, or the best version of the thing',
-    '{{char}} just accomplished something they\'ve been attempting for a very long time',
-    'Everyone in the room seems to be finding {{char}} particularly charming today',
-    '{{char}} discovered someone nearby has been quietly rooting for them this whole time',
-    '{{char}} received unexpected credit for something that worked out really well',
-    // 🔴 Misfortune — embarrassing, gross, inconvenient, funny
-    '{{char}} urgently needs to use the restroom and there is no good option available',
-    '{{char}} just stepped in something extremely unpleasant and is now tracking it everywhere',
-    '{{char}} sneezed violently at the absolute worst possible moment',
-    '{{char}} sat in something wet and has no idea how to address this situation',
-    '{{char}} has the hiccups and they won\'t stop no matter what',
-    '{{char}} just bit their tongue so hard they can barely form words',
-    '{{char}} has been walking around with something in their teeth for an unknown amount of time',
-    '{{char}}\'s clothing has ripped in an extremely inconvenient location',
-    '{{char}} knocked something over in the loudest and most attention-grabbing way possible',
-    '{{char}} tripped, caught themselves, but everyone absolutely saw it',
-    '{{char}} let out an involuntary sound at the most inopportune moment imaginable',
-    '{{char}} is extremely itchy somewhere they cannot scratch in polite company',
-    '{{char}} just spilled something on themselves and is pretending it didn\'t happen',
-    '{{char}}\'s stomach is making alarming sounds at the worst possible time',
-    '{{char}} said goodbye to someone and then walked in the same direction as them',
-    '{{char}} confidently greeted someone who has no idea who they are',
-    '{{char}} waved back at someone who was not actually waving at them',
-    '{{char}} laughed at something completely inappropriate and now can\'t stop',
-    '{{char}} walked into something that was very clearly visible',
-    '{{char}} has a piece of hair or debris stuck somewhere they can\'t remove it without help',
-    '{{char}} woke up with a spectacular and inexplicable mark on their face',
-    '{{char}} is dealing with a persistent and loudly squeaking piece of their clothing or equipment',
-    '{{char}} just yawned enormously in front of exactly the wrong person',
-    '{{char}} sent a message and immediately regretted every single word of it',
-    '{{char}} is trying to pretend they remember the name of someone they absolutely do not',
-    '{{char}}\'s hands are completely full at exactly the moment they desperately need a free hand',
-    '{{char}} dropped something and it rolled to the most awkward possible location',
-    '{{char}} got something in their eye at the worst possible time',
-    '{{char}} has been nodding along in a conversation they stopped following ten minutes ago',
-    '{{char}} just realized they\'ve been pronouncing something wrong their entire life',
-    '{{char}} is having a sneezing fit and it is not going to stop anytime soon',
-    '{{char}} just made direct and sustained eye contact with someone during an extremely awkward moment',
-    '{{char}} reached for something confidently and missed completely',
-    '{{char}} fell asleep briefly somewhere very inappropriate',
-    '{{char}} made a very confident prediction that was immediately and publicly proven wrong',
-    '{{char}} went to tell a story and completely forgot where it was going halfway through',
-    '{{char}} is having the most stubborn and uncooperative hair day of their life',
-    '{{char}} just let out an involuntary noise while trying to lift something heavy',
-    '{{char}} immediately regretted the food choice they were so confident about',
-    '{{char}} is dealing with a shoe, boot, or footwear issue that keeps demanding attention',
-    '{{char}}\'s name has been mispronounced repeatedly and they\'ve been too polite to correct it',
-    '{{char}} just realized they\'ve had something on backwards or inside-out all day',
-    // 💛 Chaos — strange, unpredictable, and completely out of nowhere
-    'A bird flew directly into the space {{char}} is in and absolutely refuses to leave',
-    'An incredibly loud and disruptive noise has started nearby with no explanation',
-    'Something nearby fell over on its own for no apparent reason whatsoever',
-    '{{char}} has become the unexpected center of a very enthusiastic and confusing celebration',
-    'A small animal has decided that {{char}}\'s belongings are now its home',
-    'A person in an extremely unusual outfit has just walked by and is completely serious',
-    'Everything that could make noise in {{char}}\'s vicinity is making noise simultaneously',
-    'A sudden and powerful gust of wind has created a chaotic situation involving {{char}}\'s belongings',
-    'An extremely large insect has appeared and is refusing to be dealt with',
-    'The lighting wherever {{char}} is has done something extremely unexpected',
-    'A crowd has formed nearby for reasons that remain completely unclear',
-    'Someone nearby is telling a very loud and very one-sided story that involves {{char}} by name',
-    'A persistent and enthusiastic child or small creature has fixated entirely on {{char}}',
-    'Something is cooking or burning nearby and the smell is completely overwhelming',
-    'A piece of {{char}}\'s environment has broken in a way that is more funny than serious',
-    'An uninvited guest or creature has appeared and made themselves entirely at home',
-    '{{char}}\'s surroundings have spontaneously rearranged themselves in a confusing way',
-    'A very confident stranger is trying to recruit {{char}} into something on the spot',
-    'Two other people nearby have begun a surprisingly loud and personal argument',
-    'Something small and ridiculous has escalated into a situation requiring everyone\'s attention',
-    'A nearby animal is doing exactly what it should not be doing and nobody can stop it',
-    '{{char}} has accidentally started a trend and people nearby are copying them',
-    'Someone nearby is performing something unsolicited and making eye contact with {{char}}',
-    'The rhythm of everything around {{char}} has synchronized into something inexplicably musical',
-    'A delivery or package has arrived for {{char}} with completely incorrect contents',
-    'Something that was definitely fixed has become unfixed again at the worst time',
-    'An object nearby has developed a squeak, rattle, or wobble that cannot be ignored',
-    '{{char}} is in the middle of a very long and intricate process when something interrupts everything',
-    'Every seat, surface, or resting spot nearby is occupied or unavailable',
-    'Something {{char}} was counting on to work fine has decided today is not that day',
-    // 💜 Wild Cards — character-specific fun situations
-    '{{char}} is absolutely starving and trying very hard not to let it show',
-    '{{char}} has a song stuck in their head that keeps making them move involuntarily',
-    '{{char}} is desperately trying to stay awake and losing the battle',
-    '{{char}} just thought of a really good comeback to something that happened hours ago',
-    '{{char}} is trying to look like they know what they\'re doing in a situation they definitely do not',
-    '{{char}} has been holding in a laugh for so long it\'s becoming a physical problem',
-    '{{char}} is running on absolutely no sleep and extremely committed to pretending otherwise',
-    '{{char}} is convinced something delicious is nearby but can\'t figure out where it\'s coming from',
-    '{{char}} just thought of something embarrassing from years ago completely unprompted',
-    '{{char}} is trying to remember something very important and it is right on the tip of their tongue',
-    '{{char}} is putting in extraordinary effort to appear calm about something that is stressing them out enormously',
-    '{{char}} is extremely competitive about something that absolutely does not warrant it',
-    '{{char}} has been daydreaming so intensely they\'ve lost track of what\'s happening around them',
-    '{{char}} has made a small purchase or decision they are now deeply second-guessing',
-    '{{char}} is trying very hard not to react to something that is extremely funny to them right now',
-    '{{char}} strongly suspects they are being pranked and is watching everyone very carefully',
-    '{{char}} is operating at an unusually high level of confidence today for no specific reason',
-    '{{char}} has a strong opinion about something minor and is barely keeping it to themselves',
-    '{{char}} is lowkey obsessed with a very small and inconsequential detail in their environment',
-    '{{char}} just caught themselves doing something weird and hopes nobody noticed',
-    '{{char}} is absolutely convinced they\'re forgetting something but cannot figure out what',
-    '{{char}} has developed an instant and irrational dislike of a completely harmless object nearby',
-    '{{char}} just said something they think was smooth and they\'re very pleased with themselves',
-    '{{char}} is being incredibly polite about something they find deeply annoying',
-    '{{char}} is trying to subtly fix an error they made without drawing attention to it',
-    '{{char}} is losing a silent battle with their posture',
-    '{{char}} has a very specific craving that is now impossible to stop thinking about',
-    '{{char}} just finished something they were putting off for a long time and feels unreasonably good',
-    '{{char}} is distracted by an extremely irrelevant but very interesting thing happening nearby',
-    '{{char}} is holding a very strong opinion hostage and it is getting increasingly difficult',
-    // 🎪 Slapstick — physical comedy, chaotic energy
-    'Someone set off a stink bomb nearby and {{char}} is directly in the blast zone',
-    '{{char}}\'s pants, skirt, or equivalent just fell down in the most public setting imaginable',
-    '{{char}} has been glitter-bombed and is now sparkling uncontrollably from every surface',
-    '{{char}} got completely and thoroughly soaked by something falling, splashing, or bursting nearby',
-    '{{char}} sat on something that made an extremely loud and unfortunate noise in a silent room',
-    '{{char}} walked into a door, a pole, or a wall that was extremely clearly there',
-    '{{char}} got tangled in something — a rope, a curtain, their own clothing — and is now stuck',
-    '{{char}} accidentally flung food at someone important while trying to eat normally',
-    '{{char}} sneezed so violently they knocked something over, fell backwards, or both',
-    '{{char}} slipped on something wet and went down in slow motion in front of everyone',
-    '{{char}} tried to lean casually on something and it moved, sending them stumbling',
-    '{{char}} just ripped something open far too aggressively and the contents went everywhere',
-    '{{char}} attempted to catch something thrown to them and missed so badly it hit someone else',
-    '{{char}}\'s chair, stool, or seat just collapsed underneath them with maximum noise',
-    '{{char}} tried to open a container and the lid popped off, launching the contents directly at them',
-    '{{char}} walked confidently forward and stepped directly into a puddle, hole, or ditch',
-    '{{char}} got hit in the face by something soft, harmless, and deeply undignified',
-    'A bucket, bag, or container of something has tipped directly onto {{char}}\'s head',
-    '{{char}} grabbed something sticky and now cannot let go without making things worse',
-    '{{char}} accidentally knocked over a chain reaction of objects like a line of dominoes',
-    '{{char}} tried to do something athletic and it went spectacularly wrong in front of an audience',
-    '{{char}} got their hand, foot, or head stuck in something and is now committed to this situation',
-    'Someone threw something at {{char}} as a prank and their reaction made everything funnier',
-    '{{char}}\'s belt, strap, or buckle just snapped at the worst possible moment',
-    '{{char}} is covered in something — paint, mud, ink, flour — and cannot explain how it happened',
-  ];
-
-  // ── Chance Time NSFW Pool (only included when 🌶️ toggle is on) ──────────
-
-  static const List<String> _chanceTimeNsfwPool = [
-    '{{char}} just received an extremely personal delivery in front of other people',
-    'A stranger on the street just propositioned {{char}} loudly and confidently in public',
-    '{{char}}\'s most private undergarment is now visible and they have not yet realized it',
-    '{{char}} accidentally opened something very explicit on a shared or public surface',
-    '{{char}} just made a noise that sounded extremely suggestive and now everyone is staring',
-    'Someone mistook {{char}} for a worker at a very adult-themed establishment',
-    '{{char}} found something very intimate that does not belong to them in their belongings',
-    '{{char}} walked into the wrong room and what they saw cannot be unseen',
-    '{{char}} scratched somewhere inappropriate and someone absolutely noticed',
-    '{{char}} is visibly aroused at the most inconvenient moment imaginable and is scrambling',
-    'A stranger just described {{char}} in extremely flattering and very explicit physical terms within earshot',
-    '{{char}}\'s clothing has shifted in a way that is revealing something they very much did not intend to share',
-    '{{char}} just discovered that a private intimate item of theirs has been on display this whole time',
-    'A love letter or extremely personal note written about {{char}} has just been read aloud to the room',
-    '{{char}} was caught very obviously checking someone out and both parties know it',
-    '{{char}} accidentally grabbed someone in a place that was very much not where they intended',
-    'Something {{char}} said came out sounding incredibly dirty and everyone heard it',
-    '{{char}} has just received a gift that is unmistakably sexual and has to open it in front of people',
-    '{{char}} is trying extremely hard to hide a visible physical reaction to someone attractive nearby',
-    '{{char}} walked in on something they desperately wish they had not walked in on',
-    'Someone just loudly and publicly asked {{char}} about their love life in excruciating detail',
-    '{{char}} realized their private journal or personal writing has been read by someone else',
-    '{{char}} is wearing something under their clothes that they would be mortified for anyone to discover',
-    'An ex-lover of {{char}} has just appeared and is being very loud about their shared history',
-    '{{char}} was dared to do something embarrassingly intimate and is now trapped by their own pride',
-    '{{char}} made eye contact with someone attractive at exactly the wrong moment and froze',
-    '{{char}} was mistaken for someone\'s lover and the misunderstanding is escalating fast',
-    '{{char}} just got caught practicing a flirtatious or seductive pose in what they thought was privacy',
-    'A very personal garment belonging to {{char}} has just fallen out of their bag in a crowded space',
-    '{{char}} accidentally moaned, groaned, or made a compromising sound while stretching or sitting down',
-  ];
+  // (Chance Time pools moved verbatim to ChaosModeService; deletion complete.)
 }

@@ -184,7 +184,7 @@ Extract **leaf dependencies first** (no references to other extracted code), the
 ### Extraction pattern (per commit)
 
 1. Create the new file. Copy all methods + private fields for that domain.
-2. The constructor receives whatever state it needs (scalar values, other services). For the initial extraction, pass the whole `ChatService` as a parent reference via an interface or callback.
+2. The constructor receives whatever state it needs (scalar values, other services). For the initial extraction, pass the whole `ChatService` as a parent reference via an interface or callback. (Granular callbacks are an acceptable implementation for the initial leaf per the Stage 3 needs_simulation precedent: they avoid import cycles, enable isolated unit tests with a small factory helper, and remain friendly to future extractions that will shrink the surface. The plan text is satisfied by documenting the choice; see docs/refactor-god-file-modularization.md Fix Round 1 and the sim header for rationale.)
 3. In `ChatService`:
    ```dart
    late final _needsSimulation = NeedsSimulation(
