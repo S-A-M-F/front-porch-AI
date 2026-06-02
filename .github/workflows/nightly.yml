@@ -629,6 +629,72 @@ jobs:
           cd ${{ matrix.build_path }}
           tar -czvf ../../../../../Front_Porch_AI_Nightly-Linux.tar.gz .
 
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: nightly-${{ matrix.platform }}
+          path: |
+            Front_Porch_AI_Nightly_Setup.exe
+            Front_Porch_AI_Nightly.dmg
+            Front_Porch_AI_Nightly-Linux.AppImage
+            Front_Porch_AI_Nightly-Linux.tar.gz
+          if-no-files-found: ignore
+
+  publish-nightly:
+    name: Publish Nightly Release
+    needs: nightly
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Rawhide (for release notes & version computation)
+        uses: actions/checkout@v4
+        with:
+          ref: Rawhide
+
+      - name: Compute Rawhide Nightly Version
+        id: version
+        shell: bash
+        run: |
+          DATE=$(date +%Y%m%d)
+          SHA=$(git rev-parse --short HEAD)
+          VERSION="rawhide.${DATE}.${SHA}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Setting nightly version to: $VERSION"
+
+      - name: Prepare Friendly Release Notes (for in-app update dialog)
+        id: release_notes
+        shell: bash
+        run: |
+          NOTES_FILE="docs/Rawhide.md"
+
+          if [ -f "$NOTES_FILE" ]; then
+            BODY=$(awk '
+              /^## / { 
+                if (in_content) { exit } 
+                in_content=1; 
+                next 
+              }
+              in_content { print }
+            ' "$NOTES_FILE")
+
+            if [ -n "$BODY" ]; then
+              echo "body<<EOF" >> $GITHUB_OUTPUT
+              echo "$BODY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              echo "Using notes from $NOTES_FILE"
+            else
+              echo 'body=**Rawhide Nightly** — Latest development from the Rawhide branch.' >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No $NOTES_FILE found — using fallback notes"
+            echo 'body=**Rawhide Nightly** — Bleeding-edge development. See the README for current focus areas.' >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: nightly-*
+          merge-multiple: true
+
       - name: Upload Nightly Release
         uses: softprops/action-gh-release@v2
         with:
@@ -637,10 +703,10 @@ jobs:
           prerelease: true
           generate_release_notes: false
           files: |
-            ${{ matrix.platform == 'windows' && 'Front_Porch_AI_Nightly_Setup.exe' || '' }}
-            ${{ matrix.platform == 'macos' && 'Front_Porch_AI_Nightly.dmg' || '' }}
-            ${{ matrix.platform == 'linux' && 'Front_Porch_AI_Nightly-Linux.AppImage' || '' }}
-            ${{ matrix.platform == 'linux' && 'Front_Porch_AI_Nightly-Linux.tar.gz' || '' }}
+            Front_Porch_AI_Nightly_Setup.exe
+            Front_Porch_AI_Nightly.dmg
+            Front_Porch_AI_Nightly-Linux.AppImage
+            Front_Porch_AI_Nightly-Linux.tar.gz
           body: |
             ${{ steps.release_notes.outputs.body }}
 
@@ -654,21 +720,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v5
-        with:
-          name: nightly-${{ matrix.platform }}
-          path: |
-            Front_Porch_AI_Nightly_Setup.exe
-            Front_Porch_AI_Nightly.dmg
-            Front_Porch_AI_Nightly-Linux.AppImage
-            Front_Porch_AI_Nightly-Linux.tar.gz
-          if-no-files-found: ignore
-
   # ── Update AUR beta package from Rawhide nightlies (reuse existing front-porch-ai-beta-bin) ──
   publish-aur-beta:
     name: Update AUR Beta Package (from Rawhide)
-    needs: nightly
+    needs: [nightly, publish-nightly]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Rawhide (for version computation)
