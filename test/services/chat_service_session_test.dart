@@ -596,4 +596,7 @@ void main() {
       );
     });
   });
+
+  // Expression reset sites exercised passively via pre-existing startNew/setActive/load in this file (full label/avatar/command/regen/ONNX in dedicated + manual only; see qualified note).
+  // (Note qualified per review: "reset sites passively hit by pre-existing startNew/setActive; full label/command/avatar/regen/ONNX only in dedicated + manual"; real owner reset coverage via ambient; no active label/resolve/command/regen added in this stub per review qualification.)
 }

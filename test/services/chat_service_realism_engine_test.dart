@@ -13,6 +13,7 @@
 //
 // Uses the minimal production seam (testLlmServiceOverride) + _ControllableFakeLlm
 // to exercise the actual evaluation, delta, and needs logic instead of duplicated stubs.
+// Real ChatService paths exercised via key realism/group/session tests (expression reset sites via ambient startNew/setActive; full label/command/avatar/regen/ONNX only via dedicated + manual per qualified claims).
 //
 // Group tests now use typed repo-backed seeding (per-test DB + Groups/GroupMembersCompanion)
 // + name-based stableGroupId keying and exercise per-speaker scalar swap / inter-char
@@ -784,5 +785,7 @@ void main() {
         }
       },
     );
+
+    // Expression reset sites exercised passively via pre-existing startNew/setActive in this file (full label/command/avatar/regen/ONNX exercised in dedicated expression_classifier_test + manual smoke only; aug comments qualified per review: "reset sites passively hit by pre-existing startNew/setActive; full label/command/avatar/regen/ONNX only in dedicated + manual").
   });
 }

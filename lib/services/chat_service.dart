@@ -47,10 +47,11 @@ import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
 import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/utils/emotion_labels.dart';
-import 'package:front_porch_ai/services/expression_classifier.dart';
+import 'package:front_porch_ai/services/expression_classifier.dart'; // top-level for ExpressionClassifierService type in @Dep shim (pre-existing)
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
+import 'package:front_porch_ai/services/chat/expression_classifier.dart'; // leaf for ExpressionService (post-extraction)
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -335,21 +336,9 @@ class ChatService extends ChangeNotifier {
   String _characterEmotion = '';
   String _emotionIntensity = ''; // mild/moderate/strong
 
-  // Expression images
-  String? _lastExpressionAvatarId;
-  String? _manualExpressionLabel;
-  final Random _expressionRandom = Random();
-  String? _cachedExpressionLabel;
-  String? _cachedForEmotion;
-
-  // ONNX expression classification
-  ExpressionClassifierService? _expressionClassifierService;
-  String? _onnxExpressionLabel;
-  String? _onnxCachedForEmotion;
-  int _lastOnnxMessageCount = 0;
-  String? _lastOnnxMessageText;
-  bool _onnxClassifying = false;
-  Timer? _onnxDebounce;
+  // Expression images + classification (extracted to ExpressionService in chat/expression_classifier.dart).
+  // See "keep reset blocks in sync" comments. All runtime label/manual/onnx cache/avatar last/random
+  // state now owned by the service; god thins to delegation + shims.
 
   // Passage of time
   String _timeOfDay = 'morning';
@@ -552,6 +541,54 @@ class ChatService extends ChangeNotifier {
     },
     setGroupInterCharacterRelationships: (charId, rels) =>
         _setGroupRealismValue(charId, 'relationships', rels),
+  );
+
+  // ── Expression label selection / manual / avatar resolve / reclass / ONNX (extracted) ────
+  // currentExpressionLabel (manual priority + LLM map + ONNX debounce/cache/stability),
+  // resolveExpressionAvatar (random + lastId reroll), setManual, reclassifyEmotion,
+  // init/set for classifier service, _reclassify/_classifyOnnx async, caches, Random,
+  // lastAvatarId now owned by ExpressionService (plain class).
+  // ChatService owns via late final + delegates. Prompt injection (label lists) + command
+  // coordination kept in god (step 8). Reset/invalidate helpers on service keep the
+  // multiple "keep reset blocks in sync" + regen sites correct without god privates.
+  late final _expressionService = ExpressionService(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    getIsEvaluatingRealism: () => _isEvaluatingRealism,
+    getStorageService: () => _storageService,
+    getLlmServiceForReclass: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    getIsGenerating: () => _isGenerating,
+    getCharacterEmotion: () => _characterEmotion,
+    getMessages: () => _messages,
+    getIsThinkingModelForReclass: () {
+      // Preserve original expression reclass isThinking logic (ignores testLlmOverride for isLocal,
+      // consistent with pre-extraction).
+      final llmP = _llmProvider;
+      if (llmP != null && llmP.isLocal) {
+        return _storageService.koboldThinkingModel;
+      }
+      if (llmP != null) {
+        return _storageService.reasoningEnabled;
+      }
+      return false;
+    },
+    getRealismEvalCancelled: () => _realismEvalCancelled,
+    setRealismEvalCancelled: (v) => _realismEvalCancelled = v,
+    setIsEvaluatingRealism: (v) => _isEvaluatingRealism = v,
+    onHandleRealismEvalCancelledDuringOnnx: () async {
+      _messages.add(
+        ChatMessage(
+          text: 'Realism evaluation interrupted, regenerate response to retry',
+          sender: 'Interruption',
+          isUser: false,
+        ),
+      );
+      await _saveChat();
+      _realismEvalCancelled = false;
+      _isEvaluatingRealism = false;
+      notifyListeners();
+    },
   );
 
   Completer<void>?
@@ -1081,14 +1118,15 @@ class ChatService extends ChangeNotifier {
 
   String getCurrentEmotion() => _characterEmotion;
 
-  Future<String> reclassifyEmotion(String unknownEmotion) async {
-    _reclassifyEmotionAsync(unknownEmotion);
-    // Return a default value for now - the actual classification happens via the classifier service
-    return 'neutral';
-  }
+  @Deprecated('Access via ExpressionService directly')
+  Future<String> reclassifyEmotion(String unknownEmotion) async =>
+      _expressionService.reclassifyEmotion(unknownEmotion); // fire-and-forget + immediate 'neutral' contract (side effects async)
 
   String get emotionIntensity => _emotionIntensity;
-  String? get manualExpressionLabel => _manualExpressionLabel;
+  // Deprecated shims for expression surfaces (callers in chat_page + tests + wiring).
+  // Delegate to extracted ExpressionService.
+  @Deprecated('Access via ExpressionService directly')
+  String? get manualExpressionLabel => _expressionService.manualExpressionLabel;
   String get timeOfDay => _timeOfDay;
   int get dayCount => _dayCount;
   bool get passageOfTimeEnabled => _passageOfTimeEnabled;
@@ -1287,268 +1325,16 @@ class ChatService extends ChangeNotifier {
   ///
   /// If a manual expression is set via [setManualExpression], returns that.
   /// When classification mode is 'onnx', uses the ONNX classifier result.
-  /// Otherwise maps the nuanced [_characterEmotion] to a standard label
+  /// Otherwise maps the nuanced emotion to a standard label
   /// using [EmotionLabels.nuancedToStandard].
-  String? get currentExpressionLabel {
-    // Manual override takes priority
-    if (_manualExpressionLabel != null && _manualExpressionLabel!.isNotEmpty) {
-      return _manualExpressionLabel!.toLowerCase();
-    }
+  @Deprecated('Access via ExpressionService directly')
+  String? get currentExpressionLabel =>
+      _expressionService.currentExpressionLabel;
 
-    final lower = _characterEmotion.toLowerCase();
-    final messageCount = _messages.length;
+  // _reclassifyEmotionAsync fully moved to ExpressionService (internal to currentExpressionLabel ONNX/LLM paths).
 
-    final lastAiMsgText = _messages.isNotEmpty && !_messages.last.isUser
-        ? _messages.last.text
-        : '';
-
-    // ONNX mode: trigger classification if needed and return cached result
-    if (_storageService.expressionClassificationMode == 'onnx') {
-      // ── STABILITY: Keep previous expression while generating ───────────────
-      // As requested, we don't want "live" updates. We keep the current
-      // face until the message is complete.
-      if (_isGenerating) {
-        return _onnxExpressionLabel ??
-            EmotionLabels.nuancedToStandard[lower] ??
-            'neutral';
-      }
-
-      // Trigger async ONNX classification if a new message arrived, text changed, or emotion changed
-      if ((_onnxCachedForEmotion != lower ||
-              messageCount != _lastOnnxMessageCount ||
-              lastAiMsgText != _lastOnnxMessageText) &&
-          !_onnxClassifying &&
-          _onnxDebounce == null) {
-        // Use a small debounce to avoid rapid re-triggering during UI transitions
-        _onnxDebounce = Timer(const Duration(milliseconds: 500), () {
-          _onnxDebounce = null;
-          _classifyWithOnnxAsync(lower);
-        });
-      }
-
-      if (_onnxCachedForEmotion == lower && _onnxExpressionLabel != null) {
-        return _onnxExpressionLabel;
-      }
-      return _onnxExpressionLabel ??
-          EmotionLabels.nuancedToStandard[lower] ??
-          'neutral';
-    }
-
-    if (_characterEmotion.isEmpty) return 'neutral';
-
-    // Return cached label if emotion hasn't changed
-    if (_cachedForEmotion == lower && _cachedExpressionLabel != null) {
-      return _cachedExpressionLabel;
-    }
-
-    // Direct match
-    if (EmotionLabels.all.contains(lower)) {
-      debugPrint('[Expression] emotion=$lower -> label=$lower (direct match)');
-      _cachedForEmotion = lower;
-      _cachedExpressionLabel = lower;
-      return lower;
-    }
-
-    // Nuanced mapping
-    final mapped = EmotionLabels.nuancedToStandard[lower];
-    if (mapped != null) {
-      debugPrint(
-        '[Expression] emotion=$lower -> label=$mapped (nuanced mapping)',
-      );
-      _cachedForEmotion = lower;
-      _cachedExpressionLabel = mapped;
-      return mapped;
-    }
-
-    // Unmapped — trigger LLM re-classification
-    debugPrint(
-      '[Expression] emotion=$lower -> UNMAPPED, triggering LLM re-classification',
-    );
-    _reclassifyEmotionAsync(lower);
-    _cachedForEmotion = lower;
-    _cachedExpressionLabel = 'neutral';
-    return 'neutral';
-  }
-
-  /// Fire-and-forget: ask the LLM to map an unknown emotion word to a standard label.
-  /// Uses JSON output so thinking models can reason first then return the label.
-  Future<void> _reclassifyEmotionAsync(String unknownEmotion) async {
-    if (_isEvaluatingRealism) {
-      debugPrint(
-        '[Expression] reclassify: skipped — realism engine is evaluating',
-      );
-      return;
-    }
-    final llmService =
-        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
-    if (!llmService.isReady) {
-      debugPrint('[Expression] reclassify: LLM not ready, skipping');
-      return;
-    }
-
-    try {
-      final labels = EmotionLabels.all.join('", "');
-      final prompt =
-          'Classify the emotion "$unknownEmotion" into exactly ONE of these labels: $labels".\n'
-          'Return ONLY a JSON object with one key "label" containing your choice.\n'
-          'Example: {"label": "surprise"}\n'
-          'Response:';
-      debugPrint('[Expression] reclassify prompt: $prompt');
-
-      // Determine if thinking model is in use (same logic as realism engine)
-      final isThinkingModel = _llmProvider != null && _llmProvider!.isLocal
-          ? _storageService.koboldThinkingModel
-          : (_llmProvider != null ? _storageService.reasoningEnabled : false);
-
-      final params = GenerationParams(
-        prompt: prompt,
-        maxLength: isThinkingModel ? 2048 : 32,
-        temperature: 0.1,
-        topP: 0.5,
-        repeatPenalty: 1.15,
-        reasoningEnabled: false,
-        stopSequences: isThinkingModel ? [] : ['}\n', '}'],
-        banEosToken: isThinkingModel && (_llmProvider?.isLocal ?? false),
-        trimStop: !(isThinkingModel && (_llmProvider?.isLocal ?? false)),
-      );
-
-      final StringBuffer sb = StringBuffer();
-      await for (final chunk in llmService.generateStream(params)) {
-        sb.write(chunk);
-      }
-      String response = sb.toString().trim();
-      debugPrint('[Expression] reclassify raw response: "$response"');
-
-      // Extract JSON from response (handles thinking model output with <think> blocks)
-      if (response.contains('```')) {
-        final match = RegExp(
-          r'```(?:json)?\s*\n?(.*?)\n?```',
-          dotAll: true,
-        ).firstMatch(response);
-        if (match != null) {
-          response = match.group(1)!.trim();
-        }
-      }
-
-      // Find JSON object in response
-      String jsonStr = response;
-      if (!response.startsWith('{')) {
-        final objMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(response);
-        if (objMatch != null) {
-          jsonStr = objMatch.group(0)!;
-        }
-      }
-
-      String? extractedLabel;
-      try {
-        final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
-        extractedLabel = (parsed['label'] as String?)?.trim().toLowerCase();
-      } catch (e) {
-        debugPrint('[Expression] reclassify JSON parse failed: $e');
-      }
-
-      if (extractedLabel != null &&
-          EmotionLabels.all.contains(extractedLabel)) {
-        debugPrint(
-          '[Expression] reclassify: mapped "$unknownEmotion" -> "$extractedLabel"',
-        );
-        _cachedExpressionLabel = extractedLabel;
-        notifyListeners();
-      } else {
-        debugPrint(
-          '[Expression] reclassify: label "$extractedLabel" not valid, using neutral',
-        );
-      }
-    } catch (e) {
-      debugPrint('[Expression] reclassify error: $e');
-    }
-  }
-
-  /// Initialize the ONNX expression classifier service.
-  void initExpressionClassifier() {
-    _expressionClassifierService ??= ExpressionClassifierService(
-      _storageService,
-    );
-  }
-
-  /// Fire-and-forget: classify emotion using ONNX model.
-  /// Uses the last AI message text as classification input.
-  Future<void> _classifyWithOnnxAsync(String emotion) async {
-    if (_expressionClassifierService == null) {
-      initExpressionClassifier();
-    }
-    if (_expressionClassifierService == null) return;
-
-    _onnxClassifying = true;
-    _lastOnnxMessageCount = _messages.length;
-    _lastOnnxMessageText = _messages.isNotEmpty && !_messages.last.isUser
-        ? _messages.last.text
-        : '';
-    stdout.writeln(
-      '>>> [CHAT:ONNX] Starting classification for message count: $_lastOnnxMessageCount',
-    );
-    try {
-      // Initialize classifier with current mode
-      await _expressionClassifierService!.ensureInitialized(
-        getCurrentEmotion: () => _characterEmotion,
-        reclassify: (unknown) async {
-          return 'neutral';
-        },
-      );
-
-      // Use last AI message text for classification
-      String text = '';
-      for (int i = _messages.length - 1; i >= 0; i--) {
-        if (!_messages[i].isUser && _messages[i].text.isNotEmpty) {
-          text = _messages[i].text;
-          break;
-        }
-      }
-      if (text.isEmpty) text = emotion;
-
-      final result = await _expressionClassifierService!.classify(text);
-      if (result != null) {
-        final label = result.emotion.toLowerCase();
-        if (EmotionLabels.all.contains(label)) {
-          debugPrint(
-            '[Expression:ONNX] emotion=$emotion -> label=$label (confidence: ${result.confidence})',
-          );
-          _onnxExpressionLabel = label;
-          _onnxCachedForEmotion = emotion;
-          notifyListeners();
-          return;
-        }
-      }
-      // Fallback
-      _onnxExpressionLabel = 'neutral';
-      _onnxCachedForEmotion = emotion;
-      notifyListeners();
-      // If a cancellation was requested during realism evaluation, surface the interruption
-      // to the user as a blank/interruption message and abort generation.
-      if (_realismEvalCancelled) {
-        _messages.add(
-          ChatMessage(
-            text:
-                'Realism evaluation interrupted, regenerate response to retry',
-            sender: 'Interruption',
-            isUser: false,
-          ),
-        );
-        await _saveChat();
-        _realismEvalCancelled = false;
-        _isEvaluatingRealism = false;
-        notifyListeners();
-        return;
-      }
-    } catch (e) {
-      debugPrint('[Expression:ONNX] classification error: $e');
-      _onnxExpressionLabel = 'neutral';
-      _onnxCachedForEmotion = emotion;
-      notifyListeners();
-    } finally {
-      _onnxClassifying = false;
-    }
-  }
+  // init + _classifyWithOnnxAsync fully moved to ExpressionService (called internally via currentExpressionLabel ONNX path).
+  // set kept as thin delegate for external wiring (main.dart) — see the declaration later in class.
 
   /// Resolves the best matching expression avatar for the given character.
   ///
@@ -1557,76 +1343,20 @@ class ChatService extends ChangeNotifier {
   ///
   /// If [rerollIfSame] is true and multiple avatars share the same label,
   /// a random one is picked (avoiding the previously shown avatar).
+  @Deprecated('Access via ExpressionService directly')
   AvatarImage? resolveExpressionAvatar(
     CharacterCard character, {
     bool rerollIfSame = false,
-  }) {
-    final avatars = character.avatarImages;
-    if (avatars == null || avatars.isEmpty) {
-      return null;
-    }
-
-    final label = currentExpressionLabel;
-    if (label == null) {
-      return avatars
-              .where((a) => a.displayOrder + 1 == character.primeAvatarIndex)
-              .isEmpty
-          ? avatars.first
-          : avatars.firstWhere(
-              (a) => a.displayOrder + 1 == character.primeAvatarIndex,
-            );
-    }
-
-    // Find all avatars matching the current emotion label
-    final matches = avatars
-        .where((a) => a.label?.toLowerCase() == label)
-        .toList();
-
-    if (matches.isEmpty) {
-      // Fallback: try neutral, then prime avatar
-      final neutral = avatars
-          .where((a) => a.label?.toLowerCase() == 'neutral')
-          .toList();
-      if (neutral.isNotEmpty) {
-        return neutral.first;
-      }
-      return avatars
-              .where((a) => a.displayOrder + 1 == character.primeAvatarIndex)
-              .isEmpty
-          ? avatars.first
-          : avatars.firstWhere(
-              (a) => a.displayOrder + 1 == character.primeAvatarIndex,
-            );
-    }
-
-    if (matches.length == 1) {
-      return matches.first;
-    }
-
-    // Multiple matches — pick randomly, optionally avoiding the last one shown
-    if (rerollIfSame && _lastExpressionAvatarId != null) {
-      final different = matches
-          .where((a) => a.id != _lastExpressionAvatarId)
-          .toList();
-      if (different.isNotEmpty) {
-        final picked = different[_expressionRandom.nextInt(different.length)];
-        _lastExpressionAvatarId = picked.id;
-        return picked;
-      }
-    }
-
-    final picked = matches[_expressionRandom.nextInt(matches.length)];
-    _lastExpressionAvatarId = picked.id;
-    return picked;
-  }
+  }) => _expressionService.resolveExpressionAvatar(
+    character,
+    rerollIfSame: rerollIfSame,
+  );
 
   /// Manually set an expression label (e.g., from /expression-set command).
   /// Pass null to clear the manual override and resume auto-detection.
-  void setManualExpression(String? label) {
-    _manualExpressionLabel = label;
-    _lastExpressionAvatarId = null;
-    notifyListeners();
-  }
+  @Deprecated('Access via ExpressionService directly')
+  void setManualExpression(String? label) =>
+      _expressionService.setManualExpression(label);
 
   void setAuthorNote(String note, {int? strength}) {
     _authorNote = note;
@@ -1720,9 +1450,9 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Set the ExpressionClassifierService after construction (for ONNX emotion classification).
-  void setExpressionClassifierService(ExpressionClassifierService service) {
-    _expressionClassifierService = service;
-  }
+  @Deprecated('Access via ExpressionService directly')
+  void setExpressionClassifierService(ExpressionClassifierService service) =>
+      _expressionService.setExpressionClassifierService(service);
 
   /// Wait for TTS to finish speaking, then apply the configured delay before auto-play.
   void _waitForTtsThenContinue() {
@@ -1850,10 +1580,10 @@ class ChatService extends ChangeNotifier {
       }
 
       // Reset realism state to prevent bleeding from previous character.
-      // Keep the three reset sites (startNewChat, load*Session paths, setActiveGroup, delete flows)
+      // Keep the reset sites (startNewChat, load*Session paths, setActiveGroup, delete flows)
       // in sync when moving more state in later Stage 3 steps. See needs_simulation.dart for the
       // current owner of vector + buffers (and _needsSimEnabled/_enjoysLowHygiene control fields).
-      // Relationship (affection/trust/fixation/tiers/counters/pending/spatial) via service reset helper.
+      // Relationship + Expression via service reset helpers (expression: manual/caches/onnx/lastAvatar/random).
       final prevArousal = _arousalLevel;
       final prevFixation = _relationshipService.activeFixation;
       final prevFixationLife = _relationshipService.fixationLifespan;
@@ -1874,6 +1604,7 @@ class ChatService extends ChangeNotifier {
       _nsfwCooldownEnabled = false;
       _passageOfTimeEnabled = true; // default (global ceiling applied on seed)
       _relationshipService.resetForFreshChat();
+      _expressionService.resetForFreshChat();
       _moodDecayCounter = 0;
       _cooldownTurnsRemaining = 0;
       _cooldownTurnsTotal = 0;
@@ -2002,8 +1733,9 @@ class ChatService extends ChangeNotifier {
     _arousalLevel = 0;
     _characterEmotion = '';
     // Relationship scalars/fixation (affection/trust/tiers/fixation/spatial/pending) via extracted service.
-    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat/load paths.
+    // Expression manual/caches via service. See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat/load paths.
     _relationshipService.resetForFreshChat();
+    _expressionService.resetForFreshChat();
 
     // Auto-start local backend when entering a group chat
     _llmProvider?.ensureManagedBackendIsRunning();
@@ -2437,7 +2169,7 @@ class ChatService extends ChangeNotifier {
     return _getCharacterIdFromCard(card);
   }
 
-  /// Safely parse a JSON string into a mutable Map<String, String>.
+  /// Safely parse a JSON string into a mutable `Map<String, String>`.
   /// Returns an empty map if [json] is null, empty, or invalid.
   Map<String, String> _tryParseJsonMap(String? json) {
     if (json == null || json.isEmpty || json == '{}') return {};
@@ -2748,6 +2480,8 @@ class ChatService extends ChangeNotifier {
       // Ensure no stale fork/parent state remains from a prior character/group.
       _parentSessionId = null;
       _forkIndex = null;
+      // Expression runtime (manual/caches) reset on no-prior-session to prevent bleed (new for step4, matches fork/parent hygiene).
+      _expressionService.resetForFreshChat();
       return;
     }
 
@@ -3442,6 +3176,7 @@ class ChatService extends ChangeNotifier {
         longTermBond: extSeed.longTermBond,
         trustLevel: extSeed.trustLevel,
       );
+      _expressionService.resetForFreshChat();
       _dayCount = extSeed.dayCount.clamp(1, 9999);
       _timeOfDay = extSeed.timeOfDay;
       _startDayOfWeek = DateTime.now()
@@ -3473,6 +3208,7 @@ class ChatService extends ChangeNotifier {
       // Declarative initial bond/trust/emotion/day etc are already seeded above from the card's
       // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
       // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
+      // Expression (manual/caches/onnx/lastAvatar) reset via service for no-bleed (new for step 4).
       debugPrint(
         '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan})',
       );
@@ -3505,8 +3241,9 @@ class ChatService extends ChangeNotifier {
         // Will be populated later with greeting in non-group modes
         // Preserve realism state for proper post-greeting eval (don't reset here)
       } else {
-        // Relationship reset via service helper (keeps blocks in sync with setActive* / load paths).
+        // Relationship + Expression reset via service helpers (keeps blocks in sync with setActive* / load paths).
         _relationshipService.resetForFreshChat();
+        _expressionService.resetForFreshChat();
         // Don't touch dayCount, timeOfDay etc. as they get seeded from extensions or loaded session
       }
     }
@@ -3735,7 +3472,7 @@ class ChatService extends ChangeNotifier {
     );
   }
 
-  /// Applies {{user}} / <user> replacement using the current persona.
+  /// Applies {{user}} / `<user>` replacement using the current persona.
   /// Used for group-level overrides (firstMessage, scenario, systemPrompt)
   /// which are not tied to a specific CharacterCard.
   String _applyUserReplacement(String text) {
@@ -4293,10 +4030,8 @@ class ChatService extends ChangeNotifier {
         }
       }
 
-      // Invalidate ONNX cache for the new response
-      _onnxCachedForEmotion = null;
-      _onnxExpressionLabel = null;
-      _lastOnnxMessageText = null;
+      // Invalidate ONNX cache for the new response (delegated)
+      _expressionService.invalidateOnnxCacheForNewResponse();
 
       // Generate into a new message — it will be appended by _generateResponse.
       // _generateResponse runs the post-generation needs checks (climax,
@@ -8282,7 +8017,7 @@ class ChatService extends ChangeNotifier {
   /// Always adds `}\n` as a stop sequence so the model halts the moment it
   /// closes the JSON object, regardless of backend or model type.
   /// Thinking models (Kimi 2.5, GLM 5) will still think freely — they produce
-  /// the <think> block, then output the JSON, then hit `}\n` and stop.
+  /// the `<think>` block, then output the JSON, then hit `}\n` and stop.
   ///
   /// (Post-0.9.8 clean port: constrained GBNF removed; rely on stop sequences
   /// + regex post-processing for all Realism/Needs evals.)

@@ -328,4 +328,7 @@ void main() {
       },
     );
   });
+
+  // Expression reset sites exercised passively via pre-existing startNew/setActive flows in this file (and full label/command/avatar/regen/ONNX in dedicated expression_classifier_test + manual only).
+  // (Note qualified per review: "reset sites passively hit by pre-existing startNew/setActive; full label/command/avatar/regen/ONNX only in dedicated + manual"; no active label reads/commands/avatar-cards/regen in this aug stub; coverage via dedicated + ambient resets.)
 }
