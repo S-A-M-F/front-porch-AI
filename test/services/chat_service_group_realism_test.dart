@@ -13,11 +13,12 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Stub that replicates the group inter-character realism logic from ChatService.
+/// LEGACY STUB duplicating extracted logic (real coverage now in relationship_service_test.dart +
+/// chat_service_realism_engine_test.dart using RelationshipService). Retained for 4-char cap smoke.
 /// Focuses on the public + internal methods added for Phase 2/3:
 /// - getInterCharacterRelationships
 /// - updateInterCharacterRelationship
-/// - _ensureInterCharacterRelationshipsSeeded (exposed for testing)
+/// - ensureInterCharacterRelationshipsSeeded (via RelationshipService; legacy stub here)
 /// - 4-character hard cap behavior
 /// - Checkpoint serialization round-tripping of the 'relationships' key
 class _GroupRealismStub {

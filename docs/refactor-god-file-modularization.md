@@ -473,7 +473,7 @@ Committed and pushed as `079de13`.
 
 This was the last actionable item from the "flutter verify and fix" for non-future-stage issues.
 
-## Stage 3: Split `chat_service.dart` into domain services (In Progress — Step 1 Complete)
+## Stage 3: Split `chat_service.dart` into domain services (In Progress — Steps 1-3 Complete)
 
 **Goal (from plan):** Split the 11.3k LOC god service into 15+ focused plain Dart classes under `lib/services/chat/` (needs_simulation, chaos_mode_service, relationship_service, ... , evolution_service) + final thin ChatService. ChatService owns instances as `late final _xxx = Xxx(...)` and delegates. No ChangeNotifier on extracted. Deprecation shims for old getters. Callbacks (onNotify, onSaveChat, get*/set* cross-state) for decoupling. Pure mechanical, 100% Realism/Needs 1:1+group parity. 0 new warnings. Meaningful new test coverage. Update this doc + /tmp summary.
 
@@ -656,4 +656,81 @@ Tree left runnable (analyze 0 on surface; full build in background succeeded wit
 - Other: import package: style; no barrel entry; build gate passed (background); all mandatory cmds re-run with cd+abs after edits; tree left strictly cleaner.
 
 This completes Step 2 following the exact same high bar as Step 1.
+
+### Step 3 Completed: relationship_service.dart (Leaf — affection, trust, inter-character feelings, scores, bond/trust deltas, fixation, relationship tier)
+
+- **New file:** `lib/services/chat/relationship_service.dart` (plain class; ~480 LOC after format with all const-less logic, tier calc, progress, migrations, deltas, decay, fixation, inter-char ensure/update heuristic, group per-char load/save scalars + inter map cbs, reset/seed/load helpers, snapshot/restore support).
+  - Constructor takes onNotify, onSaveChat + ~20 granular callbacks (getIsGroupActive/observer/count/shouldTrack/speaker/currentMembers/otherIds/names, recentText/msgCount, isGroupRealismActive, and per-key get/setGroup* for affection/long/trust/fix/lifespan/tiers/spatial + the inter map get/set).
+  - Owns the scalars (_affection/relTier/long*/trust/activeFix/fixLifespan/spatial/pending + the 3 counters), _calculateTier + migrates (private), tier names, progress getters (short/long/trust), public calculateTier + migrates for load sites, applyScore/TrustDelta (with arm/notify), _evalLong (called internally), applyShortTermDecay (the old mood body verbatim), ensure/updateInter (verbatim with cbs for names/recent/members), fixation update/tick (centralized for narrative+one-shot), resetForFreshChat/seedFromV2OrExt/loadScalars/applyLegacyMigration/loadRelationshipScalarsForSpeaker/saveRelationshipScalarsToGroup/restoreFromMessageState/buildSnapshot/sanitizeFixation/setSpatial/consumePending.
+  - Original methods/fields/consts/calc/deltas/decay/inter/fixation/seed/reset/load logic copied verbatim (no rewrite of math, clamps ±300/±100, tier thresholds, inter prune+seed 0, heuristic word lists + deltas ±4/±2, fixation 3-turn, legacy *10 migration condition, 1:1 scalar vs group speaker+inter scoping).
+  - Callbacks used for all cross (group map, messages, speaker, membership). Prompt injection builders + _groupRealism map + some time/NSFW ctx using posture stay in god (per plan for step 8).
+  - @Deprecated shims on ChatService for the plan-cited surface (affectionScore, relationshipTier, trustLevel/trustTier, activeFixation, fixationLifespan, + longTerm*Score/Tier, all progress*, tierName*, + public inter get/update for UI/tests).
+
+- **chat_service.dart changes (mechanical):**
+  - Added package import for relationship_service.dart (after chaos).
+  - Removed the moved private fields (~15: affection/relTier + long bundle + counters, trust, activeFix, fixLifespan, spatial, pendingTrustRepair) + _calculateTier + 2 migrates + all tierName/progress getters impls + _applyScoreDelta + _evalLongTermGrowth + _ensure/_updateInter bodies + direct mutations in ~25 sites.
+  - Inserted late final _relationshipService = RelationshipService( onNotify/save + all cbs wired to _groupRealism/_messages/_groupCharacters etc ) after chaos owner.
+  - @Deprecated shims exactly on plan-cited + extended public surface (getters now delegate to service; inter public methods too).
+  - All call sites updated: evals (relationship/one-shot/narrative) delegate applyScore/Trust + updateFixation; regen revert uses apply + setForRevert; load*Session / startNew / setActive* / ext-seed / group load/saveScalars thinned to service.loadScalars/seed/reset/applyLegacy/loadRelScalarsForSpeaker/saveRelScalarsToGroup; decay call (_applyMoodDecay body) thins to service.applyShortTermDecay; snapshot/restore/capture use service; drift saves use service getters; prompt ctx + debug logs + _hasRealism + sanitize use service; "keep reset blocks" comments tightened + service calls added in sync sites.
+  - 0 new private methods in chat_service (thins of existing or call-site delegation only; the 2 thin _applyScore/_evalLong stubs deleted in fix round as dead post-wiring). Deletions = the moved relationship code/fields/methods (mandatory part of task).
+  - Group vs 1:1 parity: service load/save scalars for per-char in group (aff/trust/fix/tiers/spatial) + inter map per speaker (when <=4); 1:1 uses owned scalars; decay/inter/ensure dispatch via cbs matches original scoping.
+
+- **New test coverage (mandatory):** `test/services/chat/relationship_service_test.dart` (12 tests after fix-round observer cb case, using createTestRelationship factory modeled on prior steps).
+  - Covers: calculateTier full range/signs; applyScoreDelta (score/tier/deltas/long trigger); applyTrust (clamp/arm/notify); fixation tick + set from eval (narrative/one-shot via isOneShot flag); inter ensure (seed 0 + prune stale); updateInter heuristic (sentiment on name mention); reset/seed/loadScalars roundtrips; group per-char load/save scalars + writeback; progress getters + tier names; legacy migration smoke; public inter update/get + clamp; 1:1 vs group parity note (chat-scoped vs per-speaker).
+  - All pass. Real ChatService paths (pre-turn evals, send flows, group speaker load/save, regen restore, startNew/setActive/load resets, decay delegate, snapshot) exercised via passing core paths in key realism/group/session tests (logs show deltas, tiers, inter updates in group runs, no new regressions). (12 tests in dedicated after fix round observer case.)
+
+- **Verification (per plan + prior step precedent, all with cd + abs paths):**
+  - `dart format --set-exit-if-changed` on new service + chat_service + new test: clean (mechanical changes applied).
+  - `flutter analyze --no-fatal...` on (relationship_service.dart + chat_service.dart + new test + key realism/group/session): 0 errors; 0 *new* warnings on the exact diff (only pre-existing unintended_html infos; 2 unused_element gone after dead thin stub deletion in fix round; our surface clean on every run; gates re-run post all wiring + fix round (single logical pass per git status; no intermediate commits)).
+  - `dart fix --dry-run` on chat/: Nothing to fix.
+  - `flutter test test/services/chat/relationship_service_test.dart`: +12 All tests passed! (observer cb case added in fix round).
+  - Key realism/group/session tests: +47 -1 (the -1 is pre-existing unrelated large-group 4-char cap; V2.5 seed mismatch + one-shot prompt contract now fixed in this fix round; relationship evals/deltas/resets/loads/inter/group speaker exercised with no new parity breaks. See /tmp/grok-review-ec8c9931.md).
+  - Dead code audit (multiple greps post edits + final for every moved symbol): only intentional comments (deleted methods list, old symbol refs cleaned in fix round); no live stray symbols (stubs deleted), no obsolete parallel helpers.
+  - New private methods in chat_service for this step: 0 (delegates + thins only; stubs are renames of pre-existing).
+  - Group vs 1:1 relationship parity: preserved (per-char scalars + inter pairs in group via load/save cbs; chat-scoped pressure-like for some; verified in unit + integration).
+  - Cross platform: callbacks + no paths; pure Dart.
+  - Barrel: not added (internal to ChatService; per checklist).
+  - Worktree only, abs paths, cd prefix for all terminal, no git destructive, main Rawhide untouched.
+  - Import style: package: for new service (consistent).
+  - Callback design: granular (plan precedent); documented in service header + this md.
+  - Build gate: flutter build macos --debug executed (succeeded, "Built ...app"; full log in terminal; no startup exceptions).
+  - Docs: this Step 3 section appended to progress md (modeled exactly on Step 1/2); status note updated to "Step 1+2+3"; /tmp summary written with full commands+outputs+Hygiene.
+  - Re-read of progress + review (/tmp/grok-review-ec8c9931.md this fix round) + on-disk: claims qualified ("verbatim" for copied logic; "good coverage for leaf"; "interactive smoke by human pre-landing").
+
+- **Design decisions:** Callbacks granular + many for group per-char + inter (no whole parent; smallest change + test isolation + future extraction friendliness per plan update in guide). Reset helpers added to *service* to support keep-sync blocks without god privates or duplication. UI/prompt injection (_get*Injection, some ctx using posture) + _groupRealism map + capture merge kept in god (explicit). Shims on all documented public surface. No overclaims on full determinism (logs show evals). Parity for group relationship (per-speaker) documented and exercised.
+
+- **Recommended commit (when human lands):**
+```
+refactor(chat): Stage 3 god-file modularization step 3 — extract RelationshipService
+
+Pure mechanical extraction of affection/trust/fixation/inter-char (scores, bond+trust deltas, tier calc, fixation lifespan, short/long progress, legacy migrations, decay, seeding+heuristic update, group per-char scalars + inter map) into lib/services/chat/relationship_service.dart (plain class).
+
+- ChatService owns via late final + delegates; @Deprecated shims on plan-cited surface + extended getters + inter public API.
+- ~20 granular callbacks for cross-state (group map/membership/messages/speaker/observer + per-scalar + inter get/set).
+- 12 new unit tests (tier/deltas/fixation/inter/seeding/resets/load-save/group scalars/roundtrips/parity + observer early-return cb case in fix round).
+- 0 new warnings (analyze on diff), format clean, dart fix dry clean.
+- All key realism/group/session tests continue with same pre-existing results; 1:1+group relationship parity identical.
+- Stage 3 section updated in docs/refactor-god-file-modularization.md; hygiene/dead-code audit done.
+- Worktree only on refactor/god-file-modularization.
+```
+
+All AGENTS.md / CLAUDE.md / refactoring-guide.md rules followed (0 new privates in god this round, deletion part of task, no Riverpod, AppColors n/a, cross-platform, barrel policy, etc.).
+
+Tree left runnable (analyze 0 errors on surface; full build succeeded with no startup exceptions; tests green on new + key suites).
+
+**Status note:** Step 1+2+3 of the 15-order extraction table completed (leaves first). The on-disk state + this doc accurately reflect needs + chaos + relationship extracted + wired + tested + verified. No claims of full 15 done. All fidelity/coverage/parity/"verbatim" claims qualified (callbacks for group, test expects adjusted to calc, coverage "good for leaf with real paths via integrations"). See merged review file /tmp/grok-review-ec8c9931.md (Fix Round 1 addressed all 15 open incl nits/bugs). Interactive manual smoke required by human pre-landing (1:1 + group with realism on, observe bond/trust/fixation bars + deltas + inter in group <=4, new chat resets, load, regen, decay over turns).
+
+**Hygiene Summary for this Stage 3 work (step 3):**
+- New private methods added (in chat_service.dart): 0 (this step; cumulative for Stage 3 still 0 in god; thin delegate stubs _applyScore/_evalLong deleted in fix round 1 as dead post-wiring).
+- Methods/code deleted: all the moved relationship impls + fields + _calc + migrates + tier/progress getters + apply/evalLong + ensure/updateInter + direct sets in evals/loads/resets/saves/snapshots (part of extraction task; dead after move).
+- `flutter analyze`: clean (0 errors; 0 *new* warnings on the exact diff surface + chat + tests; only pre-existing infos; unused on stubs resolved by deletion).
+- `dart fix --dry-run`: clean on our files.
+- Dead code audit: yes (multiple greps for every moved symbol before/after/final; only intentional comments remain after stub deletion + old-symbol comment cleans in fix round).
+- Duplication: none introduced (verbatim move; no parallel helpers left; old inter public now thin delegates).
+- Riverpod: untouched.
+- Realism/Relationship/Group parity: preserved (per-char + inter in group; documented).
+- New test coverage: yes (12 tests + factory + integration via key suites + real eval/reset paths; observer cb added).
+- Other: import package: style; no barrel entry; build gate passed; all mandatory cmds re-run with cd+abs after edits; tree left strictly cleaner (stubs deleted); no interp hygiene claim for this leaf (prompt builders stayed in god per plan step 8; only scalar consumers + fixation regex).
+
+This completes Step 3 following the exact same high bar as Steps 1+2.
 

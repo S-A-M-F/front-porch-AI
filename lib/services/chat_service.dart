@@ -50,6 +50,7 @@ import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
+import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -326,19 +327,8 @@ class ChatService extends ChangeNotifier {
   // are mid-deactivation throw "Looking up a deactivated widget's ancestor".
   Timer? _evalChunkTimer;
 
-  // Relationship (Short-Term / Tension)
-  int _affectionScore = 0;
-  int _relationshipTier = 0;
-
-  // Long-Term Bond
-  int _longTermScore = 0;
-  int _longTermTier = 0;
-  int _turnsSinceLongTermCheck = 0;
-  int _shortTermDeltasSummary = 0;
-  int _turnsSinceDecayCheck =
-      0; // counter for short-term relationship decay (every 10 turns)
-
-  // Short-term mood
+  // Short-term mood (counter only; decay logic for affection/short-term relationship
+  // moved to RelationshipService; moodDelta resets kept here for snapshot/regen parity).
   int _moodDecayCounter = 0;
 
   // Emotional state
@@ -477,19 +467,101 @@ class ChatService extends ChangeNotifier {
     },
   );
 
+  // ── Relationship / Affection / Trust / Fixation / Inter-char (extracted) ────
+  // Scores, deltas (bond/trust), tier calc, fixation lifespan, inter-char seeding
+  // + heuristic update, short/long-term progress, legacy migrations, decay, group
+  // per-char load/save scalars live in _relationshipService (plain class).
+  // ChatService owns via late final + delegates. Prompt injection builders and
+  // _groupRealism map itself stay in god (step 8+). Reset helpers on service keep
+  // the multiple "keep reset blocks in sync" sites correct without god privates.
+  late final _relationshipService = RelationshipService(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    getIsGroupActive: () => _activeGroup != null,
+    getObserverMode: () => _observerMode,
+    getGroupCharacterCount: () => _groupCharacters.length,
+    getShouldTrackInterCharacterRelationships: () =>
+        _shouldTrackInterCharacterRelationships,
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getCurrentGroupMemberIds: () =>
+        _groupCharacters.map(_getCharacterIdFromCard).toSet(),
+    getOtherGroupMemberIds: (selfId) => _groupCharacters
+        .map(_getCharacterIdFromCard)
+        .where((id) => id != selfId)
+        .toList(),
+    getOtherGroupMemberIdToLowerName: (selfId) {
+      final m = <String, String>{};
+      for (final other in _groupCharacters) {
+        final oid = _getCharacterIdFromCard(other);
+        if (oid == selfId) continue;
+        m[oid] = other.name.toLowerCase();
+      }
+      return m;
+    },
+    getRecentExchangeLowerText: () {
+      if (_messages.length < 2) return '';
+      return _messages.reversed
+          .take(2)
+          .map((m) => m.displayText.toLowerCase())
+          .join(' ');
+    },
+    getMessageCount: () => _messages.length,
+    getIsGroupRealismActive: () => isGroupRealismActive,
+    getGroupAffectionScore: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['affection'] as num?)?.toInt() ?? defaultValue,
+    setGroupAffectionScore: (charId, v) =>
+        _setGroupRealismValue(charId, 'affection', v),
+    getGroupLongTermScore: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['longTermScore'] as num?)?.toInt() ??
+        defaultValue,
+    setGroupLongTermScore: (charId, v) =>
+        _setGroupRealismValue(charId, 'longTermScore', v),
+    getGroupTrustLevel: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['trust'] as num?)?.toInt() ?? defaultValue,
+    setGroupTrustLevel: (charId, v) =>
+        _setGroupRealismValue(charId, 'trust', v),
+    getGroupFixation: (charId, {String defaultValue = ''}) =>
+        (_groupRealism[charId]?['fixation'] as String?) ?? defaultValue,
+    setGroupFixation: (charId, v) =>
+        _setGroupRealismValue(charId, 'fixation', v),
+    getGroupFixationLifespan: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['fixationLifespan'] as num?)?.toInt() ??
+        defaultValue,
+    setGroupFixationLifespan: (charId, v) =>
+        _setGroupRealismValue(charId, 'fixationLifespan', v),
+    getGroupRelationshipTier: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['relationshipTier'] as num?)?.toInt() ??
+        defaultValue,
+    setGroupRelationshipTier: (charId, v) =>
+        _setGroupRealismValue(charId, 'relationshipTier', v),
+    getGroupLongTermTier: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['longTermTier'] as num?)?.toInt() ??
+        defaultValue,
+    setGroupLongTermTier: (charId, v) =>
+        _setGroupRealismValue(charId, 'longTermTier', v),
+    getGroupSpatialStance: (charId, {String defaultValue = ''}) =>
+        (_groupRealism[charId]?['spatialStance'] as String?) ?? defaultValue,
+    setGroupSpatialStance: (charId, v) =>
+        _setGroupRealismValue(charId, 'spatialStance', v),
+    getGroupInterCharacterRelationships: (charId) {
+      final raw = _groupRealism[charId]?['relationships'];
+      if (raw is Map) {
+        return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+      }
+      return const <String, int>{};
+    },
+    setGroupInterCharacterRelationships: (charId, rels) =>
+        _setGroupRealismValue(charId, 'relationships', rels),
+  );
+
   Completer<void>?
   _chanceTimeCompleter; // pauses sendMessage while wheel is active (UI coordination, stays in god)
-
-  // ── v3 Behavioral Mechanics ──
-  int _trustLevel = 0; // -100 to 100
-  String _activeFixation = '';
-  int _fixationLifespan = 0; // turns until fixation naturally clears
-  String _spatialStance = '';
 
   // ── Trust Repair ──
   // Armed on each severe trust drop (≥ -20 delta). Consumed on the very
   // next user message, then resets so future drops each get one shot.
-  bool _pendingTrustRepair = false;
+  // Backing state + arming logic moved to RelationshipService.applyTrustDelta.
+  // (No local field remains; @Deprecated shim on getter only.)
 
   // ── Context / Prompt Budget ──
   Map<String, int> _lastPromptBudget = {};
@@ -806,38 +878,22 @@ class ChatService extends ChangeNotifier {
   ///
   /// Backward-compat: If an old checkpoint is missing the 'relationships' key for
   /// a character, we naturally return empty (no migration needed).
-  Map<String, int> getInterCharacterRelationships(String charId) {
-    if (!isGroupRealismActive) return const {};
-    final raw = _groupRealism[charId]?['relationships'];
-    if (raw is Map) {
-      return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
-    }
-    return const {};
-  }
+  @Deprecated('Access via RelationshipService directly')
+  Map<String, int> getInterCharacterRelationships(String charId) =>
+      _relationshipService.getInterCharacterRelationships(charId);
 
   /// Applies a delta to the hidden relationship from one group character toward another.
-  /// `fromCharId` is whose feelings are changing toward `toCharId`.
-  /// The value is clamped to [-300, 300]. Creates the map entry if needed.
-  /// No-op outside of an active group.
+  /// Delegates to RelationshipService (verbatim logic preserved).
+  @Deprecated('Access via RelationshipService directly')
   void updateInterCharacterRelationship(
     String fromCharId,
     String toCharId,
     int delta,
-  ) {
-    if (_activeGroup == null) return;
-
-    final currentMap = Map<String, int>.from(
-      getInterCharacterRelationships(fromCharId),
-    );
-    final currentValue = currentMap[toCharId] ?? 0;
-    final newValue = (currentValue + delta).clamp(-300, 300);
-
-    // Reuse the existing internal setter so the per-char map is created cleanly
-    _setGroupRealismValue(fromCharId, 'relationships', {
-      ...currentMap,
-      toCharId: newValue,
-    });
-  }
+  ) => _relationshipService.updateInterCharacterRelationship(
+    fromCharId,
+    toCharId,
+    delta,
+  );
 
   /// Clears the per-character realism state (emotion, bond/affection, trust,
   /// arousal, fixation, needs vector, and any hidden inter-character relationships)
@@ -996,10 +1052,14 @@ class ChatService extends ChangeNotifier {
   bool get summaryPaused => _summaryPaused;
   int get summaryLastIndex => _summaryLastIndex;
   bool get isSummaryGenerating => _isSummaryGenerating;
-  int get affectionScore => _affectionScore;
-  int get relationshipTier => _relationshipTier;
-  int get longTermScore => _longTermScore;
-  int get longTermTier => _longTermTier;
+  @Deprecated('Access via RelationshipService directly')
+  int get affectionScore => _relationshipService.affectionScore;
+  @Deprecated('Access via RelationshipService directly')
+  int get relationshipTier => _relationshipService.relationshipTier;
+  @Deprecated('Access via RelationshipService directly')
+  int get longTermScore => _relationshipService.longTermScore;
+  @Deprecated('Access via RelationshipService directly')
+  int get longTermTier => _relationshipService.longTermTier;
   bool get realismEnabled => _realismEnabled;
 
   /// True when the Realism Engine (and Needs) should actually run for the
@@ -1072,9 +1132,9 @@ class ChatService extends ChangeNotifier {
   /// (emotion or bond score). Used to avoid redundant retroactive scans.
   bool get _hasRealismBaseline =>
       _characterEmotion.isNotEmpty ||
-      _affectionScore != 0 ||
+      _relationshipService.affectionScore != 0 ||
       _arousalLevel != 0 ||
-      _activeFixation.isNotEmpty;
+      _relationshipService.activeFixation.isNotEmpty;
 
   bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
   int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
@@ -1162,269 +1222,54 @@ class ChatService extends ChangeNotifier {
   void consumeChanceTimeTrigger() => _chanceTimePendingTrigger = false;
 
   int get arousalLevel => _arousalLevel;
-  String get activeFixation => _activeFixation;
+  @Deprecated('Access via RelationshipService directly')
+  String get activeFixation => _relationshipService.activeFixation;
 
-  int get shortTermProgressTarget {
-    final absScore = _affectionScore.abs();
-    if (absScore < 15) return 15;
-    if (absScore < 30) return 30;
-    if (absScore < 50) return 50;
-    if (absScore < 80) return 80;
-    if (absScore < 120) return 120;
-    if (absScore < 160) return 160;
-    if (absScore < 200) return 200;
-    if (absScore < 250) return 250;
-    return 300; // max for ±300 range
-  }
+  @Deprecated('Access via RelationshipService directly')
+  int get shortTermProgressTarget =>
+      _relationshipService.shortTermProgressTarget;
 
-  int get shortTermProgressBase {
-    final absScore = _affectionScore.abs();
-    if (absScore < 15) return 0;
-    if (absScore < 30) return 15;
-    if (absScore < 50) return 30;
-    if (absScore < 80) return 50;
-    if (absScore < 120) return 80;
-    if (absScore < 160) return 120;
-    if (absScore < 200) return 160;
-    if (absScore < 250) return 200;
-    return 250;
-  }
+  @Deprecated('Access via RelationshipService directly')
+  int get shortTermProgressBase => _relationshipService.shortTermProgressBase;
 
-  double get shortTermProgressPercent {
-    final current = _affectionScore.abs() - shortTermProgressBase;
-    final total = shortTermProgressTarget - shortTermProgressBase;
-    return (current / total).clamp(0.0, 1.0);
-  }
+  @Deprecated('Access via RelationshipService directly')
+  double get shortTermProgressPercent =>
+      _relationshipService.shortTermProgressPercent;
 
-  int get longTermProgressTarget {
-    final absScore = _longTermScore.abs();
-    if (absScore < 15) return 15;
-    if (absScore < 30) return 30;
-    if (absScore < 50) return 50;
-    if (absScore < 80) return 80;
-    if (absScore < 120) return 120;
-    if (absScore < 160) return 160;
-    if (absScore < 200) return 200;
-    if (absScore < 250) return 250;
-    return 300; // max for ±300 range
-  }
+  @Deprecated('Access via RelationshipService directly')
+  int get longTermProgressTarget => _relationshipService.longTermProgressTarget;
 
-  int get longTermProgressBase {
-    final absScore = _longTermScore.abs();
-    if (absScore < 15) return 0;
-    if (absScore < 30) return 15;
-    if (absScore < 50) return 30;
-    if (absScore < 80) return 50;
-    if (absScore < 120) return 80;
-    if (absScore < 160) return 120;
-    if (absScore < 200) return 160;
-    if (absScore < 250) return 200;
-    return 250;
-  }
+  @Deprecated('Access via RelationshipService directly')
+  int get longTermProgressBase => _relationshipService.longTermProgressBase;
 
-  double get longTermProgressPercent {
-    final current = _longTermScore.abs() - longTermProgressBase;
-    final total = longTermProgressTarget - longTermProgressBase;
-    return (current / total).clamp(0.0, 1.0);
-  }
+  @Deprecated('Access via RelationshipService directly')
+  double get longTermProgressPercent =>
+      _relationshipService.longTermProgressPercent;
 
-  /// Human-readable tier name for the current relationship level.
-  /// Calculate tier for 21-tier system (-10 to +10) for short/long-term bonds
-  /// with new range ±300.
-  int _calculateTier(int score) {
-    final absScore = score.abs();
-    if (absScore < 5) return 0;
-    if (absScore < 15) return score > 0 ? 1 : -1;
-    if (absScore < 30) return score > 0 ? 2 : -2;
-    if (absScore < 50) return score > 0 ? 3 : -3;
-    if (absScore < 80) return score > 0 ? 4 : -4;
-    if (absScore < 120) return score > 0 ? 5 : -5;
-    if (absScore < 160) return score > 0 ? 6 : -6;
-    if (absScore < 200) return score > 0 ? 7 : -7;
-    if (absScore < 250) return score > 0 ? 8 : -8;
-    if (absScore < 300) return score > 0 ? 9 : -9;
-    return score > 0 ? 10 : -10;
-  }
+  @Deprecated('Access via RelationshipService directly')
+  String get shortTermTierName => _relationshipService.shortTermTierName;
 
-  /// Migration: scale old short-term scores (±150) to new range (±300)
-  int _migrateShortTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
+  @Deprecated('Access via RelationshipService directly')
+  String get longTermTierName => _relationshipService.longTermTierName;
 
-  /// Migration: scale old long-term scores (±150) to new range (±300)
-  int _migrateLongTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
+  @Deprecated('Access via RelationshipService directly')
+  int get trustLevel => _relationshipService.trustLevel;
+  @Deprecated('Access via RelationshipService directly')
+  int get trustTier => _relationshipService.trustTier;
+  @Deprecated('Access via RelationshipService directly')
+  bool get pendingTrustRepair => _relationshipService.pendingTrustRepair;
 
-  String get shortTermTierName {
-    switch (_relationshipTier) {
-      case 10:
-        return 'Devoted';
-      case 9:
-        return 'Enamored';
-      case 8:
-        return 'Devoted';
-      case 7:
-        return 'Intimate';
-      case 6:
-        return 'Close';
-      case 5:
-        return 'Amiable';
-      case 4:
-        return 'Friendly';
-      case 3:
-        return 'Warm';
-      case 2:
-        return 'Receptive';
-      case 1:
-        return 'Neutral';
-      case 0:
-        return 'Neutral';
-      case -1:
-        return 'Reserved';
-      case -2:
-        return 'Cool';
-      case -3:
-        return 'Unimpressed';
-      case -4:
-        return 'Annoyed';
-      case -5:
-        return 'Disliked';
-      case -6:
-        return 'Hostile';
-      case -7:
-        return 'Adversarial';
-      case -8:
-        return 'Disdain';
-      case -9:
-        return 'Contempt';
-      case -10:
-        return 'Vitriolic';
-      default:
-        return 'Unknown';
-    }
-  }
+  @Deprecated('Access via RelationshipService directly')
+  String get trustTierName => _relationshipService.trustTierName;
 
-  String get longTermTierName {
-    switch (_longTermTier) {
-      case 10:
-        return 'Soulmate / Devoted';
-      case 9:
-        return 'Life Partner';
-      case 8:
-        return 'Devoted';
-      case 7:
-        return 'Deeply Attached';
-      case 6:
-        return 'Intimate';
-      case 5:
-        return 'Close';
-      case 4:
-        return 'Friendly';
-      case 3:
-        return 'Warm';
-      case 2:
-        return 'Receptive';
-      case 1:
-        return 'Neutral';
-      case 0:
-        return 'Neutral';
-      case -1:
-        return 'Reserved';
-      case -2:
-        return 'Cool';
-      case -3:
-        return 'Disappointed';
-      case -4:
-        return 'Fractured';
-      case -5:
-        return 'Broken Trust';
-      case -6:
-        return 'Deep Resentment';
-      case -7:
-        return 'Hostile';
-      case -8:
-        return 'Adversarial';
-      case -9:
-        return 'Contempt';
-      case -10:
-        return 'Vitriolic';
-      default:
-        return 'Unknown';
-    }
-  }
+  @Deprecated('Access via RelationshipService directly')
+  int get trustProgressBase => _relationshipService.trustProgressBase;
 
-  int get trustLevel => _trustLevel;
-  int get trustTier => _calculateTier(_trustLevel);
-  bool get pendingTrustRepair => _pendingTrustRepair;
+  @Deprecated('Access via RelationshipService directly')
+  int get trustProgressTarget => _relationshipService.trustProgressTarget;
 
-  String get trustTierName {
-    switch (trustTier) {
-      case 7:
-        return 'Blind Trust';
-      case 6:
-        return 'Implicit Trust';
-      case 5:
-        return 'Deeply Trusting';
-      case 4:
-        return 'Confident Trust';
-      case 3:
-        return 'Trusting';
-      case 2:
-        return 'Leaning Positive';
-      case 1:
-        return 'Cautious';
-      case 0:
-        return 'Neutral';
-      case -1:
-        return 'Cautious';
-      case -2:
-        return 'Guarded';
-      case -3:
-        return 'Skeptical';
-      case -4:
-        return 'Wary';
-      case -5:
-        return 'Suspicious';
-      case -6:
-        return 'Distrustful';
-      case -7:
-        return 'Paranoid';
-      default:
-        return 'Unknown';
-    }
-  }
-
-  int get trustProgressBase {
-    final absScore = _trustLevel.abs();
-    if (absScore < 10) return 0;
-    if (absScore < 25) return 10;
-    if (absScore < 45) return 25;
-    if (absScore < 70) return 45;
-    if (absScore < 100) return 70;
-    return 100;
-  }
-
-  int get trustProgressTarget {
-    final absScore = _trustLevel.abs();
-    if (absScore < 10) return 10;
-    if (absScore < 25) return 25;
-    if (absScore < 45) return 45;
-    if (absScore < 70) return 70;
-    return 100;
-  }
-
-  double get trustProgressPercent {
-    final current = _trustLevel.abs() - trustProgressBase;
-    final total = trustProgressTarget - trustProgressBase;
-    return (current / total).clamp(0.0, 1.0);
-  }
+  @Deprecated('Access via RelationshipService directly')
+  double get trustProgressPercent => _relationshipService.trustProgressPercent;
 
   /// Human-readable mood label containing exact emotion string and valence direction.
   String get moodLabel {
@@ -2008,22 +1853,16 @@ class ChatService extends ChangeNotifier {
       // Keep the three reset sites (startNewChat, load*Session paths, setActiveGroup, delete flows)
       // in sync when moving more state in later Stage 3 steps. See needs_simulation.dart for the
       // current owner of vector + buffers (and _needsSimEnabled/_enjoysLowHygiene control fields).
+      // Relationship (affection/trust/fixation/tiers/counters/pending/spatial) via service reset helper.
       final prevArousal = _arousalLevel;
-      final prevFixation = _activeFixation;
-      final prevFixationLife = _fixationLifespan;
+      final prevFixation = _relationshipService.activeFixation;
+      final prevFixationLife = _relationshipService.fixationLifespan;
       _arousalLevel = 0;
-      _fixationLifespan = 0;
-      _activeFixation = '';
       _needsSimEnabled = false;
       _enjoysLowHygiene = false;
       _needsSimulation.clearVector();
       _needsSimulation.resetBuffers();
       _realismEnabled = false;
-      _affectionScore = 0;
-      _relationshipTier = 0;
-      _longTermScore = 0;
-      _longTermTier = 0;
-      _trustLevel = 0;
       _characterEmotion = '';
       _emotionIntensity = '';
       _dayCount = 1;
@@ -2034,12 +1873,8 @@ class ChatService extends ChangeNotifier {
       _chaosModeService.resetForFreshChat();
       _nsfwCooldownEnabled = false;
       _passageOfTimeEnabled = true; // default (global ceiling applied on seed)
-      _pendingTrustRepair = false;
-      _spatialStance = '';
-      _turnsSinceLongTermCheck = 0;
-      _shortTermDeltasSummary = 0;
+      _relationshipService.resetForFreshChat();
       _moodDecayCounter = 0;
-      _turnsSinceDecayCheck = 0;
       _cooldownTurnsRemaining = 0;
       _cooldownTurnsTotal = 0;
       _greetingEvalPending = false;
@@ -2058,9 +1893,11 @@ class ChatService extends ChangeNotifier {
         if (_activeCharacter!.frontPorchExtensions != null) {
           final ext = _activeCharacter!.frontPorchExtensions!;
           _realismEnabled = ext.realismEnabled;
-          _affectionScore = ext.shortTermBond.clamp(-300, 300);
-          _longTermScore = ext.longTermBond.clamp(-300, 300);
-          _trustLevel = ext.trustLevel.clamp(-100, 100);
+          _relationshipService.seedFromV2OrExt(
+            shortTermBond: ext.shortTermBond,
+            longTermBond: ext.longTermBond,
+            trustLevel: ext.trustLevel,
+          );
           _dayCount = ext.dayCount.clamp(1, 9999);
           _timeOfDay = ext.timeOfDay;
           _characterEmotion = ext.characterEmotion;
@@ -2080,12 +1917,10 @@ class ChatService extends ChangeNotifier {
           } else {
             _needsSimulation.clearVector();
           }
-          // Recalculate tiers from seeded scores
-          _relationshipTier = _calculateTier(_affectionScore);
-          _longTermTier = _calculateTier(_longTermScore);
+          // Tiers maintained by service after seedFromV2OrExt.
           debugPrint(
             '[ChatService] V2.5 extensions seeded: realism=$_realismEnabled, '
-            'bond=$_affectionScore, trust=$_trustLevel, day=$_dayCount, time=$_timeOfDay',
+            'bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}, day=$_dayCount, time=$_timeOfDay',
           );
 
           // Seed initial quest/task as a primary objective
@@ -2165,11 +2000,10 @@ class ChatService extends ChangeNotifier {
     // stale values in the brief window before group per-speaker loads take over.
     // (Full reset happens on return to any 1:1 via setActiveCharacter.)
     _arousalLevel = 0;
-    _activeFixation = '';
-    _fixationLifespan = 0;
-    _affectionScore = 0;
-    _trustLevel = 0;
     _characterEmotion = '';
+    // Relationship scalars/fixation (affection/trust/tiers/fixation/spatial/pending) via extracted service.
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat/load paths.
+    _relationshipService.resetForFreshChat();
 
     // Auto-start local backend when entering a group chat
     _llmProvider?.ensureManagedBackendIsRunning();
@@ -2434,10 +2268,10 @@ class ChatService extends ChangeNotifier {
         ),
         parentSession: drift.Value(_currentSessionId),
         forkIndex: drift.Value(_messages.length - 1),
-        trustLevel: drift.Value(_trustLevel),
-        activeFixation: drift.Value(_activeFixation),
-        fixationLifespan: drift.Value(_fixationLifespan),
-        spatialStance: drift.Value(_spatialStance),
+        trustLevel: drift.Value(_relationshipService.trustLevel),
+        activeFixation: drift.Value(_relationshipService.activeFixation),
+        fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
+        spatialStance: drift.Value(_relationshipService.spatialStance),
         startDayOfWeek: drift.Value(_startDayOfWeek),
         createdAt: drift.Value(DateTime.now()),
         updatedAt: drift.Value(DateTime.now()),
@@ -2814,12 +2648,16 @@ class ChatService extends ChangeNotifier {
         ),
         parentSession: drift.Value(_parentSessionId),
         forkIndex: drift.Value(_forkIndex),
-        affectionScore: drift.Value(_affectionScore),
-        relationshipTier: drift.Value(_relationshipTier),
-        longTermScore: drift.Value(_longTermScore),
-        longTermTier: drift.Value(_longTermTier),
-        turnsSinceLongTermCheck: drift.Value(_turnsSinceLongTermCheck),
-        shortTermDeltasSummary: drift.Value(_shortTermDeltasSummary),
+        affectionScore: drift.Value(_relationshipService.affectionScore),
+        relationshipTier: drift.Value(_relationshipService.relationshipTier),
+        longTermScore: drift.Value(_relationshipService.longTermScore),
+        longTermTier: drift.Value(_relationshipService.longTermTier),
+        turnsSinceLongTermCheck: drift.Value(
+          _relationshipService.turnsSinceLongTermCheck,
+        ),
+        shortTermDeltasSummary: drift.Value(
+          _relationshipService.shortTermDeltasSummary,
+        ),
         realismEnabled: drift.Value(_realismEnabled),
         moodDecayCounter: drift.Value(_moodDecayCounter),
         characterEmotion: drift.Value(_characterEmotion),
@@ -2836,13 +2674,15 @@ class ChatService extends ChangeNotifier {
         groupRealismState: drift.Value(groupRealismJson),
         arousalLevel: drift.Value(_arousalLevel),
         cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
-        trustLevel: drift.Value(_trustLevel),
-        activeFixation: drift.Value(_activeFixation),
-        fixationLifespan: drift.Value(_fixationLifespan),
-        spatialStance: drift.Value(_spatialStance),
+        trustLevel: drift.Value(_relationshipService.trustLevel),
+        activeFixation: drift.Value(_relationshipService.activeFixation),
+        fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
+        spatialStance: drift.Value(_relationshipService.spatialStance),
         chaosModeEnabled: drift.Value(_chaosModeService.chaosModeEnabled),
         chaosPressure: drift.Value(_chaosModeService.chaosPressure),
-        trustRepairPending: drift.Value(_pendingTrustRepair),
+        trustRepairPending: drift.Value(
+          _relationshipService.pendingTrustRepair,
+        ),
         createdAt: drift.Value(createdAt),
         updatedAt: drift.Value(DateTime.now()),
       ),
@@ -2922,13 +2762,25 @@ class ChatService extends ChangeNotifier {
     _sessionDescription = lastSession.description;
     _parentSessionId = lastSession.parentSession;
     _forkIndex = lastSession.forkIndex;
+    // Relationship scalars + migration/tier calc now via service (keeps load parity).
     // Migration: scale old scores (±150) to new range (±300)
-    _affectionScore = _migrateShortTermScore(lastSession.affectionScore);
-    _relationshipTier = _calculateTier(_affectionScore);
-    _longTermScore = _migrateLongTermScore(lastSession.longTermScore);
-    _longTermTier = _calculateTier(_longTermScore);
-    _turnsSinceLongTermCheck = lastSession.turnsSinceLongTermCheck;
-    _shortTermDeltasSummary = lastSession.shortTermDeltasSummary;
+    _relationshipService.loadScalars(
+      affectionScore: _relationshipService.migrateShortTermScore(
+        lastSession.affectionScore,
+      ),
+      longTermScore: _relationshipService.migrateLongTermScore(
+        lastSession.longTermScore,
+      ),
+      trustLevel: lastSession.trustLevel,
+      activeFixation: lastSession.activeFixation,
+      fixationLifespan: lastSession.fixationLifespan,
+      spatialStance: lastSession.spatialStance,
+      trustRepairPending: lastSession.trustRepairPending,
+      turnsSinceLongTermCheck: lastSession.turnsSinceLongTermCheck,
+      shortTermDeltasSummary: lastSession.shortTermDeltasSummary,
+    );
+    // Apply legacy migration (if needed) after load.
+    _relationshipService.applyLegacyShortTermMigrationIfNeeded();
     _realismEnabled = lastSession.realismEnabled;
     _moodDecayCounter = lastSession.moodDecayCounter;
     _characterEmotion = lastSession.characterEmotion;
@@ -2959,30 +2811,19 @@ class ChatService extends ChangeNotifier {
     _needsSimulation.resetBuffers();
     _arousalLevel = lastSession.arousalLevel;
     _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
-    _trustLevel = lastSession.trustLevel;
-    _activeFixation = lastSession.activeFixation;
-    _fixationLifespan = lastSession.fixationLifespan;
+    // trust/fixation/spatial/pending/affection/tiers already loaded via _relationshipService.loadScalars above.
     debugPrint(
-      '[ChatService] _loadLastSession: Loaded session with arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      '[ChatService] _loadLastSession: Loaded session with arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
-    _spatialStance = lastSession.spatialStance;
-    _pendingTrustRepair = lastSession.trustRepairPending;
     _chaosModeService.loadScalars(
       modeEnabled: lastSession.chaosModeEnabled,
       pressure: lastSession.chaosPressure,
     );
 
-    // Realism Engine 2.0 Compatibility Migration
-    // Old scale was 0-15. New scale is 0-150.
-    if (_affectionScore > 0 &&
-        _affectionScore <= 15 &&
-        _relationshipTier >= 3) {
-      _affectionScore = _affectionScore * 10;
-      if (_longTermScore == 0) {
-        _longTermScore = _affectionScore;
-        _longTermTier = _calculateTier(_longTermScore);
-      }
-      _relationshipTier = _calculateTier(_affectionScore);
+    // Realism Engine 2.0 Compatibility Migration (delegated to service).
+    _relationshipService.applyLegacyShortTermMigrationIfNeeded();
+    if (_relationshipService.affectionScore != lastSession.affectionScore ||
+        _relationshipService.relationshipTier != lastSession.relationshipTier) {
       debugPrint(
         '[Realism] Legacy session migrated to REv2 scales (loadLast).',
       );
@@ -3209,10 +3050,7 @@ class ChatService extends ChangeNotifier {
 
       // The fixation coming out of the LLM can sometimes be a full paragraph instead of a short topic.
       // Truncate it to keep the UI and prompts sane.
-      if (_activeFixation.length > 200) {
-        _activeFixation = _activeFixation.substring(0, 200).trimRight() + '…';
-        _fixationLifespan = (_fixationLifespan > 0 ? _fixationLifespan : 3);
-      }
+      _relationshipService.sanitizeFixationIfTooLong();
 
       // ── Hydrate hidden group state checkpoint (DB-free: realism + per-char notes) ──
       // The sentinel is stored as the last message for durability but must be
@@ -3228,29 +3066,21 @@ class ChatService extends ChangeNotifier {
       _sessionDescription = session.description;
       _parentSessionId = session.parentSession;
       _forkIndex = session.forkIndex;
-      _affectionScore = session.affectionScore;
-      _relationshipTier = _calculateTier(_affectionScore);
-      _longTermScore = session.longTermScore;
-      _longTermTier = _calculateTier(_longTermScore);
+      // Relationship load + tier calc + legacy migration via service.
+      _relationshipService.loadScalars(
+        affectionScore: session.affectionScore,
+        longTermScore: session.longTermScore,
+        trustLevel: session.trustLevel,
+        activeFixation: session.activeFixation,
+        fixationLifespan: session.fixationLifespan,
+        spatialStance: session.spatialStance,
+        trustRepairPending: session.trustRepairPending,
+        turnsSinceLongTermCheck: session.turnsSinceLongTermCheck,
+        shortTermDeltasSummary: session.shortTermDeltasSummary,
+      );
+      _relationshipService.applyLegacyShortTermMigrationIfNeeded();
 
-      // Realism Engine 2.0 Compatibility Migration
-      // Old scale was 0-15. New scale is 0-150.
-      // If we see an old chat that was Tier 5 but score 15, we scale it to match the new engine.
-      if (_affectionScore > 0 &&
-          _affectionScore <= 15 &&
-          _relationshipTier >= 3) {
-        _affectionScore = _affectionScore * 10;
-        // Old high-tier bonds convert immediately into solid Long-Term bounds as well.
-        if (_longTermScore == 0) {
-          _longTermScore = _affectionScore;
-          _longTermTier = _calculateTier(_longTermScore);
-        }
-        _relationshipTier = _calculateTier(_affectionScore);
-        debugPrint('[Realism] Legacy session migrated to REv2 scales.');
-      }
-
-      _turnsSinceLongTermCheck = session.turnsSinceLongTermCheck;
-      _shortTermDeltasSummary = session.shortTermDeltasSummary;
+      // counters already via loadScalars on service.
       _realismEnabled = session.realismEnabled;
       _moodDecayCounter = session.moodDecayCounter;
       _characterEmotion = session.characterEmotion;
@@ -3280,11 +3110,7 @@ class ChatService extends ChangeNotifier {
       _needsSimulation.resetBuffers();
       _arousalLevel = session.arousalLevel;
       _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
-      _trustLevel = session.trustLevel;
-      _activeFixation = session.activeFixation;
-      _fixationLifespan = session.fixationLifespan;
-      _spatialStance = session.spatialStance;
-      _pendingTrustRepair = session.trustRepairPending;
+      // trust/fixation etc already via _relationshipService.loadScalars above.
 
       // Load per-session evolution (1:1 mode only — group handled by _loadGroupEvolvedFields)
       if (_activeCharacter != null) {
@@ -3474,7 +3300,7 @@ class ChatService extends ChangeNotifier {
     if (_activeCharacter == null && _activeGroup == null) return;
 
     debugPrint(
-      '[startNewChat] START: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      '[startNewChat] START: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
 
     // Refresh _activeCharacter from the repository so we pick up any edits
@@ -3610,14 +3436,12 @@ class ChatService extends ChangeNotifier {
           _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
 
       _realismEnabled = extSeed.realismEnabled;
-      // Migration: scale old scores (±150) to new range (±300)
-      _affectionScore = _migrateShortTermScore(
-        extSeed.shortTermBond.clamp(-300, 300),
+      // Migration + seed via service (keeps startNewChat parity with setActive ext seed).
+      _relationshipService.seedFromV2OrExt(
+        shortTermBond: extSeed.shortTermBond,
+        longTermBond: extSeed.longTermBond,
+        trustLevel: extSeed.trustLevel,
       );
-      _longTermScore = _migrateLongTermScore(
-        extSeed.longTermBond.clamp(-300, 300),
-      );
-      _trustLevel = extSeed.trustLevel.clamp(-100, 100);
       _dayCount = extSeed.dayCount.clamp(1, 9999);
       _timeOfDay = extSeed.timeOfDay;
       _startDayOfWeek = DateTime.now()
@@ -3641,7 +3465,7 @@ class ChatService extends ChangeNotifier {
         _needsSimulation.clearVector();
       }
       _needsSimulation.resetBuffers();
-      _pendingTrustRepair = false;
+      // pending covered by relationship service reset in the ext-seed or non-ext paths below.
       // Always reset per-chat runtime realism fields (arousal/fixation/cooldowns) for a fresh
       // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter
       // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.
@@ -3650,20 +3474,17 @@ class ChatService extends ChangeNotifier {
       // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
       // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
       debugPrint(
-        '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan)',
+        '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan})',
       );
       _arousalLevel = 0;
-      _fixationLifespan = 0;
-      _activeFixation = '';
       _cooldownTurnsRemaining = 0;
       debugPrint(
-        '[startNewChat] After reset: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+        '[startNewChat] After reset: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
       );
 
       // Recalculate tiers from seeded scores (only needed for realism-enabled chars)
       if (_realismEnabled) {
-        _relationshipTier = _calculateTier(_affectionScore);
-        _longTermTier = _calculateTier(_longTermScore);
+        // Tiers are maintained inside service after seed; no direct _calculate here.
       }
 
       // Seed initial quest/task as a primary objective
@@ -3678,17 +3499,14 @@ class ChatService extends ChangeNotifier {
       }
     } else {
       // Group mode or no active character: reset to defaults but preserve existing extensions-based values
-      _pendingTrustRepair = false;
+      // (pending covered by service.resetForFreshChat below)
 
       if (_activeGroup == null && _messages.isNotEmpty) {
         // Will be populated later with greeting in non-group modes
         // Preserve realism state for proper post-greeting eval (don't reset here)
       } else {
-        _affectionScore = 0;
-        _trustLevel = 0;
-        _relationshipTier = 0;
-        _longTermScore = 0;
-        _longTermTier = 0;
+        // Relationship reset via service helper (keeps blocks in sync with setActive* / load paths).
+        _relationshipService.resetForFreshChat();
         // Don't touch dayCount, timeOfDay etc. as they get seeded from extensions or loaded session
       }
     }
@@ -3750,11 +3568,11 @@ class ChatService extends ChangeNotifier {
 
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
     debugPrint(
-      '[startNewChat] BEFORE SAVE: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      '[startNewChat] BEFORE SAVE: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
     await _saveChat();
     debugPrint(
-      '[startNewChat] AFTER SAVE: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      '[startNewChat] AFTER SAVE: arousal=$_arousalLevel, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
     notifyListeners();
 
@@ -3815,7 +3633,7 @@ class ChatService extends ChangeNotifier {
       await _saveChat();
       notifyListeners();
       debugPrint(
-        '[Realism] Post-greeting baseline: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel',
+        '[Realism] Post-greeting baseline: emotion=$_characterEmotion, bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}',
       );
     } catch (e) {
       debugPrint('[Realism] Post-greeting eval failed: $e');
@@ -3871,7 +3689,7 @@ class ChatService extends ChangeNotifier {
       await _saveChat();
       notifyListeners();
       debugPrint(
-        '[Realism] Retroactive scan complete: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel',
+        '[Realism] Retroactive scan complete: emotion=$_characterEmotion, bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}',
       );
     } catch (e) {
       debugPrint('[Realism] Retroactive baseline scan failed: $e');
@@ -4061,8 +3879,9 @@ class ChatService extends ChangeNotifier {
         debugPrint(
           '[Realism:Group] Skipping centralized LLM eval block — per-speaker evaluation will run inside _generateResponse for the upcoming speaker',
         );
-      } else if (_pendingTrustRepair) {
-        _pendingTrustRepair = false; // consume — resets for next drop
+      } else if (_relationshipService.pendingTrustRepair) {
+        _relationshipService
+            .consumePendingTrustRepair(); // consume — resets for next drop
         await _evaluateTrustRepairCall(text, onChunk: handleChunk);
 
         if (!_realismEvalCancelled) {
@@ -4286,14 +4105,15 @@ class ChatService extends ChangeNotifier {
               lastMsg.activeMetadata!['trust_delta'] as int? ?? 0;
 
           if (bondDelta != 0) {
-            _affectionScore = (_affectionScore - bondDelta).clamp(-300, 300);
-            _relationshipTier = _calculateTier(_affectionScore);
+            _relationshipService.applyScoreDelta(-bondDelta);
           }
           if (moodDelta != 0) {
             _moodDecayCounter = 0;
           }
           if (trustDelta != 0) {
-            _trustLevel = (_trustLevel - trustDelta).clamp(-100, 100);
+            _relationshipService.setTrustLevelForRevert(
+              (_relationshipService.trustLevel - trustDelta).clamp(-100, 100),
+            );
           }
 
           // Revert climax state if this response triggered refractory cooldown.
@@ -4332,21 +4152,7 @@ class ChatService extends ChangeNotifier {
         // This ensures the new regenerated message is evaluated against the correct baseline,
         // not from scratch which would produce wildly different realism values.
         if (previousMessageState != null) {
-          _affectionScore =
-              previousMessageState['affectionScore'] as int? ?? _affectionScore;
-          _relationshipTier =
-              previousMessageState['relationshipTier'] as int? ??
-              _relationshipTier;
-          _longTermScore =
-              previousMessageState['longTermScore'] as int? ?? _longTermScore;
-          _longTermTier =
-              previousMessageState['longTermTier'] as int? ?? _longTermTier;
-          _turnsSinceLongTermCheck =
-              previousMessageState['turnsSinceLongTermCheck'] as int? ??
-              _turnsSinceLongTermCheck;
-          _shortTermDeltasSummary =
-              previousMessageState['shortTermDeltasSummary'] as int? ??
-              _shortTermDeltasSummary;
+          _relationshipService.restoreFromMessageState(previousMessageState);
           _moodDecayCounter =
               previousMessageState['moodDecayCounter'] as int? ??
               _moodDecayCounter;
@@ -4371,17 +4177,6 @@ class ChatService extends ChangeNotifier {
           _cooldownTurnsTotal =
               previousMessageState['cooldownTurnsTotal'] as int? ??
               _cooldownTurnsRemaining;
-          _trustLevel =
-              previousMessageState['trustLevel'] as int? ?? _trustLevel;
-          _activeFixation =
-              previousMessageState['activeFixation'] as String? ??
-              _activeFixation;
-          _fixationLifespan =
-              previousMessageState['fixationLifespan'] as int? ??
-              _fixationLifespan;
-          _spatialStance =
-              previousMessageState['spatialStance'] as String? ??
-              _spatialStance;
 
           // Needs simulation snapshot (clean port)
           // Guard + no enabled override: prevents stale resurrection on regen after toggle-off.
@@ -4396,7 +4191,7 @@ class ChatService extends ChangeNotifier {
           }
 
           debugPrint(
-            '[Realism:Regen] ✓ Restored baseline from previous accepted message: bond=$_affectionScore, emotion=$_characterEmotion, trust=$_trustLevel, arousal=$_arousalLevel',
+            '[Realism:Regen] ✓ Restored baseline from previous accepted message: bond=${_relationshipService.affectionScore}, emotion=$_characterEmotion, trust=${_relationshipService.trustLevel}, arousal=$_arousalLevel',
           );
         } else {
           debugPrint(
@@ -5014,123 +4809,8 @@ class ChatService extends ChangeNotifier {
     _setGroupRealismValue(charId, 'needs', needs);
   }
 
-  /// Ensures the hidden inter-character 'relationships' map for this speaker
-  /// contains a neutral (0) entry for every other current member of the group.
-  /// This is the core of the invisible tracking mechanic: characters have
-  /// private feelings about each other that are never shown in UI bars but
-  /// influence how they behave toward one another in prompts.
-  /// Safe to call repeatedly; only seeds missing entries.
-  void _ensureInterCharacterRelationshipsSeeded(String charId) {
-    if (!_shouldTrackInterCharacterRelationships) return;
-    if (_activeGroup == null || _observerMode) return;
-    if (_groupCharacters.length < 2) return;
-
-    final currentRels = Map<String, int>.from(
-      getInterCharacterRelationships(charId),
-    );
-    bool changed = false;
-
-    // Prune relationships to characters who are no longer in the group (membership change handling)
-    final currentMemberIds = _groupCharacters
-        .map(_getCharacterIdFromCard)
-        .toSet();
-    final stale = currentRels.keys
-        .where((id) => !currentMemberIds.contains(id))
-        .toList();
-    for (final staleId in stale) {
-      currentRels.remove(staleId);
-      changed = true;
-    }
-
-    // Seed neutral 0 for any current members we don't have an entry for yet
-    for (final other in _groupCharacters) {
-      final otherId = _getCharacterIdFromCard(other);
-      if (otherId == charId) continue;
-      if (!currentRels.containsKey(otherId)) {
-        currentRels[otherId] = 0;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      _setGroupRealismValue(charId, 'relationships', currentRels);
-      debugPrint(
-        '[Realism:Group] Updated inter-character relationships for $charId (seeded + pruned stale)',
-      );
-    }
-  }
-
-  /// Lightweight heuristic update for hidden inter-character feelings.
-  /// Scans the most recent user message + AI response for mentions of other
-  /// group members and applies small deltas. This gives the invisible tracking
-  /// real, interaction-driven movement without an extra LLM call.
-  /// Positive language toward another member slightly improves the speaker's
-  /// private opinion; negative language worsens it.
-  void _updateInterCharacterFeelingsFromRecentExchange(String speakerId) {
-    if (!_shouldTrackInterCharacterRelationships) return;
-    if (_activeGroup == null || _messages.length < 2) return;
-
-    final rels = Map<String, int>.from(
-      getInterCharacterRelationships(speakerId),
-    );
-    if (rels.isEmpty) return;
-
-    // Look at the last two messages (user + speaker response)
-    final recent = _messages.reversed
-        .take(2)
-        .map((m) => m.displayText.toLowerCase())
-        .join(' ');
-
-    bool changed = false;
-
-    for (final other in _groupCharacters) {
-      final otherId = _getCharacterIdFromCard(other);
-      if (otherId == speakerId) continue;
-      if (!rels.containsKey(otherId)) continue;
-
-      final otherName = other.name.toLowerCase();
-      if (!recent.contains(otherName)) continue;
-
-      // Very simple sentiment heuristics
-      int delta = 0;
-      if (recent.contains('love') ||
-          recent.contains('adore') ||
-          recent.contains('wonderful') ||
-          recent.contains('great') ||
-          recent.contains('amazing') ||
-          recent.contains('friend')) {
-        delta = 4;
-      } else if (recent.contains('hate') ||
-          recent.contains('annoying') ||
-          recent.contains('stupid') ||
-          recent.contains('awful') ||
-          recent.contains('dislike') ||
-          recent.contains('enemy')) {
-        delta = -4;
-      } else if (recent.contains('like') ||
-          recent.contains('nice') ||
-          recent.contains('good')) {
-        delta = 2;
-      } else if (recent.contains('bad') ||
-          recent.contains('rude') ||
-          recent.contains('problem')) {
-        delta = -2;
-      }
-
-      if (delta != 0) {
-        final newVal = (rels[otherId]! + delta).clamp(-300, 300);
-        rels[otherId] = newVal;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      _setGroupRealismValue(speakerId, 'relationships', rels);
-      debugPrint(
-        '[Realism:Group] Updated hidden inter-char feelings for $speakerId from recent exchange',
-      );
-    }
-  }
+  // ensureInterCharacterRelationshipsSeeded / updateInterCharacterFeelingsFromRecentExchange
+  // moved verbatim to RelationshipService (with callbacks for group/messages). Old bodies deleted.
 
   Future<void> _generateResponse(GenerationMode mode) async {
     final epoch = ++_generationEpoch;
@@ -6164,7 +5844,9 @@ class ChatService extends ChangeNotifier {
           );
           final speakerId = _getCharacterIdFromCard(speakerCard);
           if (speakerId.isNotEmpty) {
-            _updateInterCharacterFeelingsFromRecentExchange(speakerId);
+            _relationshipService.updateInterCharacterFeelingsFromRecentExchange(
+              speakerId,
+            );
             // (old checkpoint call removed in v30) // persist the hidden relationship changes
           }
         }
@@ -8841,13 +8523,13 @@ class ChatService extends ChangeNotifier {
     final charName = _activeCharacter?.name ?? 'the character';
 
     String bondGuidance;
-    if (_longTermTier >= 7) {
+    if (_relationshipService.longTermTier >= 7) {
       bondGuidance =
           'Their Long-Term Commitment is unbreakable: $charName fully trusts {{user}} and views them as a soulmate/life partner.';
-    } else if (_longTermTier >= 4) {
+    } else if (_relationshipService.longTermTier >= 4) {
       bondGuidance =
           'Their Long-Term Trust is strong: $charName feels a deepening, stable connection and sees a real future with {{user}.';
-    } else if (_longTermTier <= -4) {
+    } else if (_relationshipService.longTermTier <= -4) {
       bondGuidance =
           'Their Long-Term Trust is broken: $charName holds deep-seated resentment and fundamentally distrusts {{user}. Even if short-term mood improves, the underlying hostility remains.';
     } else {
@@ -8855,7 +8537,7 @@ class ChatService extends ChangeNotifier {
     }
 
     String tensionGuidance;
-    switch (_relationshipTier) {
+    switch (_relationshipService.relationshipTier) {
       case 10:
         tensionGuidance =
             'Short-Term Tension is Devoted: $charName is completely open, vulnerable, and emotionally intertwined with {{user}}.';
@@ -8939,7 +8621,7 @@ class ChatService extends ChangeNotifier {
     }
 
     return '[OOC Note regarding Relationship:\n'
-        ' Long-Term Status: $longTermTierName ($_longTermScore points)\n'
+        ' Long-Term Status: $longTermTierName (${_relationshipService.longTermScore} points)\n'
         ' Short-Term Tension: $shortTermTierName\n'
         ' Current Mood: $moodLabel\n'
         '$bondGuidance\n'
@@ -9050,27 +8732,28 @@ class ChatService extends ChangeNotifier {
     String block = '';
 
     // 1. Trust mapping (-100 to 100)
-    if (_trustLevel <= -20) {
+    if (_relationshipService.trustLevel <= -20) {
       block +=
           '[Behavioral Anchor (MISTRUST): You deeply distrust the user right now. You are paranoid, evasive, and highly questioning of their motives. Even if your bond is high, you do not trust them.]\n';
-    } else if (_trustLevel >= 50) {
+    } else if (_relationshipService.trustLevel >= 50) {
       block +=
           '[Behavioral Anchor (BLIND TRUST): You place absolute, unconditional trust in the user. You will readily share secrets and assume the absolute best of their intentions.]\n';
     }
 
     // 2. Fixation Mapping
-    if (_activeFixation.isNotEmpty && _fixationLifespan > 0) {
+    if (_relationshipService.activeFixation.isNotEmpty &&
+        _relationshipService.fixationLifespan > 0) {
       final charName = _activeCharacter?.name ?? 'the character';
       block +=
-          '[Background Thought: $charName has a thought that stays with them about "$_activeFixation". '
+          '[Background Thought: $charName has a thought that stays with them about "${_relationshipService.activeFixation}". '
           'This might surface as a subtle mood shift, a moment of reflection, or colored reactions. '
           'It does NOT override their personality or current focus, and only surfaces overtly if conversation naturally touches the topic.]\n';
     }
 
     // 3. Spatial Stance Mapping
-    if (_spatialStance.isNotEmpty) {
+    if (_relationshipService.spatialStance.isNotEmpty) {
       block +=
-          '[Spatial Awareness: You are currently physically "$_spatialStance". Let this naturally ground your actions, but you are free to move and change positions as the scene demands.]\n';
+          '[Spatial Awareness: You are currently physically "${_relationshipService.spatialStance}". Let this naturally ground your actions, but you are free to move and change positions as the scene demands.]\n';
     }
 
     return block;
@@ -9097,7 +8780,7 @@ class ChatService extends ChangeNotifier {
         ' Describe appropriate lighting, atmosphere, and environmental details.]\n';
   }
 
-  /// Injects a trust-calibrated behavioral frame based on existing _trustLevel.
+  /// Injects a trust-calibrated behavioral frame based on existing trust level (now via RelationshipService).
   /// Tells the model how much of the character's inner self to surface — but
   /// deliberately avoids prescribing specific behaviors, letting the character
   /// persona define what "opening up" actually looks like for THIS character.
@@ -9194,7 +8877,7 @@ class ChatService extends ChangeNotifier {
             ' is oversensitive — even a light touch makes them flinch or gasp. The world'
             ' feels soft and liquid around the edges. They\'re physically spent and blissfully'
             ' wrecked. Other physical needs (hunger, thirst, the urge to move or clean up) feel'
-            ' distant or unimportant right now. Their current physical position ($_spatialStance)'
+            ' distant or unimportant right now. Their current physical position (${_relationshipService.spatialStance})'
             ' strongly shapes how heavy, sensitive, and unwilling to move they feel. If {{user}} tries to start something sexual again,'
             ' $charName\'s body will not respond — they may laugh it off, gently push {{user}}\'s hand'
             ' away, or pull them close for contact that isn\'t sexual. They need a moment to come back to earth.\n';
@@ -9209,7 +8892,7 @@ class ChatService extends ChangeNotifier {
             ' thoroughly satisfied; other bodily needs feel softened or far away for a little while.'
             ' If {{user}} pushes for more, $charName would rather savor this than rush back — a gentle'
             ' deflection, a "not yet," a kiss on the forehead instead. The current physical position'
-            ' ($_spatialStance or lack thereof) colors how heavy and content their body feels.\n';
+            ' (${_relationshipService.spatialStance} or lack thereof) colors how heavy and content their body feels.\n';
       } else {
         // ── Phase 3: Late recovery (body starting to wake back up) — protective window fading ──
         statePrompt +=
@@ -9218,7 +8901,7 @@ class ChatService extends ChangeNotifier {
             ' pleasant hum under the skin, but the total sensitivity has faded. They could be'
             ' tempted again if {{user}} plays it right, but they\'re not seeking it out — more'
             ' content to let things build naturally than to chase it. A suggestive touch might get'
-            ' a raised eyebrow and a half-smile rather than an immediate response. Their current physical position ($_spatialStance) will make the coming tiredness feel either cozy and heavy or awkward and restless. A later wave of'
+            ' a raised eyebrow and a half-smile rather than an immediate response. Their current physical position (${_relationshipService.spatialStance}) will make the coming tiredness feel either cozy and heavy or awkward and restless. A later wave of'
             ' heavy, sated tiredness may still arrive once the glow fully fades.\n';
       }
 
@@ -9285,7 +8968,7 @@ class ChatService extends ChangeNotifier {
           _needsSimulation.afterglowTurnsRemaining == 0 &&
           _needsSimulation.arousalSuppressionTurnsRemaining == 0) {
         statePrompt +=
-            ' A delayed wave of heavy, sated physical exhaustion is now hitting $charName. They may become slow, sleepy, reluctant to move, and deeply content to stay exactly where they are ($_spatialStance). This is the classic post-orgasm crash — warm, heavy, and very real.\n';
+            ' A delayed wave of heavy, sated physical exhaustion is now hitting $charName. They may become slow, sleepy, reluctant to move, and deeply content to stay exactly where they are (${_relationshipService.spatialStance}). This is the classic post-orgasm crash — warm, heavy, and very real.\n';
       }
     }
 
@@ -9391,7 +9074,7 @@ class ChatService extends ChangeNotifier {
       int bondDelta = 0;
       if (relDelta != null) {
         bondDelta = relDelta.clamp(-50, 50);
-        _applyScoreDelta(bondDelta);
+        _relationshipService.applyScoreDelta(bondDelta);
       }
 
       int trustDelta = 0;
@@ -9399,16 +9082,7 @@ class ChatService extends ChangeNotifier {
       if (trDelta != null) {
         trustDelta = trDelta.clamp(-200, 50);
         if (trustDelta != 0) {
-          _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
-          debugPrint(
-            '[Realism:Relationship] Trust shifted by $trustDelta -> $_trustLevel',
-          );
-          // Arm the repair window on any severe single-turn drop
-          if (trustDelta <= -20) {
-            _pendingTrustRepair = true;
-            debugPrint('[Realism:Trust] Severe drop — repair window armed');
-            notifyListeners();
-          }
+          _relationshipService.applyTrustDelta(trustDelta);
         }
       }
 
@@ -9491,7 +9165,7 @@ class ChatService extends ChangeNotifier {
 
     // ── Relationship & trust context ──
     final relationshipCtx =
-        'Current relationship tension: $shortTermTierName | Trust level: $_trustLevel\n';
+        'Current relationship tension: $shortTermTierName | Trust level: ${_relationshipService.trustLevel}\n';
 
     // ── Arousal instruction (enriched with current level + behavioral visibility) ──
     final arousalField = _nsfwCooldownEnabled
@@ -9616,8 +9290,8 @@ class ChatService extends ChangeNotifier {
           _turnsSinceLastTimeAdvance >= _turnsPerTimePeriod;
 
       if (timeEligible) {
-        final currentPostureCtx = _spatialStance.isNotEmpty
-            ? 'Recent position reference: $charName was "$_spatialStance".\n'
+        final currentPostureCtx = _relationshipService.spatialStance.isNotEmpty
+            ? 'Recent position reference: $charName was "${_relationshipService.spatialStance}".\n'
             : '';
         final holdPrompt =
             'You are evaluating physical state for $charName.\n\n'
@@ -9681,9 +9355,7 @@ class ChatService extends ChangeNotifier {
             );
             if (postureMatch != null) {
               final p = postureMatch.group(1)!.trim();
-              _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty)
-                  ? ''
-                  : p;
+              _relationshipService.setSpatialStance(p);
             }
           }
         } catch (e) {
@@ -9704,8 +9376,8 @@ class ChatService extends ChangeNotifier {
         final emotionCtx = _characterEmotion.isNotEmpty
             ? '$charName is currently feeling $_characterEmotion ($_emotionIntensity). '
             : '';
-        final currentPostureCtx = _spatialStance.isNotEmpty
-            ? 'Recent position reference: $charName was "$_spatialStance". '
+        final currentPostureCtx = _relationshipService.spatialStance.isNotEmpty
+            ? 'Recent position reference: $charName was "${_relationshipService.spatialStance}". '
             : '';
         final posturePrompt =
             '$emotionCtx${currentPostureCtx}Relationship tension: $shortTermTierName. Current time: $_timeOfDay.\n\n'
@@ -9731,20 +9403,18 @@ class ChatService extends ChangeNotifier {
             );
             if (postureMatch != null) {
               final p = postureMatch.group(1)!.trim();
-              _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty)
-                  ? ''
-                  : p;
+              _relationshipService.setSpatialStance(p);
             }
           }
         } catch (_) {}
       }
       debugPrint(
-        '[Realism:Physical] Posture: $_spatialStance | Time: $_timeOfDay (Day $_dayCount) | TurnsToNext: ${_turnsPerTimePeriod - _turnsSinceLastTimeAdvance}',
+        '[Realism:Physical] Posture: ${_relationshipService.spatialStance} | Time: $_timeOfDay (Day $_dayCount) | TurnsToNext: ${_turnsPerTimePeriod - _turnsSinceLastTimeAdvance}',
       );
     } else {
       // ── Passage of time disabled — only evaluate posture ───────────────────
-      final currentPostureCtx = _spatialStance.isNotEmpty
-          ? 'Recent position reference: $charName was "$_spatialStance". '
+      final currentPostureCtx = _relationshipService.spatialStance.isNotEmpty
+          ? 'Recent position reference: $charName was "${_relationshipService.spatialStance}". '
           : '';
       final posturePrompt =
           '$currentPostureCtx'
@@ -9771,12 +9441,12 @@ class ChatService extends ChangeNotifier {
           );
           if (postureMatch != null) {
             final p = postureMatch.group(1)!.trim();
-            _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
+            _relationshipService.setSpatialStance(p);
           }
         }
       } catch (_) {}
       debugPrint(
-        '[Realism:Physical] Posture: $_spatialStance | Time: $_timeOfDay (Day $_dayCount) | Passage of time: disabled',
+        '[Realism:Physical] Posture: ${_relationshipService.spatialStance} | Time: $_timeOfDay (Day $_dayCount) | Passage of time: disabled',
       );
     }
   }
@@ -9817,23 +9487,12 @@ class ChatService extends ChangeNotifier {
           ? _stripThinkBlocks(raw)
           : raw;
 
-      if (_fixationLifespan > 0) {
-        _fixationLifespan--;
-        if (_fixationLifespan == 0) _activeFixation = '';
-      }
-      final fixationMatch = RegExp(
-        r'"fixation_topic"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (fixationMatch != null) {
-        String f = fixationMatch.group(1)!.trim();
-        if (f.toLowerCase() == 'none' || f.isEmpty) {
-          _activeFixation = '';
-          _fixationLifespan = 0;
-        } else if (f != _activeFixation) {
-          _activeFixation = f;
-          _fixationLifespan = 3;
-        }
-      }
+      _relationshipService.updateFixationFromEvalResult(
+        (RegExp(
+              r'"fixation_topic"\s*:\s*"([^"]+)"',
+            ).firstMatch(text)?.group(1) ??
+            ''),
+      );
 
       final objectiveMatch = RegExp(
         r'"proposed_objective"\s*:\s*"([^"]+)"',
@@ -9911,11 +9570,11 @@ class ChatService extends ChangeNotifier {
     final emotionCtx = _characterEmotion.isNotEmpty
         ? 'Current emotional state: $_characterEmotion ($_emotionIntensity). '
         : '';
-    final postureCtx = _spatialStance.isNotEmpty
-        ? 'Recent position reference: $charName was "$_spatialStance". '
+    final postureCtx = _relationshipService.spatialStance.isNotEmpty
+        ? 'Recent position reference: $charName was "${_relationshipService.spatialStance}". '
         : '';
     final relationshipCtx =
-        '$emotionCtx${postureCtx}Current relationship tension: $shortTermTierName | Trust level: $_trustLevel\n\n';
+        '$emotionCtx${postureCtx}Current relationship tension: $shortTermTierName | Trust level: ${_relationshipService.trustLevel}\n\n';
 
     final arousalField = _nsfwCooldownEnabled
         ? ', "arousal_delta": <number -25 to +25>'
@@ -9995,7 +9654,7 @@ class ChatService extends ChangeNotifier {
       final relDelta = _extractJsonInt(text, 'relationship_delta');
       if (relDelta != null) {
         bondDelta = relDelta.clamp(-50, 50);
-        _applyScoreDelta(bondDelta);
+        _relationshipService.applyScoreDelta(bondDelta);
       }
 
       int trustDelta = 0;
@@ -10003,16 +9662,7 @@ class ChatService extends ChangeNotifier {
       if (trDelta != null) {
         trustDelta = trDelta.clamp(-50, 30);
         if (trustDelta != 0) {
-          _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
-          debugPrint(
-            '[Realism:OneShot] Trust shifted by $trustDelta -> $_trustLevel',
-          );
-          // Arm the repair window on any severe single-turn drop
-          if (trustDelta <= -20) {
-            _pendingTrustRepair = true;
-            debugPrint('[Realism:Trust] Severe drop — repair window armed');
-            notifyListeners();
-          }
+          _relationshipService.applyTrustDelta(trustDelta);
         }
       }
 
@@ -10123,30 +9773,16 @@ class ChatService extends ChangeNotifier {
       ).firstMatch(text);
       if (postureMatch != null) {
         final p = postureMatch.group(1)!.trim();
-        _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
+        _relationshipService.setSpatialStance(p);
       }
 
-      if (_fixationLifespan > 0) {
-        _fixationLifespan--;
-        if (_fixationLifespan == 0) {
-          _activeFixation = '';
-          debugPrint('[Realism:OneShot] Fixation decayed and cleared.');
-        }
-      }
-      final fixationMatch = RegExp(
-        r'"fixation_topic"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (fixationMatch != null) {
-        final f = fixationMatch.group(1)!.trim();
-        if (f.toLowerCase() == 'none' || f.isEmpty) {
-          _activeFixation = '';
-          _fixationLifespan = 0;
-        } else if (f != _activeFixation) {
-          _activeFixation = f;
-          _fixationLifespan = 3;
-          debugPrint('[Realism:OneShot] New obsession: $f (3 turns)');
-        }
-      }
+      _relationshipService.updateFixationFromEvalResult(
+        (RegExp(
+              r'"fixation_topic"\s*:\s*"([^"]+)"',
+            ).firstMatch(text)?.group(1) ??
+            ''),
+        isOneShot: true,
+      );
 
       final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(text);
       debugPrint(
@@ -10233,9 +9869,9 @@ class ChatService extends ChangeNotifier {
       final reason = reasonMatch?.group(1) ?? '';
 
       if (recovery > 0) {
-        _trustLevel = (_trustLevel + recovery).clamp(-100, 100);
+        _relationshipService.applyTrustDelta(recovery);
         debugPrint(
-          '[Realism:TrustRepair] $verdict — recovered $recovery → $_trustLevel ($reason)',
+          '[Realism:TrustRepair] $verdict — recovered $recovery → ${_relationshipService.trustLevel} ($reason)',
         );
       } else {
         debugPrint('[Realism:TrustRepair] Rejected — no recovery ($reason)');
@@ -10258,12 +9894,12 @@ class ChatService extends ChangeNotifier {
 
   Map<String, dynamic> _captureRealismState({Map<String, int>? preTurn}) {
     final state = {
-      'affectionScore': _affectionScore,
-      'relationshipTier': _relationshipTier,
-      'longTermScore': _longTermScore,
-      'longTermTier': _longTermTier,
-      'turnsSinceLongTermCheck': _turnsSinceLongTermCheck,
-      'shortTermDeltasSummary': _shortTermDeltasSummary,
+      'affectionScore': _relationshipService.affectionScore,
+      'relationshipTier': _relationshipService.relationshipTier,
+      'longTermScore': _relationshipService.longTermScore,
+      'longTermTier': _relationshipService.longTermTier,
+      'turnsSinceLongTermCheck': _relationshipService.turnsSinceLongTermCheck,
+      'shortTermDeltasSummary': _relationshipService.shortTermDeltasSummary,
       'moodDecayCounter': _moodDecayCounter,
       'characterEmotion': _characterEmotion,
       'emotionIntensity': _emotionIntensity,
@@ -10273,10 +9909,10 @@ class ChatService extends ChangeNotifier {
       'arousalLevel': _arousalLevel,
       'cooldownTurnsRemaining': _cooldownTurnsRemaining,
       'cooldownTurnsTotal': _cooldownTurnsTotal,
-      'trustLevel': _trustLevel,
-      'activeFixation': _activeFixation,
-      'fixationLifespan': _fixationLifespan,
-      'spatialStance': _spatialStance,
+      'trustLevel': _relationshipService.trustLevel,
+      'activeFixation': _relationshipService.activeFixation,
+      'fixationLifespan': _relationshipService.fixationLifespan,
+      'spatialStance': _relationshipService.spatialStance,
     };
 
     // Include needs snapshot when the simulation is active (clean port).
@@ -10344,7 +9980,7 @@ class ChatService extends ChangeNotifier {
     // Phase 2: Ensure hidden inter-character relationship tracking is seeded
     // for all other group members (neutral 0). This happens on the speaker's
     // first turn with realism so the invisible feelings map is always present.
-    _ensureInterCharacterRelationshipsSeeded(charId);
+    _relationshipService.ensureInterCharacterRelationshipsSeeded(charId);
 
     _isEvaluatingRealism = true;
     _realismEvalStreamText = '';
@@ -10439,13 +10075,8 @@ class ChatService extends ChangeNotifier {
   /// the single-character scalar fields so the existing eval methods can
   /// operate on them during impersonation.
   void _loadGroupRealismIntoScalars(String charId) {
-    _affectionScore = _getGroupInt(charId, 'affection');
-    _longTermScore = _getGroupInt(
-      charId,
-      'longTermScore',
-      defaultValue: _affectionScore,
-    );
-    _trustLevel = _getGroupInt(charId, 'trust');
+    // Relationship (affection/trust/fix/tiers etc) now via service load helper (uses the same _getGroup* internally via cbs).
+    _relationshipService.loadRelationshipScalarsForSpeaker(charId);
     _arousalLevel = _getGroupInt(charId, 'arousal');
 
     _characterEmotion = _getGroupString(charId, 'emotion');
@@ -10453,25 +10084,6 @@ class ChatService extends ChangeNotifier {
       charId,
       'emotionIntensity',
       defaultValue: 'moderate',
-    );
-
-    _activeFixation = _getGroupString(charId, 'fixation');
-    _fixationLifespan = _getGroupInt(
-      charId,
-      'fixationLifespan',
-      defaultValue: 0,
-    );
-
-    // Tier fields (some injection and UI paths read these)
-    _relationshipTier = _getGroupInt(
-      charId,
-      'relationshipTier',
-      defaultValue: _calculateTier(_affectionScore),
-    );
-    _longTermTier = _getGroupInt(
-      charId,
-      'longTermTier',
-      defaultValue: _calculateTier(_longTermScore),
     );
 
     // Needs vector (if any persisted for this char)
@@ -10488,9 +10100,8 @@ class ChatService extends ChangeNotifier {
   /// Writes the current scalar realism fields back into the target group
   /// character's _groupRealism entry after an impersonated eval round.
   void _saveScalarsIntoGroupRealism(String charId) {
-    _setGroupRealismValue(charId, 'affection', _affectionScore);
-    _setGroupRealismValue(charId, 'longTermScore', _longTermScore);
-    _setGroupRealismValue(charId, 'trust', _trustLevel);
+    // Relationship scalars (affection/long/trust/fix/tiers/spatial) now via service.
+    _relationshipService.saveRelationshipScalarsToGroup(charId);
     _setGroupRealismValue(charId, 'arousal', _arousalLevel);
 
     if (_characterEmotion.isNotEmpty) {
@@ -10499,15 +10110,6 @@ class ChatService extends ChangeNotifier {
     if (_emotionIntensity.isNotEmpty) {
       _setGroupRealismValue(charId, 'emotionIntensity', _emotionIntensity);
     }
-
-    if (_activeFixation.isNotEmpty && _fixationLifespan > 0) {
-      _setGroupRealismValue(charId, 'fixation', _activeFixation);
-      _setGroupRealismValue(charId, 'fixationLifespan', _fixationLifespan);
-    }
-
-    // Persist tier values for injection consistency
-    _setGroupRealismValue(charId, 'relationshipTier', _relationshipTier);
-    _setGroupRealismValue(charId, 'longTermTier', _longTermTier);
 
     // Persist current needs vector for this speaker
     if (_needsSimulation.vector.isNotEmpty) {
@@ -10884,14 +10486,7 @@ class ChatService extends ChangeNotifier {
     }
 
     final state = meta['realism_state'] as Map<String, dynamic>;
-    _affectionScore = state['affectionScore'] as int? ?? _affectionScore;
-    _relationshipTier = state['relationshipTier'] as int? ?? _relationshipTier;
-    _longTermScore = state['longTermScore'] as int? ?? _longTermScore;
-    _longTermTier = state['longTermTier'] as int? ?? _longTermTier;
-    _turnsSinceLongTermCheck =
-        state['turnsSinceLongTermCheck'] as int? ?? _turnsSinceLongTermCheck;
-    _shortTermDeltasSummary =
-        state['shortTermDeltasSummary'] as int? ?? _shortTermDeltasSummary;
+    _relationshipService.restoreFromMessageState(state);
     _moodDecayCounter = state['moodDecayCounter'] as int? ?? _moodDecayCounter;
     _characterEmotion =
         state['characterEmotion'] as String? ?? _characterEmotion;
@@ -10910,11 +10505,8 @@ class ChatService extends ChangeNotifier {
     _cooldownTurnsTotal =
         state['cooldownTurnsTotal'] as int? ?? _cooldownTurnsRemaining;
 
-    // v3.0 Restorations
-    _trustLevel = state['trustLevel'] as int? ?? _trustLevel;
-    _activeFixation = state['activeFixation'] as String? ?? _activeFixation;
-    _fixationLifespan = state['fixationLifespan'] as int? ?? _fixationLifespan;
-    _spatialStance = state['spatialStance'] as String? ?? _spatialStance;
+    // v3.0 Restorations (relationship via service; already covered by restoreFromMessageState above for most).
+    // (Direct sets removed; service owns the scalars.)
 
     // Needs simulation snapshot (clean port)
     // Only restore the vector if the sim is currently enabled for this session.
@@ -10980,8 +10572,8 @@ class ChatService extends ChangeNotifier {
       personalityInjection = 'Character Personality Traits:\n"$p"\n\n';
     }
 
-    final currentStance = _spatialStance.isNotEmpty
-        ? 'Current physical position/stance of $charName: "$_spatialStance". '
+    final currentStance = _relationshipService.spatialStance.isNotEmpty
+        ? 'Current physical position/stance of $charName: "${_relationshipService.spatialStance}". '
         : '';
 
     final prompt =
@@ -11125,8 +10717,8 @@ class ChatService extends ChangeNotifier {
     }
     final charName = _activeCharacter!.name;
 
-    final currentStance = _spatialStance.isNotEmpty
-        ? 'Current physical position/stance of $charName: "$_spatialStance". '
+    final currentStance = _relationshipService.spatialStance.isNotEmpty
+        ? 'Current physical position/stance of $charName: "${_relationshipService.spatialStance}". '
         : '';
 
     final prompt =
@@ -11278,130 +10870,14 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  // ── Score / State Helpers ──
-
-  void _applyScoreDelta(int delta) {
-    _shortTermDeltasSummary += delta;
-    _turnsSinceLongTermCheck++;
-
-    if (_turnsSinceLongTermCheck >= 5) {
-      _evalLongTermGrowth();
-    }
-
-    if (delta == 0) return;
-    final oldScore = _affectionScore;
-    final oldTier = _relationshipTier;
-
-    _affectionScore = (_affectionScore + delta).clamp(-300, 300);
-    _relationshipTier = _calculateTier(_affectionScore);
-
-    if (_affectionScore != oldScore || _relationshipTier != oldTier) {
-      debugPrint(
-        '[Realism] Short-Term Bond: $oldScore \u2192 $_affectionScore, '
-        'Tier: $oldTier \u2192 $_relationshipTier ($shortTermTierName)',
-      );
-    }
-  }
-
-  void _evalLongTermGrowth() {
-    final oldLTScore = _longTermScore;
-    final oldLTTier = _longTermTier;
-
-    // Proportional growth based on average short-term tier over the evaluation window
-    final avgTier =
-        _relationshipTier; // Use current tier as proxy for recent average
-
-    if (avgTier >= 7) {
-      _longTermScore = (_longTermScore + 3).clamp(-300, 300);
-    } else if (avgTier >= 4) {
-      _longTermScore = (_longTermScore + 2).clamp(-300, 300);
-    } else if (avgTier >= 2) {
-      _longTermScore = (_longTermScore + 1).clamp(-300, 300);
-    } else if (avgTier <= -7) {
-      _longTermScore = (_longTermScore - 3).clamp(-300, 300);
-    } else if (avgTier <= -4) {
-      _longTermScore = (_longTermScore - 2).clamp(-300, 300);
-    } else if (avgTier <= -2) {
-      _longTermScore = (_longTermScore - 1).clamp(-300, 300);
-    }
-    // Between -1 and +1: no long-term change (neutral drift doesn't cement)
-
-    _longTermTier = _calculateTier(_longTermScore);
-    _turnsSinceLongTermCheck = 0;
-    _shortTermDeltasSummary = 0;
-
-    if (_longTermScore != oldLTScore || _longTermTier != oldLTTier) {
-      debugPrint(
-        '[Realism] Long-Term Bond updated: $oldLTScore \u2192 $_longTermScore, '
-        'Tier: $oldLTTier \u2192 $_longTermTier ($longTermTierName)',
-      );
-    } else {
-      debugPrint(
-        '[Realism] Long-Term Bond check (No change) - Status: $_longTermScore ($longTermTierName)',
-      );
-    }
-  }
+  // ── Score / State Helpers (thinned; core logic + counters in RelationshipService) ──
 
   /// Apply short-term relationship decay (2 points per 10 turns toward 0)
   /// This prevents relationships from being permanently stuck at extremes.
   void _applyMoodDecay() {
-    // Decay mechanism: every 10 turns, move score toward 0 by 1 point (per speaker in groups)
-    _turnsSinceDecayCheck++;
-    if (_turnsSinceDecayCheck >= 10) {
-      if (_activeGroup != null && !_observerMode) {
-        final id = _getCurrentSpeakerIdForRealism();
-        final current = _getGroupInt(
-          id,
-          'affection',
-          defaultValue: _affectionScore,
-        );
-        final next = current > 0
-            ? (current - 1).clamp(-300, 300)
-            : current < 0
-            ? (current + 1).clamp(-300, 300)
-            : current;
-        _setGroupRealismValue(id, 'affection', next);
-        if (next != 0) {
-          debugPrint('[Realism] Group short-term decay for $id: $next');
-        }
-
-        // Phase 2/3: Decay hidden inter-character relationships (only when under the 4-char cap)
-        if (_shouldTrackInterCharacterRelationships) {
-          final rels = Map<String, int>.from(
-            getInterCharacterRelationships(id),
-          );
-          if (rels.isNotEmpty) {
-            bool relChanged = false;
-            rels.forEach((otherId, value) {
-              if (value > 0) {
-                rels[otherId] = (value - 1).clamp(-300, 300);
-                relChanged = true;
-              } else if (value < 0) {
-                rels[otherId] = (value + 1).clamp(-300, 300);
-                relChanged = true;
-              }
-            });
-            if (relChanged) {
-              _setGroupRealismValue(id, 'relationships', rels);
-              debugPrint(
-                '[Realism:Group] Decayed inter-character relationships for $id',
-              );
-            }
-          }
-        }
-      } else {
-        // 1:1 scalar path
-        if (_affectionScore > 0) {
-          _affectionScore = (_affectionScore - 1).clamp(-300, 300);
-        } else if (_affectionScore < 0) {
-          _affectionScore = (_affectionScore + 1).clamp(-300, 300);
-        }
-        if (_affectionScore != 0) {
-          debugPrint('[Realism] Short-term decay applied: $_affectionScore');
-        }
-      }
-      _turnsSinceDecayCheck = 0;
-    }
+    // Decay mechanism moved to RelationshipService (applyShortTermDecay).
+    // Counter, 1:1/group branches, inter-char decay all delegated for mechanical fidelity.
+    _relationshipService.applyShortTermDecay();
   }
 
   // ── Public Toggle Methods ──
@@ -11442,7 +10918,7 @@ class ChatService extends ChangeNotifier {
       // Just stop using it. State persists in memory/DB so re-enabling restores it.
       // Old behavior was destructive - it deleted all character building progress.
       debugPrint(
-        '[Realism] Disabled (preserving state: bond=$_affectionScore, trust=$_trustLevel, emotion=$_characterEmotion)',
+        '[Realism] Disabled (preserving state: bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}, emotion=$_characterEmotion)',
       );
     }
     await _saveChat();
