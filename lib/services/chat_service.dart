@@ -52,6 +52,7 @@ import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/expression_classifier.dart'; // leaf for ExpressionService (post-extraction)
+import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -340,17 +341,11 @@ class ChatService extends ChangeNotifier {
   // See "keep reset blocks in sync" comments. All runtime label/manual/onnx cache/avatar last/random
   // state now owned by the service; god thins to delegation + shims.
 
-  // Passage of time
-  String _timeOfDay = 'morning';
-  int _dayCount = 1;
-  int _startDayOfWeek =
-      DateTime.now().weekday; // 1=Mon ... 7=Sun, set when session starts
-  int _turnsSinceLastTimeAdvance = 0; // deterministic pacing counter
-  bool _passageOfTimeEnabled = true; // toggle for automatic time advancement
-
-  /// How many AI turns must pass before time is eligible to advance.
-  /// 6 turns ≈ a meaningful scene chunk without forcing constant time-skips.
-  static const int _turnsPerTimePeriod = 6;
+  // Passage of time (core state + advance/nudge/OOC/resolve/reset/seed/load logic extracted to TimeService).
+  // See "keep reset blocks in sync" comments (now also lists time). All scalars, clock, narrativeWeekday,
+  // resolve, nudge, detect, pre-turn advance, injection builder, and helpers now owned by the service;
+  // god thins to delegation + 5 @Deprecated shims. 0 new private methods added in god for time.
+  // time injection only thin wrapper here; full in step8.
 
   // NSFW cooldown & lust
   bool _nsfwCooldownEnabled = false;
@@ -414,10 +409,37 @@ class ChatService extends ChangeNotifier {
   bool _enjoysLowHygiene =
       false; // inversion for hygiene (enjoys being dirty/sweaty/musky)
 
+  // ── Passage of time (extracted to TimeService) ───────────────────────────
+  // (Declared early among late finals for init safety because needs/others close over its getters via cbs.
+  // Logically added "after the other late finals" per extraction sequence; 0 new god privates.)
+  late final _timeService = TimeService(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    onSetPendingRealismMetadata: (key, value) {
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata![key] = value;
+    },
+    onNudgePatchLastMessageRealismState: (tod, dc) {
+      if (_messages.isNotEmpty) {
+        final lastMsg = _messages.last;
+        lastMsg.activeMetadata ??= {};
+        final existingState = lastMsg.activeMetadata!['realism_state'];
+        if (existingState is Map<String, dynamic>) {
+          existingState['timeOfDay'] = tod;
+          existingState['dayCount'] = dc;
+          existingState['time_nudged'] = true;
+        } else {
+          lastMsg.activeMetadata!['realism_state'] = _captureRealismState();
+          lastMsg.activeMetadata!['realism_state']['time_nudged'] = true;
+        }
+      }
+    },
+  );
+
   late final _needsSimulation = NeedsSimulation(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
-    getTimeOfDay: () => _timeOfDay,
+    getTimeOfDay: () => _timeService.timeOfDay,
     getRealismEnabled: () => _realismEnabled,
     getArousalLevel: () => _arousalLevel,
     getNsfwCooldownEnabled: () => _nsfwCooldownEnabled,
@@ -1127,44 +1149,20 @@ class ChatService extends ChangeNotifier {
   // Delegate to extracted ExpressionService.
   @Deprecated('Access via ExpressionService directly')
   String? get manualExpressionLabel => _expressionService.manualExpressionLabel;
-  String get timeOfDay => _timeOfDay;
-  int get dayCount => _dayCount;
-  bool get passageOfTimeEnabled => _passageOfTimeEnabled;
+
+  // Deprecated shims for time surfaces (callers in chat_page sidebar, regen, OOC, loads, tests, debug).
+  // Delegate to extracted TimeService. Exactly 5 as specified.
+  @Deprecated('Access via TimeService directly')
+  String get timeOfDay => _timeService.timeOfDay;
+  @Deprecated('Access via TimeService directly')
+  int get dayCount => _timeService.dayCount;
+  @Deprecated('Access via TimeService directly')
+  bool get passageOfTimeEnabled => _timeService.passageOfTimeEnabled;
 
   /// The current narrative day of the week (e.g. 'Monday'), computed from
   /// the session's anchor weekday plus elapsed in-story days.
-  String get narrativeWeekday {
-    const days = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    final idx = (_startDayOfWeek - 1 + (_dayCount - 1)) % 7;
-    return days[idx];
-  }
-
-  /// Resolves the persisted startDayOfWeek (1-7) or computes a stable anchor for legacy rows (0).
-  /// For legacy sessions the computed anchor makes the *current* Day N display the real-world
-  /// weekday of the moment we first load it after the v28 migration. This keeps the narrative
-  /// weekday from jumping on the very next app restart and makes the transition seamless.
-  int _resolveStartDayOfWeek(int persisted, int currentDayCount) {
-    if (persisted >= 1 && persisted <= 7) return persisted;
-
-    // Legacy or unset (0): anchor so that narrative weekday for the loaded dayCount matches "today".
-    // Formula: start = ((today-1 - (dayCount-1)) mod 7) + 1
-    final today = DateTime.now().weekday;
-    final delta = currentDayCount - 1;
-    final start = ((today - 1 - delta) % 7 + 7) % 7 + 1;
-    debugPrint(
-      '[ChatService] Legacy/ unset startDayOfWeek resolved: persisted=$persisted, dayCount=$currentDayCount '
-      '→ start=$start (so Day $currentDayCount will show weekday of today=$today)',
-    );
-    return start;
-  }
+  @Deprecated('Access via TimeService directly')
+  String get narrativeWeekday => _timeService.narrativeWeekday;
 
   /// True if the realism engine has already captured a meaningful baseline
   /// (emotion or bond score). Used to avoid redundant retroactive scans.
@@ -1580,10 +1578,11 @@ class ChatService extends ChangeNotifier {
       }
 
       // Reset realism state to prevent bleeding from previous character.
-      // Keep the reset sites (startNewChat, load*Session paths, setActiveGroup, delete flows)
+      // Keep the reset sites (startNewChat, load*Session paths incl. empty for groups, setActiveGroup, setActiveCharacter, delete flows, ext-seed, fork/insert)
       // in sync when moving more state in later Stage 3 steps. See needs_simulation.dart for the
       // current owner of vector + buffers (and _needsSimEnabled/_enjoysLowHygiene control fields).
-      // Relationship + Expression via service reset helpers (expression: manual/caches/onnx/lastAvatar/random).
+      // Relationship + Expression + Time via service reset helpers (expression: manual/caches/onnx/lastAvatar/random;
+      // time: clock/day/passage/turns/anchor + narrative weekday). All secondary time config zeroed on fresh group/0-session paths.
       final prevArousal = _arousalLevel;
       final prevFixation = _relationshipService.activeFixation;
       final prevFixationLife = _relationshipService.fixationLifespan;
@@ -1595,14 +1594,13 @@ class ChatService extends ChangeNotifier {
       _realismEnabled = false;
       _characterEmotion = '';
       _emotionIntensity = '';
-      _dayCount = 1;
-      _timeOfDay = 'morning';
-      _startDayOfWeek = DateTime.now().weekday;
+      // Time reset via extracted service (keeps multiple reset blocks in sync).
+      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time).
+      _timeService.resetForFreshChat();
       // Chaos reset via extracted service (keeps multiple reset blocks in sync).
       // See chaos_mode_service.dart and "keep reset blocks" comments.
       _chaosModeService.resetForFreshChat();
       _nsfwCooldownEnabled = false;
-      _passageOfTimeEnabled = true; // default (global ceiling applied on seed)
       _relationshipService.resetForFreshChat();
       _expressionService.resetForFreshChat();
       _moodDecayCounter = 0;
@@ -1629,15 +1627,18 @@ class ChatService extends ChangeNotifier {
             longTermBond: ext.longTermBond,
             trustLevel: ext.trustLevel,
           );
-          _dayCount = ext.dayCount.clamp(1, 9999);
-          _timeOfDay = ext.timeOfDay;
+          // Time seed via extracted service (keeps reset/seed blocks in sync with startNewChat etc).
+          // Global ceiling applied before passing (see time_service.seed doc).
+          _timeService.seedFromV2OrExt(
+            dayCount: ext.dayCount.clamp(1, 9999),
+            timeOfDay: ext.timeOfDay,
+            passageOfTimeEnabled:
+                ext.passageOfTimeEnabled &&
+                _storageService.passageOfTimeDefault,
+          );
           _characterEmotion = ext.characterEmotion;
           _emotionIntensity = ext.emotionIntensity;
           _nsfwCooldownEnabled = ext.nsfwCooldownEnabled;
-          // Global setting is a hard ceiling: if the user disabled passage-of-time
-          // globally, it stays off regardless of what the character card says.
-          _passageOfTimeEnabled =
-              ext.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
           _chaosModeService.seedFromGroupOrExt(ext.chaosModeEnabled, false);
           _needsSimEnabled = ext.needsSimEnabled;
           _enjoysLowHygiene = ext.enjoysLowHygiene;
@@ -1651,7 +1652,7 @@ class ChatService extends ChangeNotifier {
           // Tiers maintained by service after seedFromV2OrExt.
           debugPrint(
             '[ChatService] V2.5 extensions seeded: realism=$_realismEnabled, '
-            'bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}, day=$_dayCount, time=$_timeOfDay',
+            'bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}, day=${_timeService.dayCount}, time=${_timeService.timeOfDay}',
           );
 
           // Seed initial quest/task as a primary objective
@@ -1733,9 +1734,11 @@ class ChatService extends ChangeNotifier {
     _arousalLevel = 0;
     _characterEmotion = '';
     // Relationship scalars/fixation (affection/trust/tiers/fixation/spatial/pending) via extracted service.
-    // Expression manual/caches via service. See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat/load paths.
+    // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat/load paths (now includes time for group fresh/0-session).
     _relationshipService.resetForFreshChat();
     _expressionService.resetForFreshChat();
+    _timeService.resetForFreshChat();
 
     // Auto-start local backend when entering a group chat
     _llmProvider?.ensureManagedBackendIsRunning();
@@ -2004,7 +2007,7 @@ class ChatService extends ChangeNotifier {
         activeFixation: drift.Value(_relationshipService.activeFixation),
         fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
         spatialStance: drift.Value(_relationshipService.spatialStance),
-        startDayOfWeek: drift.Value(_startDayOfWeek),
+        startDayOfWeek: drift.Value(_timeService.startDayOfWeekAnchor),
         createdAt: drift.Value(DateTime.now()),
         updatedAt: drift.Value(DateTime.now()),
       ),
@@ -2394,10 +2397,10 @@ class ChatService extends ChangeNotifier {
         moodDecayCounter: drift.Value(_moodDecayCounter),
         characterEmotion: drift.Value(_characterEmotion),
         emotionIntensity: drift.Value(_emotionIntensity),
-        timeOfDay: drift.Value(_timeOfDay),
-        dayCount: drift.Value(_dayCount),
-        startDayOfWeek: drift.Value(_startDayOfWeek),
-        passageOfTimeEnabled: drift.Value(_passageOfTimeEnabled),
+        timeOfDay: drift.Value(_timeService.timeOfDay),
+        dayCount: drift.Value(_timeService.dayCount),
+        startDayOfWeek: drift.Value(_timeService.startDayOfWeekAnchor),
+        passageOfTimeEnabled: drift.Value(_timeService.passageOfTimeEnabled),
         nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
         needsSimEnabled: drift.Value(_needsSimEnabled),
         needsVector: drift.Value(
@@ -2482,6 +2485,10 @@ class ChatService extends ChangeNotifier {
       _forkIndex = null;
       // Expression runtime (manual/caches) reset on no-prior-session to prevent bleed (new for step4, matches fork/parent hygiene).
       _expressionService.resetForFreshChat();
+      // Time (secondary config: passage, weekday anchors, turns, day/time scalars) reset for fresh 0-session/new-group paths.
+      // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
+      // See "keep reset blocks in sync" (setActiveGroup, startNewChat, load* , setActive* all must hit this).
+      _timeService.resetForFreshChat();
       return;
     }
 
@@ -2519,15 +2526,15 @@ class ChatService extends ChangeNotifier {
     _moodDecayCounter = lastSession.moodDecayCounter;
     _characterEmotion = lastSession.characterEmotion;
     _emotionIntensity = lastSession.emotionIntensity;
-    _timeOfDay = lastSession.timeOfDay;
-    _dayCount = lastSession.dayCount;
-    _startDayOfWeek = _resolveStartDayOfWeek(
-      lastSession.startDayOfWeek,
-      _dayCount,
+    // Time load via extracted service (resolve + scalars; keeps load blocks in sync).
+    _timeService.loadTimeScalars(
+      timeOfDay: lastSession.timeOfDay,
+      dayCount: lastSession.dayCount,
+      startDayOfWeek: lastSession.startDayOfWeek,
+      passageOfTimeEnabled:
+          lastSession.passageOfTimeEnabled &&
+          _storageService.passageOfTimeDefault,
     );
-    _passageOfTimeEnabled =
-        lastSession.passageOfTimeEnabled &&
-        _storageService.passageOfTimeDefault;
     _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
     _needsSimEnabled = lastSession.needsSimEnabled;
     if (_needsSimEnabled) {
@@ -2819,14 +2826,15 @@ class ChatService extends ChangeNotifier {
       _moodDecayCounter = session.moodDecayCounter;
       _characterEmotion = session.characterEmotion;
       _emotionIntensity = session.emotionIntensity;
-      _timeOfDay = session.timeOfDay;
-      _dayCount = session.dayCount;
-      _startDayOfWeek = _resolveStartDayOfWeek(
-        session.startDayOfWeek,
-        _dayCount,
+      // Time load via extracted service (resolve + scalars; keeps group load blocks in sync).
+      _timeService.loadTimeScalars(
+        timeOfDay: session.timeOfDay,
+        dayCount: session.dayCount,
+        startDayOfWeek: session.startDayOfWeek,
+        passageOfTimeEnabled:
+            session.passageOfTimeEnabled &&
+            _storageService.passageOfTimeDefault,
       );
-      _passageOfTimeEnabled =
-          session.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
       _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
       _needsSimEnabled = session.needsSimEnabled;
       if (_needsSimEnabled) {
@@ -3177,17 +3185,17 @@ class ChatService extends ChangeNotifier {
         trustLevel: extSeed.trustLevel,
       );
       _expressionService.resetForFreshChat();
-      _dayCount = extSeed.dayCount.clamp(1, 9999);
-      _timeOfDay = extSeed.timeOfDay;
-      _startDayOfWeek = DateTime.now()
-          .weekday; // anchor narrative weekday for the fresh session
+      // Time seed via extracted service (keeps startNewChat / setActive / ext-seed blocks in sync).
+      _timeService.seedFromV2OrExt(
+        dayCount: extSeed.dayCount.clamp(1, 9999),
+        timeOfDay: extSeed.timeOfDay,
+        passageOfTimeEnabled:
+            extSeed.passageOfTimeEnabled &&
+            _storageService.passageOfTimeDefault,
+      );
       _characterEmotion = extSeed.characterEmotion;
       _emotionIntensity = extSeed.emotionIntensity;
       _nsfwCooldownEnabled = extSeed.nsfwCooldownEnabled;
-      // Global setting is a hard ceiling: if the user disabled passage-of-time
-      // globally, it stays off regardless of what the character card says.
-      _passageOfTimeEnabled =
-          extSeed.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
       _chaosModeService.seedFromGroupOrExt(extSeed.chaosModeEnabled, false);
       _needsSimEnabled = extSeed.needsSimEnabled;
       _enjoysLowHygiene = extSeed.enjoysLowHygiene;
@@ -3205,6 +3213,7 @@ class ChatService extends ChangeNotifier {
       // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter
       // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.
       // Needs vector/buffers reset via _needsSimulation also kept in sync across sites.)
+      // Time secondary fields (passage/anchor/turns/day/time) zeroed via _timeService.resetForFreshChat in non-ext path + _load empty + setActiveGroup.
       // Declarative initial bond/trust/emotion/day etc are already seeded above from the card's
       // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
       // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
@@ -3241,10 +3250,13 @@ class ChatService extends ChangeNotifier {
         // Will be populated later with greeting in non-group modes
         // Preserve realism state for proper post-greeting eval (don't reset here)
       } else {
-        // Relationship + Expression reset via service helpers (keeps blocks in sync with setActive* / load paths).
+        // Relationship + Expression + Time reset via service helpers (keeps blocks in sync with setActive* / load paths).
+        // Time now explicitly reset in group 0-session/empty paths + setActiveGroup defensive + _loadLast empty (cross-check needs bugfix hygiene).
         _relationshipService.resetForFreshChat();
         _expressionService.resetForFreshChat();
-        // Don't touch dayCount, timeOfDay etc. as they get seeded from extensions or loaded session
+        _timeService.resetForFreshChat();
+        // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
+        // Time reset helper kept in sync with other blocks.
       }
     }
 
@@ -3546,7 +3558,7 @@ class ChatService extends ChangeNotifier {
 
     // ── OOC Time-Skip Detection ───────────────────────────────────────────
     if (_realismActiveThisMode) {
-      _detectOocTimeSkip(text);
+      _timeService.detectOocTimeSkip(text);
     }
 
     // ── Chaos Mode: check + pause for wheel if triggered ─────────────────
@@ -3942,11 +3954,10 @@ class ChatService extends ChangeNotifier {
               previousMessageState['emotionIntensity'] as String? ??
               _emotionIntensity;
 
-          if (_passageOfTimeEnabled && !wasNudged) {
-            _timeOfDay =
-                previousMessageState['timeOfDay'] as String? ?? _timeOfDay;
-            _dayCount = previousMessageState['dayCount'] as int? ?? _dayCount;
-          }
+          _timeService.restoreTimeForSwipeOrRegen(
+            previousMessageState,
+            wasNudged: wasNudged,
+          );
 
           _arousalLevel =
               previousMessageState['arousalLevel'] as int? ?? _arousalLevel;
@@ -8570,23 +8581,9 @@ class ChatService extends ChangeNotifier {
 
   String _getTimeInjection() {
     if (!_realismEnabled) return '';
-    final timeLabel = _timeOfDay.replaceAll('_', ' ');
-    final cap =
-        timeLabel.substring(0, 1).toUpperCase() + timeLabel.substring(1);
-    // Compute narrative weekday from session start day + elapsed days
-    const days = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    final narrativeDayIndex = (_startDayOfWeek - 1 + (_dayCount - 1)) % 7;
-    final weekdayName = days[narrativeDayIndex];
-    return '[Scene Time: $cap, $weekdayName (Day $_dayCount)\n'
-        ' Describe appropriate lighting, atmosphere, and environmental details.]\n';
+    // Thin delegation only. Full time injection builders move to step 8
+    // prompt_injection/ subtree. (time injection only thin wrapper here; full in step8)
+    return _timeService.buildTimeInjection();
   }
 
   /// Injects a trust-calibrated behavioral frame based on existing trust level (now via RelationshipService).
@@ -9074,190 +9071,29 @@ class ChatService extends ChangeNotifier {
         .map((m) => '${m.sender}: ${m.displayText}')
         .join('\n');
     if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
+      // Group chat or other mode — relationship evals not supported in this path yet.
+      // (Time advance is chat-scoped and handled via delegation when active char is impersonated for group speaker.)
       return;
     }
     final charName = _activeCharacter!.name;
 
-    // ── Time-based evaluation (only if passage of time is enabled) ───────────
-    if (_passageOfTimeEnabled) {
-      final validTimes = [
-        'dawn',
-        'morning',
-        'late_morning',
-        'afternoon',
-        'evening',
-        'night',
-      ];
-      final currentIndex = validTimes.indexOf(_timeOfDay);
-
-      // ── Deterministic Time Clock ───────────────────────────────────────────
-      // Increment every AI turn. Time only advances when the threshold is reached —
-      // the LLM can only veto (hold) the advance, never skip multiple periods.
-      _turnsSinceLastTimeAdvance++;
-      final bool timeEligible =
-          _turnsSinceLastTimeAdvance >= _turnsPerTimePeriod;
-
-      if (timeEligible) {
-        final currentPostureCtx = _relationshipService.spatialStance.isNotEmpty
-            ? 'Recent position reference: $charName was "${_relationshipService.spatialStance}".\n'
-            : '';
-        final holdPrompt =
-            'You are evaluating physical state for $charName.\n\n'
-            '$currentPostureCtx'
-            'Current time: $_timeOfDay (Day $_dayCount). Time is advancing to the next period.\n'
-            'Enough turns have passed that time should advance from "$_timeOfDay" to the next period.\n'
-            '1. "hold_time": true ONLY if the scene is visibly mid-action (e.g. mid-fight, actively doing something). false otherwise — let time advance normally.\n'
-            '2. "new_day": true ONLY if the conversation explicitly transitioned to the next day (slept, woke up, scene break). Only valid when current time is "night".\n'
-            '3. "posture": $charName\'s current physical position and location (brief grounded phrase). Use "none" if unclear.\n'
-            '   - If the scene/location has changed (new setting, time passed, scene break), update to match the new context.\n'
-            '   - If time advanced significantly or a new day started, characters naturally shift positions.\n'
-            '   - Maintain continuity only within the SAME scene — do NOT anchor them to a position from a previous scene.\n'
-            '   - Avoid sudden jumps without setup, but DO update when the narrative context clearly shifted.\n\n'
-            'Recent conversation:\n$recent\n\n'
-            'Respond with ONLY a flat JSON object containing "hold_time", "new_day", and "posture".';
-        try {
-          final raw = await _fireLLMEval(holdPrompt, onChunk: onChunk);
-          if (raw != null) {
-            final text = _stripThinkBlocks(raw).isNotEmpty
-                ? _stripThinkBlocks(raw)
-                : raw;
-            final shouldHold = _extractJsonBool(text, 'hold_time') ?? false;
-
-            if (!shouldHold) {
-              if (currentIndex < validTimes.length - 1) {
-                _timeOfDay = validTimes[currentIndex + 1];
-              } else {
-                _timeOfDay = validTimes[0];
-                _dayCount++;
-                debugPrint('[Realism:Time] Day rolled over! Day $_dayCount');
-              }
-              _turnsSinceLastTimeAdvance = 0;
-              debugPrint(
-                '[Realism:Time] Advanced to $_timeOfDay (Day $_dayCount)',
-              );
-            } else {
-              debugPrint(
-                '[Realism:Time] Held — scene mid-action, time stays at $_timeOfDay',
-              );
-            }
-
-            // Explicit new-day override (e.g. woke up after night)
-            final isNewDay = _extractJsonBool(text, 'new_day') ?? false;
-            if (isNewDay && _timeOfDay == 'night' && !shouldHold) {
-              // already handled by rollover above
-            } else if (isNewDay &&
-                currentIndex >= validTimes.indexOf('evening')) {
-              _dayCount++;
-              _timeOfDay = validTimes[0];
-              _turnsSinceLastTimeAdvance = 0;
-              debugPrint(
-                '[Realism:Time] Explicit new-day transition. Day $_dayCount',
-              );
-            }
-
-            final postureMatch = RegExp(
-              r'"posture"\s*:\s*"([^"]+)"',
-            ).firstMatch(text);
-            debugPrint(
-              '[Realism:Physical] Posture match: ${postureMatch?.group(0)}',
-            );
-            if (postureMatch != null) {
-              final p = postureMatch.group(1)!.trim();
-              _relationshipService.setSpatialStance(p);
-            }
-          }
-        } catch (e) {
-          // Eval failed — still advance so time never freezes
-          if (currentIndex < validTimes.length - 1) {
-            _timeOfDay = validTimes[currentIndex + 1];
-          } else {
-            _timeOfDay = validTimes[0];
-            _dayCount++;
-          }
-          _turnsSinceLastTimeAdvance = 0;
-          debugPrint(
-            '[Realism:Time] Eval error, auto-advanced to $_timeOfDay: $e',
-          );
-        }
-      } else {
-        // Not yet eligible — grab posture only
-        final emotionCtx = _characterEmotion.isNotEmpty
-            ? '$charName is currently feeling $_characterEmotion ($_emotionIntensity). '
-            : '';
-        final currentPostureCtx = _relationshipService.spatialStance.isNotEmpty
-            ? 'Recent position reference: $charName was "${_relationshipService.spatialStance}". '
-            : '';
-        final posturePrompt =
-            '$emotionCtx${currentPostureCtx}Relationship tension: $shortTermTierName. Current time: $_timeOfDay.\n\n'
-            'What is $charName\'s current physical position and stance? Use "none" if unclear.\n'
-            '- Match the posture to the current scene context and emotional state.\n'
-            '- If the conversation implies a location or activity change, update accordingly.\n'
-            '- Within the same scene, maintain natural continuity (don\'t jump locations).\n'
-            '- Across scene breaks or time jumps, update to the new context.\n\n'
-            'Recent conversation:\n$recent\n\n'
-            'Respond with ONLY valid JSON like: {"posture": "standing by the window"} or {"posture": "none"}';
-
-        try {
-          final raw = await _fireLLMEval(posturePrompt, onChunk: onChunk);
-          if (raw != null) {
-            final text = _stripThinkBlocks(raw).isNotEmpty
-                ? _stripThinkBlocks(raw)
-                : raw;
-            final postureMatch = RegExp(
-              r'"posture"\s*:\s*"([^"]+)"',
-            ).firstMatch(text);
-            debugPrint(
-              '[Realism:Physical] ELSE branch posture match: ${postureMatch?.group(0)}',
-            );
-            if (postureMatch != null) {
-              final p = postureMatch.group(1)!.trim();
-              _relationshipService.setSpatialStance(p);
-            }
-          }
-        } catch (_) {}
-      }
-      debugPrint(
-        '[Realism:Physical] Posture: ${_relationshipService.spatialStance} | Time: $_timeOfDay (Day $_dayCount) | TurnsToNext: ${_turnsPerTimePeriod - _turnsSinceLastTimeAdvance}',
-      );
-    } else {
-      // ── Passage of time disabled — only evaluate posture ───────────────────
-      final currentPostureCtx = _relationshipService.spatialStance.isNotEmpty
-          ? 'Recent position reference: $charName was "${_relationshipService.spatialStance}". '
-          : '';
-      final posturePrompt =
-          '$currentPostureCtx'
-          'Current time: $_timeOfDay.\n\n'
-          'What is $charName\'s current physical position and stance? Use "none" if unclear.\n'
-          '- Match the posture to the current scene context and emotional state.\n'
-          '- If the conversation implies a location or activity change, update accordingly.\n'
-          '- Within the same scene, maintain natural continuity (don\'t jump locations).\n'
-          '- Across scene breaks or time jumps, update to the new context.\n\n'
-          'Recent conversation:\n$recent\n\n'
-          'Respond with ONLY valid JSON like: {"posture": "standing by the window"} or {"posture": "none"}';
-
-      try {
-        final raw = await _fireLLMEval(posturePrompt, onChunk: onChunk);
-        if (raw != null) {
-          final text = _stripThinkBlocks(raw).isNotEmpty
-              ? _stripThinkBlocks(raw)
-              : raw;
-          final postureMatch = RegExp(
-            r'"posture"\s*:\s*"([^"]+)"',
-          ).firstMatch(text);
-          debugPrint(
-            '[Realism:Physical] Posture-only match: ${postureMatch?.group(0)}',
-          );
-          if (postureMatch != null) {
-            final p = postureMatch.group(1)!.trim();
-            _relationshipService.setSpatialStance(p);
-          }
-        }
-      } catch (_) {}
-      debugPrint(
-        '[Realism:Physical] Posture: ${_relationshipService.spatialStance} | Time: $_timeOfDay (Day $_dayCount) | Passage of time: disabled',
-      );
-    }
+    // Time progress + posture (when passage enabled) + disabled-passage posture path
+    // now fully delegated to TimeService (pre-turn advance logic moved verbatim,
+    // adjusted only for granular cbs). No new private method in god.
+    // shortTermTierName resolves via @Dep shim (relationship).
+    await _timeService.evaluateTimeProgressAndPostureIfNeeded(
+      charName: charName,
+      recent: recent,
+      shortTermTierName: shortTermTierName,
+      onChunk: onChunk,
+      fireLLMEval: _fireLLMEval,
+      stripThinkBlocks: _stripThinkBlocks,
+      extractJsonBool: _extractJsonBool,
+      setSpatialStance: _relationshipService.setSpatialStance,
+      getCurrentSpatialStance: () => _relationshipService.spatialStance,
+      getCharacterEmotion: () => _characterEmotion,
+      getEmotionIntensity: () => _emotionIntensity,
+    );
   }
 
   Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) async {
@@ -9596,7 +9432,7 @@ class ChatService extends ChangeNotifier {
       final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(text);
       debugPrint(
         '[Realism:OneShot] Done — Emotion: $_characterEmotion ($_emotionIntensity), '
-        'Time: $_timeOfDay, Reason: ${reasonMatch?.group(1) ?? 'unknown'}',
+        'Time: ${_timeService.timeOfDay}, Reason: ${reasonMatch?.group(1) ?? 'unknown'}',
       );
 
       // Bundle full state snapshot for time-travel forking
@@ -9712,9 +9548,9 @@ class ChatService extends ChangeNotifier {
       'moodDecayCounter': _moodDecayCounter,
       'characterEmotion': _characterEmotion,
       'emotionIntensity': _emotionIntensity,
-      'timeOfDay': _timeOfDay,
-      'dayCount': _dayCount,
-      'startDayOfWeek': _startDayOfWeek,
+      'timeOfDay': _timeService.timeOfDay,
+      'dayCount': _timeService.dayCount,
+      'startDayOfWeek': _timeService.startDayOfWeekAnchor,
       'arousalLevel': _arousalLevel,
       'cooldownTurnsRemaining': _cooldownTurnsRemaining,
       'cooldownTurnsTotal': _cooldownTurnsTotal,
@@ -10302,11 +10138,7 @@ class ChatService extends ChangeNotifier {
     _emotionIntensity =
         state['emotionIntensity'] as String? ?? _emotionIntensity;
 
-    if (_passageOfTimeEnabled) {
-      _timeOfDay = state['timeOfDay'] as String? ?? _timeOfDay;
-      _dayCount = state['dayCount'] as int? ?? _dayCount;
-    }
-    _startDayOfWeek = state['startDayOfWeek'] as int? ?? _startDayOfWeek;
+    _timeService.restoreTimeFromRealismState(state);
 
     _arousalLevel = state['arousalLevel'] as int? ?? _arousalLevel;
     _cooldownTurnsRemaining =
@@ -10684,8 +10516,8 @@ class ChatService extends ChangeNotifier {
     // Anchor the narrative weekday to the real-world day when realism first turns on for this session.
     // Only set if not already anchored (0 = legacy/unset). This prevents re-anchoring on toggle-off/on
     // for long-running sessions, keeping Day N stable across restarts.
-    if (enabled && (_startDayOfWeek < 1 || _startDayOfWeek > 7)) {
-      _startDayOfWeek = DateTime.now().weekday;
+    if (enabled) {
+      _timeService.ensureStartDayOfWeekAnchored();
     }
 
     if (enabled && _activeGroup == null && _activeCharacter != null) {
@@ -10733,8 +10565,9 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
+  @Deprecated('Access via TimeService directly')
   Future<void> setPassageOfTimeEnabled(bool enabled) async {
-    _passageOfTimeEnabled = enabled;
+    _timeService.setPassageOfTimeEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
@@ -10756,150 +10589,13 @@ class ChatService extends ChangeNotifier {
   // ── Manual Time Nudge ────────────────────────────────────────────────────
 
   /// Called by the sidebar chevron buttons. delta = +1 (forward) or -1 (back).
+  /// Thin delegation to TimeService (core logic + cb-driven patch). Save/notify
+  /// + realism guard kept in god wrapper (UI coordination).
   Future<void> nudgeTimePeriod(int delta) async {
     if (!_realismEnabled) return;
-    final validTimes = [
-      'dawn',
-      'morning',
-      'late_morning',
-      'afternoon',
-      'evening',
-      'night',
-    ];
-    int idx = validTimes.indexOf(_timeOfDay);
-    idx = (idx + delta) % validTimes.length;
-    if (idx < 0) {
-      idx = validTimes.length - 1;
-      _dayCount = (_dayCount - 1).clamp(1, 9999);
-    } else if (delta > 0 &&
-        validTimes.indexOf(_timeOfDay) == validTimes.length - 1) {
-      // wrapped forward past night
-      _dayCount++;
-    }
-    _timeOfDay = validTimes[idx];
-    _turnsSinceLastTimeAdvance = 0; // reset clock after manual nudge
-
-    // CRITICAL: Patch the realism_state snapshot on the last message so that
-    // _restoreRealismStateFromMessage cannot revert the manually-set time.
-    // Without this, any swipe navigation or session reload reads the stale
-    // pre-nudge snapshot and silently reverts _timeOfDay back to what it was.
-    if (_messages.isNotEmpty) {
-      final lastMsg = _messages.last;
-      lastMsg.activeMetadata ??= {};
-      final existingState = lastMsg.activeMetadata!['realism_state'];
-      if (existingState is Map<String, dynamic>) {
-        existingState['timeOfDay'] = _timeOfDay;
-        existingState['dayCount'] = _dayCount;
-        existingState['time_nudged'] = true;
-      } else {
-        // No snapshot yet — create a minimal one anchored to current state
-        lastMsg.activeMetadata!['realism_state'] = _captureRealismState();
-        lastMsg.activeMetadata!['realism_state']['time_nudged'] = true;
-      }
-    }
-
+    _timeService.nudgeTimePeriod(delta);
     await _saveChat();
     notifyListeners();
-  }
-
-  // ── OOC Time-Skip Detector ───────────────────────────────────────────────
-
-  /// Scans the user message for OOC/narrative time-skip language and advances
-  /// the clock by the inferred number of periods. Stamps the skip into
-  /// _pendingRealismMetadata so it appears in the next AI message's delta row.
-  ///
-  /// NOTE: Respects the global passageOfTimeEnabled setting. If disabled,
-  /// this function does nothing even if OOC markers are present.
-  void _detectOocTimeSkip(String text) {
-    // Respect global passage of time setting
-    if (!_passageOfTimeEnabled) {
-      debugPrint(
-        '[Realism:OOC] Time-skip requested but passageOfTimeEnabled=false, ignoring',
-      );
-      return;
-    }
-
-    final lower = text.toLowerCase();
-
-    // Only fire on OOC-style markers or explicit timeskip language
-    final hasOocMarker = RegExp(
-      r'\(ooc[:\s]|\[ooc|\*ooc\b|ooc:',
-    ).hasMatch(lower);
-    final hasSkipPhrase = RegExp(
-      r'\b(time.?skip|fast.?forward|skip ahead|several hours|a few hours|hours? later|'
-      r'the next (morning|day|evening|afternoon|night|dawn)|'
-      r'next (morning|day|evening|afternoon|night|dawn)|'
-      r'hours? pass|time passes|the following (morning|day)|'
-      r'wake up the next|woke up|the next day)\b',
-    ).hasMatch(lower);
-
-    if (!hasOocMarker && !hasSkipPhrase) return;
-
-    // Estimate period count from duration language
-    int periods = 1;
-
-    if (RegExp(
-      r'\b(all day|entire day|full day|day passes|the (whole|entire) day)\b',
-    ).hasMatch(lower)) {
-      periods = 4;
-    } else if (RegExp(
-      r'\b(next (morning|day)|the following (morning|day)|wake up|woke up|overnight)\b',
-    ).hasMatch(lower)) {
-      _dayCount++;
-      _timeOfDay = 'dawn';
-      _turnsSinceLastTimeAdvance = 0;
-      _pendingRealismMetadata ??= {};
-      _pendingRealismMetadata!['time_skip_to'] = 'Dawn · Day $_dayCount';
-      notifyListeners();
-      debugPrint('[Realism:OOC] Next-day transition → Day $_dayCount, dawn');
-      return;
-    } else if (RegExp(
-      r'\b(several hours|many hours|a long time|hours? pass)\b',
-    ).hasMatch(lower)) {
-      periods = 3;
-    } else if (RegExp(
-      r'\b(a few hours|couple.{0,5}hours|2.{0,5}hours|two hours)\b',
-    ).hasMatch(lower)) {
-      periods = 2;
-    } else if (RegExp(
-      r'\b(an hour|1 hour|one hour|a while|some time)\b',
-    ).hasMatch(lower)) {
-      periods = 1;
-    } else if (hasOocMarker) {
-      periods = 1;
-    }
-
-    if (periods <= 0) return;
-
-    final validTimes = [
-      'dawn',
-      'morning',
-      'late_morning',
-      'afternoon',
-      'evening',
-      'night',
-    ];
-    int idx = validTimes.indexOf(_timeOfDay);
-    for (int i = 0; i < periods; i++) {
-      idx++;
-      if (idx >= validTimes.length) {
-        idx = 0;
-        _dayCount++;
-      }
-    }
-    _timeOfDay = validTimes[idx];
-    _turnsSinceLastTimeAdvance = 0;
-    _pendingRealismMetadata ??= {};
-    // Capitalise the time label for display (late_morning -> Late Morning)
-    final displayTime = _timeOfDay
-        .split('_')
-        .map((w) => w[0].toUpperCase() + w.substring(1))
-        .join(' ');
-    _pendingRealismMetadata!['time_skip_to'] = displayTime;
-    notifyListeners();
-    debugPrint(
-      '[Realism:OOC] Time-skip: +$periods period(s) → $_timeOfDay (Day $_dayCount)',
-    );
   }
 
   // ── Chaos Mode / Chance Time (thin delegation to extracted service) ──────

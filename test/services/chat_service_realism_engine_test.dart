@@ -13,7 +13,8 @@
 //
 // Uses the minimal production seam (testLlmServiceOverride) + _ControllableFakeLlm
 // to exercise the actual evaluation, delta, and needs logic instead of duplicated stubs.
-// Real ChatService paths exercised via key realism/group/session tests (expression reset sites via ambient startNew/setActive; full label/command/avatar/regen/ONNX only via dedicated + manual per qualified claims).
+// Real ChatService paths exercised via key realism/group/session tests (expression reset sites via ambient startNew/setActive; time reset/seed/load sites passively hit by pre-existing startNew/setActive/_loadLast/group loads; full time advance/nudge/OOC/narrative/resolve only in dedicated time test + manual per qualified claims).
+// (reset sites passively hit; full only in dedicated + manual).
 //
 // Group tests now use typed repo-backed seeding (per-test DB + Groups/GroupMembersCompanion)
 // + name-based stableGroupId keying and exercise per-speaker scalar swap / inter-char

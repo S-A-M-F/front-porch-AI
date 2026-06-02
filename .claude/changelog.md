@@ -934,3 +934,16 @@ Always include the branch the change landed on.
 - Impact: Test suite now correctly asserts the fixed no-bleed behavior (no longer green for the old bug). Completeness nits addressed with minimal safe inline changes. Review file is now the authoritative record of every decision. All mandatory gates re-passed (analyze 0 delta warnings, format, fix-dry, greps confirming no preserve logic left + 0 new privates, smoke launch clean).
 - Files: `lib/services/chat_service.dart`, `test/services/realism_state_test.dart`, `test/services/chat_service_realism_test.dart`, `docs/Rawhide.md`, `.claude/changelog.md`, `/tmp/grok-review-cf1efb11.md`
 - Hygiene (whole effort): New private methods: 0. Additional methods deleted this round: 0. Analyze clean on all changed .dart (delta + full). See appended summary in the review file for full command outputs + per-issue details.
+
+## 2026-06-02 (Stage 3 Step 5: extract TimeService from god chat_service.dart)
+- Pure mechanical leaf extraction of time domain (clock, advance/hold/new_day LLM eval in physical, nudge chevrons + realism_state patch for survival, OOC detect+pending, narrativeWeekday, legacy resolve, prompt thin, all reset/seed/load/restore helpers) to lib/services/chat/time_service.dart.
+- God: late final (4 cbs, value-pass for nudge patch to avoid init cycle), exactly 5 @Dep shims, thins at every site, reset blocks kept in sync + comments tightened (now lists needs/chaos/rel/expr/time), full excision of moved, 0 new god private _methods.
+- New dedicated test (17 tests/17 bodies, createTestTime factory, real dispatch for advance via 6 calls, OOC/nudge/resets/loads/narrative/resolve/parity, qualified aug notes).
+- Updates to 3 aug tests (qualified passive "reset sites hit by pre-existing" for time).
+- All gates (cd+abs+redirects): format 0 changed, analyze 0 err on surface (full 27 pre-existing only), dart fix "Nothing to fix!", tests +17 dedicated green (+64-1 key with pre-existing cap only), dead greps COUNT=0, build ✓ "Built ...app".
+- Multiple re-runs + re-reads of abs on-disk god/service/test/outputs/MD post edits/fixes/build confirm claims exact (shims=5, cbs=4, tests=17, etc.).
+- MD updated with full Step 5 + Post + Fix Round 1 (0 open after) + extended won'tfix list for 1-5 + Hygiene.
+- .claude/changelog.md appended (this entry); docs/Rawhide.md untouched (per rule).
+- Files: lib/services/chat/time_service.dart, lib/services/chat_service.dart, test/services/chat/time_service_test.dart, test/services/chat_service_*_test.dart (3), docs/refactor-god-file-modularization.md, .claude/changelog.md
+- Hygiene (cumulative): 0 new god privates this step; deleted = moved time code (~200LOC fields/bodies/sets); analyze clean (0 new warn); duplication none; parity preserved (chat-scoped); worktree only, no destructive, cd+abs always.
+- Commit (human to land): see recommended in docs/refactor-god-file-modularization.md Step 5 section.

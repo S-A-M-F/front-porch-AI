@@ -597,6 +597,6 @@ void main() {
     });
   });
 
-  // Expression reset sites exercised passively via pre-existing startNew/setActive/load in this file (full label/avatar/command/regen/ONNX in dedicated + manual only; see qualified note).
-  // (Note qualified per review: "reset sites passively hit by pre-existing startNew/setActive; full label/command/avatar/regen/ONNX only in dedicated + manual"; real owner reset coverage via ambient; no active label/resolve/command/regen added in this stub per review qualification.)
+  // Expression + time reset/seed/load sites exercised passively via pre-existing startNew/setActive/load flows (time chat-scoped).
+  // (Note qualified per review: "reset sites passively hit by pre-existing...; full time advance/nudge/OOC/resolve/narrative only in dedicated time test + manual"; ambient hits for time load/seed/reset parity).
 }
