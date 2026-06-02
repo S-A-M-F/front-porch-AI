@@ -144,6 +144,10 @@ void main() {
 
       // Simulate post-delivery clear (as done in pre-turn)
       chaos.setEventDelivered(true);
+      // Once delivered (injected into a response), hasPending must be false for UI
+      // (sidebar no longer shows "EVENT PENDING" / disables spin), even though the
+      // raw value remains for regen support of that message.
+      expect(chaos.hasPendingChaosEvent, isFalse);
       chaos.clearDeliveredPendingIfAny();
       expect(chaos.hasPendingChaosEvent, isFalse);
       expect(chaos.chaosEventDelivered, isFalse);

@@ -68,7 +68,22 @@ class ChaosModeService {
   bool get chaosModeEnabled => _chaosModeEnabled;
   bool get chaosNsfwEnabled => _chaosNsfwEnabled;
   int get chaosPressure => _chaosPressure;
-  bool get hasPendingChaosEvent => _pendingChaosInjection != null;
+
+  /// True if there is a Chance Time event prepared for the *next* response
+  /// generation that has not yet been delivered.
+  ///
+  /// Once the injection has been consumed (markEventDelivered called from the
+  /// prompt builder), this returns false. This lets the UI (Chaos sidebar
+  /// "⏳ EVENT PENDING" state + disabled spin) clear as soon as the character
+  /// has received the event in their prompt — even though the raw value + delivered
+  /// flag are kept so that regens/swipes of the reacting AI message can still
+  /// re-inject the same event.
+  ///
+  /// The actual value is only fully cleared on the *next* user turn via
+  /// clearDeliveredPendingIfAny (preserving the "until user sends new message"
+  /// regen window from the original design).
+  bool get hasPendingChaosEvent =>
+      _pendingChaosInjection != null && !_chaosEventDelivered;
 
   // Internal accessors for the prompt injection getter (which stays in ChatService
   // until prompt_injection/ subdir extraction in step 8).
