@@ -21,12 +21,11 @@ import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/chat_components/chat_components.dart';
 
 class RealismSection extends StatefulWidget {
   final ChatService chatService;
-  const RealismSection({required this.chatService});
+  const RealismSection({super.key, required this.chatService});
 
   @override
   State<RealismSection> createState() => RealismSectionState();

@@ -32,6 +32,7 @@ class ExternalImageWidget extends StatefulWidget {
   final Future<bool> Function()? onRequestPermission;
 
   const ExternalImageWidget({
+    super.key,
     required this.url,
     required this.altText,
     required this.allowed,

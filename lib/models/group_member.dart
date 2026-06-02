@@ -54,7 +54,8 @@ class GroupMember {
   final String postHistoryInstructions;
   final List<String> alternateGreetings;
   final List<String> tags;
-  final String? avatarFilename; // basename only; resolve as path.join(storage.groupsDir.path, groupId, 'avatars', filename) (no dedicated group*Dir helpers added per strict no-new-methods rule)
+  final String?
+  avatarFilename; // basename only; resolve as path.join(storage.groupsDir.path, groupId, 'avatars', filename) (no dedicated group*Dir helpers added per strict no-new-methods rule)
   final String? ttsVoice;
   final Lorebook? lorebook;
   final List<String> worldNames;
@@ -95,7 +96,9 @@ class GroupMember {
           return decoded.map((e) => e.toString()).toList();
         }
       } catch (e) {
-        debugPrint('[GroupMember.fromRow] parseStringList failed: $e (silent default [] used; data may be lost on bad import/sync)');
+        debugPrint(
+          '[GroupMember.fromRow] parseStringList failed: $e (silent default [] used; data may be lost on bad import/sync)',
+        );
       }
       return [];
     }
@@ -108,7 +111,9 @@ class GroupMember {
           return Lorebook.fromJson(Map<String, dynamic>.from(decoded));
         }
       } catch (e) {
-        debugPrint('[GroupMember.fromRow] parseLorebook failed: $e (silent default null used)');
+        debugPrint(
+          '[GroupMember.fromRow] parseLorebook failed: $e (silent default null used)',
+        );
       }
       return null;
     }
@@ -121,7 +126,9 @@ class GroupMember {
           return Map<String, dynamic>.from(decoded);
         }
       } catch (e) {
-        debugPrint('[GroupMember.fromRow] parseMap failed: $e (silent default null used; data may be lost on bad import/sync)');
+        debugPrint(
+          '[GroupMember.fromRow] parseMap failed: $e (silent default null used; data may be lost on bad import/sync)',
+        );
       }
       return null;
     }

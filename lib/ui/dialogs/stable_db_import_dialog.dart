@@ -141,7 +141,9 @@ class StableDbImportDialog extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: const Text(
                   'Note: your stable database will be unaffected and still '

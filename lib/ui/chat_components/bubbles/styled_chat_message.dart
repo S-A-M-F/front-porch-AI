@@ -83,6 +83,7 @@ class StyledChatMessage extends StatelessWidget {
   final CharacterCard? character;
 
   const StyledChatMessage({
+    super.key,
     required this.text,
     required this.isUser,
     this.externalImagesAllowed,

@@ -357,14 +357,17 @@ class StorageService extends ChangeNotifier {
   bool get kcppsModelFileExists {
     final parsed = _parseKcppsFile(_activeKcppsPath);
     if (parsed == null) return false;
-    final modelPath = parsed['model_param'] is String && (parsed['model_param'] as String).trim().isNotEmpty
+    final modelPath =
+        parsed['model_param'] is String &&
+            (parsed['model_param'] as String).trim().isNotEmpty
         ? (parsed['model_param'] as String).trim()
         : parsed['model'] is String
-            ? (parsed['model'] as String).trim()
-            : null;
+        ? (parsed['model'] as String).trim()
+        : null;
     if (modelPath == null) return false;
     return File(modelPath).existsSync();
   }
+
   Map<String, String> get modelPresetMap => Map.unmodifiable(_modelPresetMap);
   int get gpuLayers => _gpuLayers;
   int get contextSize => _contextSize;
@@ -538,13 +541,16 @@ class StorageService extends ChangeNotifier {
           _globalAiBubbleColor.toARGB32(),
     );
     _globalAiTextColor = Color(
-      _prefs?.getInt(_k('global_ai_text_color')) ?? _globalAiTextColor.toARGB32(),
+      _prefs?.getInt(_k('global_ai_text_color')) ??
+          _globalAiTextColor.toARGB32(),
     );
     _globalDialogueColor = Color(
-      _prefs?.getInt(_k('global_dialogue_color')) ?? _globalDialogueColor.toARGB32(),
+      _prefs?.getInt(_k('global_dialogue_color')) ??
+          _globalDialogueColor.toARGB32(),
     );
     _globalActionColor = Color(
-      _prefs?.getInt(_k('global_action_color')) ?? _globalActionColor.toARGB32(),
+      _prefs?.getInt(_k('global_action_color')) ??
+          _globalActionColor.toARGB32(),
     );
     _globalChatFontFamily =
         _prefs?.getString(_k('global_chat_font_family')) ??
@@ -565,14 +571,16 @@ class StorageService extends ChangeNotifier {
           AppColors.aiBubbleLight.toARGB32(),
     );
     _lightAiTextColor = Color(
-      _prefs?.getInt(_k('light_ai_text_color')) ?? AppColors.aiTextLight.toARGB32(),
+      _prefs?.getInt(_k('light_ai_text_color')) ??
+          AppColors.aiTextLight.toARGB32(),
     );
     _lightDialogueColor = Color(
       _prefs?.getInt(_k('light_dialogue_color')) ??
           AppColors.dialogueLight.toARGB32(),
     );
     _lightActionColor = Color(
-      _prefs?.getInt(_k('light_action_color')) ?? AppColors.actionLight.toARGB32(),
+      _prefs?.getInt(_k('light_action_color')) ??
+          AppColors.actionLight.toARGB32(),
     );
     _repeatPenalty = _prefs?.getDouble(_k('repeat_penalty')) ?? _repeatPenalty;
     _repeatPenaltyTokens =
@@ -601,7 +609,8 @@ class StorageService extends ChangeNotifier {
     _autostartBackend =
         _prefs?.getBool(_k('autostart_backend')) ?? _autostartBackend;
     _autostartPseudoRemote =
-        _prefs?.getBool(_k('autostart_pseudo_remote')) ?? _autostartPseudoRemote;
+        _prefs?.getBool(_k('autostart_pseudo_remote')) ??
+        _autostartPseudoRemote;
     _lastUsedModelPath = _prefs?.getString(_k('last_used_model_path'));
     _activeKcppsPath = _prefs?.getString(_k('active_kcpps_path'));
     // Restore the kcppsHasModel flag and context size from the persisted preset path so the UI
@@ -743,14 +752,16 @@ class StorageService extends ChangeNotifier {
     _imageGenSeed = _prefs?.getInt(_k('image_gen_seed')) ?? -1;
 
     // Draw Things gRPC persisted values
-    _drawThingsGrpcHost = _prefs?.getString(_k('draw_things_grpc_host')) ?? '127.0.0.1';
+    _drawThingsGrpcHost =
+        _prefs?.getString(_k('draw_things_grpc_host')) ?? '127.0.0.1';
     _drawThingsGrpcPort = _prefs?.getInt(_k('draw_things_grpc_port')) ?? 7859;
     _drawThingsSampler = _prefs?.getInt(_k('draw_things_sampler')) ?? 16;
     _drawThingsShift = _prefs?.getDouble(_k('draw_things_shift')) ?? 3.0;
     _drawThingsStrength = _prefs?.getDouble(_k('draw_things_strength')) ?? 1.0;
     _drawThingsSeedMode = _prefs?.getInt(_k('draw_things_seed_mode')) ?? 2;
     _drawThingsTeaCache = _prefs?.getBool(_k('draw_things_tea_cache')) ?? false;
-    _drawThingsCfgZeroStar = _prefs?.getBool(_k('draw_things_cfg_zero_star')) ?? false;
+    _drawThingsCfgZeroStar =
+        _prefs?.getBool(_k('draw_things_cfg_zero_star')) ?? false;
 
     // Web server settings
     _webServerEnabled = _prefs?.getBool(_k('web_server_enabled')) ?? false;
@@ -1080,10 +1091,12 @@ class StorageService extends ChangeNotifier {
     _activeKcppsPath = value;
     // Parse synchronously so _kcppsHasModel and _contextSize are accurate in the same notifyListeners call.
     final parsed = _parseKcppsFile(value);
-    _kcppsHasModel = parsed != null && (
-        (parsed['model_param'] is String && (parsed['model_param'] as String).trim().isNotEmpty) ||
-        (parsed['model'] is String && (parsed['model'] as String).trim().isNotEmpty)
-    );
+    _kcppsHasModel =
+        parsed != null &&
+        ((parsed['model_param'] is String &&
+                (parsed['model_param'] as String).trim().isNotEmpty) ||
+            (parsed['model'] is String &&
+                (parsed['model'] as String).trim().isNotEmpty));
     // Update context size from preset if present
     if (parsed != null && parsed['contextsize'] is int) {
       _contextSize = parsed['contextsize'] as int;

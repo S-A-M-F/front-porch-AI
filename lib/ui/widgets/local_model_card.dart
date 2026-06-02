@@ -74,13 +74,10 @@ class _LocalModelCardState extends State<LocalModelCard> {
               color: AppColors.isLight(context)
                   ? AppColors.cardOf(context)
                   : (_isHovered
-                      ? Colors.indigo.withValues(alpha: 0.12)
-                      : Colors.indigo.withValues(alpha: 0.06)),
+                        ? Colors.indigo.withValues(alpha: 0.12)
+                        : Colors.indigo.withValues(alpha: 0.06)),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.borderOf(context),
-                width: 1,
-              ),
+              border: Border.all(color: AppColors.borderOf(context), width: 1),
             ),
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -272,7 +269,10 @@ class _LocalModelCardState extends State<LocalModelCard> {
         const SizedBox(width: 4),
         Text(
           label,
-          style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11),
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 11,
+          ),
         ),
       ],
     );

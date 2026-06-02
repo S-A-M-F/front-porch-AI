@@ -20,7 +20,7 @@ import 'package:flutter/material.dart';
 
 /// Settings menu item row (extracted).
 class SettingsMenuItem extends StatelessWidget {
-  const SettingsMenuItem({required this.icon, required this.label});
+  const SettingsMenuItem({super.key, required this.icon, required this.label});
 
   final IconData icon;
   final String label;

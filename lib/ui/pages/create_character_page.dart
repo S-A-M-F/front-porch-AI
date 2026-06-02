@@ -258,28 +258,21 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             color: dotColor,
             border: isCurrent
                 ? Border.all(color: borderColor, width: 2)
-                : Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.3)),
+                : Border.all(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.3),
+                  ),
           ),
           child: Center(
             child: isActive && !isCurrent
                 ? Icon(Icons.check, size: 14, color: numberOrCheckColor)
                 : Text(
                     '${step + 1}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: numberOrCheckColor,
-                    ),
+                    style: TextStyle(fontSize: 11, color: numberOrCheckColor),
                   ),
           ),
         ),
         const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: labelColor,
-          ),
-        ),
+        Text(label, style: TextStyle(fontSize: 10, color: labelColor)),
       ],
     );
   }
@@ -405,8 +398,16 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 ),
                 label: Text(nextText, style: const TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
-                  foregroundColor: AppColors.resolve(context, Colors.white, Colors.black87),
+                  backgroundColor: AppColors.resolve(
+                    context,
+                    Colors.blueAccent,
+                    Colors.blue.shade700,
+                  ),
+                  foregroundColor: AppColors.resolve(
+                    context,
+                    Colors.white,
+                    Colors.black87,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -515,7 +516,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nameController,
-                style: TextStyle(color: AppColors.textPrimary(context), fontSize: 16),
+                style: TextStyle(
+                  color: AppColors.textPrimary(context),
+                  fontSize: 16,
+                ),
                 decoration: _inputDecoration('Enter character name'),
               ),
               const SizedBox(height: 24),
@@ -555,7 +559,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   Expanded(
                     child: TextField(
                       controller: _tagController,
-                      style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
+                      style: TextStyle(
+                        color: AppColors.textPrimary(context),
+                        fontSize: 14,
+                      ),
                       decoration: _inputDecoration('Add a tag...'),
                       onSubmitted: _addTag,
                     ),
@@ -1789,7 +1796,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                                 color: AppColors.textPrimary(context),
                               ),
                             ),
-                            backgroundColor: AppColors.surfaceContainerOf(context),
+                            backgroundColor: AppColors.surfaceContainerOf(
+                              context,
+                            ),
                             side: BorderSide.none,
                             visualDensity: VisualDensity.compact,
                           ),
@@ -1912,7 +1921,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 const SizedBox(height: 4),
                 Text(
                   'Review your character card. All fields are still editable before saving.',
-                  style: TextStyle(color: AppColors.textTertiary(context), fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 _reviewField(
@@ -2313,7 +2325,13 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700)),
+        borderSide: BorderSide(
+          color: AppColors.resolve(
+            context,
+            Colors.blueAccent,
+            Colors.blue.shade700,
+          ),
+        ),
       ),
       contentPadding: const EdgeInsets.all(14),
     );

@@ -140,7 +140,10 @@ class KoboldLayerSolver {
       // a) Check if the *entire* model weights + context + overhead fits.
       //    If yes → recommend full offload (99).
       // b) If not, be conservative on partial offload.
-      final fullWeightsCost = ((fileSizeBytes - 50 * 1024 * 1024).clamp(0, fileSizeBytes) / (1024 * 1024)).round();
+      final fullWeightsCost =
+          ((fileSizeBytes - 50 * 1024 * 1024).clamp(0, fileSizeBytes) /
+                  (1024 * 1024))
+              .round();
       final totalForFull = fullWeightsCost + contextCost + overheadMb;
 
       if (totalForFull <= vram) {
@@ -148,9 +151,15 @@ class KoboldLayerSolver {
       } else {
         // Conservative partial: allow up to roughly 40-50% of the model or a safe low number.
         // This is still better than the old wildly wrong /40 math.
-        final safePartial = ((vram - contextCost - overheadMb) * 0.45 * 1024 * 1024 / fileSizeBytes * 99)
-            .round()
-            .clamp(0, 60);
+        final safePartial =
+            ((vram - contextCost - overheadMb) *
+                    0.45 *
+                    1024 *
+                    1024 /
+                    fileSizeBytes *
+                    99)
+                .round()
+                .clamp(0, 60);
         bestLayers = safePartial;
       }
     } else {
@@ -208,7 +217,10 @@ class KoboldLayerSolver {
       nLayers: effectiveNLayers,
       bytesPerLayer: bytesPerLayer,
       estimatedContextVramMb: contextCost,
-      estimatedTotalVramMb: (bytesPerLayer * bestLayers / (1024 * 1024)).round() + contextCost + overheadMb,
+      estimatedTotalVramMb:
+          (bytesPerLayer * bestLayers / (1024 * 1024)).round() +
+          contextCost +
+          overheadMb,
       availableVramMb: vram,
       reasoning: reasoning,
     );

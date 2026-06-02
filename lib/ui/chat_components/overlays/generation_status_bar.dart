@@ -19,7 +19,7 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 /// Rich, phase-aware generation status bar. (extracted)
 class GenerationStatusBar extends StatefulWidget {
   final ChatService chatService;
-  const GenerationStatusBar({required this.chatService});
+  const GenerationStatusBar({super.key, required this.chatService});
 
   @override
   State<GenerationStatusBar> createState() => _GenerationStatusBarState();
@@ -270,7 +270,7 @@ class _GenerationStatusBarState extends State<GenerationStatusBar> {
 class PulsingIcon extends StatefulWidget {
   final IconData icon;
   final Color color;
-  const PulsingIcon({required this.icon, required this.color});
+  const PulsingIcon({super.key, required this.icon, required this.color});
 
   @override
   State<PulsingIcon> createState() => _PulsingIconState();

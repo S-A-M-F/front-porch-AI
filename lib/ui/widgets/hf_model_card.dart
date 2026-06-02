@@ -130,13 +130,10 @@ class _HFModelCardState extends State<HFModelCard>
               color: AppColors.isLight(context)
                   ? AppColors.cardOf(context)
                   : (_isHovered
-                      ? Colors.indigo.withValues(alpha: 0.12)
-                      : Colors.indigo.withValues(alpha: 0.06)),
+                        ? Colors.indigo.withValues(alpha: 0.12)
+                        : Colors.indigo.withValues(alpha: 0.06)),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.borderOf(context),
-                width: 1,
-              ),
+              border: Border.all(color: AppColors.borderOf(context), width: 1),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -426,7 +423,10 @@ class _HFModelCardState extends State<HFModelCard>
                   const SizedBox(height: 2),
                   Text(
                     downloadTask.statusString,
-                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 10),
+                    style: TextStyle(
+                      color: AppColors.textTertiary(context),
+                      fontSize: 10,
+                    ),
                   ),
                 ],
               ],

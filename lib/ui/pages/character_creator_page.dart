@@ -172,7 +172,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           children: [
             Icon(
               Icons.warning_amber_rounded,
-              color: AppColors.resolve(ctx, Colors.orangeAccent, Colors.orange.shade700),
+              color: AppColors.resolve(
+                ctx,
+                Colors.orangeAccent,
+                Colors.orange.shade700,
+              ),
               size: 24,
             ),
             const SizedBox(width: 10),
@@ -197,8 +201,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.resolve(ctx, Colors.orangeAccent, Colors.orange.shade700),
-              foregroundColor: AppColors.resolve(ctx, Colors.white, Colors.white),
+              backgroundColor: AppColors.resolve(
+                ctx,
+                Colors.orangeAccent,
+                Colors.orange.shade700,
+              ),
+              foregroundColor: AppColors.resolve(
+                ctx,
+                Colors.white,
+                Colors.white,
+              ),
             ),
             child: const Text('Clear Everything'),
           ),
@@ -1135,7 +1147,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     if (_isReloadingPseudoRemote) return;
     final storage = Provider.of<StorageService>(context, listen: false);
     final backendManager = Provider.of<BackendManager>(context, listen: false);
-    final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+    final pseudoRemote = Provider.of<PseudoRemoteService>(
+      context,
+      listen: false,
+    );
 
     if (backendManager.backendPath == null) {
       if (mounted) {
@@ -1156,9 +1171,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
 
     setState(() => _isReloadingPseudoRemote = true);
 
-    final overrideModel = (storage.kcppsHasModel && storage.kcppsModelFileExists)
+    final overrideModel =
+        (storage.kcppsHasModel && storage.kcppsModelFileExists)
         ? null
-        : _selectedLocalModelPath.isEmpty ? null : _selectedLocalModelPath;
+        : _selectedLocalModelPath.isEmpty
+        ? null
+        : _selectedLocalModelPath;
 
     try {
       await pseudoRemote.start(
@@ -1233,9 +1251,20 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         ),
         title: Row(
           children: [
-            Icon(Icons.auto_awesome, color: AppColors.resolve(context, Colors.amberAccent, Colors.amber.shade700), size: 22),
+            Icon(
+              Icons.auto_awesome,
+              color: AppColors.resolve(
+                context,
+                Colors.amberAccent,
+                Colors.amber.shade700,
+              ),
+              size: 22,
+            ),
             const SizedBox(width: 8),
-            Text('AI Character Creator', style: TextStyle(color: AppColors.textPrimary(context))),
+            Text(
+              'AI Character Creator',
+              style: TextStyle(color: AppColors.textPrimary(context)),
+            ),
             const Spacer(),
             // Step indicator
             _buildStepIndicator(context),
@@ -1309,7 +1338,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           height: 24,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isActive ? activeStepColor : AppColors.surfaceContainerOf(context),
+            color: isActive
+                ? activeStepColor
+                : AppColors.surfaceContainerOf(context),
             border: isCurrent
                 ? Border.all(color: AppColors.textPrimary(context), width: 2)
                 : Border.all(color: AppColors.borderOf(context)),
@@ -1319,14 +1350,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 ? Icon(
                     Icons.check,
                     size: 14,
-                    color: AppColors.resolve(context, Colors.white, Colors.white),
+                    color: AppColors.resolve(
+                      context,
+                      Colors.white,
+                      Colors.white,
+                    ),
                   )
                 : Text(
                     '${step + 1}',
                     style: TextStyle(
                       fontSize: 11,
                       color: isActive
-                          ? AppColors.resolve(context, Colors.white, Colors.white)
+                          ? AppColors.resolve(
+                              context,
+                              Colors.white,
+                              Colors.white,
+                            )
                           : AppColors.textTertiary(context),
                     ),
                   ),
@@ -1337,7 +1376,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           label,
           style: TextStyle(
             fontSize: 10,
-            color: isActive ? AppColors.textSecondary(context) : AppColors.textTertiary(context),
+            color: isActive
+                ? AppColors.textSecondary(context)
+                : AppColors.textTertiary(context),
           ),
         ),
       ],
@@ -1545,7 +1586,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                 const SizedBox(height: 8),
                                 Text(
                                   'No .gguf models found',
-                                  style: TextStyle(color: AppColors.textTertiary(context)),
+                                  style: TextStyle(
+                                    color: AppColors.textTertiary(context),
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
@@ -1766,7 +1809,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         const SizedBox(height: 2),
                         Text(
                           'Larger context uses more VRAM. Match your KoboldCpp --contextsize setting.',
-                          style: TextStyle(color: AppColors.textTertiary(context), fontSize: 10),
+                          style: TextStyle(
+                            color: AppColors.textTertiary(context),
+                            fontSize: 10,
+                          ),
                         ),
                       ],
                     );
@@ -1972,7 +2018,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 const SizedBox(height: 4),
                 Text(
                   'Tip: Enable Model Thinking below if using a reasoning model (e.g. Precog, QwQ).',
-                  style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                  style: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 11,
+                  ),
                 ),
               ],
 
@@ -2002,8 +2051,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       style: TextStyle(fontSize: 16),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
-                      foregroundColor: AppColors.resolve(context, Colors.white, Colors.white),
+                      backgroundColor: AppColors.resolve(
+                        context,
+                        Colors.blueAccent,
+                        Colors.blue.shade700,
+                      ),
+                      foregroundColor: AppColors.resolve(
+                        context,
+                        Colors.white,
+                        Colors.white,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -2063,8 +2120,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         const SizedBox(height: 8),
         ModelSelector(
           models: _localModels.cast<File>(),
-          selectedModelPath:
-              _selectedLocalModelPath.isEmpty ? null : _selectedLocalModelPath,
+          selectedModelPath: _selectedLocalModelPath.isEmpty
+              ? null
+              : _selectedLocalModelPath,
           showManagedByKcpps:
               storage.kcppsHasModel && storage.kcppsModelFileExists,
           onChanged: (val) {
@@ -2082,15 +2140,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             final dotColor = p.isReady
                 ? Colors.green.shade300
                 : isRunning
-                    ? Colors.orange.shade300
-                    : Colors.red.shade300;
+                ? Colors.orange.shade300
+                : Colors.red.shade300;
             final label = p.isReady
                 ? 'Ready'
                 : p.isStarting
-                    ? 'Starting...'
-                    : p.isRunning
-                        ? 'Loading model...'
-                        : 'Stopped';
+                ? 'Starting...'
+                : p.isRunning
+                ? 'Loading model...'
+                : 'Stopped';
 
             return Row(
               children: [
@@ -2103,14 +2161,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(color: dotColor, fontSize: 12),
-                ),
+                Text(label, style: TextStyle(color: dotColor, fontSize: 12)),
                 const SizedBox(width: 16),
                 if (isRunning)
                   ElevatedButton.icon(
-                    onPressed: _isReloadingPseudoRemote ? null : _stopPseudoRemote,
+                    onPressed: _isReloadingPseudoRemote
+                        ? null
+                        : _stopPseudoRemote,
                     icon: const Icon(Icons.stop, size: 16),
                     label: const Text('Stop Backend'),
                     style: ElevatedButton.styleFrom(
@@ -2122,9 +2179,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   ElevatedButton.icon(
                     onPressed:
                         (storage.activeKcppsPath == null ||
-                                storage.activeKcppsPath!.isEmpty)
-                            ? null
-                            : _startPseudoRemote,
+                            storage.activeKcppsPath!.isEmpty)
+                        ? null
+                        : _startPseudoRemote,
                     icon: _isReloadingPseudoRemote
                         ? const SizedBox(
                             width: 16,
@@ -2333,11 +2390,27 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _creatorMode == CreatorMode.guided
-                              ? AppColors.resolve(context, const Color(0xFF0D7377), Colors.tealAccent)
+                              ? AppColors.resolve(
+                                  context,
+                                  const Color(0xFF0D7377),
+                                  Colors.tealAccent,
+                                )
                               : _creatorMode == CreatorMode.quick
-                              ? AppColors.resolve(context, const Color(0xFF1B5E20), Colors.greenAccent)
-                              : AppColors.resolve(context, Colors.blueAccent, const Color(0xFF1D4ED8)),
-                          foregroundColor: AppColors.resolve(context, Colors.white, Colors.black87),
+                              ? AppColors.resolve(
+                                  context,
+                                  const Color(0xFF1B5E20),
+                                  Colors.greenAccent,
+                                )
+                              : AppColors.resolve(
+                                  context,
+                                  Colors.blueAccent,
+                                  const Color(0xFF1D4ED8),
+                                ),
+                          foregroundColor: AppColors.resolve(
+                            context,
+                            Colors.white,
+                            Colors.black87,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -2371,8 +2444,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       mode == CreatorMode.guided
           ? Colors.teal.shade700
           : mode == CreatorMode.quick
-              ? Colors.green.shade700
-              : Colors.amber.shade800,
+          ? Colors.green.shade700
+          : Colors.amber.shade800,
     );
 
     final borderColor = isSelected
@@ -2480,7 +2553,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               Icon(
                                 Icons.check_circle_outline,
                                 size: 12,
-                                color: isSelected ? highlightColor : AppColors.textTertiary(context),
+                                color: isSelected
+                                    ? highlightColor
+                                    : AppColors.textTertiary(context),
                               ),
                               const SizedBox(width: 4),
                               Text(
@@ -2545,11 +2620,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       color: quickAccent.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      Icons.bolt,
-                      color: quickAccent,
-                      size: 22,
-                    ),
+                    child: Icon(Icons.bolt, color: quickAccent, size: 22),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -2566,7 +2637,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         ),
                         Text(
                           'Name it, describe it, generate.',
-                          style: TextStyle(fontSize: 13, color: AppColors.textTertiary(context)),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textTertiary(context),
+                          ),
                         ),
                       ],
                     ),
@@ -2587,7 +2661,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 8),
               TextField(
                 controller: _nameController,
-                style: TextStyle(color: AppColors.textPrimary(context), fontSize: 15),
+                style: TextStyle(
+                  color: AppColors.textPrimary(context),
+                  fontSize: 15,
+                ),
                 onChanged: (_) {
                   setState(() {});
                   _saveState();
@@ -2610,10 +2687,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.greenAccent,
-                      width: 2,
-                    ),
+                    borderSide: BorderSide(color: Colors.greenAccent, width: 2),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -2635,12 +2709,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 4),
               Text(
                 'A sentence or two is plenty. Leave it blank and the AI will invent someone.',
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 11,
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _conceptController,
-                style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
+                style: TextStyle(
+                  color: AppColors.textPrimary(context),
+                  fontSize: 14,
+                ),
                 maxLines: 4,
                 minLines: 3,
                 onChanged: (_) {
@@ -2666,10 +2746,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.greenAccent,
-                      width: 2,
-                    ),
+                    borderSide: BorderSide(color: Colors.greenAccent, width: 2),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -2691,12 +2768,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 4),
               Text(
                 'Where does the story take place? What\'s the situation? The AI will build on this.',
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 11,
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _quickScenarioController,
-                style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
+                style: TextStyle(
+                  color: AppColors.textPrimary(context),
+                  fontSize: 14,
+                ),
                 maxLines: 3,
                 minLines: 2,
                 onChanged: (_) {
@@ -2722,10 +2805,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.greenAccent,
-                      width: 2,
-                    ),
+                    borderSide: BorderSide(color: Colors.greenAccent, width: 2),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -2789,7 +2869,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 4),
               Text(
                 'How many first messages to generate (1 main + alternates).',
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 11,
+                ),
               ),
               const SizedBox(height: 8),
               AlternateGreetingsSlider(
@@ -2811,7 +2894,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 24),
 
               // Lore Input
-              _buildLoreInputSection(AppColors.resolve(context, const Color(0xFF1B5E20), Colors.greenAccent)),
+              _buildLoreInputSection(
+                AppColors.resolve(
+                  context,
+                  const Color(0xFF1B5E20),
+                  Colors.greenAccent,
+                ),
+              ),
               const SizedBox(height: 28),
 
               // NSFW toggle
@@ -2819,7 +2908,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 value: _quickNsfwEnabled,
                 accentColor: nsfwAccent,
                 title: 'NSFW Content',
-                subtitle: 'Enables adult themes in personality, lorebook, and greetings',
+                subtitle:
+                    'Enables adult themes in personality, lorebook, and greetings',
                 animated: true,
                 onChanged: (v) => setState(() => _quickNsfwEnabled = v),
               ),
@@ -2849,8 +2939,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             Colors.white,
                             Colors.white,
                           ),
-                          disabledBackgroundColor: AppColors.surfaceContainerOf(context),
-                          disabledForegroundColor: AppColors.textTertiary(context),
+                          disabledBackgroundColor: AppColors.surfaceContainerOf(
+                            context,
+                          ),
+                          disabledForegroundColor: AppColors.textTertiary(
+                            context,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -2914,7 +3008,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 'World Lore truncated to fit context limits ($estimatedTokens > $freeContextLimit).',
                 style: TextStyle(color: AppColors.textPrimary(context)),
               ),
-              backgroundColor: AppColors.resolve(context, Colors.orange, Colors.orange.shade700),
+              backgroundColor: AppColors.resolve(
+                context,
+                Colors.orange,
+                Colors.orange.shade700,
+              ),
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 5),
             ),
@@ -3157,7 +3255,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: isNsfw ? Colors.pinkAccent : AppColors.textSecondary(context),
+                    color: isNsfw
+                        ? Colors.pinkAccent
+                        : AppColors.textSecondary(context),
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -3171,14 +3271,20 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             controller: controller,
             maxLines: maxLines,
             minLines: minLines,
-            style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
+            style: TextStyle(
+              color: AppColors.textPrimary(context),
+              fontSize: 13,
+            ),
             onChanged: (_) {
               setState(() {});
               _saveState();
             },
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+              hintStyle: TextStyle(
+                color: AppColors.textTertiary(context),
+                fontSize: 12,
+              ),
               filled: true,
               fillColor: AppColors.surfaceContainerOf(context),
               border: OutlineInputBorder(
@@ -3242,7 +3348,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     child: Text(
                       sug,
                       style: TextStyle(
-                        color: isInField ? accentColor : AppColors.textTertiary(context),
+                        color: isInField
+                            ? accentColor
+                            : AppColors.textTertiary(context),
                         fontSize: 11,
                       ),
                     ),
@@ -3289,7 +3397,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           ),
           subtitle: Text(
             subtitle,
-            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+            style: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 11,
+            ),
           ),
           children: children,
         ),
@@ -3321,7 +3432,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           children: [
             Icon(
               Icons.psychology,
-              color: _reasoningEnabled ? accentColor : AppColors.textTertiary(context),
+              color: _reasoningEnabled
+                  ? accentColor
+                  : AppColors.textTertiary(context),
               size: 20,
             ),
             const SizedBox(width: 12),
@@ -3378,7 +3491,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
         const SizedBox(height: 4),
         Text(
           'Paste one or more wiki/lore URLs separated by commas. You can also attach local files below.',
-          style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+          style: TextStyle(
+            color: AppColors.textTertiary(context),
+            fontSize: 11,
+          ),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -3390,7 +3506,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           decoration: InputDecoration(
             hintText:
                 'https://wowpedia.fandom.com/wiki/Demon_hunter, https://wowpedia.fandom.com/wiki/Illidan_Stormrage',
-            hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+            hintStyle: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 12,
+            ),
             filled: true,
             fillColor: AppColors.surfaceContainerOf(context),
             border: OutlineInputBorder(
@@ -3433,11 +3552,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       ),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.description,
-                            size: 14,
-                            color: accentColor,
-                          ),
+                          Icon(Icons.description, size: 14, color: accentColor),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -3525,898 +3640,960 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 700),
             child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Header ──
-              Row(
-                children: [
-                  Icon(
-                    Icons.edit_note,
-                    color: guidedAccent,
-                    size: 28,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Guided Character Creator',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary(context),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header ──
+                Row(
+                  children: [
+                    Icon(Icons.edit_note, color: guidedAccent, size: 28),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Guided Character Creator',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary(context),
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          "Describe your character — we'll help you flesh them out.",
-                          style: TextStyle(fontSize: 13, color: AppColors.textTertiary(context)),
-                        ),
-                      ],
+                          SizedBox(height: 2),
+                          Text(
+                            "Describe your character — we'll help you flesh them out.",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textTertiary(context),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // ══════════════════════════════════════════════
-              // Section 1: The Vision (Required)
-              // ══════════════════════════════════════════════
-              Text(
-                "What's your character like?",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary(context),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "Don't worry about perfect writing — a few sentences, a scene, bullet points, whatever comes naturally.",
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textTertiary(context),
-                  height: 1.4,
+                const SizedBox(height: 24),
+
+                // ══════════════════════════════════════════════
+                // Section 1: The Vision (Required)
+                // ══════════════════════════════════════════════
+                Text(
+                  "What's your character like?",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary(context),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 4),
+                Text(
+                  "Don't worry about perfect writing — a few sentences, a scene, bullet points, whatever comes naturally.",
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textTertiary(context),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
 
-              // Name + randomizer
-              CharacterNameInput(
-                controller: _nameController,
-                onRandomize: _randomizeName,
-                tooltip: 'Generate a random name',
-                onChanged: (_) {
-                  setState(() {});
-                  _saveState();
-                },
-              ),
-              const SizedBox(height: 16),
+                // Name + randomizer
+                CharacterNameInput(
+                  controller: _nameController,
+                  onRandomize: _randomizeName,
+                  tooltip: 'Generate a random name',
+                  onChanged: (_) {
+                    setState(() {});
+                    _saveState();
+                  },
+                ),
+                const SizedBox(height: 16),
 
-              // Age & Sex
-              AgeGenderRow(
-                ageController: _ageController,
-                genderController: _sexController,
-                onChanged: () {
-                  setState(() {});
-                  _saveState();
-                },
-              ),
-              const SizedBox(height: 4),
+                // Age & Sex
+                AgeGenderRow(
+                  ageController: _ageController,
+                  genderController: _sexController,
+                  onChanged: () {
+                    setState(() {});
+                    _saveState();
+                  },
+                ),
+                const SizedBox(height: 4),
 
-              // ══════════════════════════════════════════════
-              // Section 2: Appearance (Collapsible)
-              // ══════════════════════════════════════════════
-              _guidedSection(
-                title: 'Appearance',
-                subtitle: 'Already described their look above? Skip this.',
-                icon: Icons.person_outline,
-                children: [
-                  _guidedField(
-                    label: 'Build / Body Type',
-                    controller: _guidedAppearanceController,
-                    hint: "Or describe: 'tall and lanky with long legs'",
-                    suggestions: const [
-                      'Petite',
-                      'Slim',
-                      'Athletic',
-                      'Curvy',
-                      'Muscular',
-                      'Plus-size',
-                      'Tall & Lanky',
-                    ],
-                    maxLines: 2,
-                  ),
-                  _guidedField(
-                    label: 'Hair',
-                    controller: _guidedHairController,
-                    hint: "e.g. 'waist-length silver hair, usually messy'",
-                    suggestions: const [
-                      'Short',
-                      'Long',
-                      'Flowing',
-                      'Braided',
-                      'Wild',
-                      'Shaved',
-                      'Pixie',
-                    ],
-                  ),
-                  _guidedField(
-                    label: 'Distinguishing Features',
-                    controller: _guidedFeaturesController,
-                    hint:
-                        "e.g. 'a jagged scar across her left eye, pointed elf ears'",
-                    suggestions: const [
-                      'Glasses',
-                      'Scars',
-                      'Tattoos',
-                      'Horns',
-                      'Wings',
-                      'Fangs',
-                      'Cat Ears',
-                      'Freckles',
-                    ],
-                  ),
-                  _guidedField(
-                    label: 'Race / Species',
-                    controller: _guidedRaceController,
-                    hint: "e.g. 'half-dragon shapeshifter'",
-                    suggestions: const [
-                      'Human',
-                      'Elf',
-                      'Demon',
-                      'Vampire',
-                      'Beastkin',
-                      'Android',
-                      'Angel',
-                      'Fae',
-                    ],
-                  ),
-                ],
-              ),
-
-              // ══════════════════════════════════════════════
-              // Section 3: Personality & Vibe (Collapsible)
-              // ══════════════════════════════════════════════
-              _guidedSection(
-                title: 'Personality & Vibe',
-                subtitle: "What's it like to spend time with them?",
-                icon: Icons.psychology,
-                children: [
-                  _guidedField(
-                    label: 'Personality',
-                    controller: _guidedPersonalityController,
-                    hint:
-                        "What are they like? e.g. 'Sharp wit, never shows vulnerability, but secretly writes poetry'",
-                    suggestions: const [
-                      'Sarcastic',
-                      'Gentle',
-                      'Intense',
-                      'Playful',
-                      'Cold',
-                      'Chaotic',
-                      'Nurturing',
-                      'Mysterious',
-                    ],
-                    maxLines: 3,
-                  ),
-                  _guidedField(
-                    label: 'How They Talk',
-                    controller: _guidedSpeechController,
-                    hint:
-                        "e.g. 'Formal and old-fashioned' or 'Lots of slang, drops F-bombs'",
-                    suggestions: const [
-                      'Formal',
-                      'Casual',
-                      'Poetic',
-                      'Blunt',
-                      'Soft-spoken',
-                      'Loud',
-                      'Sarcastic',
-                      'Flirty',
-                    ],
-                  ),
-                  _guidedField(
-                    label: 'Secret / Hidden Depth',
-                    controller: _guidedSecretController,
-                    hint:
-                        "What's beneath the surface? e.g. 'Seems cold but is terrified of being alone'",
-                  ),
-                ],
-              ),
-
-              // ══════════════════════════════════════════════
-              // Section 4: Backstory (Collapsible)
-              // ══════════════════════════════════════════════
-              _guidedSection(
-                title: 'Backstory',
-                subtitle:
-                    'Even a sentence helps the AI build a richer history.',
-                icon: Icons.auto_stories,
-                children: [
-                  _guidedField(
-                    label: 'Origin / Background',
-                    controller: _guidedOriginController,
-                    hint:
-                        "e.g. 'Grew up on the streets after her parents disappeared'",
-                    suggestions: const [
-                      'Orphan',
-                      'Nobility',
-                      'Self-made',
-                      'Military',
-                      'Criminal past',
-                      'Mysterious origins',
-                      'Small-town',
-                      'Royalty',
-                    ],
-                    maxLines: 2,
-                  ),
-                  _guidedField(
-                    label: 'Setting / Era',
-                    controller: _guidedSettingController,
-                    hint:
-                        "When and where? e.g. 'Cyberpunk megacity' or 'Medieval fantasy kingdom'",
-                    suggestions: const [
-                      'Modern',
-                      'Medieval',
-                      'Futuristic',
-                      'Victorian',
-                      'Ancient',
-                      'Post-apocalyptic',
-                      'Urban fantasy',
-                    ],
-                  ),
-                  _guidedField(
-                    label: 'Tone',
-                    controller: _guidedToneController,
-                    hint:
-                        "Overall feel? e.g. 'Dark and gritty but with moments of warmth'",
-                    suggestions: const [
-                      'Dark',
-                      'Wholesome',
-                      'Tragic',
-                      'Comedic',
-                      'Mysterious',
-                      'Heroic',
-                      'Bittersweet',
-                    ],
-                  ),
-                ],
-              ),
-
-              // ══════════════════════════════════════════════
-              // Section 5: Relationship (Collapsible)
-              // ══════════════════════════════════════════════
-              _guidedSection(
-                title: 'Relationship to {{user}}',
-                subtitle: 'How do they know {{user}}?',
-                icon: Icons.favorite_border,
-                children: [
-                  _guidedField(
-                    label: 'Dynamic',
-                    controller: _guidedRelDynamicController,
-                    hint:
-                        "e.g. 'Coworkers who secretly like each other' or 'She's my bodyguard'",
-                    suggestions: const [
-                      'Strangers',
-                      'Childhood friends',
-                      'Rivals',
-                      'Roommates',
-                      'Love interest',
-                      'Mentor/Student',
-                      'Exes',
-                      'Online friends',
-                    ],
-                    maxLines: 2,
-                  ),
-                  _guidedField(
-                    label: 'Opening Scenario',
-                    controller: _guidedRelScenarioController,
-                    hint:
-                        "Where does the story start? e.g. 'First day at a new school'",
-                  ),
-                ],
-              ),
-
-              // ══════════════════════════════════════════════
-              // Section 6: NSFW Details (Gated + Collapsible)
-              // ══════════════════════════════════════════════
-              // Lore Input
-              _buildLoreInputSection(AppColors.resolve(context, const Color(0xFF0D7377), Colors.tealAccent)),
-              const SizedBox(height: 32),
-
-              // NSFW toggle
-              NsfwToggle(
-                value: _nsfwEnabled,
-                accentColor: nsfwAccent,
-                subtitle: 'Unlock intimate character details',
-                onChanged: (val) {
-                  setState(() => _nsfwEnabled = val);
-                  _saveState();
-                },
-              ),
-
-              if (_nsfwEnabled)
+                // ══════════════════════════════════════════════
+                // Section 2: Appearance (Collapsible)
+                // ══════════════════════════════════════════════
                 _guidedSection(
-                  title: 'Intimate Details',
-                  subtitle: 'Guided prompts for romantic and sexual traits.',
-                  icon: Icons.local_fire_department,
-                  accentColor: nsfwAccent,
+                  title: 'Appearance',
+                  subtitle: 'Already described their look above? Skip this.',
+                  icon: Icons.person_outline,
                   children: [
                     _guidedField(
-                      label: 'Body (intimate details)',
-                      controller: _guidedNsfwBodyController,
-                      hint:
-                          "Describe specifics if you want: 'modest chest, wide hips, thick thighs'",
+                      label: 'Build / Body Type',
+                      controller: _guidedAppearanceController,
+                      hint: "Or describe: 'tall and lanky with long legs'",
                       suggestions: const [
-                        'Flat',
-                        'Small',
-                        'Medium',
-                        'Large',
-                        'Huge',
-                      ],
-                      isNsfw: true,
-                    ),
-                    _guidedField(
-                      label: 'Experience Level',
-                      controller: _guidedNsfwExpController,
-                      hint:
-                          "How experienced are they? e.g. 'First time, nervous but eager'",
-                      suggestions: const [
-                        'Innocent',
-                        'Virgin',
-                        'Curious',
-                        'Experienced',
-                        'Insatiable',
-                      ],
-                      isNsfw: true,
-                    ),
-                    _guidedField(
-                      label: 'Dominance',
-                      controller: _guidedNsfwDomController,
-                      hint:
-                          "Who takes the lead? e.g. 'Dominant in public, submissive behind closed doors'",
-                      suggestions: const ['Submissive', 'Switch', 'Dominant'],
-                      isNsfw: true,
-                    ),
-                    _guidedField(
-                      label: 'Turn-ons & Kinks',
-                      controller: _guidedNsfwKinksController,
-                      hint:
-                          "What are they into? e.g. 'Loves being praised, goes weak when you grab her hair'",
-                      suggestions: const [
-                        'Praise',
-                        'Teasing',
-                        'Biting',
-                        'Bondage',
-                        'Exhibitionism',
-                        'Jealousy',
-                        'Breeding',
+                        'Petite',
+                        'Slim',
+                        'Athletic',
+                        'Curvy',
+                        'Muscular',
+                        'Plus-size',
+                        'Tall & Lanky',
                       ],
                       maxLines: 2,
-                      isNsfw: true,
                     ),
                     _guidedField(
-                      label: 'Clothing / Aesthetic',
-                      controller: _guidedNsfwClothingController,
-                      hint:
-                          "What do they wear? e.g. 'Always wears thigh-highs and an oversized shirt at home'",
+                      label: 'Hair',
+                      controller: _guidedHairController,
+                      hint: "e.g. 'waist-length silver hair, usually messy'",
                       suggestions: const [
-                        'Revealing',
-                        'Lingerie',
-                        'Uniform',
-                        'Leather',
-                        'Elegant',
-                        'Barely There',
+                        'Short',
+                        'Long',
+                        'Flowing',
+                        'Braided',
+                        'Wild',
+                        'Shaved',
+                        'Pixie',
                       ],
-                      isNsfw: true,
                     ),
                     _guidedField(
-                      label: 'Sexual Personality',
-                      controller: _guidedNsfwPersonalityController,
+                      label: 'Distinguishing Features',
+                      controller: _guidedFeaturesController,
                       hint:
-                          "How do they act during intimacy? e.g. 'Giggly and playful, hides her face when embarrassed'",
-                      maxLines: 2,
-                      isNsfw: true,
+                          "e.g. 'a jagged scar across her left eye, pointed elf ears'",
+                      suggestions: const [
+                        'Glasses',
+                        'Scars',
+                        'Tattoos',
+                        'Horns',
+                        'Wings',
+                        'Fangs',
+                        'Cat Ears',
+                        'Freckles',
+                      ],
+                    ),
+                    _guidedField(
+                      label: 'Race / Species',
+                      controller: _guidedRaceController,
+                      hint: "e.g. 'half-dragon shapeshifter'",
+                      suggestions: const [
+                        'Human',
+                        'Elf',
+                        'Demon',
+                        'Vampire',
+                        'Beastkin',
+                        'Android',
+                        'Angel',
+                        'Fae',
+                      ],
                     ),
                   ],
                 ),
 
-              // ══════════════════════════════════════════════
-              // Character Vision — moved here so sections above feed into it
-              // ══════════════════════════════════════════════
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.resolve(
-                    context,
-                    Colors.tealAccent.withValues(alpha: 0.08),
-                    Colors.teal.shade100.withValues(alpha: 0.6),
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.resolve(
-                      context,
-                      Colors.tealAccent.withValues(alpha: 0.3),
-                      Colors.teal.shade200.withValues(alpha: 0.5),
+                // ══════════════════════════════════════════════
+                // Section 3: Personality & Vibe (Collapsible)
+                // ══════════════════════════════════════════════
+                _guidedSection(
+                  title: 'Personality & Vibe',
+                  subtitle: "What's it like to spend time with them?",
+                  icon: Icons.psychology,
+                  children: [
+                    _guidedField(
+                      label: 'Personality',
+                      controller: _guidedPersonalityController,
+                      hint:
+                          "What are they like? e.g. 'Sharp wit, never shows vulnerability, but secretly writes poetry'",
+                      suggestions: const [
+                        'Sarcastic',
+                        'Gentle',
+                        'Intense',
+                        'Playful',
+                        'Cold',
+                        'Chaotic',
+                        'Nurturing',
+                        'Mysterious',
+                      ],
+                      maxLines: 3,
                     ),
+                    _guidedField(
+                      label: 'How They Talk',
+                      controller: _guidedSpeechController,
+                      hint:
+                          "e.g. 'Formal and old-fashioned' or 'Lots of slang, drops F-bombs'",
+                      suggestions: const [
+                        'Formal',
+                        'Casual',
+                        'Poetic',
+                        'Blunt',
+                        'Soft-spoken',
+                        'Loud',
+                        'Sarcastic',
+                        'Flirty',
+                      ],
+                    ),
+                    _guidedField(
+                      label: 'Secret / Hidden Depth',
+                      controller: _guidedSecretController,
+                      hint:
+                          "What's beneath the surface? e.g. 'Seems cold but is terrified of being alone'",
+                    ),
+                  ],
+                ),
+
+                // ══════════════════════════════════════════════
+                // Section 4: Backstory (Collapsible)
+                // ══════════════════════════════════════════════
+                _guidedSection(
+                  title: 'Backstory',
+                  subtitle:
+                      'Even a sentence helps the AI build a richer history.',
+                  icon: Icons.auto_stories,
+                  children: [
+                    _guidedField(
+                      label: 'Origin / Background',
+                      controller: _guidedOriginController,
+                      hint:
+                          "e.g. 'Grew up on the streets after her parents disappeared'",
+                      suggestions: const [
+                        'Orphan',
+                        'Nobility',
+                        'Self-made',
+                        'Military',
+                        'Criminal past',
+                        'Mysterious origins',
+                        'Small-town',
+                        'Royalty',
+                      ],
+                      maxLines: 2,
+                    ),
+                    _guidedField(
+                      label: 'Setting / Era',
+                      controller: _guidedSettingController,
+                      hint:
+                          "When and where? e.g. 'Cyberpunk megacity' or 'Medieval fantasy kingdom'",
+                      suggestions: const [
+                        'Modern',
+                        'Medieval',
+                        'Futuristic',
+                        'Victorian',
+                        'Ancient',
+                        'Post-apocalyptic',
+                        'Urban fantasy',
+                      ],
+                    ),
+                    _guidedField(
+                      label: 'Tone',
+                      controller: _guidedToneController,
+                      hint:
+                          "Overall feel? e.g. 'Dark and gritty but with moments of warmth'",
+                      suggestions: const [
+                        'Dark',
+                        'Wholesome',
+                        'Tragic',
+                        'Comedic',
+                        'Mysterious',
+                        'Heroic',
+                        'Bittersweet',
+                      ],
+                    ),
+                  ],
+                ),
+
+                // ══════════════════════════════════════════════
+                // Section 5: Relationship (Collapsible)
+                // ══════════════════════════════════════════════
+                _guidedSection(
+                  title: 'Relationship to {{user}}',
+                  subtitle: 'How do they know {{user}}?',
+                  icon: Icons.favorite_border,
+                  children: [
+                    _guidedField(
+                      label: 'Dynamic',
+                      controller: _guidedRelDynamicController,
+                      hint:
+                          "e.g. 'Coworkers who secretly like each other' or 'She's my bodyguard'",
+                      suggestions: const [
+                        'Strangers',
+                        'Childhood friends',
+                        'Rivals',
+                        'Roommates',
+                        'Love interest',
+                        'Mentor/Student',
+                        'Exes',
+                        'Online friends',
+                      ],
+                      maxLines: 2,
+                    ),
+                    _guidedField(
+                      label: 'Opening Scenario',
+                      controller: _guidedRelScenarioController,
+                      hint:
+                          "Where does the story start? e.g. 'First day at a new school'",
+                    ),
+                  ],
+                ),
+
+                // ══════════════════════════════════════════════
+                // Section 6: NSFW Details (Gated + Collapsible)
+                // ══════════════════════════════════════════════
+                // Lore Input
+                _buildLoreInputSection(
+                  AppColors.resolve(
+                    context,
+                    const Color(0xFF0D7377),
+                    Colors.tealAccent,
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.edit_note,
-                          color: Colors.tealAccent,
-                          size: 20,
+                const SizedBox(height: 32),
+
+                // NSFW toggle
+                NsfwToggle(
+                  value: _nsfwEnabled,
+                  accentColor: nsfwAccent,
+                  subtitle: 'Unlock intimate character details',
+                  onChanged: (val) {
+                    setState(() => _nsfwEnabled = val);
+                    _saveState();
+                  },
+                ),
+
+                if (_nsfwEnabled)
+                  _guidedSection(
+                    title: 'Intimate Details',
+                    subtitle: 'Guided prompts for romantic and sexual traits.',
+                    icon: Icons.local_fire_department,
+                    accentColor: nsfwAccent,
+                    children: [
+                      _guidedField(
+                        label: 'Body (intimate details)',
+                        controller: _guidedNsfwBodyController,
+                        hint:
+                            "Describe specifics if you want: 'modest chest, wide hips, thick thighs'",
+                        suggestions: const [
+                          'Flat',
+                          'Small',
+                          'Medium',
+                          'Large',
+                          'Huge',
+                        ],
+                        isNsfw: true,
+                      ),
+                      _guidedField(
+                        label: 'Experience Level',
+                        controller: _guidedNsfwExpController,
+                        hint:
+                            "How experienced are they? e.g. 'First time, nervous but eager'",
+                        suggestions: const [
+                          'Innocent',
+                          'Virgin',
+                          'Curious',
+                          'Experienced',
+                          'Insatiable',
+                        ],
+                        isNsfw: true,
+                      ),
+                      _guidedField(
+                        label: 'Dominance',
+                        controller: _guidedNsfwDomController,
+                        hint:
+                            "Who takes the lead? e.g. 'Dominant in public, submissive behind closed doors'",
+                        suggestions: const ['Submissive', 'Switch', 'Dominant'],
+                        isNsfw: true,
+                      ),
+                      _guidedField(
+                        label: 'Turn-ons & Kinks',
+                        controller: _guidedNsfwKinksController,
+                        hint:
+                            "What are they into? e.g. 'Loves being praised, goes weak when you grab her hair'",
+                        suggestions: const [
+                          'Praise',
+                          'Teasing',
+                          'Biting',
+                          'Bondage',
+                          'Exhibitionism',
+                          'Jealousy',
+                          'Breeding',
+                        ],
+                        maxLines: 2,
+                        isNsfw: true,
+                      ),
+                      _guidedField(
+                        label: 'Clothing / Aesthetic',
+                        controller: _guidedNsfwClothingController,
+                        hint:
+                            "What do they wear? e.g. 'Always wears thigh-highs and an oversized shirt at home'",
+                        suggestions: const [
+                          'Revealing',
+                          'Lingerie',
+                          'Uniform',
+                          'Leather',
+                          'Elegant',
+                          'Barely There',
+                        ],
+                        isNsfw: true,
+                      ),
+                      _guidedField(
+                        label: 'Sexual Personality',
+                        controller: _guidedNsfwPersonalityController,
+                        hint:
+                            "How do they act during intimacy? e.g. 'Giggly and playful, hides her face when embarrassed'",
+                        maxLines: 2,
+                        isNsfw: true,
+                      ),
+                    ],
+                  ),
+
+                // ══════════════════════════════════════════════
+                // Character Vision — moved here so sections above feed into it
+                // ══════════════════════════════════════════════
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.resolve(
+                      context,
+                      Colors.tealAccent.withValues(alpha: 0.08),
+                      Colors.teal.shade100.withValues(alpha: 0.6),
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.resolve(
+                        context,
+                        Colors.tealAccent.withValues(alpha: 0.3),
+                        Colors.teal.shade200.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.edit_note,
+                            color: Colors.tealAccent,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Your Character Vision',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textPrimary(context),
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Write your idea, or let AI generate a description from the details above.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textTertiary(context),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _guidedVisionController,
+                        maxLines: null,
+                        minLines: 6,
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
+                          fontSize: 14,
+                          height: 1.5,
                         ),
-                        const SizedBox(width: 8),
+                        onChanged: (_) {
+                          setState(() {});
+                          _saveState();
+                        },
+                        decoration: InputDecoration(
+                          hintText: _guidedVisionPlaceholders[placeholderIdx],
+                          hintStyle: TextStyle(
+                            color: AppColors.textTertiary(context),
+                            fontSize: 13,
+                          ),
+                          hintMaxLines: 3,
+                          filled: true,
+                          fillColor: AppColors.surfaceContainerOf(context),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: AppColors.borderOf(context),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: AppColors.borderOf(context),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              color: Colors.tealAccent,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.all(16),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Scenario seed chips
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: _scenarioSeeds.map((seed) {
+                          return InkWell(
+                            onTap: () {
+                              final current = _guidedVisionController.text
+                                  .trim();
+                              _guidedVisionController.text = current.isEmpty
+                                  ? seed
+                                  : '$current. $seed';
+                              _guidedVisionController
+                                  .selection = TextSelection.fromPosition(
+                                TextPosition(
+                                  offset: _guidedVisionController.text.length,
+                                ),
+                              );
+                              setState(() {});
+                              _saveState();
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceContainerOf(context),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: AppColors.borderOf(context),
+                                ),
+                              ),
+                              child: Text(
+                                seed,
+                                style: TextStyle(
+                                  color: AppColors.textTertiary(context),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      // Generate Character Description button
+                      Row(
+                        children: [
+                          const Spacer(),
+                          if (_isExpandingNarrative)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.tealAccent,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Generating description...',
+                                    style: TextStyle(
+                                      color: Colors.tealAccent,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            ElevatedButton.icon(
+                              onPressed: _nameController.text.trim().isEmpty
+                                  ? null
+                                  : _expandNarrative,
+                              icon: Icon(Icons.auto_fix_high, size: 16),
+                              label: const Text(
+                                'Generate Character Description',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.resolve(
+                                  context,
+                                  const Color(0xFF0D7377),
+                                  Colors.tealAccent,
+                                ),
+                                foregroundColor: AppColors.resolve(
+                                  context,
+                                  Colors.white,
+                                  Colors.black87,
+                                ),
+                                disabledBackgroundColor:
+                                    AppColors.surfaceContainerOf(context),
+                                disabledForegroundColor: AppColors.textTertiary(
+                                  context,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ══════════════════════════════════════════════
+                // Section 7: Output Settings (Always Visible)
+                // ══════════════════════════════════════════════
+                _guidedSection(
+                  title: 'Output Settings',
+                  subtitle:
+                      'Greeting style, art style, lorebook, and detail level.',
+                  icon: Icons.tune,
+                  children: [
+                    // Persona selector
+                    _inputLabel(
+                      '{{user}} Persona for Greetings',
+                      required: false,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Select a persona to tailor greetings, or "None" for public cards.',
+                      style: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    PersonaSelectorDropdown(
+                      selectedPersonaId: _selectedPersonaId,
+                      onChanged: (value) {
+                        setState(() => _selectedPersonaId = value ?? '');
+                        _saveState();
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Greeting tones
+                    _inputLabel('Greeting Tones', required: false),
+                    const SizedBox(height: 4),
+                    GreetingToneSelector(
+                      selectedTones: _selectedTones.toList(),
+                      greetingCount: _altGreetingCount,
+                      nsfwEnabled: _nsfwEnabled,
+                      accentColor: Colors.blueAccent,
+                      onChanged: (tones) {
+                        setState(() => _selectedTones = tones.toSet());
+                        _saveState();
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Greeting length + alt count
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Your Character Vision',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary(context),
-                                ),
+                              _inputLabel(
+                                'First Message Length',
+                                required: false,
                               ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Write your idea, or let AI generate a description from the details above.',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textTertiary(context),
-                                ),
+                              const SizedBox(height: 8),
+                              FirstMessageLengthDropdown(
+                                value: _greetingLength,
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() => _greetingLength = value);
+                                    _saveState();
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _inputLabel(
+                                'Alternate Greetings',
+                                required: false,
+                              ),
+                              const SizedBox(height: 8),
+                              AlternateGreetingsSlider(
+                                value: _altGreetingCount,
+                                accentColor: Colors.blueAccent,
+                                onChanged: (val) {
+                                  setState(() {
+                                    _altGreetingCount = val;
+                                    final maxTones = _altGreetingCount + 1;
+                                    while (_selectedTones.length > maxTones) {
+                                      _selectedTones.remove(
+                                        _selectedTones.last,
+                                      );
+                                    }
+                                  });
+                                  _saveState();
+                                },
                               ),
                             ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _guidedVisionController,
-                      maxLines: null,
-                      minLines: 6,
-                      style: TextStyle(
-                        color: AppColors.textPrimary(context),
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
-                      onChanged: (_) {
-                        setState(() {});
+                    const SizedBox(height: 16),
+
+                    // Art style
+                    _inputLabel('Avatar Art Style', required: false),
+                    const SizedBox(height: 8),
+                    AvatarArtStyleSelector(
+                      selectedStyle: _artStyle,
+                      accentColor: Colors.blueAccent,
+                      onChanged: (style) => setState(() => _artStyle = style),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Description detail
+                    _inputLabel('Description Detail', required: false),
+                    const SizedBox(height: 8),
+                    DescriptionDetailChipRow(
+                      options: _generationDetailOptions.keys.toList(),
+                      selectedDetail: _generationDetail,
+                      accentColor: Colors.blueAccent,
+                      onChanged: (label) {
+                        setState(() => _generationDetail = label);
                         _saveState();
                       },
-                      decoration: InputDecoration(
-                        hintText: _guidedVisionPlaceholders[placeholderIdx],
-                        hintStyle: TextStyle(
-                          color: AppColors.textTertiary(context),
-                          fontSize: 13,
-                        ),
-                        hintMaxLines: 3,
-                        filled: true,
-                        fillColor: AppColors.surfaceContainerOf(context),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: AppColors.borderOf(context)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: AppColors.borderOf(context)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(
-                            color: Colors.tealAccent,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.all(16),
-                      ),
                     ),
-                    const SizedBox(height: 8),
-                    // Scenario seed chips
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: _scenarioSeeds.map((seed) {
-                        return InkWell(
-                          onTap: () {
-                            final current = _guidedVisionController.text.trim();
-                            _guidedVisionController.text = current.isEmpty
-                                ? seed
-                                : '$current. $seed';
-                            _guidedVisionController.selection =
-                                TextSelection.fromPosition(
-                                  TextPosition(
-                                    offset: _guidedVisionController.text.length,
-                                  ),
-                                );
-                            setState(() {});
-                            _saveState();
-                          },
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceContainerOf(context),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppColors.borderOf(context)),
-                            ),
-                            child: Text(
-                              seed,
-                              style: TextStyle(
-                                color: AppColors.textTertiary(context),
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 12),
-                    // Generate Character Description button
+                    const SizedBox(height: 16),
+
+                    // Lorebook
                     Row(
                       children: [
-                        const Spacer(),
-                        if (_isExpandingNarrative)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.tealAccent,
-                                  ),
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Generating description...',
-                                  style: TextStyle(
-                                    color: Colors.tealAccent,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          ElevatedButton.icon(
-                            onPressed: _nameController.text.trim().isEmpty
-                                ? null
-                                : _expandNarrative,
-                            icon: Icon(Icons.auto_fix_high, size: 16),
-                            label: const Text(
-                              'Generate Character Description',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.resolve(context, const Color(0xFF0D7377), Colors.tealAccent),
-                              foregroundColor: AppColors.resolve(context, Colors.white, Colors.black87),
-                              disabledBackgroundColor: AppColors.surfaceContainerOf(context),
-                              disabledForegroundColor: AppColors.textTertiary(context),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // ══════════════════════════════════════════════
-              // Section 7: Output Settings (Always Visible)
-              // ══════════════════════════════════════════════
-              _guidedSection(
-                title: 'Output Settings',
-                subtitle:
-                    'Greeting style, art style, lorebook, and detail level.',
-                icon: Icons.tune,
-                children: [
-                  // Persona selector
-                  _inputLabel(
-                    '{{user}} Persona for Greetings',
-                    required: false,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Select a persona to tailor greetings, or "None" for public cards.',
-                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
-                  ),
-                  const SizedBox(height: 8),
-                  PersonaSelectorDropdown(
-                    selectedPersonaId: _selectedPersonaId,
-                    onChanged: (value) {
-                      setState(() => _selectedPersonaId = value ?? '');
-                      _saveState();
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Greeting tones
-                  _inputLabel('Greeting Tones', required: false),
-                  const SizedBox(height: 4),
-                  GreetingToneSelector(
-                    selectedTones: _selectedTones.toList(),
-                    greetingCount: _altGreetingCount,
-                    nsfwEnabled: _nsfwEnabled,
-                    accentColor: Colors.blueAccent,
-                    onChanged: (tones) {
-                      setState(() => _selectedTones = tones.toSet());
-                      _saveState();
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Greeting length + alt count
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _inputLabel(
-                              'First Message Length',
-                              required: false,
-                            ),
-                            const SizedBox(height: 8),
-                            FirstMessageLengthDropdown(
-                              value: _greetingLength,
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _greetingLength = value);
-                                  _saveState();
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _inputLabel('Alternate Greetings', required: false),
-                            const SizedBox(height: 8),
-                            AlternateGreetingsSlider(
-                              value: _altGreetingCount,
-                              accentColor: Colors.blueAccent,
-                              onChanged: (val) {
-                                setState(() {
-                                  _altGreetingCount = val;
-                                  final maxTones = _altGreetingCount + 1;
-                                  while (_selectedTones.length > maxTones) {
-                                    _selectedTones.remove(
-                                      _selectedTones.last,
-                                    );
-                                  }
-                                });
-                                _saveState();
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Art style
-                  _inputLabel('Avatar Art Style', required: false),
-                  const SizedBox(height: 8),
-                  AvatarArtStyleSelector(
-                    selectedStyle: _artStyle,
-                    accentColor: Colors.blueAccent,
-                    onChanged: (style) => setState(() => _artStyle = style),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Description detail
-                  _inputLabel('Description Detail', required: false),
-                  const SizedBox(height: 8),
-                  DescriptionDetailChipRow(
-                    options: _generationDetailOptions.keys.toList(),
-                    selectedDetail: _generationDetail,
-                    accentColor: Colors.blueAccent,
-                    onChanged: (label) {
-                      setState(() => _generationDetail = label);
-                      _saveState();
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Lorebook
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.menu_book,
-                        color: Colors.blueAccent,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Auto-generate World Lore',
-                          style: TextStyle(
-                            color: AppColors.textPrimary(context),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Switch(
-                        value: _generateLorebook,
-                        activeTrackColor: Colors.blueAccent,
-                        onChanged: (val) {
-                          setState(() => _generateLorebook = val);
-                          _saveState();
-                        },
-                      ),
-                    ],
-                  ),
-                  if (_generateLorebook) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Text(
-                          'Depth:',
-                          style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12),
-                        ),
-                        const SizedBox(width: 4),
-                        Tooltip(
-                          message:
-                              'Controls how many consecutive generation steps the Lore Engine processes. Deep = more expansive lore structure but longer wait time.',
-                          child: Icon(
-                            Icons.info_outline,
-                            size: 14,
-                            color: AppColors.textTertiary(context),
-                          ),
+                        Icon(
+                          Icons.menu_book,
+                          color: Colors.blueAccent,
+                          size: 18,
                         ),
                         const SizedBox(width: 8),
-                        ..._loreDepths.map((depth) {
-                          final isSelected = _loreDepth == depth;
-                          final count = depth == 'Light'
-                              ? '3-4'
-                              : depth == 'Deep'
-                              ? '10-15'
-                              : '5-8';
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(
-                                '$depth ($count)',
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                              selected: isSelected,
-                              onSelected: (_) {
-                                setState(() => _loreDepth = depth);
-                                _saveState();
-                              },
-                              selectedColor: AppColors.resolve(
-                                context,
-                                Colors.blueAccent.withValues(alpha: 0.25),
-                                Colors.blueAccent.withValues(alpha: 0.12),
-                              ),
-                              backgroundColor: AppColors.surfaceContainerOf(context),
-                              labelStyle: TextStyle(
-                                color: isSelected
-                                    ? AppColors.resolve(context, Colors.white, Colors.black87)
-                                    : AppColors.textSecondary(context),
-                              ),
-                              side: BorderSide(
-                                color: isSelected
-                                    ? AppColors.resolve(context, const Color(0xFF1E40AF), Colors.blueAccent)
-                                    : AppColors.borderOf(context),
-                              ),
-                              visualDensity: VisualDensity.compact,
+                        Expanded(
+                          child: Text(
+                            'Auto-generate World Lore',
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                             ),
-                          );
-                        }),
+                          ),
+                        ),
+                        Switch(
+                          value: _generateLorebook,
+                          activeTrackColor: Colors.blueAccent,
+                          onChanged: (val) {
+                            setState(() => _generateLorebook = val);
+                            _saveState();
+                          },
+                        ),
                       ],
                     ),
+                    if (_generateLorebook) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text(
+                            'Depth:',
+                            style: TextStyle(
+                              color: AppColors.textSecondary(context),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message:
+                                'Controls how many consecutive generation steps the Lore Engine processes. Deep = more expansive lore structure but longer wait time.',
+                            child: Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: AppColors.textTertiary(context),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ..._loreDepths.map((depth) {
+                            final isSelected = _loreDepth == depth;
+                            final count = depth == 'Light'
+                                ? '3-4'
+                                : depth == 'Deep'
+                                ? '10-15'
+                                : '5-8';
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(
+                                  '$depth ($count)',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                selected: isSelected,
+                                onSelected: (_) {
+                                  setState(() => _loreDepth = depth);
+                                  _saveState();
+                                },
+                                selectedColor: AppColors.resolve(
+                                  context,
+                                  Colors.blueAccent.withValues(alpha: 0.25),
+                                  Colors.blueAccent.withValues(alpha: 0.12),
+                                ),
+                                backgroundColor: AppColors.surfaceContainerOf(
+                                  context,
+                                ),
+                                labelStyle: TextStyle(
+                                  color: isSelected
+                                      ? AppColors.resolve(
+                                          context,
+                                          Colors.white,
+                                          Colors.black87,
+                                        )
+                                      : AppColors.textSecondary(context),
+                                ),
+                                side: BorderSide(
+                                  color: isSelected
+                                      ? AppColors.resolve(
+                                          context,
+                                          const Color(0xFF1E40AF),
+                                          Colors.blueAccent,
+                                        )
+                                      : AppColors.borderOf(context),
+                                ),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
-              ),
+                ),
 
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // ── Validation hint ──
-              if (_guidedVisionController.text.trim().isNotEmpty &&
-                  _guidedVisionController.text.trim().length < 20)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: AppColors.resolve(context, Colors.amber.withValues(alpha: 0.15), Colors.amber.withValues(alpha: 0.08)),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: AppColors.resolve(context, Colors.amber.withValues(alpha: 0.4), Colors.amber.withValues(alpha: 0.25)),
+                // ── Validation hint ──
+                if (_guidedVisionController.text.trim().isNotEmpty &&
+                    _guidedVisionController.text.trim().length < 20)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.resolve(
+                        context,
+                        Colors.amber.withValues(alpha: 0.15),
+                        Colors.amber.withValues(alpha: 0.08),
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amber.withValues(alpha: 0.4),
+                          Colors.amber.withValues(alpha: 0.25),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline,
+                          color: Colors.amberAccent,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Tip: The more detail you provide, the better the AI can capture your vision.',
+                            style: TextStyle(
+                              color: Colors.amberAccent,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+
+                // ── Back + Generate buttons ──
+                Center(
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.lightbulb_outline,
-                        color: Colors.amberAccent,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Tip: The more detail you provide, the better the AI can capture your vision.',
-                          style: TextStyle(
-                            color: Colors.amberAccent,
-                            fontSize: 12,
+                      _buildBackButton(1, fontSize: 14),
+                      const SizedBox(width: 16),
+                      SizedBox(
+                        width: 240,
+                        height: 52,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              _nameController.text.trim().isEmpty ||
+                                  _guidedVisionController.text.trim().length <
+                                      10
+                              ? null
+                              : _startGuidedGeneration,
+                          icon: Icon(Icons.auto_awesome, size: 20),
+                          label: const Text(
+                            'Generate Character',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.resolve(
+                              context,
+                              const Color(0xFF0D7377),
+                              Colors.tealAccent,
+                            ),
+                            foregroundColor: AppColors.resolve(
+                              context,
+                              Colors.white,
+                              Colors.black87,
+                            ),
+                            disabledBackgroundColor:
+                                AppColors.surfaceContainerOf(context),
+                            disabledForegroundColor: AppColors.textTertiary(
+                              context,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-
-              // ── Back + Generate buttons ──
-              Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildBackButton(1, fontSize: 14),
-                    const SizedBox(width: 16),
-                    SizedBox(
-                      width: 240,
-                      height: 52,
-                      child: ElevatedButton.icon(
-                        onPressed:
-                            _nameController.text.trim().isEmpty ||
-                                _guidedVisionController.text.trim().length < 10
-                            ? null
-                            : _startGuidedGeneration,
-                        icon: Icon(Icons.auto_awesome, size: 20),
-                        label: const Text(
-                          'Generate Character',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.resolve(context, const Color(0xFF0D7377), Colors.tealAccent),
-                          foregroundColor: AppColors.resolve(context, Colors.white, Colors.black87),
-                          disabledBackgroundColor: AppColors.surfaceContainerOf(context),
-                          disabledForegroundColor: AppColors.textTertiary(context),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -4433,10 +4610,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   }) {
     final accent = isNsfw
         ? AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent)
-        : AppColors.resolve(context, const Color(0xFF1E40AF), Colors.blueAccent);
+        : AppColors.resolve(
+            context,
+            const Color(0xFF1E40AF),
+            Colors.blueAccent,
+          );
     final accentTextOnLight = isNsfw
         ? AppColors.resolve(context, Colors.pinkAccent, const Color(0xFF9D174D))
-        : AppColors.resolve(context, Colors.blueAccent, const Color(0xFF1E40AF));
+        : AppColors.resolve(
+            context,
+            Colors.blueAccent,
+            const Color(0xFF1E40AF),
+          );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -4445,17 +4630,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           Row(
             children: [
               if (isNsfw) ...[
-                Icon(
-                  Icons.local_fire_department,
-                  size: 12,
-                  color: accent,
-                ),
+                Icon(Icons.local_fire_department, size: 12, color: accent),
                 const SizedBox(width: 4),
               ],
               Text(
                 label,
                 style: TextStyle(
-                  color: isNsfw ? accentTextOnLight : AppColors.textSecondary(context),
+                  color: isNsfw
+                      ? accentTextOnLight
+                      : AppColors.textSecondary(context),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -4508,10 +4691,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   }) {
     final accent = isNsfw
         ? AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent)
-        : AppColors.resolve(context, const Color(0xFF1E40AF), Colors.blueAccent);
+        : AppColors.resolve(
+            context,
+            const Color(0xFF1E40AF),
+            Colors.blueAccent,
+          );
     final accentTextOnLight = isNsfw
         ? AppColors.resolve(context, Colors.pinkAccent, const Color(0xFF9D174D))
-        : AppColors.resolve(context, Colors.blueAccent, const Color(0xFF1E40AF));
+        : AppColors.resolve(
+            context,
+            Colors.blueAccent,
+            const Color(0xFF1E40AF),
+          );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -4520,17 +4711,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           Row(
             children: [
               if (isNsfw) ...[
-                Icon(
-                  Icons.local_fire_department,
-                  size: 12,
-                  color: accent,
-                ),
+                Icon(Icons.local_fire_department, size: 12, color: accent),
                 const SizedBox(width: 4),
               ],
               Text(
                 label,
                 style: TextStyle(
-                  color: isNsfw ? accentTextOnLight : AppColors.textSecondary(context),
+                  color: isNsfw
+                      ? accentTextOnLight
+                      : AppColors.textSecondary(context),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -4616,7 +4805,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               NsfwToggle(
                 value: _nsfwEnabled,
                 accentColor: AppColors.resolve(
-                  context, const Color(0xFF9D174D), Colors.pinkAccent,
+                  context,
+                  const Color(0xFF9D174D),
+                  Colors.pinkAccent,
                 ),
                 subtitle: 'Unlock spicy appearance & relationship options',
                 onChanged: (val) {
@@ -4633,7 +4824,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   color: AppColors.surfaceContainerOf(context),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.resolve(context, Colors.amber.withValues(alpha: 0.3), Colors.amber.withValues(alpha: 0.2)),
+                    color: AppColors.resolve(
+                      context,
+                      Colors.amber.withValues(alpha: 0.3),
+                      Colors.amber.withValues(alpha: 0.2),
+                    ),
                   ),
                 ),
                 child: Column(
@@ -4641,11 +4836,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.bolt,
-                          color: Colors.amberAccent,
-                          size: 18,
-                        ),
+                        Icon(Icons.bolt, color: Colors.amberAccent, size: 18),
                         const SizedBox(width: 6),
                         Text(
                           'Quick Start — Archetype Presets',
@@ -4660,7 +4851,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     const SizedBox(height: 4),
                     Text(
                       'Tap to auto-fill concept & personality',
-                      style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                      style: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 11,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Wrap(
@@ -4668,20 +4862,34 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       runSpacing: 8,
                       children: _archetypePresets.entries.map((entry) {
                         final isSelected = _selectedArchetype == entry.key;
-                        final amberSel = AppColors.resolve(context, const Color(0xFFB45309), Colors.amberAccent);
+                        final amberSel = AppColors.resolve(
+                          context,
+                          const Color(0xFFB45309),
+                          Colors.amberAccent,
+                        );
                         return ChoiceChip(
                           label: Text(
                             entry.key,
                             style: TextStyle(
                               fontSize: 12,
-                              color: isSelected ? AppColors.resolve(context, Colors.white, Colors.black87) : AppColors.textSecondary(context),
+                              color: isSelected
+                                  ? AppColors.resolve(
+                                      context,
+                                      Colors.white,
+                                      Colors.black87,
+                                    )
+                                  : AppColors.textSecondary(context),
                             ),
                           ),
                           avatar: Icon(
                             isSelected ? Icons.check : Icons.auto_awesome,
                             size: 14,
                             color: isSelected
-                                ? AppColors.resolve(context, Colors.white, Colors.black87)
+                                ? AppColors.resolve(
+                                    context,
+                                    Colors.white,
+                                    Colors.black87,
+                                  )
                                 : Colors.amberAccent,
                           ),
                           selected: isSelected,
@@ -4690,7 +4898,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             Colors.amberAccent.withValues(alpha: 0.2),
                             Colors.amber.withValues(alpha: 0.12),
                           ),
-                          backgroundColor: AppColors.surfaceContainerOf(context),
+                          backgroundColor: AppColors.surfaceContainerOf(
+                            context,
+                          ),
                           side: BorderSide(
                             color: isSelected
                                 ? amberSel
@@ -4753,7 +4963,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   color: AppColors.surfaceContainerOf(context),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.resolve(context, Colors.blueAccent.withValues(alpha: 0.3), Colors.blueAccent.withValues(alpha: 0.2)),
+                    color: AppColors.resolve(
+                      context,
+                      Colors.blueAccent.withValues(alpha: 0.3),
+                      Colors.blueAccent.withValues(alpha: 0.2),
+                    ),
                   ),
                 ),
                 child: Column(
@@ -4778,7 +4992,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         const Spacer(),
                         Text(
                           'All optional',
-                          style: TextStyle(color: AppColors.textTertiary(context), fontSize: 10),
+                          style: TextStyle(
+                            color: AppColors.textTertiary(context),
+                            fontSize: 10,
+                          ),
                         ),
                       ],
                     ),
@@ -4821,18 +5038,26 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                   vertical: 8,
                                 ),
                                 filled: true,
-                                fillColor: AppColors.surfaceContainerOf(context),
+                                fillColor: AppColors.surfaceContainerOf(
+                                  context,
+                                ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: AppColors.borderOf(context)),
+                                  borderSide: BorderSide(
+                                    color: AppColors.borderOf(context),
+                                  ),
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: AppColors.borderOf(context)),
+                                  borderSide: BorderSide(
+                                    color: AppColors.borderOf(context),
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.blueAccent),
+                                  borderSide: BorderSide(
+                                    color: Colors.blueAccent,
+                                  ),
                                 ),
                               ),
                               onChanged: (_) {
@@ -4913,7 +5138,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     ),
                     // NSFW body details
                     if (_nsfwEnabled) ...[
-                      Divider(color: AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent), height: 24),
+                      Divider(
+                        color: AppColors.resolve(
+                          context,
+                          const Color(0xFF9D174D),
+                          Colors.pinkAccent,
+                        ),
+                        height: 24,
+                      ),
                       _singleSelectChipRow(
                         'Chest Size',
                         _chestSize,
@@ -4939,7 +5171,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 4),
               Text(
                 'Select one or more dynamics',
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 11,
+                ),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -4957,8 +5192,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       final isSelected = _selectedRelationships.contains(rel);
                       final isNsfw = _nsfwRelationships.contains(rel);
                       final relAccent = isNsfw
-                          ? AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent)
-                          : AppColors.resolve(context, const Color(0xFF1E40AF), Colors.blueAccent);
+                          ? AppColors.resolve(
+                              context,
+                              const Color(0xFF9D174D),
+                              Colors.pinkAccent,
+                            )
+                          : AppColors.resolve(
+                              context,
+                              const Color(0xFF1E40AF),
+                              Colors.blueAccent,
+                            );
                       return FilterChip(
                         label: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -4968,8 +5211,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                 Icons.local_fire_department,
                                 size: 12,
                                 color: isSelected
-                                    ? AppColors.resolve(context, Colors.white, Colors.black87)
-                                    : AppColors.resolve(context, Colors.pinkAccent, const Color(0xFF9D174D)),
+                                    ? AppColors.resolve(
+                                        context,
+                                        Colors.white,
+                                        Colors.black87,
+                                      )
+                                    : AppColors.resolve(
+                                        context,
+                                        Colors.pinkAccent,
+                                        const Color(0xFF9D174D),
+                                      ),
                               ),
                               const SizedBox(width: 4),
                             ],
@@ -4993,15 +5244,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           relAccent.withValues(alpha: 0.12),
                         ),
                         backgroundColor: AppColors.surfaceContainerOf(context),
-                        checkmarkColor: AppColors.resolve(context, Colors.white, Colors.black87),
+                        checkmarkColor: AppColors.resolve(
+                          context,
+                          Colors.white,
+                          Colors.black87,
+                        ),
                         labelStyle: TextStyle(
                           color: isSelected
-                              ? AppColors.resolve(context, Colors.white, Colors.black87)
+                              ? AppColors.resolve(
+                                  context,
+                                  Colors.white,
+                                  Colors.black87,
+                                )
                               : AppColors.textSecondary(context),
                           fontSize: 12,
                         ),
                         side: BorderSide(
-                          color: isSelected ? relAccent : AppColors.borderOf(context),
+                          color: isSelected
+                              ? relAccent
+                              : AppColors.borderOf(context),
                         ),
                       );
                     })
@@ -5020,10 +5281,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.resolve(context, Colors.pinkAccent.withValues(alpha: 0.12), Colors.pinkAccent.withValues(alpha: 0.05)),
+                    color: AppColors.resolve(
+                      context,
+                      Colors.pinkAccent.withValues(alpha: 0.12),
+                      Colors.pinkAccent.withValues(alpha: 0.05),
+                    ),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: AppColors.resolve(context, Colors.pinkAccent.withValues(alpha: 0.35), Colors.pinkAccent.withValues(alpha: 0.2)),
+                      color: AppColors.resolve(
+                        context,
+                        Colors.pinkAccent.withValues(alpha: 0.35),
+                        Colors.pinkAccent.withValues(alpha: 0.2),
+                      ),
                     ),
                   ),
                   child: Column(
@@ -5033,14 +5302,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         children: [
                           Icon(
                             Icons.local_fire_department,
-                            color: AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent),
+                            color: AppColors.resolve(
+                              context,
+                              const Color(0xFF9D174D),
+                              Colors.pinkAccent,
+                            ),
                             size: 18,
                           ),
                           const SizedBox(width: 8),
                           Text(
                             'Sexual Traits',
                             style: TextStyle(
-                              color: AppColors.resolve(context, const Color(0xFF9D174D), Colors.pinkAccent),
+                              color: AppColors.resolve(
+                                context,
+                                const Color(0xFF9D174D),
+                                Colors.pinkAccent,
+                              ),
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
@@ -5167,7 +5444,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         const Spacer(),
                         Text(
                           'All optional',
-                          style: TextStyle(color: AppColors.textTertiary(context), fontSize: 10),
+                          style: TextStyle(
+                            color: AppColors.textTertiary(context),
+                            fontSize: 10,
+                          ),
                         ),
                       ],
                     ),
@@ -5225,7 +5505,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 options: _generationDetailOptions.keys.toList(),
                 selectedDetail: _generationDetail,
                 accentColor: Colors.blueAccent,
-                subtitle: 'Controls how detailed the character description will be',
+                subtitle:
+                    'Controls how detailed the character description will be',
                 onChanged: (label) {
                   setState(() => _generationDetail = label);
                   _saveState();
@@ -5304,7 +5585,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         onTap: _randomizeConcept,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: AppColors.resolve(context, Colors.black12, Colors.black12.withValues(alpha: 0.04)),
+                            color: AppColors.resolve(
+                              context,
+                              Colors.black12,
+                              Colors.black12.withValues(alpha: 0.04),
+                            ),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: Colors.amberAccent.withValues(alpha: 0.2),
@@ -5421,7 +5706,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                   _saveState();
                                 },
                                 selectedColor: Colors.blueAccent,
-                                backgroundColor: AppColors.surfaceContainerOf(context),
+                                backgroundColor: AppColors.surfaceContainerOf(
+                                  context,
+                                ),
                                 labelStyle: TextStyle(
                                   color: isSelected
                                       ? Colors.white
@@ -5441,7 +5728,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       const SizedBox(height: 12),
                       Text(
                         'Focus areas (optional):',
-                        style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12),
+                        style: TextStyle(
+                          color: AppColors.textSecondary(context),
+                          fontSize: 12,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Wrap(
@@ -5470,7 +5760,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                             selectedColor: Colors.blueAccent.withValues(
                               alpha: 0.3,
                             ),
-                            backgroundColor: AppColors.surfaceContainerOf(context),
+                            backgroundColor: AppColors.surfaceContainerOf(
+                              context,
+                            ),
                             checkmarkColor: Colors.blueAccent,
                             labelStyle: TextStyle(
                               color: isSelected
@@ -5497,7 +5789,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 4),
               Text(
                 'Select a persona to tailor greetings, or "None" for public cards.',
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 11,
+                ),
               ),
               const SizedBox(height: 8),
               PersonaSelectorDropdown(
@@ -5517,13 +5812,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 greetingCount: _altGreetingCount,
                 nsfwEnabled: _nsfwEnabled,
                 accentColor: AppColors.resolve(
-                  context, const Color(0xFF1E40AF), Colors.blueAccent,
+                  context,
+                  const Color(0xFF1E40AF),
+                  Colors.blueAccent,
                 ),
                 subtitle: _altGreetingCount == 0
                     ? 'Tone for the first message.'
                     : 'Select up to ${_altGreetingCount + 1} \u2014 '
-                        'one per greeting (first message + $_altGreetingCount '
-                        'alternate${_altGreetingCount == 1 ? '' : 's'}).',
+                          'one per greeting (first message + $_altGreetingCount '
+                          'alternate${_altGreetingCount == 1 ? '' : 's'}).',
                 onChanged: (tones) {
                   setState(() => _selectedTones = tones.toSet());
                   _saveState();
@@ -5571,9 +5868,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               // Trim excess tones if count decreased
                               final maxTones = _altGreetingCount + 1;
                               while (_selectedTones.length > maxTones) {
-                                _selectedTones.remove(
-                                  _selectedTones.last,
-                                );
+                                _selectedTones.remove(_selectedTones.last);
                               }
                             });
                             _saveState();
@@ -5597,7 +5892,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               const SizedBox(height: 32),
 
               // Lore Input
-              _buildLoreInputSection(AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700)),
+              _buildLoreInputSection(
+                AppColors.resolve(
+                  context,
+                  Colors.blueAccent,
+                  Colors.blue.shade700,
+                ),
+              ),
               const SizedBox(height: 32),
               const SizedBox(height: 32),
 
@@ -5624,9 +5925,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           style: TextStyle(fontSize: 16),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.resolve(context, const Color(0xFF1E40AF), Colors.blueAccent),
-                          foregroundColor: AppColors.resolve(context, Colors.white, Colors.black87),
-                          disabledBackgroundColor: AppColors.surfaceContainerOf(context),
+                          backgroundColor: AppColors.resolve(
+                            context,
+                            const Color(0xFF1E40AF),
+                            Colors.blueAccent,
+                          ),
+                          foregroundColor: AppColors.resolve(
+                            context,
+                            Colors.white,
+                            Colors.black87,
+                          ),
+                          disabledBackgroundColor: AppColors.surfaceContainerOf(
+                            context,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -5655,7 +5966,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           ),
         ),
         if (required)
-          Text(' *', style: TextStyle(color: AppColors.resolve(context, Colors.redAccent, Colors.red.shade700))),
+          Text(
+            ' *',
+            style: TextStyle(
+              color: AppColors.resolve(
+                context,
+                Colors.redAccent,
+                Colors.red.shade700,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -5785,7 +6105,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                               child: Center(
                                 child: Text(
                                   'No models found',
-                                  style: TextStyle(color: AppColors.textTertiary(context)),
+                                  style: TextStyle(
+                                    color: AppColors.textTertiary(context),
+                                  ),
                                 ),
                               ),
                             ),
@@ -5821,23 +6143,49 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           ? Icon(
               Icons.psychology,
               size: 18,
-              color: AppColors.resolve(context, const Color(0xFF7C3AED), Colors.deepPurpleAccent),
+              color: AppColors.resolve(
+                context,
+                const Color(0xFF7C3AED),
+                Colors.deepPurpleAccent,
+              ),
             )
           : (id.isEmpty
-                ? Icon(Icons.link, size: 18, color: AppColors.textTertiary(context))
+                ? Icon(
+                    Icons.link,
+                    size: 18,
+                    color: AppColors.textTertiary(context),
+                  )
                 : null),
       title: Text(
         name,
         style: TextStyle(
           color: isSelected
-              ? AppColors.resolve(context, const Color(0xFF60A5FA), Colors.blueAccent)
-              : (isThinking ? AppColors.resolve(context, const Color(0xFFA78BFA), Colors.deepPurple.shade200) : AppColors.textPrimary(context)),
+              ? AppColors.resolve(
+                  context,
+                  const Color(0xFF60A5FA),
+                  Colors.blueAccent,
+                )
+              : (isThinking
+                    ? AppColors.resolve(
+                        context,
+                        const Color(0xFFA78BFA),
+                        Colors.deepPurple.shade200,
+                      )
+                    : AppColors.textPrimary(context)),
           fontSize: 13,
         ),
         overflow: TextOverflow.ellipsis,
       ),
       trailing: isSelected
-          ? Icon(Icons.check, size: 16, color: AppColors.resolve(context, const Color(0xFF60A5FA), Colors.blueAccent))
+          ? Icon(
+              Icons.check,
+              size: 16,
+              color: AppColors.resolve(
+                context,
+                const Color(0xFF60A5FA),
+                Colors.blueAccent,
+              ),
+            )
           : null,
       onTap: onTap,
     );
@@ -5879,7 +6227,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       maxLines: maxLines,
       minLines: minLines,
       style: TextStyle(
-        color: enabled ? AppColors.textPrimary(context) : AppColors.textTertiary(context),
+        color: enabled
+            ? AppColors.textPrimary(context)
+            : AppColors.textTertiary(context),
         fontSize: 14,
       ),
       onChanged: (_) {
@@ -5888,7 +6238,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       },
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 13),
+        hintStyle: TextStyle(
+          color: AppColors.textTertiary(context),
+          fontSize: 13,
+        ),
         filled: true,
         fillColor: AppColors.surfaceContainerOf(context),
         border: OutlineInputBorder(
@@ -5935,7 +6288,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 child: Icon(
                   Icons.auto_awesome,
                   size: 64,
-                  color: AppColors.resolve(context, Colors.amberAccent, Colors.amber.shade700),
+                  color: AppColors.resolve(
+                    context,
+                    Colors.amberAccent,
+                    Colors.amber.shade700,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -5956,7 +6313,13 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 child: LinearProgressIndicator(
                   value: _progress > 0 ? _progress : null,
                   backgroundColor: AppColors.borderOf(context),
-                  valueColor: AlwaysStoppedAnimation(AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700)),
+                  valueColor: AlwaysStoppedAnimation(
+                    AppColors.resolve(
+                      context,
+                      Colors.blueAccent,
+                      Colors.blue.shade700,
+                    ),
+                  ),
                   minHeight: 6,
                 ),
               ),
@@ -5974,8 +6337,18 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                       style: TextStyle(fontSize: 14),
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.resolve(context, Colors.redAccent, Colors.red.shade700),
-                      side: BorderSide(color: AppColors.resolve(context, Colors.redAccent, Colors.red.shade700)),
+                      foregroundColor: AppColors.resolve(
+                        context,
+                        Colors.redAccent,
+                        Colors.red.shade700,
+                      ),
+                      side: BorderSide(
+                        color: AppColors.resolve(
+                          context,
+                          Colors.redAccent,
+                          Colors.red.shade700,
+                        ),
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -6028,12 +6401,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             Icon(
               Icons.error_outline,
               size: 64,
-              color: AppColors.resolve(context, Colors.redAccent, Colors.red.shade700),
+              color: AppColors.resolve(
+                context,
+                Colors.redAccent,
+                Colors.red.shade700,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               'Generation failed. The LLM did not produce valid output.',
-              style: TextStyle(color: AppColors.textSecondary(context), fontSize: 16),
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 16,
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -6044,7 +6424,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               icon: Icon(Icons.arrow_back),
               label: const Text('Try Again'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+                backgroundColor: AppColors.resolve(
+                  context,
+                  Colors.blueAccent,
+                  Colors.blue.shade700,
+                ),
               ),
             ),
           ],
@@ -6127,21 +6511,29 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                    _buildBackButton(3, fontSize: 14),
-                    const SizedBox(width: 16),
-                    SizedBox(
-                      width: 280,
-                      height: 52,
-                      child: ElevatedButton.icon(
-                        onPressed: () => setState(() => _currentStep = 5),
+                      _buildBackButton(3, fontSize: 14),
+                      const SizedBox(width: 16),
+                      SizedBox(
+                        width: 280,
+                        height: 52,
+                        child: ElevatedButton.icon(
+                          onPressed: () => setState(() => _currentStep = 5),
                           icon: Icon(Icons.arrow_forward, size: 20),
                           label: const Text(
                             'Next: Review & Save',
                             style: TextStyle(fontSize: 16),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
-                            foregroundColor: AppColors.resolve(context, Colors.white, Colors.white),
+                            backgroundColor: AppColors.resolve(
+                              context,
+                              Colors.blueAccent,
+                              Colors.blue.shade700,
+                            ),
+                            foregroundColor: AppColors.resolve(
+                              context,
+                              Colors.white,
+                              Colors.white,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -6173,12 +6565,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
             Icon(
               Icons.error_outline,
               size: 64,
-              color: AppColors.resolve(context, Colors.redAccent, Colors.red.shade700),
+              color: AppColors.resolve(
+                context,
+                Colors.redAccent,
+                Colors.red.shade700,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               'Generation failed. The LLM did not produce valid output.',
-              style: TextStyle(color: AppColors.textSecondary(context), fontSize: 16),
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 16,
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -6189,7 +6588,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               icon: Icon(Icons.arrow_back),
               label: const Text('Try Again'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+                backgroundColor: AppColors.resolve(
+                  context,
+                  Colors.blueAccent,
+                  Colors.blue.shade700,
+                ),
               ),
             ),
           ],
@@ -6215,7 +6618,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                     color: AppColors.surfaceContainerOf(context),
-                    border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.2)),
+                    border: Border.all(
+                      color: AppColors.borderOf(context).withValues(alpha: 0.2),
+                    ),
                     image: _generatedAvatar != null
                         ? DecorationImage(
                             image: MemoryImage(_generatedAvatar!),
@@ -6230,7 +6635,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     CircularProgressIndicator(
-                                      color: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+                                      color: AppColors.resolve(
+                                        context,
+                                        Colors.blueAccent,
+                                        Colors.blue.shade700,
+                                      ),
                                     ),
                                     SizedBox(height: 12),
                                     Text(
@@ -6261,7 +6670,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                       Text(
                                         'Avatar generation unavailable with KoboldCpp',
                                         style: TextStyle(
-                                          color: AppColors.textTertiary(context),
+                                          color: AppColors.textTertiary(
+                                            context,
+                                          ),
                                           fontSize: 12,
                                         ),
                                         textAlign: TextAlign.center,
@@ -6270,7 +6681,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                       Text(
                                         'Copy the image prompt below to generate locally',
                                         style: TextStyle(
-                                          color: AppColors.textTertiary(context),
+                                          color: AppColors.textTertiary(
+                                            context,
+                                          ),
                                           fontSize: 11,
                                         ),
                                         textAlign: TextAlign.center,
@@ -6289,10 +6702,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                     const SizedBox(height: 8),
                                     TextButton.icon(
                                       onPressed: _generateAvatar,
-                                      icon: Icon(
-                                        Icons.auto_awesome,
-                                        size: 16,
-                                      ),
+                                      icon: Icon(Icons.auto_awesome, size: 16),
                                       label: const Text('Generate Avatar'),
                                     ),
                                   ],
@@ -6312,7 +6722,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                           _isGeneratingAvatar ? 'Generating...' : 'Regenerate',
                         ),
                         style: TextButton.styleFrom(
-                          foregroundColor: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+                          foregroundColor: AppColors.resolve(
+                            context,
+                            Colors.blueAccent,
+                            Colors.blue.shade700,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -6331,7 +6745,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         icon: Icon(Icons.crop, size: 16),
                         label: const Text('Crop'),
                         style: TextButton.styleFrom(
-                          foregroundColor: AppColors.resolve(context, Colors.orangeAccent, Colors.orange.shade700),
+                          foregroundColor: AppColors.resolve(
+                            context,
+                            Colors.orangeAccent,
+                            Colors.orange.shade700,
+                          ),
                         ),
                       ),
                     ],
@@ -6395,7 +6813,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   controller: _imagePromptController,
                   maxLines: _imagePromptExpanded ? null : 2,
                   minLines: _imagePromptExpanded ? 6 : 2,
-                  style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12),
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 12,
+                  ),
                   decoration: InputDecoration(
                     hintText: 'Describe the character portrait...',
                     hintStyle: TextStyle(
@@ -6406,11 +6827,19 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     fillColor: AppColors.surfaceContainerOf(context),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.2)),
+                      borderSide: BorderSide(
+                        color: AppColors.borderOf(
+                          context,
+                        ).withValues(alpha: 0.2),
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.2)),
+                      borderSide: BorderSide(
+                        color: AppColors.borderOf(
+                          context,
+                        ).withValues(alpha: 0.2),
+                      ),
                     ),
                     contentPadding: const EdgeInsets.all(10),
                   ),
@@ -6443,7 +6872,9 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                 color: AppColors.textSecondary(context),
                               ),
                             ),
-                            backgroundColor: AppColors.surfaceContainerOf(context),
+                            backgroundColor: AppColors.surfaceContainerOf(
+                              context,
+                            ),
                             side: BorderSide.none,
                             visualDensity: VisualDensity.compact,
                           ),
@@ -6459,8 +6890,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     icon: Icon(Icons.save),
                     label: const Text('Save Character'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.resolve(context, Colors.green.shade700, const Color(0xFF15803D)),
-                      foregroundColor: AppColors.resolve(context, Colors.white, Colors.white),
+                      backgroundColor: AppColors.resolve(
+                        context,
+                        Colors.green.shade700,
+                        const Color(0xFF15803D),
+                      ),
+                      foregroundColor: AppColors.resolve(
+                        context,
+                        Colors.white,
+                        Colors.white,
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -6506,7 +6945,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                 const SizedBox(height: 4),
                 Text(
                   'The AI generated the following character card. Feel free to edit any field before saving.',
-                  style: TextStyle(color: AppColors.textTertiary(context), fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 _editableField('Description', _descController, maxLines: 6),
@@ -6535,14 +6977,22 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     children: [
                       Icon(
                         Icons.menu_book,
-                        color: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+                        color: AppColors.resolve(
+                          context,
+                          Colors.blueAccent,
+                          Colors.blue.shade700,
+                        ),
                         size: 18,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'World Lore Entries',
                         style: TextStyle(
-                          color: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+                          color: AppColors.resolve(
+                            context,
+                            Colors.blueAccent,
+                            Colors.blue.shade700,
+                          ),
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
@@ -6560,7 +7010,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   const SizedBox(height: 4),
                   Text(
                     'Uncheck entries you don\'t want included in the saved character.',
-                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                    style: TextStyle(
+                      color: AppColors.textTertiary(context),
+                      fontSize: 11,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   ...List.generate(_generatedCard!.lorebook!.entries.length, (
@@ -6578,8 +7031,14 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: enabled
-                              ? AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700).withValues(alpha: 0.3)
-                              : AppColors.borderOf(context).withValues(alpha: 0.2),
+                              ? AppColors.resolve(
+                                  context,
+                                  Colors.blueAccent,
+                                  Colors.blue.shade700,
+                                ).withValues(alpha: 0.3)
+                              : AppColors.borderOf(
+                                  context,
+                                ).withValues(alpha: 0.2),
                         ),
                       ),
                       child: Row(
@@ -6587,7 +7046,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         children: [
                           Checkbox(
                             value: enabled,
-                            activeColor: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+                            activeColor: AppColors.resolve(
+                              context,
+                              Colors.blueAccent,
+                              Colors.blue.shade700,
+                            ),
                             onChanged: (val) => setState(
                               () => _lorebookEntryEnabled[i] = val ?? true,
                             ),
@@ -6612,7 +7075,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                                   Text(
                                     'Keys: ${entry.key}',
                                     style: TextStyle(
-                                      color: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+                                      color: AppColors.resolve(
+                                        context,
+                                        Colors.blueAccent,
+                                        Colors.blue.shade700,
+                                      ),
                                       fontSize: 11,
                                     ),
                                   ),
@@ -6655,7 +7122,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           Text(
             label,
             style: TextStyle(
-              color: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700),
+              color: AppColors.resolve(
+                context,
+                Colors.blueAccent,
+                Colors.blue.shade700,
+              ),
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -6674,15 +7145,25 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               fillColor: AppColors.surfaceContainerOf(context),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.2)),
+                borderSide: BorderSide(
+                  color: AppColors.borderOf(context).withValues(alpha: 0.2),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.2)),
+                borderSide: BorderSide(
+                  color: AppColors.borderOf(context).withValues(alpha: 0.2),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700)),
+                borderSide: BorderSide(
+                  color: AppColors.resolve(
+                    context,
+                    Colors.blueAccent,
+                    Colors.blue.shade700,
+                  ),
+                ),
               ),
               contentPadding: const EdgeInsets.all(14),
             ),
@@ -6836,13 +7317,20 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               children: [
                 Icon(
                   Icons.auto_fix_high,
-                  color: AppColors.resolve(context, const Color(0xFF0D7377), Colors.tealAccent),
+                  color: AppColors.resolve(
+                    context,
+                    const Color(0xFF0D7377),
+                    Colors.tealAccent,
+                  ),
                   size: 22,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   'Generated Description',
-                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 18),
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontSize: 18,
+                  ),
                 ),
               ],
             ),
@@ -6855,7 +7343,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                   children: [
                     Text(
                       'AI generated this description from your details:',
-                      style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+                      style: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 12,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Container(
@@ -6864,7 +7355,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         color: AppColors.surfaceContainerOf(context),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: AppColors.resolve(context, const Color(0xFF0D7377), Colors.tealAccent).withValues(alpha: 0.3),
+                          color: AppColors.resolve(
+                            context,
+                            const Color(0xFF0D7377),
+                            Colors.tealAccent,
+                          ).withValues(alpha: 0.3),
                         ),
                       ),
                       child: SelectableText(
@@ -6879,7 +7374,10 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     const SizedBox(height: 8),
                     Text(
                       'This will replace the current vision text. You can edit it after.',
-                      style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                      style: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -6896,7 +7394,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.resolve(context, const Color(0xFF0D7377), Colors.tealAccent),
+                  backgroundColor: AppColors.resolve(
+                    context,
+                    const Color(0xFF0D7377),
+                    Colors.tealAccent,
+                  ),
                 ),
                 child: const Text('Use This'),
               ),
@@ -8024,7 +8526,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               children: [
                 Icon(
                   Icons.check_circle,
-                  color: AppColors.resolve(context, const Color(0xFF1B5E20), Colors.greenAccent),
+                  color: AppColors.resolve(
+                    context,
+                    const Color(0xFF1B5E20),
+                    Colors.greenAccent,
+                  ),
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -8060,7 +8566,11 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
               'Failed to save character: $e',
               style: TextStyle(color: AppColors.textPrimary(context)),
             ),
-            backgroundColor: AppColors.resolve(context, Colors.red.shade800, Colors.red.shade700),
+            backgroundColor: AppColors.resolve(
+              context,
+              Colors.red.shade800,
+              Colors.red.shade700,
+            ),
             behavior: SnackBarBehavior.floating,
           ),
         );

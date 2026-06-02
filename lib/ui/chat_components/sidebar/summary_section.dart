@@ -10,7 +10,7 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 /// current summary, and allows editing/pause/regeneration.
 class SummarySection extends StatefulWidget {
   final ChatService chatService;
-  const SummarySection({required this.chatService});
+  const SummarySection({super.key, required this.chatService});
 
   @override
   State<SummarySection> createState() => SummarySectionState();

@@ -132,7 +132,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary(context))),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary(context)),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -142,10 +145,7 @@ class _ModelManagerPageState extends State<ModelManagerPage>
               ).deleteModel(path);
               Navigator.pop(context);
             },
-            child: Text(
-              'Delete',
-              style: TextStyle(color: Colors.redAccent),
-            ),
+            child: Text('Delete', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -230,7 +230,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text('Model Manager', style: TextStyle(color: AppColors.textPrimary(context))),
+        title: Text(
+          'Model Manager',
+          style: TextStyle(color: AppColors.textPrimary(context)),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -298,7 +301,9 @@ class _ModelManagerPageState extends State<ModelManagerPage>
           decoration: BoxDecoration(
             color: AppColors.surfaceContainerOf(context),
             border: Border(
-              bottom: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.3)),
+              bottom: BorderSide(
+                color: AppColors.borderOf(context).withValues(alpha: 0.3),
+              ),
             ),
           ),
           child: Column(
@@ -389,7 +394,9 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                 child: TextField(
                   decoration: InputDecoration(
                     hintText: 'Filter models...',
-                    hintStyle: TextStyle(color: AppColors.textTertiary(context)),
+                    hintStyle: TextStyle(
+                      color: AppColors.textTertiary(context),
+                    ),
                     prefixIcon: Icon(
                       Icons.search,
                       color: AppColors.iconSecondary(context),
@@ -401,7 +408,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                       vertical: 8,
                     ),
                   ),
-                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 12),
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontSize: 12,
+                  ),
                   onChanged: (value) => setState(() => _localFilter = value),
                 ),
               ),
@@ -421,7 +431,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
             ),
             child: Text(
               modelManager.statusMessage,
-              style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11),
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 11,
+              ),
             ),
           ),
 
@@ -460,7 +473,9 @@ class _ModelManagerPageState extends State<ModelManagerPage>
           decoration: BoxDecoration(
             color: AppColors.surfaceContainerOf(context),
             border: Border(
-              bottom: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.3)),
+              bottom: BorderSide(
+                color: AppColors.borderOf(context).withValues(alpha: 0.3),
+              ),
             ),
           ),
           child: Row(
@@ -481,8 +496,13 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                     focusNode: _searchFocus,
                     decoration: InputDecoration(
                       hintText: 'Search HuggingFace models...',
-                      hintStyle: TextStyle(color: AppColors.textTertiary(context)),
-                      prefixIcon: Icon(Icons.search, color: AppColors.iconSecondary(context)),
+                      hintStyle: TextStyle(
+                        color: AppColors.textTertiary(context),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: AppColors.iconSecondary(context),
+                      ),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -506,8 +526,16 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                     : const Icon(Icons.search, size: 18),
                 label: Text(_isSearching ? 'Searching...' : 'Search'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.resolve(context, Colors.indigo.withValues(alpha: 0.3), Colors.indigo.withValues(alpha: 0.15)),
-                  foregroundColor: AppColors.resolve(context, Colors.white, Colors.black87),
+                  backgroundColor: AppColors.resolve(
+                    context,
+                    Colors.indigo.withValues(alpha: 0.3),
+                    Colors.indigo.withValues(alpha: 0.15),
+                  ),
+                  foregroundColor: AppColors.resolve(
+                    context,
+                    Colors.white,
+                    Colors.black87,
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 12,
@@ -530,11 +558,7 @@ class _ModelManagerPageState extends State<ModelManagerPage>
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Colors.redAccent,
-                  size: 16,
-                ),
+                Icon(Icons.error_outline, color: Colors.redAccent, size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -560,7 +584,9 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                       const SizedBox(height: 16),
                       Text(
                         'Searching HuggingFace...',
-                        style: TextStyle(color: AppColors.textSecondary(context)),
+                        style: TextStyle(
+                          color: AppColors.textSecondary(context),
+                        ),
                       ),
                     ],
                   ),
@@ -624,7 +650,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+            style: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 12,
+            ),
           ),
         ],
       ),

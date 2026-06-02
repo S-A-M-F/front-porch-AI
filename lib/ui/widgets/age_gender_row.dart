@@ -43,7 +43,10 @@ class AgeGenderRow extends StatelessWidget {
                 ),
                 decoration: InputDecoration(
                   hintText: ageHint,
-                  hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 13),
+                  hintStyle: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 13,
+                  ),
                   filled: true,
                   fillColor: AppColors.surfaceContainerOf(context),
                   border: OutlineInputBorder(
@@ -58,7 +61,10 @@ class AgeGenderRow extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                     borderSide: const BorderSide(color: Colors.blueAccent),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
                 maxLines: 1,
               ),
@@ -81,7 +87,10 @@ class AgeGenderRow extends StatelessWidget {
                 ),
                 decoration: InputDecoration(
                   hintText: genderHint,
-                  hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 13),
+                  hintStyle: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 13,
+                  ),
                   filled: true,
                   fillColor: AppColors.surfaceContainerOf(context),
                   border: OutlineInputBorder(
@@ -96,7 +105,10 @@ class AgeGenderRow extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                     borderSide: const BorderSide(color: Colors.blueAccent),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
                 maxLines: 1,
               ),

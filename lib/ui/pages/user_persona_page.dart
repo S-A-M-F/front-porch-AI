@@ -142,7 +142,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   size: 18,
                 ),
                 const SizedBox(width: 8),
-                Text('Persona saved successfully', style: TextStyle(color: AppColors.textPrimary(context))),
+                Text(
+                  'Persona saved successfully',
+                  style: TextStyle(color: AppColors.textPrimary(context)),
+                ),
               ],
             ),
             backgroundColor: AppColors.surfaceContainerOf(context),
@@ -183,7 +186,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     size: 18,
                   ),
                   const SizedBox(width: 8),
-                  Text('Imported "${imported.name}" successfully', style: TextStyle(color: AppColors.textPrimary(context))),
+                  Text(
+                    'Imported "${imported.name}" successfully',
+                    style: TextStyle(color: AppColors.textPrimary(context)),
+                  ),
                 ],
               ),
               backgroundColor: AppColors.surfaceContainerOf(context),
@@ -201,7 +207,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     size: 18,
                   ),
                   const SizedBox(width: 8),
-                  Text('Import failed — unrecognized format', style: TextStyle(color: AppColors.textPrimary(context))),
+                  Text(
+                    'Import failed — unrecognized format',
+                    style: TextStyle(color: AppColors.textPrimary(context)),
+                  ),
                 ],
               ),
               backgroundColor: AppColors.surfaceContainerOf(context),
@@ -229,7 +238,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Exported to $outputFile', style: TextStyle(color: AppColors.textPrimary(context))),
+            content: Text(
+              'Exported to $outputFile',
+              style: TextStyle(color: AppColors.textPrimary(context)),
+            ),
             backgroundColor: AppColors.surfaceContainerOf(context),
             behavior: SnackBarBehavior.floating,
           ),
@@ -328,7 +340,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             // Learned facts section
             if (activePersona.learnedFacts.isNotEmpty)
               SliverToBoxAdapter(
-                child: _buildLearnedFactsSection(context, activePersona, service),
+                child: _buildLearnedFactsSection(
+                  context,
+                  activePersona,
+                  service,
+                ),
               ),
 
             // Section label
@@ -405,10 +421,16 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 accentColor.withValues(
                   alpha: 0.08 + _headerGlowAnimation.value * 0.06,
                 ),
-                AppColors.resolve(context, const Color(0xFF1E293B), AppColors.lightCard)
-                    .withValues(alpha: 0.9),
-                AppColors.resolve(context, const Color(0xFF0F172A), AppColors.lightBackground)
-                    .withValues(alpha: 0.95),
+                AppColors.resolve(
+                  context,
+                  const Color(0xFF1E293B),
+                  AppColors.lightCard,
+                ).withValues(alpha: 0.9),
+                AppColors.resolve(
+                  context,
+                  const Color(0xFF0F172A),
+                  AppColors.lightBackground,
+                ).withValues(alpha: 0.95),
               ],
             ),
             border: Border.all(
@@ -587,7 +609,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           const SizedBox(width: 5),
           Text(
             label,
-            style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context)),
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textTertiary(context),
+            ),
           ),
         ],
       ),
@@ -644,7 +669,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                 ),
                 subtitle: Text(
                   'Auto-extracted from your conversations',
-                  style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context)),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textTertiary(context),
+                  ),
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -681,9 +709,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                           ),
                         ),
                         backgroundColor: AppColors.surfaceContainerOf(context),
-                        side: BorderSide(
-                          color: AppColors.borderOf(context),
-                        ),
+                        side: BorderSide(color: AppColors.borderOf(context)),
                         deleteIcon: Icon(
                           Icons.close,
                           size: 14,
@@ -783,9 +809,19 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       value: 'edit',
                       child: Row(
                         children: [
-                          Icon(Icons.edit, size: 16, color: AppColors.iconPrimary(context)),
+                          Icon(
+                            Icons.edit,
+                            size: 16,
+                            color: AppColors.iconPrimary(context),
+                          ),
                           const SizedBox(width: 8),
-                          Text('Edit', style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -799,7 +835,13 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                             color: Colors.cyanAccent,
                           ),
                           const SizedBox(width: 8),
-                          Text('Export JSON', style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
+                          Text(
+                            'Export JSON',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -935,7 +977,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           Text(
             'Create a persona to personalize your AI conversations,\nor import one from SillyTavern / Backyard AI.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: AppColors.textTertiary(context), height: 1.5),
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textTertiary(context),
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 28),
           Row(
@@ -1128,7 +1174,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       onPressed: _cancelEditing,
                       child: Text(
                         'Cancel',
-                        style: TextStyle(color: AppColors.textSecondary(context)),
+                        style: TextStyle(
+                          color: AppColors.textSecondary(context),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1283,7 +1331,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                     ),
                     const Spacer(),
                     IconButton(
-                      icon: Icon(Icons.close, color: AppColors.textSecondary(dialogContext)),
+                      icon: Icon(
+                        Icons.close,
+                        color: AppColors.textSecondary(dialogContext),
+                      ),
                       onPressed: () => Navigator.of(dialogContext).pop(),
                     ),
                   ],
@@ -1295,7 +1346,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   padding: const EdgeInsets.all(16),
                   child: TextField(
                     controller: tempController,
-                    style: TextStyle(color: AppColors.textPrimary(dialogContext), fontSize: 14),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(dialogContext),
+                      fontSize: 14,
+                    ),
                     maxLines: null,
                     decoration: InputDecoration(
                       hintText: 'Enter detailed persona info...',
@@ -1337,7 +1391,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                       onPressed: () => Navigator.of(dialogContext).pop(),
                       child: Text(
                         'Cancel',
-                        style: TextStyle(color: AppColors.textSecondary(dialogContext)),
+                        style: TextStyle(
+                          color: AppColors.textSecondary(dialogContext),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1375,11 +1431,17 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'Delete Persona',
-          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary(context)),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary(context),
+          ),
         ),
         content: RichText(
           text: TextSpan(
-            style: TextStyle(color: AppColors.textSecondary(context), height: 1.5),
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              height: 1.5,
+            ),
             children: [
               TextSpan(text: 'Are you sure you want to delete '),
               TextSpan(
@@ -1431,7 +1493,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'Clear All Facts',
-          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary(context)),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary(context),
+          ),
         ),
         content: Text(
           'Remove all ${service.persona.learnedFacts.length} learned facts? This cannot be undone.',
@@ -1540,8 +1605,16 @@ class _HoverScaleCardState extends State<_HoverScaleCard>
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: _isHovered
-                      ? AppColors.resolve(context, const Color(0xFF1E293B), AppColors.lightCard)
-                      : AppColors.resolve(context, const Color(0xFF1E293B).withValues(alpha: 0.7), AppColors.lightCard.withValues(alpha: 0.85)),
+                      ? AppColors.resolve(
+                          context,
+                          const Color(0xFF1E293B),
+                          AppColors.lightCard,
+                        )
+                      : AppColors.resolve(
+                          context,
+                          const Color(0xFF1E293B).withValues(alpha: 0.7),
+                          AppColors.lightCard.withValues(alpha: 0.85),
+                        ),
                   border: Border.all(
                     color: widget.isActive
                         ? widget.accentColor.withValues(
@@ -1557,7 +1630,11 @@ class _HoverScaleCardState extends State<_HoverScaleCard>
                       BoxShadow(
                         color: widget.isActive
                             ? widget.accentColor.withValues(alpha: 0.08)
-                            : AppColors.resolve(context, Colors.white.withValues(alpha: 0.02), Colors.black.withValues(alpha: 0.04)),
+                            : AppColors.resolve(
+                                context,
+                                Colors.white.withValues(alpha: 0.02),
+                                Colors.black.withValues(alpha: 0.04),
+                              ),
                         blurRadius: 16,
                         spreadRadius: -4,
                       ),

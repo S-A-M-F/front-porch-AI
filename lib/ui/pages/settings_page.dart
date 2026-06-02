@@ -515,8 +515,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _toggleManagedBackend(BuildContext context) async {
     final koboldService = Provider.of<KoboldService>(context, listen: false);
-    final pseudoRemoteService =
-        Provider.of<PseudoRemoteService>(context, listen: false);
+    final pseudoRemoteService = Provider.of<PseudoRemoteService>(
+      context,
+      listen: false,
+    );
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
     final backendManager = Provider.of<BackendManager>(context, listen: false);
 
@@ -546,16 +548,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (!presetOwnsModel) {
       if (_selectedModelPath == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a model.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Please select a model.')));
         return;
       }
       if (!File(_selectedModelPath!).existsSync()) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Selected model file does not exist!'),
-          ),
+          const SnackBar(content: Text('Selected model file does not exist!')),
         );
         return;
       }
@@ -1137,7 +1137,10 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           Text(
             label,
-            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 13,
+            ),
           ),
           const Spacer(),
           Container(
@@ -1149,7 +1152,11 @@ class _SettingsPageState extends State<SettingsPage> {
               border: Border.all(color: AppColors.borderOf(context), width: 1),
             ),
             child: IconButton(
-              icon: Icon(Icons.color_lens, size: 20, color: AppColors.iconPrimary(context)),
+              icon: Icon(
+                Icons.color_lens,
+                size: 20,
+                color: AppColors.iconPrimary(context),
+              ),
               onPressed: () => _showColorPicker(context, color, onChanged),
             ),
           ),
@@ -1761,12 +1768,15 @@ class _SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                       Slider(
-                        value: _dragCallBuffer ?? storageService.callBufferSentences.toDouble(),
+                        value:
+                            _dragCallBuffer ??
+                            storageService.callBufferSentences.toDouble(),
                         min: 1,
                         max: 10,
                         divisions: 9,
                         activeColor: Colors.blueAccent,
-                        onChanged: (val) => setState(() => _dragCallBuffer = val),
+                        onChanged: (val) =>
+                            setState(() => _dragCallBuffer = val),
                         onChangeEnd: (val) {
                           _dragCallBuffer = null;
                           storageService.setCallBufferSentences(val.round());
@@ -2225,15 +2235,19 @@ class _SettingsPageState extends State<SettingsPage> {
 
     // Auto-select first model if none selected and models exist
     // Skip when a kcpps preset with a valid model is active (use "Managed by kcpps")
-    if (_selectedModelPath == null && modelManager.models.isNotEmpty &&
-        !(storageService.kcppsHasModel && storageService.kcppsModelFileExists)) {
+    if (_selectedModelPath == null &&
+        modelManager.models.isNotEmpty &&
+        !(storageService.kcppsHasModel &&
+            storageService.kcppsModelFileExists)) {
       _selectedModelPath = modelManager.models.first.path;
     }
 
     // Warm architecture info for the (possibly just auto-selected) model so
     // the first Auto-Configure or gauge update in this section is accurate.
     if (_selectedModelPath != null) {
-      modelManager.getModelArchitectureInfo(_selectedModelPath!); // fire-and-forget
+      modelManager.getModelArchitectureInfo(
+        _selectedModelPath!,
+      ); // fire-and-forget
     }
 
     return SingleChildScrollView(
@@ -2426,9 +2440,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               'oMLX',
                               style: TextStyle(
                                 fontSize: 13,
-                                color: Platform.isMacOS
-                                    ? null
-                                    : Colors.grey,
+                                color: Platform.isMacOS ? null : Colors.grey,
                               ),
                             ),
                           ],
@@ -2921,8 +2933,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                   fontSize: 13,
                                   color:
                                       storageService.remoteModelName.isNotEmpty
-                                          ? null
-                                          : Colors.grey,
+                                      ? null
+                                      : Colors.grey,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -3106,12 +3118,17 @@ class _SettingsPageState extends State<SettingsPage> {
               models: modelManager.models,
               selectedModelPath: _selectedModelPath,
               showManagedByKcpps:
-                  storageService.kcppsHasModel && storageService.kcppsModelFileExists,
+                  storageService.kcppsHasModel &&
+                  storageService.kcppsModelFileExists,
               onChanged: (val) {
                 if (val == null) {
-                  setState(() { _selectedModelPath = null; });
+                  setState(() {
+                    _selectedModelPath = null;
+                  });
                 } else {
-                  setState(() { _selectedModelPath = val; });
+                  setState(() {
+                    _selectedModelPath = val;
+                  });
                   storageService.setLastUsedModelPath(val);
                   final savedPreset = storageService.modelPresetMap[val];
                   if (savedPreset != null &&
@@ -3173,8 +3190,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 } else if (_selectedModelPath != null && val == null) {
                   storageService.setModelPreset(_selectedModelPath!, '');
                 }
-                if (val != null && storageService.kcppsHasModel && storageService.kcppsModelFileExists) {
-                  setState(() { _selectedModelPath = null; });
+                if (val != null &&
+                    storageService.kcppsHasModel &&
+                    storageService.kcppsModelFileExists) {
+                  setState(() {
+                    _selectedModelPath = null;
+                  });
                 }
               },
               onExternalClear: () {
@@ -3188,8 +3209,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   storageService.setModelPreset(_selectedModelPath!, path);
                 }
                 _scanLocalPresets();
-                if (storageService.kcppsHasModel && storageService.kcppsModelFileExists) {
-                  setState(() { _selectedModelPath = null; });
+                if (storageService.kcppsHasModel &&
+                    storageService.kcppsModelFileExists) {
+                  setState(() {
+                    _selectedModelPath = null;
+                  });
                 }
               },
               onModelStatusChanged: (_) {
@@ -3202,10 +3226,12 @@ class _SettingsPageState extends State<SettingsPage> {
             // (kcpps has valid model OR model selected manually)
             // For pseudo-remote, also requires a kcpps path.
             ...() {
-              final canStartPseudo = llmProvider.activeBackend != BackendType.pseudoRemote ||
+              final canStartPseudo =
+                  llmProvider.activeBackend != BackendType.pseudoRemote ||
                   (storageService.activeKcppsPath != null &&
                       storageService.activeKcppsPath!.isNotEmpty);
-              final hasModel = (storageService.kcppsHasModel &&
+              final hasModel =
+                  (storageService.kcppsHasModel &&
                       storageService.kcppsModelFileExists) ||
                   _selectedModelPath != null;
               final canStart = canStartPseudo && hasModel;
@@ -3215,37 +3241,37 @@ class _SettingsPageState extends State<SettingsPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                onPressed: backendManager.backendPath == null || !canStart
-                    ? null
-                    : () => _toggleManagedBackend(context),
-                icon: Icon(
-                  (llmProvider.activeBackend == BackendType.pseudoRemote
-                          ? pseudoRemoteService.isRunning
-                          : koboldService.isRunning)
-                      ? Icons.stop
-                      : Icons.play_arrow,
-                ),
-                label: Text(
-                  (llmProvider.activeBackend == BackendType.pseudoRemote
-                          ? pseudoRemoteService.isRunning
-                          : koboldService.isRunning)
-                      ? 'Stop Backend'
-                      : 'Start Backend',
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
+                    onPressed: backendManager.backendPath == null || !canStart
+                        ? null
+                        : () => _toggleManagedBackend(context),
+                    icon: Icon(
                       (llmProvider.activeBackend == BackendType.pseudoRemote
+                              ? pseudoRemoteService.isRunning
+                              : koboldService.isRunning)
+                          ? Icons.stop
+                          : Icons.play_arrow,
+                    ),
+                    label: Text(
+                      (llmProvider.activeBackend == BackendType.pseudoRemote
+                              ? pseudoRemoteService.isRunning
+                              : koboldService.isRunning)
+                          ? 'Stop Backend'
+                          : 'Start Backend',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          (llmProvider.activeBackend == BackendType.pseudoRemote
                               ? pseudoRemoteService.isRunning
                               : koboldService.isRunning)
                           ? Colors.red.withValues(alpha: 0.8)
                           : Colors.green.withValues(alpha: 0.8),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 20),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                    ),
+                  ),
                 ),
-                ),
-              ),
-            ];
-          }(),
+              ];
+            }(),
             const SizedBox(height: 24),
             _buildSectionHeader('Process Logs', context),
             const SizedBox(height: 8),
@@ -3683,20 +3709,25 @@ class _SettingsPageState extends State<SettingsPage> {
                               modelVramMb = modelSizeMb.toDouble();
                             } else {
                               final archInfo = _selectedModelPath != null
-                                  ? Provider.of<ModelManager>(context, listen: false)
-                                      .getCachedModelArchitectureInfo(_selectedModelPath!)
+                                  ? Provider.of<ModelManager>(
+                                      context,
+                                      listen: false,
+                                    ).getCachedModelArchitectureInfo(
+                                      _selectedModelPath!,
+                                    )
                                   : null;
                               if (archInfo != null && archInfo.nLayers > 0) {
-                                final bytesPerLayer = archInfo.estimateBytesPerLayer(
-                                  (modelSizeMb * 1024 * 1024).toInt(),
-                                );
-                                modelVramMb = (bytesPerLayer * gpuLayers / (1024 * 1024)).toDouble();
+                                final bytesPerLayer = archInfo
+                                    .estimateBytesPerLayer(
+                                      (modelSizeMb * 1024 * 1024).toInt(),
+                                    );
+                                modelVramMb =
+                                    (bytesPerLayer * gpuLayers / (1024 * 1024))
+                                        .toDouble();
                               } else {
                                 // Fallback to old heuristic only when we have no architecture data
-                                modelVramMb = (modelSizeMb * (gpuLayers / 40.0)).clamp(
-                                  0,
-                                  modelSizeMb.toDouble(),
-                                );
+                                modelVramMb = (modelSizeMb * (gpuLayers / 40.0))
+                                    .clamp(0, modelSizeMb.toDouble());
                               }
                             }
                             final usedVram = modelVramMb + contextVramMb;
@@ -4001,23 +4032,26 @@ class _SettingsPageState extends State<SettingsPage> {
                                       overlayColor: Colors.tealAccent
                                           .withValues(alpha: 0.2),
                                     ),
-                                      child: Slider(
-                                        value: _dragContextSize ?? closestIdx.toDouble(),
-                                        min: 0,
-                                        max: (presets.length - 1).toDouble(),
-                                        divisions: presets.length - 1,
-                                        onChanged: (val) {
-                                          setState(() => _dragContextSize = val);
-                                          _contextSizeController.text = presets[val.round()].toString();
-                                        },
-                                        onChangeEnd: (val) {
-                                          _dragContextSize = null;
-                                          final newSize = presets[val.round()];
-                                          _contextSizeController.text = newSize
-                                              .toString();
-                                          storageService.setContextSize(newSize);
-                                          setState(() {});
-                                        },
+                                    child: Slider(
+                                      value:
+                                          _dragContextSize ??
+                                          closestIdx.toDouble(),
+                                      min: 0,
+                                      max: (presets.length - 1).toDouble(),
+                                      divisions: presets.length - 1,
+                                      onChanged: (val) {
+                                        setState(() => _dragContextSize = val);
+                                        _contextSizeController.text =
+                                            presets[val.round()].toString();
+                                      },
+                                      onChangeEnd: (val) {
+                                        _dragContextSize = null;
+                                        final newSize = presets[val.round()];
+                                        _contextSizeController.text = newSize
+                                            .toString();
+                                        storageService.setContextSize(newSize);
+                                        setState(() {});
+                                      },
                                     ),
                                   ),
                                   // Preset chips
@@ -4100,7 +4134,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                   child: DropdownButton<int>(
                                     value: storageService.kvQuantizationLevel,
                                     isExpanded: true,
-                                    dropdownColor: AppColors.surfaceContainerOf(context),
+                                    dropdownColor: AppColors.surfaceContainerOf(
+                                      context,
+                                    ),
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 13,
@@ -4327,7 +4363,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildDatabaseMaintenanceSection(
-      BuildContext context, StorageService storageService) {
+    BuildContext context,
+    StorageService storageService,
+  ) {
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4345,8 +4383,11 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.cleaning_services,
-                      color: Colors.blueAccent, size: 18),
+                  const Icon(
+                    Icons.cleaning_services,
+                    color: Colors.blueAccent,
+                    size: 18,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(

@@ -24,7 +24,7 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 class SidebarSection extends StatefulWidget {
   final String title;
   final String content;
-  const SidebarSection({required this.title, required this.content});
+  const SidebarSection({super.key, required this.title, required this.content});
 
   @override
   State<SidebarSection> createState() => _SidebarSectionState();
@@ -95,6 +95,7 @@ class CollapsibleSidebarSection extends StatefulWidget {
   final bool initiallyExpanded;
 
   const CollapsibleSidebarSection({
+    super.key,
     required this.icon,
     required this.iconColor,
     required this.title,

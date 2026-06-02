@@ -144,10 +144,16 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                 accentColor.withValues(
                   alpha: 0.08 + _headerGlowAnimation.value * 0.06,
                 ),
-                AppColors.resolve(context, const Color(0xFF1E293B), AppColors.lightCard)
-                    .withValues(alpha: 0.9),
-                AppColors.resolve(context, const Color(0xFF0F172A), AppColors.lightBackground)
-                    .withValues(alpha: 0.95),
+                AppColors.resolve(
+                  context,
+                  const Color(0xFF1E293B),
+                  AppColors.lightCard,
+                ).withValues(alpha: 0.9),
+                AppColors.resolve(
+                  context,
+                  const Color(0xFF0F172A),
+                  AppColors.lightBackground,
+                ).withValues(alpha: 0.95),
               ],
             ),
             border: Border.all(
@@ -190,7 +196,11 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                     ),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.language, size: 48, color: AppColors.textPrimary(context)),
+                  child: Icon(
+                    Icons.language,
+                    size: 48,
+                    color: AppColors.textPrimary(context),
+                  ),
                 ),
               ),
               const SizedBox(width: 24),
@@ -286,7 +296,10 @@ class _WorldManagementPageState extends State<WorldManagementPage>
           const SizedBox(width: 5),
           Text(
             label,
-            style: TextStyle(fontSize: 11, color: AppColors.textTertiary(context)),
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textTertiary(context),
+            ),
           ),
         ],
       ),
@@ -490,9 +503,19 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                       value: 'edit',
                       child: Row(
                         children: [
-                          Icon(Icons.edit, size: 16, color: AppColors.iconPrimary(context)),
+                          Icon(
+                            Icons.edit,
+                            size: 16,
+                            color: AppColors.iconPrimary(context),
+                          ),
                           const SizedBox(width: 8),
-                          Text('Edit', style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -506,7 +529,13 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                             color: Colors.cyanAccent,
                           ),
                           const SizedBox(width: 8),
-                          Text('Export JSON', style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
+                          Text(
+                            'Export JSON',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -683,7 +712,10 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: AppColors.borderOf(ctx), width: 1),
+                      bottom: BorderSide(
+                        color: AppColors.borderOf(ctx),
+                        width: 1,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -723,7 +755,10 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                         ],
                       ),
                       IconButton(
-                        icon: Icon(Icons.close, color: AppColors.textSecondary(ctx)),
+                        icon: Icon(
+                          Icons.close,
+                          color: AppColors.textSecondary(ctx),
+                        ),
                         onPressed: () => Navigator.pop(ctx),
                         tooltip: 'Close',
                       ),
@@ -745,11 +780,15 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                             color: AppColors.resolve(
                               ctx,
                               const Color(0xFF374151).withValues(alpha: 0.3),
-                              AppColors.surfaceContainerLight.withValues(alpha: 0.6),
+                              AppColors.surfaceContainerLight.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppColors.borderOf(ctx).withValues(alpha: 0.2),
+                              color: AppColors.borderOf(
+                                ctx,
+                              ).withValues(alpha: 0.2),
                             ),
                           ),
                           child: Column(
@@ -776,7 +815,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                               const SizedBox(height: 16),
                               TextField(
                                 controller: nameController,
-                                style: TextStyle(color: AppColors.textPrimary(ctx)),
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(ctx),
+                                ),
                                 decoration: InputDecoration(
                                   labelText: 'World Name',
                                   labelStyle: TextStyle(
@@ -813,7 +854,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                               const SizedBox(height: 16),
                               TextField(
                                 controller: descController,
-                                style: TextStyle(color: AppColors.textPrimary(ctx)),
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(ctx),
+                                ),
                                 maxLines: 3,
                                 decoration: InputDecoration(
                                   labelText: 'Description',
@@ -860,11 +903,15 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                             color: AppColors.resolve(
                               ctx,
                               const Color(0xFF374151).withValues(alpha: 0.3),
-                              AppColors.surfaceContainerLight.withValues(alpha: 0.6),
+                              AppColors.surfaceContainerLight.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppColors.borderOf(ctx).withValues(alpha: 0.2),
+                              color: AppColors.borderOf(
+                                ctx,
+                              ).withValues(alpha: 0.2),
                             ),
                           ),
                           child: Column(
@@ -945,11 +992,14 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                       color: AppColors.resolve(
                                         ctx,
                                         Colors.white.withValues(alpha: 0.02),
-                                        AppColors.surfaceContainerLight.withValues(alpha: 0.4),
+                                        AppColors.surfaceContainerLight
+                                            .withValues(alpha: 0.4),
                                       ),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                        color: AppColors.borderOf(ctx).withValues(alpha: 0.3),
+                                        color: AppColors.borderOf(
+                                          ctx,
+                                        ).withValues(alpha: 0.3),
                                       ),
                                     ),
                                     child: Column(
@@ -996,7 +1046,8 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                       color: AppColors.resolve(
                                         ctx,
                                         Colors.white.withValues(alpha: 0.02),
-                                        AppColors.surfaceContainerLight.withValues(alpha: 0.4),
+                                        AppColors.surfaceContainerLight
+                                            .withValues(alpha: 0.4),
                                       ),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
@@ -1004,7 +1055,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                             ? const Color(
                                                 0xFF10B981,
                                               ).withValues(alpha: 0.2)
-                                            : AppColors.borderOf(ctx).withValues(alpha: 0.3),
+                                            : AppColors.borderOf(
+                                                ctx,
+                                              ).withValues(alpha: 0.3),
                                       ),
                                     ),
                                     child: Column(
@@ -1027,13 +1080,18 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                                 .length,
                                                           ),
                                                 style: TextStyle(
-                                                  color: AppColors.textPrimary(ctx),
+                                                  color: AppColors.textPrimary(
+                                                    ctx,
+                                                  ),
                                                   fontWeight: FontWeight.w500,
                                                 ),
                                                 decoration: InputDecoration(
                                                   hintText: 'Entry name',
                                                   hintStyle: TextStyle(
-                                                    color: AppColors.textTertiary(ctx),
+                                                    color:
+                                                        AppColors.textTertiary(
+                                                          ctx,
+                                                        ),
                                                   ),
                                                   border: InputBorder.none,
                                                   contentPadding:
@@ -1059,7 +1117,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                         ? const Color(
                                                             0xFF10B981,
                                                           )
-                                                        : AppColors.textTertiary(ctx),
+                                                        : AppColors.textTertiary(
+                                                            ctx,
+                                                          ),
                                                   ),
                                                   tooltip: loreEntry.enabled
                                                       ? 'Disable entry'
@@ -1113,16 +1173,23 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                             labelText:
                                                 'Keywords (comma-separated)',
                                             labelStyle: TextStyle(
-                                              color: AppColors.textSecondary(ctx),
+                                              color: AppColors.textSecondary(
+                                                ctx,
+                                              ),
                                               fontSize: 11,
                                             ),
                                             hintText: 'trigger, words, here',
                                             hintStyle: TextStyle(
-                                              color: AppColors.textTertiary(ctx),
+                                              color: AppColors.textTertiary(
+                                                ctx,
+                                              ),
                                               fontSize: 11,
                                             ),
                                             filled: true,
-                                            fillColor: AppColors.surfaceContainerOf(ctx),
+                                            fillColor:
+                                                AppColors.surfaceContainerOf(
+                                                  ctx,
+                                                ),
                                             border: OutlineInputBorder(
                                               borderRadius:
                                                   BorderRadius.circular(6),
@@ -1176,17 +1243,24 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                           decoration: InputDecoration(
                                             labelText: 'Lore Content',
                                             labelStyle: TextStyle(
-                                              color: AppColors.textSecondary(ctx),
+                                              color: AppColors.textSecondary(
+                                                ctx,
+                                              ),
                                               fontSize: 11,
                                             ),
                                             hintText:
                                                 'The actual lore text that will be injected...',
                                             hintStyle: TextStyle(
-                                              color: AppColors.textTertiary(ctx),
+                                              color: AppColors.textTertiary(
+                                                ctx,
+                                              ),
                                               fontSize: 11,
                                             ),
                                             filled: true,
-                                            fillColor: AppColors.surfaceContainerOf(ctx),
+                                            fillColor:
+                                                AppColors.surfaceContainerOf(
+                                                  ctx,
+                                                ),
                                             border: OutlineInputBorder(
                                               borderRadius:
                                                   BorderRadius.circular(6),
@@ -1239,14 +1313,19 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                   ),
                                                   checkColor: Colors.white,
                                                   side: BorderSide(
-                                                    color: AppColors.borderOf(ctx),
+                                                    color: AppColors.borderOf(
+                                                      ctx,
+                                                    ),
                                                   ),
                                                 ),
                                                 Text(
                                                   'Always Active',
                                                   style: TextStyle(
                                                     fontSize: 11,
-                                                    color: AppColors.textSecondary(ctx),
+                                                    color:
+                                                        AppColors.textSecondary(
+                                                          ctx,
+                                                        ),
                                                   ),
                                                 ),
                                               ],
@@ -1261,7 +1340,10 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                     'Sticky Depth:',
                                                     style: TextStyle(
                                                       fontSize: 11,
-                                                      color: AppColors.textSecondary(ctx),
+                                                      color:
+                                                          AppColors.textSecondary(
+                                                            ctx,
+                                                          ),
                                                     ),
                                                   ),
                                                   const SizedBox(width: 4),
@@ -1282,36 +1364,44 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                                       .length,
                                                                 ),
                                                       style: TextStyle(
-                                                        color: AppColors.textPrimary(ctx),
+                                                        color:
+                                                            AppColors.textPrimary(
+                                                              ctx,
+                                                            ),
                                                         fontSize: 11,
                                                       ),
                                                       keyboardType:
                                                           TextInputType.number,
                                                       decoration: InputDecoration(
                                                         filled: true,
-                                                        fillColor: AppColors.surfaceContainerOf(ctx),
+                                                        fillColor:
+                                                            AppColors.surfaceContainerOf(
+                                                              ctx,
+                                                            ),
                                                         border: OutlineInputBorder(
                                                           borderRadius:
                                                               BorderRadius.circular(
                                                                 4,
                                                               ),
-                                                          borderSide:
-                                                              BorderSide(
-                                                                color: AppColors
-                                                                    .borderOf(ctx),
-                                                              ),
+                                                          borderSide: BorderSide(
+                                                            color:
+                                                                AppColors.borderOf(
+                                                                  ctx,
+                                                                ),
+                                                          ),
                                                         ),
-                                                        enabledBorder:
-                                                            OutlineInputBorder(
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    4,
-                                                                  ),
-                                                              borderSide: BorderSide(
-                                                                color: AppColors
-                                                                    .borderOf(ctx),
+                                                        enabledBorder: OutlineInputBorder(
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                4,
                                                               ),
-                                                            ),
+                                                          borderSide: BorderSide(
+                                                            color:
+                                                                AppColors.borderOf(
+                                                                  ctx,
+                                                                ),
+                                                          ),
+                                                        ),
                                                         focusedBorder:
                                                             OutlineInputBorder(
                                                               borderRadius:
@@ -1381,9 +1471,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                         ),
                         child: Text(
                           'Cancel',
-                          style: TextStyle(
-                            color: AppColors.textSecondary(ctx),
-                          ),
+                          style: TextStyle(color: AppColors.textSecondary(ctx)),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1420,11 +1508,15 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                       world == null
                                           ? 'World created successfully'
                                           : 'World updated successfully',
-                                      style: TextStyle(color: AppColors.textPrimary(context)),
+                                      style: TextStyle(
+                                        color: AppColors.textPrimary(context),
+                                      ),
                                     ),
                                   ],
                                 ),
-                                backgroundColor: AppColors.surfaceContainerOf(context),
+                                backgroundColor: AppColors.surfaceContainerOf(
+                                  context,
+                                ),
                                 behavior: SnackBarBehavior.floating,
                               ),
                             );

@@ -41,7 +41,9 @@ class PseudoRemoteService extends LLMService {
           .get(uri)
           .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
-        debugPrint('[PseudoRemote] Reconnected to existing KoboldCPP instance.');
+        debugPrint(
+          '[PseudoRemote] Reconnected to existing KoboldCPP instance.',
+        );
         _isRunning = true;
         _modelReady = true;
         notifyListeners();
@@ -60,7 +62,9 @@ class PseudoRemoteService extends LLMService {
   }) async {
     if (_isStarting) return;
     if (_isRunning || _process != null) {
-      debugPrint('[PseudoRemote] start called while still running — stopping first.');
+      debugPrint(
+        '[PseudoRemote] start called while still running — stopping first.',
+      );
       await stop();
       await Future<void>.delayed(const Duration(seconds: 1));
     }
@@ -92,24 +96,24 @@ class PseudoRemoteService extends LLMService {
       _process!.stdout
           .transform(const Utf8Decoder(allowMalformed: true))
           .listen((data) {
-        _addLog(data);
-        _parseLoadingStatus(data);
-      });
+            _addLog(data);
+            _parseLoadingStatus(data);
+          });
 
       _process!.stderr
           .transform(const Utf8Decoder(allowMalformed: true))
           .listen((data) {
-        var cleanData = data.trim();
-        if (cleanData.isNotEmpty) {
-          cleanData = cleanData
-              .replaceAll('ERR: ', '')
-              .replaceAll('ERR:', '');
-          if (cleanData != '.' && cleanData != '..' && cleanData != '...') {
-            _addLog(cleanData);
-            _parseLoadingStatus(cleanData);
-          }
-        }
-      });
+            var cleanData = data.trim();
+            if (cleanData.isNotEmpty) {
+              cleanData = cleanData
+                  .replaceAll('ERR: ', '')
+                  .replaceAll('ERR:', '');
+              if (cleanData != '.' && cleanData != '..' && cleanData != '...') {
+                _addLog(cleanData);
+                _parseLoadingStatus(cleanData);
+              }
+            }
+          });
 
       _process!.exitCode.then((code) {
         _isRunning = false;
@@ -154,9 +158,7 @@ class PseudoRemoteService extends LLMService {
     };
 
     if (params.reasoningEnabled) {
-      payload['reasoning'] = {
-        'effort': params.reasoningEffort,
-      };
+      payload['reasoning'] = {'effort': params.reasoningEffort};
     }
 
     if (params.stopSequences != null && params.stopSequences!.isNotEmpty) {
@@ -173,7 +175,9 @@ class PseudoRemoteService extends LLMService {
     final completer = Completer<void>();
 
     try {
-      final response = await client.send(request).timeout(const Duration(seconds: 120));
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 120));
 
       if (response.statusCode != 200) {
         final body = await response.stream.bytesToString();
@@ -195,7 +199,9 @@ class PseudoRemoteService extends LLMService {
           if (line.isEmpty) continue;
           if (line == 'data: [DONE]' || line == 'data:[DONE]') return;
           if (!line.startsWith('data:')) continue;
-          final data = line.startsWith('data: ') ? line.substring(6) : line.substring(5);
+          final data = line.startsWith('data: ')
+              ? line.substring(6)
+              : line.substring(5);
           try {
             final json = jsonDecode(data);
             final choice = json['choices']?[0];
@@ -365,8 +371,7 @@ class PseudoRemoteService extends LLMService {
       } finally {
         client.close();
       }
-    } catch (_) {
-    }
+    } catch (_) {}
     return (text.length / 4).ceil();
   }
 

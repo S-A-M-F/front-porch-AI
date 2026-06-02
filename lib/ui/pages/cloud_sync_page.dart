@@ -501,23 +501,35 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                     decoration: BoxDecoration(
                       color: Colors.blueGrey.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.25)),
+                      border: Border.all(
+                        color: Colors.blueGrey.withValues(alpha: 0.25),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Paths in use (helpful for dev builds)',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white70,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'Local root: ${storageService.rootPath ?? "(default)"}',
-                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                          ),
                         ),
                         Text(
                           'Remote cloud root: ${syncService.cloudRoot}',
-                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                          ),
                         ),
                       ],
                     ),

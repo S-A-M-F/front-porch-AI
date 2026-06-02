@@ -59,16 +59,16 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                 const SizedBox(height: 24),
                 Text(
                   'No stories yet',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.headlineSmall?.copyWith(color: AppColors.textPrimary(context)),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: AppColors.textPrimary(context),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Create your first AI-generated story!',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary(context)),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: AppColors.textSecondary(context),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 _buildCreateButton(context, repo),
@@ -200,7 +200,9 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                       const SizedBox(height: 10),
                       LinearProgressIndicator(
                         value: abService.progress,
-                        backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.3),
+                        backgroundColor: AppColors.borderOf(
+                          context,
+                        ).withValues(alpha: 0.3),
                         valueColor: AlwaysStoppedAnimation<Color>(
                           Colors.amber.shade600,
                         ),
@@ -309,7 +311,9 @@ class _StoryHomeViewState extends State<StoryHomeView> {
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppColors.borderOf(context).withValues(alpha: 0.1)),
+        side: BorderSide(
+          color: AppColors.borderOf(context).withValues(alpha: 0.1),
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -427,11 +431,17 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                       value: 'audiobook',
                       child: Row(
                         children: [
-                          const Icon(Icons.headphones, color: Colors.amber, size: 18),
+                          const Icon(
+                            Icons.headphones,
+                            color: Colors.amber,
+                            size: 18,
+                          ),
                           const SizedBox(width: 10),
                           Text(
                             'Export Audiobook (.wav)',
-                            style: TextStyle(color: AppColors.textPrimary(context)),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                            ),
                           ),
                         ],
                       ),
@@ -444,7 +454,9 @@ class _StoryHomeViewState extends State<StoryHomeView> {
                           const SizedBox(width: 10),
                           Text(
                             'Export eBook (.epub)',
-                            style: TextStyle(color: AppColors.textPrimary(context)),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                            ),
                           ),
                         ],
                       ),

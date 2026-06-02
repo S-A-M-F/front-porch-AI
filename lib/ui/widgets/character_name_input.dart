@@ -35,11 +35,7 @@ class CharacterNameInput extends StatelessWidget {
             Tooltip(
               message: tooltip,
               child: IconButton(
-                icon: Icon(
-                  Icons.casino,
-                  color: Colors.amberAccent,
-                  size: 20,
-                ),
+                icon: Icon(Icons.casino, color: Colors.amberAccent, size: 20),
                 onPressed: onRandomize,
                 visualDensity: VisualDensity.compact,
               ),
@@ -50,13 +46,13 @@ class CharacterNameInput extends StatelessWidget {
         AppTextField(
           controller: controller,
           onChanged: onChanged,
-          style: TextStyle(
-            color: AppColors.textPrimary(context),
-            fontSize: 14,
-          ),
+          style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 13),
+            hintStyle: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 13,
+            ),
             filled: true,
             fillColor: AppColors.surfaceContainerOf(context),
             border: OutlineInputBorder(
@@ -71,7 +67,10 @@ class CharacterNameInput extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: Colors.blueAccent),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
           maxLines: 1,
         ),
@@ -96,7 +95,11 @@ Widget _inputLabel(BuildContext context, String text, {bool required = false}) {
         Text(
           ' *',
           style: TextStyle(
-            color: AppColors.resolve(context, Colors.redAccent, Colors.red.shade700),
+            color: AppColors.resolve(
+              context,
+              Colors.redAccent,
+              Colors.red.shade700,
+            ),
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),

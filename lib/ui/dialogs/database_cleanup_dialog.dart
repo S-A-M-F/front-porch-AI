@@ -56,9 +56,9 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _scanning = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Scan failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Scan failed: $e')));
     }
   }
 
@@ -81,7 +81,10 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Clean Up', style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'Clean Up',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -94,16 +97,16 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
       await DatabaseCleanup.cleanOrphans(db);
       if (!mounted) return;
       setState(() => _cleaning = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cleanup complete')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Cleanup complete')));
       await _runScan();
     } catch (e) {
       if (!mounted) return;
       setState(() => _cleaning = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cleanup failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Cleanup failed: $e')));
     }
   }
 
@@ -117,10 +120,7 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
         constraints: const BoxConstraints(maxWidth: 540),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(theme),
-            _buildBody(theme),
-          ],
+          children: [_buildHeader(theme), _buildBody(theme)],
         ),
       ),
     );
@@ -134,7 +134,11 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.cleaning_services, color: Colors.blueAccent, size: 22),
+          const Icon(
+            Icons.cleaning_services,
+            color: Colors.blueAccent,
+            size: 22,
+          ),
           const SizedBox(width: 10),
           Text(
             'Database Cleanup',
@@ -184,8 +188,10 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
     if (report == null) {
       return const Padding(
         padding: EdgeInsets.all(48),
-        child: Text('Scan failed. Close and try again.',
-            style: TextStyle(color: Colors.white54)),
+        child: Text(
+          'Scan failed. Close and try again.',
+          style: TextStyle(color: Colors.white54),
+        ),
       );
     }
 
@@ -258,20 +264,31 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
     _Category('avatar_images', 'Orphaned avatar images', Icons.image),
     _Category('objectives', 'Orphaned objectives', Icons.flag),
     _Category('data_bank_entries', 'Orphaned data bank entries', Icons.storage),
-    _Category('message_embeddings', 'Orphaned message embeddings', Icons.memory),
+    _Category(
+      'message_embeddings',
+      'Orphaned message embeddings',
+      Icons.memory,
+    ),
     _Category('sessions', 'Orphaned sessions', Icons.chat),
-    _Category('group_orphan_sessions', 'Orphaned group sessions', Icons.group_work),
+    _Category(
+      'group_orphan_sessions',
+      'Orphaned group sessions',
+      Icons.group_work,
+    ),
     _Category('messages', 'Orphaned messages', Icons.message),
   ];
 
   static const _refCategories = [
     _Category('memory_sources', 'Broken memory source refs', Icons.link_off),
-    _Category('group_character_ids', 'Broken group character refs', Icons.group),
+    _Category(
+      'group_character_ids',
+      'Broken group character refs',
+      Icons.group,
+    ),
     _Category('group_world_ids', 'Broken group world refs', Icons.public),
   ];
 
-  List<Widget> _buildOrphanCategoryList(
-      ThemeData theme, OrphanReport report) {
+  List<Widget> _buildOrphanCategoryList(ThemeData theme, OrphanReport report) {
     final items = <Widget>[];
     for (final cat in _orphanCategories) {
       final count = report.orphanCounts[cat.key] ?? 0;
@@ -281,7 +298,9 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
   }
 
   List<Widget> _buildBrokenRefCategoryList(
-      ThemeData theme, OrphanReport report) {
+    ThemeData theme,
+    OrphanReport report,
+  ) {
     final items = <Widget>[];
     for (final cat in _refCategories) {
       final count = report.brokenRefCounts[cat.key] ?? 0;

@@ -1,6 +1,5 @@
 // standard
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,7 +17,7 @@ import 'package:front_porch_ai/ui/chat_components/overlays/rag_setup_dialog.dart
 /// embedding status, and per-character memory source picker.
 class MemorySection extends StatefulWidget {
   final ChatService chatService;
-  const MemorySection({required this.chatService});
+  const MemorySection({super.key, required this.chatService});
 
   @override
   State<MemorySection> createState() => MemorySectionState();

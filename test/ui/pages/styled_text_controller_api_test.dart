@@ -22,25 +22,26 @@ void main() {
     });
 
     test('SuggestionSpan.suggestions is accessible', () {
-      final span = SuggestionSpan(TextRange(start: 0, end: 5), ['hello', 'world']);
+      final span = SuggestionSpan(TextRange(start: 0, end: 5), [
+        'hello',
+        'world',
+      ]);
       expect(span.suggestions, hasLength(2));
     });
   });
 
   group('SpellCheckResults API compatibility', () {
     test('SpellCheckResults.spellCheckedText is accessible', () {
-      final results = SpellCheckResults(
-        'hello world',
-        [SuggestionSpan(TextRange(start: 0, end: 5), ['hello'])],
-      );
+      final results = SpellCheckResults('hello world', [
+        SuggestionSpan(TextRange(start: 0, end: 5), ['hello']),
+      ]);
       expect(results.spellCheckedText, 'hello world');
     });
 
     test('SpellCheckResults.suggestionSpans is accessible', () {
-      final results = SpellCheckResults(
-        'hello world',
-        [SuggestionSpan(TextRange(start: 0, end: 5), ['hello'])],
-      );
+      final results = SpellCheckResults('hello world', [
+        SuggestionSpan(TextRange(start: 0, end: 5), ['hello']),
+      ]);
       expect(results.suggestionSpans, hasLength(1));
     });
   });

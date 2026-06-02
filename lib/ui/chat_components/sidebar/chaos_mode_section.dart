@@ -16,7 +16,11 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 class ChaosModeSection extends StatelessWidget {
   final ChatService chat;
   final VoidCallback onSpinRequested;
-  const ChaosModeSection({required this.chat, required this.onSpinRequested});
+  const ChaosModeSection({
+    super.key,
+    required this.chat,
+    required this.onSpinRequested,
+  });
 
   Color get _pressureColor => Color.lerp(
     const Color(0xFF2EC4B6),

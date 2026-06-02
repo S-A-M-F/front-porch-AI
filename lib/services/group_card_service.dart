@@ -91,7 +91,10 @@ class GroupCardService {
   Future<GroupCard?> loadGroupCardFromPng(String path) async {
     try {
       final bytes = await File(path).readAsBytes();
-      final base64Data = PngMetadataUtils.extractTextChunk(bytes, groupChunkKeyword);
+      final base64Data = PngMetadataUtils.extractTextChunk(
+        bytes,
+        groupChunkKeyword,
+      );
 
       if (base64Data == null) return null;
 

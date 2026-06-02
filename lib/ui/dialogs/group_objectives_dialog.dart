@@ -25,7 +25,6 @@ import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
-
 /// Dedicated, group-aware objectives manager.
 ///
 /// Replaces the previous hack of swapping global `_activeObjectives` via
@@ -82,8 +81,10 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
     }
   }
 
-  Objective? get _primary => _objectives.where((o) => o.isPrimary && o.active).firstOrNull;
-  List<Objective> get _secondaries => _objectives.where((o) => !o.isPrimary && o.active).toList();
+  Objective? get _primary =>
+      _objectives.where((o) => o.isPrimary && o.active).firstOrNull;
+  List<Objective> get _secondaries =>
+      _objectives.where((o) => !o.isPrimary && o.active).toList();
 
   List<Map<String, dynamic>> _tasksFor(Objective obj) {
     try {
@@ -96,14 +97,22 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
   Future<void> _addObjective({required bool isPrimary}) async {
     final goal = _goalController.text.trim();
     if (goal.isEmpty) return;
-    await widget.chatService.setObjective(goal, isPrimary: isPrimary, targetCharacter: _focused);
+    await widget.chatService.setObjective(
+      goal,
+      isPrimary: isPrimary,
+      targetCharacter: _focused,
+    );
     _goalController.clear();
     await _loadForCurrent();
   }
 
   Future<void> _generateTasks(Objective obj) async {
     setState(() => _generatingTasks = true);
-    await widget.chatService.generateObjectiveTasks(obj, taskCount: _taskCount, nsfw: _nsfw);
+    await widget.chatService.generateObjectiveTasks(
+      obj,
+      taskCount: _taskCount,
+      nsfw: _nsfw,
+    );
     await _loadForCurrent();
     if (mounted) setState(() => _generatingTasks = false);
   }
@@ -148,7 +157,13 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                 children: [
                   const Icon(Icons.flag, color: Colors.amber),
                   const SizedBox(width: 8),
-                  Text('Group Objectives', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text(
+                    'Group Objectives',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.close),
@@ -164,7 +179,10 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
               height: 72,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 itemCount: widget.groupCharacters.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (ctx, i) {
@@ -179,25 +197,37 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: selected ? Colors.amber : Colors.transparent,
+                              color: selected
+                                  ? Colors.amber
+                                  : Colors.transparent,
                               width: 2,
                             ),
                           ),
                           child: CircleAvatar(
                             radius: 20,
                             backgroundImage: ch.imagePath != null
-                                ? FileImage(File(ch.imagePath!)) // safe in context of app
+                                ? FileImage(
+                                    File(ch.imagePath!),
+                                  ) // safe in context of app
                                 : null,
-                            child: ch.imagePath == null ? Text(ch.name[0]) : null,
+                            child: ch.imagePath == null
+                                ? Text(ch.name[0])
+                                : null,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          ch.name.length > 12 ? '${ch.name.substring(0, 10)}…' : ch.name,
+                          ch.name.length > 12
+                              ? '${ch.name.substring(0, 10)}…'
+                              : ch.name,
                           style: TextStyle(
                             fontSize: 10,
-                            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                            color: selected ? Colors.amber : AppColors.textSecondary(context),
+                            fontWeight: selected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: selected
+                                ? Colors.amber
+                                : AppColors.textSecondary(context),
                           ),
                         ),
                       ],
@@ -219,7 +249,13 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Primary
-                          Text('Primary Objective', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary(context))),
+                          Text(
+                            'Primary Objective',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textSecondary(context),
+                            ),
+                          ),
                           const SizedBox(height: 6),
                           if (_primary != null) ...[
                             _buildObjectiveCard(_primary!, isPrimary: true),
@@ -229,9 +265,16 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                               decoration: BoxDecoration(
                                 color: AppColors.cardOf(context),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.2)),
+                                border: Border.all(
+                                  color: AppColors.borderOf(
+                                    context,
+                                  ).withValues(alpha: 0.2),
+                                ),
                               ),
-                              child: const Text('No primary objective set.', style: TextStyle(fontStyle: FontStyle.italic)),
+                              child: const Text(
+                                'No primary objective set.',
+                                style: TextStyle(fontStyle: FontStyle.italic),
+                              ),
                             ),
                           ],
 
@@ -240,24 +283,42 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                           // Secondaries
                           Row(
                             children: [
-                              Text('Secondary Objectives', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary(context))),
+                              Text(
+                                'Secondary Objectives',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textSecondary(context),
+                                ),
+                              ),
                               const Spacer(),
                               if (_secondaries.length < 2)
                                 TextButton.icon(
-                                  onPressed: () => _showAddDialog(isPrimary: false),
+                                  onPressed: () =>
+                                      _showAddDialog(isPrimary: false),
                                   icon: const Icon(Icons.add, size: 16),
-                                  label: const Text('Add', style: TextStyle(fontSize: 12)),
+                                  label: const Text(
+                                    'Add',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           if (_secondaries.isEmpty)
-                            const Text('None set.', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12))
+                            const Text(
+                              'None set.',
+                              style: TextStyle(
+                                fontStyle: FontStyle.italic,
+                                fontSize: 12,
+                              ),
+                            )
                           else
-                            ..._secondaries.map((s) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 6),
-                                  child: _buildObjectiveCard(s, isPrimary: false),
-                                )),
+                            ..._secondaries.map(
+                              (s) => Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: _buildObjectiveCard(s, isPrimary: false),
+                              ),
+                            ),
 
                           const SizedBox(height: 20),
 
@@ -271,7 +332,10 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('New Objective', style: TextStyle(fontWeight: FontWeight.w600)),
+                                const Text(
+                                  'New Objective',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
                                 const SizedBox(height: 8),
                                 TextField(
                                   controller: _goalController,
@@ -280,13 +344,17 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                                     isDense: true,
                                     border: OutlineInputBorder(),
                                   ),
-                                  onSubmitted: (_) => _addObjective(isPrimary: _primary == null),
+                                  onSubmitted: (_) => _addObjective(
+                                    isPrimary: _primary == null,
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
                                     ElevatedButton(
-                                      onPressed: () => _addObjective(isPrimary: _primary == null),
+                                      onPressed: () => _addObjective(
+                                        isPrimary: _primary == null,
+                                      ),
                                       child: const Text('Add'),
                                     ),
                                     const SizedBox(width: 12),
@@ -332,7 +400,11 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
       decoration: BoxDecoration(
         color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: isPrimary ? Colors.amber.withValues(alpha: 0.4) : AppColors.borderOf(context).withValues(alpha: 0.2)),
+        border: Border.all(
+          color: isPrimary
+              ? Colors.amber.withValues(alpha: 0.4)
+              : AppColors.borderOf(context).withValues(alpha: 0.2),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,11 +414,17 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
               Expanded(
                 child: Text(
                   obj.objective,
-                  style: TextStyle(fontWeight: isPrimary ? FontWeight.w600 : FontWeight.normal),
+                  style: TextStyle(
+                    fontWeight: isPrimary ? FontWeight.w600 : FontWeight.normal,
+                  ),
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: Colors.redAccent,
+                ),
                 onPressed: () => _clearObjective(obj),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -355,7 +433,10 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
           ),
           if (tasks.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text('$completedCount / ${tasks.length} tasks complete', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+            Text(
+              '$completedCount / ${tasks.length} tasks complete',
+              style: const TextStyle(fontSize: 11, color: Colors.white70),
+            ),
             const SizedBox(height: 4),
             ...tasks.asMap().entries.map((entry) {
               final i = entry.key;
@@ -366,22 +447,37 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   t['description'] ?? '',
-                  style: TextStyle(decoration: done ? TextDecoration.lineThrough : null, fontSize: 12),
+                  style: TextStyle(
+                    decoration: done ? TextDecoration.lineThrough : null,
+                    fontSize: 12,
+                  ),
                 ),
                 value: done,
                 onChanged: (_) => _toggleTask(obj, i),
                 secondary: IconButton(
                   icon: const Icon(Icons.edit, size: 14),
                   onPressed: () async {
-                    final controller = TextEditingController(text: t['description']);
+                    final controller = TextEditingController(
+                      text: t['description'],
+                    );
                     final newText = await showDialog<String>(
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: const Text('Edit task'),
-                        content: TextField(controller: controller, autofocus: true),
+                        content: TextField(
+                          controller: controller,
+                          autofocus: true,
+                        ),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                          TextButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Save')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.pop(ctx, controller.text),
+                            child: const Text('Save'),
+                          ),
                         ],
                       ),
                     );
@@ -399,17 +495,27 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
               TextButton.icon(
                 onPressed: _generatingTasks ? null : () => _generateTasks(obj),
                 icon: const Icon(Icons.auto_awesome, size: 14),
-                label: const Text('Regenerate tasks', style: TextStyle(fontSize: 11)),
+                label: const Text(
+                  'Regenerate tasks',
+                  style: TextStyle(fontSize: 11),
+                ),
               ),
               const Spacer(),
               if (!isPrimary)
                 TextButton(
                   onPressed: () async {
                     // Promote secondary to primary
-                    await widget.chatService.setObjective(obj.objective, isPrimary: true, targetCharacter: _focused);
+                    await widget.chatService.setObjective(
+                      obj.objective,
+                      isPrimary: true,
+                      targetCharacter: _focused,
+                    );
                     await _loadForCurrent();
                   },
-                  child: const Text('Make primary', style: TextStyle(fontSize: 11)),
+                  child: const Text(
+                    'Make primary',
+                    style: TextStyle(fontSize: 11),
+                  ),
                 ),
             ],
           ),
@@ -424,16 +530,29 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
       builder: (ctx) {
         final ctrl = TextEditingController();
         return AlertDialog(
-          title: Text(isPrimary ? 'New Primary Objective' : 'New Secondary Objective'),
-          content: TextField(controller: ctrl, autofocus: true, decoration: const InputDecoration(hintText: 'Goal description')),
+          title: Text(
+            isPrimary ? 'New Primary Objective' : 'New Secondary Objective',
+          ),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Goal description'),
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
             TextButton(
               onPressed: () async {
                 final g = ctrl.text.trim();
                 if (g.isNotEmpty) {
                   Navigator.pop(ctx);
-                  await widget.chatService.setObjective(g, isPrimary: isPrimary, targetCharacter: _focused);
+                  await widget.chatService.setObjective(
+                    g,
+                    isPrimary: isPrimary,
+                    targetCharacter: _focused,
+                  );
                   await _loadForCurrent();
                 }
               },
@@ -460,7 +579,11 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
                   const Spacer(),
                   DropdownButton<int>(
                     value: _taskCount,
-                    items: const [3, 5, 7, 9].map((n) => DropdownMenuItem(value: n, child: Text('$n'))).toList(),
+                    items: const [3, 5, 7, 9]
+                        .map(
+                          (n) => DropdownMenuItem(value: n, child: Text('$n')),
+                        )
+                        .toList(),
                     onChanged: (v) => setDlg(() => _taskCount = v ?? 5),
                   ),
                 ],
@@ -474,21 +597,36 @@ class _GroupObjectivesDialogState extends State<GroupObjectivesDialog> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
               onPressed: () async {
                 Navigator.pop(ctx);
                 // Generate one primary if none exists, plus one secondary
                 if (_primary == null) {
-                  await widget.chatService.setObjective('A meaningful personal goal for this scene', isPrimary: true, targetCharacter: _focused);
+                  await widget.chatService.setObjective(
+                    'A meaningful personal goal for this scene',
+                    isPrimary: true,
+                    targetCharacter: _focused,
+                  );
                 }
                 if (_secondaries.length < 2) {
-                  await widget.chatService.setObjective('A secondary supporting goal', isPrimary: false, targetCharacter: _focused);
+                  await widget.chatService.setObjective(
+                    'A secondary supporting goal',
+                    isPrimary: false,
+                    targetCharacter: _focused,
+                  );
                 }
                 await _loadForCurrent();
                 // Optionally auto-generate tasks for the new ones
                 for (final o in _objectives.take(2)) {
-                  await widget.chatService.generateObjectiveTasks(o, taskCount: _taskCount, nsfw: _nsfw);
+                  await widget.chatService.generateObjectiveTasks(
+                    o,
+                    taskCount: _taskCount,
+                    nsfw: _nsfw,
+                  );
                 }
                 await _loadForCurrent();
               },

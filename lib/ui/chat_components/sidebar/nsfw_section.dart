@@ -23,7 +23,7 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class NsfwEnhancementsSection extends StatefulWidget {
   final ChatService chat;
-  const NsfwEnhancementsSection({required this.chat});
+  const NsfwEnhancementsSection({super.key, required this.chat});
 
   @override
   State<NsfwEnhancementsSection> createState() =>
@@ -54,7 +54,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                 const Icon(
                   Icons.warning_amber_rounded,
                   size: 14,
-                  color: const Color(0xFFEA580C),
+                  color: Color(0xFFEA580C),
                 ),
                 const SizedBox(width: 5),
                 const Flexible(
@@ -63,7 +63,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFFEA580C),
+                      color: Color(0xFFEA580C),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -88,7 +88,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                       '⏳ ${widget.chat.cooldownTurnsRemaining}t',
                       style: const TextStyle(
                         fontSize: 10,
-                        color: const Color(0xFFEA580C),
+                        color: Color(0xFFEA580C),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -235,7 +235,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                       const Icon(
                         Icons.hourglass_bottom,
                         size: 12,
-                        color: const Color(0xFFEA580C),
+                        color: Color(0xFFEA580C),
                       ),
                       const SizedBox(width: 4),
                       Flexible(
@@ -243,7 +243,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                           'Refractory: ${widget.chat.cooldownTurnsRemaining} turn${widget.chat.cooldownTurnsRemaining == 1 ? '' : 's'} remaining',
                           style: const TextStyle(
                             fontSize: 11,
-                            color: const Color(0xFFEA580C),
+                            color: Color(0xFFEA580C),
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),

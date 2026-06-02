@@ -25,7 +25,7 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 class SceneTimeSection extends StatelessWidget {
   final ChatService chat;
 
-  const SceneTimeSection({required this.chat});
+  const SceneTimeSection({super.key, required this.chat});
 
   @override
   Widget build(BuildContext context) {

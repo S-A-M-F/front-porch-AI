@@ -596,7 +596,8 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                         _perCharStrengths[c] = newStrength;
                       });
                       // Flush to service so it persists on Save / restart
-                      final currentNote = _perCharNoteControllers[c]?.text ?? '';
+                      final currentNote =
+                          _perCharNoteControllers[c]?.text ?? '';
                       widget.chatService.setAuthorNoteForGroupCharacter(
                         c,
                         currentNote,
@@ -2176,9 +2177,7 @@ class _GeneralTabState extends State<_GeneralTab> {
             border: Border(top: BorderSide(color: AppColors.borderOf(context))),
             color: AppColors.surfaceContainerOf(context),
           ),
-          child: Row(
-            children: [],
-          ),
+          child: Row(children: []),
         ),
       ],
     );

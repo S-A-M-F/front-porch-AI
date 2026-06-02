@@ -17,7 +17,6 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
@@ -26,7 +25,7 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 /// Lorebook section for 1:1 (extracted).
 class LorebookSection extends StatefulWidget {
   final CharacterCard character;
-  const LorebookSection({required this.character});
+  const LorebookSection({super.key, required this.character});
 
   @override
   State<LorebookSection> createState() => _LorebookSectionState();
@@ -165,7 +164,7 @@ class _LorebookSectionState extends State<LorebookSection> {
 /// Group-aware lorebook triggers section for the group chat sidebar.
 class GroupLorebookSection extends StatefulWidget {
   final ChatService chatService;
-  const GroupLorebookSection({required this.chatService});
+  const GroupLorebookSection({super.key, required this.chatService});
 
   @override
   State<GroupLorebookSection> createState() => _GroupLorebookSectionState();

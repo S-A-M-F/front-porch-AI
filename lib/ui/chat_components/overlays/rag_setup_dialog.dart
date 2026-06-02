@@ -19,13 +19,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class RagSetupDialog extends StatefulWidget {
-  const RagSetupDialog();
+  const RagSetupDialog({super.key});
 
   @override
   State<RagSetupDialog> createState() => RagSetupDialogState();
@@ -521,7 +520,12 @@ class InfoRow extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String text;
-  const InfoRow({required this.icon, required this.color, required this.text});
+  const InfoRow({
+    super.key,
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
 
   @override
   Widget build(BuildContext context) {

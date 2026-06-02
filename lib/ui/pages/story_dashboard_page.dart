@@ -716,7 +716,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       decoration: BoxDecoration(
         color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.3)),
+        border: Border.all(
+          color: AppColors.borderOf(context).withValues(alpha: 0.3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1040,7 +1042,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                 const SizedBox(height: 4),
                 AppTextField(
                   controller: _actTitleControllers[index],
-                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontSize: 14,
+                  ),
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     filled: true,
@@ -1064,7 +1069,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                 const SizedBox(height: 4),
                 AppTextField(
                   controller: _actDescControllers[index],
-                  style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 13,
+                  ),
                   maxLines: 8,
                   decoration: InputDecoration(
                     filled: true,
@@ -1152,7 +1160,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       decoration: BoxDecoration(
         color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.15)),
+        border: Border.all(
+          color: AppColors.borderOf(context).withValues(alpha: 0.15),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1201,7 +1211,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
         ),
         subtitle: Text(
           c.role,
-          style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12),
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 12,
+          ),
         ),
         leading: CircleAvatar(
           backgroundColor: Colors.orange.shade900.withValues(alpha: 0.4),
@@ -1219,14 +1232,19 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
               children: [
                 Text(
                   c.description,
-                  style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 13,
+                  ),
                 ),
                 if (c.voiceSample != null && c.voiceSample!.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(
                     'Voice: "${c.voiceSample}"',
                     style: TextStyle(
-                      color: AppColors.textSecondary(context).withValues(alpha: 0.8),
+                      color: AppColors.textSecondary(
+                        context,
+                      ).withValues(alpha: 0.8),
                       fontStyle: FontStyle.italic,
                       fontSize: 12,
                     ),
@@ -1264,7 +1282,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                                 fontSize: 12,
                               ),
                             ),
-                            dropdownColor: AppColors.surfaceContainerOf(context),
+                            dropdownColor: AppColors.surfaceContainerOf(
+                              context,
+                            ),
                             isExpanded: true,
                             underline: Container(
                               height: 1,
@@ -1341,7 +1361,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
         leading: Icon(Icons.timeline, size: 18, color: Colors.cyan.shade400),
         title: Text(
           t.name,
-          style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 13,
+          ),
         ),
         subtitle: Text(
           t.description,
@@ -1360,7 +1383,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       child: Chip(
         label: Text(
           l.topic,
-          style: TextStyle(fontSize: 12, color: AppColors.textSecondary(context)),
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary(context),
+          ),
         ),
         backgroundColor: AppColors.cardOf(context),
         side: BorderSide(color: Colors.green.shade800.withValues(alpha: 0.3)),

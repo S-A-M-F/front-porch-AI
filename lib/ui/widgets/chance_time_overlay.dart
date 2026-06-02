@@ -68,7 +68,8 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         // In group mode, use the current/next speaker so the event text is attributed
         // to the character who will actually respond (as per group turn order).
         // Falls back gracefully for 1:1 or when no next speaker is selected.
-        _charName = svc.nextCharacter?.name ?? svc.activeCharacter?.name ?? 'Character';
+        _charName =
+            svc.nextCharacter?.name ?? svc.activeCharacter?.name ?? 'Character';
       });
     });
   }
@@ -629,7 +630,9 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                       gradient: LinearGradient(
                         colors: [
                           Colors.transparent,
-                          const Color(0xFF9B5DE5).withValues(alpha: 0.5 * (1 - t)),
+                          const Color(
+                            0xFF9B5DE5,
+                          ).withValues(alpha: 0.5 * (1 - t)),
                           Colors.transparent,
                         ],
                       ),

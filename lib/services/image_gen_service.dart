@@ -172,7 +172,8 @@ class ImageGenService extends ChangeNotifier {
     required String prompt,
     String negativePrompt = '',
     String? size,
-    Uint8List? referenceImage, // for img2img / reference conditioning (wired for Draw Things; ignored by others for now)
+    Uint8List?
+    referenceImage, // for img2img / reference conditioning (wired for Draw Things; ignored by others for now)
     String? model,
     bool isPortrait = false,
   }) async {

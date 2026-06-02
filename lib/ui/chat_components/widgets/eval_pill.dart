@@ -35,7 +35,11 @@ class AnimatedEvalPill extends StatelessWidget {
   final EvalPill pill;
   final Animation<double> pulseAnimation;
 
-  const AnimatedEvalPill({required this.pill, required this.pulseAnimation});
+  const AnimatedEvalPill({
+    super.key,
+    required this.pill,
+    required this.pulseAnimation,
+  });
 
   @override
   Widget build(BuildContext context) {

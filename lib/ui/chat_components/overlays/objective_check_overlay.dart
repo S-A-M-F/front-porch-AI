@@ -18,7 +18,6 @@
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
@@ -28,7 +27,7 @@ import '../widgets/eval_pill.dart';
 class ObjectiveCheckOverlay extends StatefulWidget {
   final ChatService chatService;
 
-  const ObjectiveCheckOverlay({required this.chatService});
+  const ObjectiveCheckOverlay({super.key, required this.chatService});
 
   @override
   State<ObjectiveCheckOverlay> createState() => ObjectiveCheckOverlayState();

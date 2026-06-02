@@ -58,8 +58,7 @@ class GreetingToneSelector extends StatelessWidget {
               .map((tone) {
                 final isSelected = selectedTones.contains(tone);
                 final maxTones = greetingCount + 1;
-                final atLimit =
-                    selectedTones.length >= maxTones && !isSelected;
+                final atLimit = selectedTones.length >= maxTones && !isSelected;
                 return FilterChip(
                   label: Text(tone),
                   selected: isSelected,

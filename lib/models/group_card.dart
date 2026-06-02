@@ -109,9 +109,9 @@ class GroupCard {
     this.defaultMemberRealismState = '{}',
     this.memberObjectives = const {},
     this.extensions,
-  })  : rawMemberData = rawMemberData ?? members.map((c) => c.toJson()).toList(),
-        characterSystemPrompts = characterSystemPrompts ?? {},
-        worldIds = worldIds ?? [];
+  }) : rawMemberData = rawMemberData ?? members.map((c) => c.toJson()).toList(),
+       characterSystemPrompts = characterSystemPrompts ?? {},
+       worldIds = worldIds ?? [];
 
   Map<String, dynamic> toJson() {
     final result = <String, dynamic>{
@@ -142,7 +142,8 @@ class GroupCard {
       result['baseline_realism_state'] = baselineRealismState;
     }
 
-    if (defaultMemberRealismState.isNotEmpty && defaultMemberRealismState != '{}') {
+    if (defaultMemberRealismState.isNotEmpty &&
+        defaultMemberRealismState != '{}') {
       result['default_member_realism_state'] = defaultMemberRealismState;
     }
 
@@ -202,7 +203,8 @@ class GroupCard {
       );
     }
 
-    final worldIds = (json['world_ids'] as List<dynamic>?)
+    final worldIds =
+        (json['world_ids'] as List<dynamic>?)
             ?.map((e) => e.toString())
             .toList() ??
         [];
@@ -224,10 +226,17 @@ class GroupCard {
       chaosModeEnabled: json['chaos_mode_enabled'] ?? false,
       chaosNsfwEnabled: json['chaos_nsfw_enabled'] ?? false,
       baselineRealismState: json['baseline_realism_state']?.toString() ?? '{}',
-      defaultMemberRealismState: json['default_member_realism_state']?.toString() ?? '{}',
+      defaultMemberRealismState:
+          json['default_member_realism_state']?.toString() ?? '{}',
       memberObjectives: (json['member_objectives'] is Map)
-          ? (json['member_objectives'] as Map).map((k, v) =>
-              MapEntry(k.toString(), (v as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()))
+          ? (json['member_objectives'] as Map).map(
+              (k, v) => MapEntry(
+                k.toString(),
+                (v as List)
+                    .map((e) => Map<String, dynamic>.from(e as Map))
+                    .toList(),
+              ),
+            )
           : const {},
       extensions: json['extensions'] is Map
           ? Map<String, dynamic>.from(json['extensions'])

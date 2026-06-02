@@ -141,7 +141,9 @@ class GroupChat {
   factory GroupChat.fromJson(Map<String, dynamic> json) {
     final rawCharPrompts = json['character_system_prompts'];
     final charPrompts = (rawCharPrompts is Map)
-        ? rawCharPrompts.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()))
+        ? rawCharPrompts.map(
+            (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+          )
         : <String, String>{};
 
     final rawWorldIds = json['world_ids'];

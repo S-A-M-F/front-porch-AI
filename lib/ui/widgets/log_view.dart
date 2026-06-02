@@ -114,10 +114,12 @@ class _LogViewState extends State<LogView> with SingleTickerProviderStateMixin {
       final mainSpans = <TextSpan>[];
       for (int i = 0; i < logs.length - 1; i++) {
         final line = logs[i];
-        mainSpans.add(TextSpan(
-          text: i < logs.length - 2 ? '$line\n' : line,
-          style: TextStyle(color: _lineColor(line), height: 1.45),
-        ));
+        mainSpans.add(
+          TextSpan(
+            text: i < logs.length - 2 ? '$line\n' : line,
+            style: TextStyle(color: _lineColor(line), height: 1.45),
+          ),
+        );
       }
 
       final lastLine = logs.last;
@@ -134,7 +136,9 @@ class _LogViewState extends State<LogView> with SingleTickerProviderStateMixin {
               return SelectableText(
                 lastLine,
                 style: TextStyle(
-                  color: _lineColor(lastLine).withValues(alpha: _blinkAnimation.value),
+                  color: _lineColor(
+                    lastLine,
+                  ).withValues(alpha: _blinkAnimation.value),
                   fontFamily: 'monospace',
                   fontSize: 12,
                   height: 1.45,
@@ -154,10 +158,12 @@ class _LogViewState extends State<LogView> with SingleTickerProviderStateMixin {
       if (isProgress) {
         color = color.withValues(alpha: 0.45);
       }
-      allSpans.add(TextSpan(
-        text: i < logs.length - 1 ? '$line\n' : line,
-        style: TextStyle(color: color, height: 1.45),
-      ));
+      allSpans.add(
+        TextSpan(
+          text: i < logs.length - 1 ? '$line\n' : line,
+          style: TextStyle(color: color, height: 1.45),
+        ),
+      );
     }
 
     return SelectableText.rich(

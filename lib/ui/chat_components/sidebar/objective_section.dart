@@ -17,7 +17,7 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 class ObjectiveSection extends StatefulWidget {
   final ChatService chatService;
-  const ObjectiveSection({required this.chatService});
+  const ObjectiveSection({super.key, required this.chatService});
 
   @override
   State<ObjectiveSection> createState() => ObjectiveSectionState();

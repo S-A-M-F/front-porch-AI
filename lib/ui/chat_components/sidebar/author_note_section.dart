@@ -17,7 +17,6 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
@@ -26,7 +25,7 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 /// Author note section (extracted, group + 1:1 support).
 class AuthorNoteSection extends StatefulWidget {
   final ChatService chatService;
-  const AuthorNoteSection({required this.chatService});
+  const AuthorNoteSection({super.key, required this.chatService});
 
   @override
   State<AuthorNoteSection> createState() => _AuthorNoteSectionState();

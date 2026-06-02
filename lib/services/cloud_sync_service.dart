@@ -98,7 +98,8 @@ class CloudSyncService extends ChangeNotifier {
 
   /// Rawhide / pre-release: /FrontPorchAI-Rawhide
   /// This provides proper isolation between release channels.
-  String get _cloudRoot => isPreRelease ? '/FrontPorchAI-Rawhide' : '/FrontPorchAI';
+  String get _cloudRoot =>
+      isPreRelease ? '/FrontPorchAI-Rawhide' : '/FrontPorchAI';
 
   /// Publicly exposed cloud root for UI / debugging.
   String get cloudRoot => _cloudRoot;

@@ -277,10 +277,24 @@ void main(List<String> args) async {
             Provider.of<StorageService>(context, listen: false),
             Provider.of<BackendManager>(context, listen: false),
           ),
-          update: (context, kobold, openRouter, pseudoRemote, storage, backend,
-                  previous) =>
-              previous ??
-              LLMProvider(kobold, openRouter, pseudoRemote, storage, backend),
+          update:
+              (
+                context,
+                kobold,
+                openRouter,
+                pseudoRemote,
+                storage,
+                backend,
+                previous,
+              ) =>
+                  previous ??
+                  LLMProvider(
+                    kobold,
+                    openRouter,
+                    pseudoRemote,
+                    storage,
+                    backend,
+                  ),
         ),
         ChangeNotifierProxyProvider4<
           KoboldService,
@@ -839,9 +853,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
             scaffoldBackgroundColor: isDark
                 ? const Color(0xFF0F172A)
                 : const Color(0xFFF8F4ED), // warmer paper
-            cardColor: isDark
-                ? const Color(0xFF1E293B)
-                : Colors.white,
+            cardColor: isDark ? const Color(0xFF1E293B) : Colors.white,
             textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme)
                 .apply(
                   bodyColor: isDark ? Colors.white : Colors.black87,
