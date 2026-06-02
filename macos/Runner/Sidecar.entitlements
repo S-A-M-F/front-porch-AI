@@ -15,7 +15,7 @@
 	<true/>
 
 	<!-- Allow the PyInstaller bootstrap to mmap the bundled .pyc archive as
-	     executable memory (required for all PyInstaller --onedir bundles on
+	     executable memory (required for all PyInstaller onedir bundles on
 	     macOS with hardened runtime). -->
 	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
 	<true/>
