@@ -2294,178 +2294,137 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: RadioListTile<BackendType>(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Row(
-                          children: [
-                            Icon(
-                              Icons.computer,
-                              size: 18,
-                              color: backendManager.isIntelMac
-                                  ? Colors.grey
-                                  : theme.iconTheme.color,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Local (KoboldCPP)',
-                              style: TextStyle(
-                                fontSize: 13,
+                RadioGroup<BackendType>(
+                  groupValue: llmProvider.activeBackend,
+                  onChanged: (val) async {
+                    if (val != null) {
+                      await llmProvider.setActiveBackend(val);
+                      if (mounted) {
+                        final message = switch (val) {
+                          BackendType.kobold =>
+                            'Switched to local KoboldCPP backend.',
+                          BackendType.pseudoRemote =>
+                            'Switched to Pseudo-Remote backend.',
+                          BackendType.openRouter =>
+                            'Switched to Remote API backend.',
+                          BackendType.omlx => 'Switched to oMLX backend.',
+                        };
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(message)));
+                      }
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: RadioListTile<BackendType>(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Row(
+                            children: [
+                              Icon(
+                                Icons.computer,
+                                size: 18,
                                 color: backendManager.isIntelMac
                                     ? Colors.grey
-                                    : null,
+                                    : theme.iconTheme.color,
                               ),
-                            ),
-                          ],
-                        ),
-                        value: BackendType.kobold,
-                        groupValue: llmProvider.activeBackend,
-                        onChanged: backendManager.isIntelMac
-                            ? null
-                            : (val) async {
-                                if (val != null) {
-                                  await llmProvider.setActiveBackend(val);
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Switched to local KoboldCPP backend.',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                      ),
-                    ),
-                    Expanded(
-                      child: RadioListTile<BackendType>(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Row(
-                          children: [
-                            Icon(
-                              Icons.laptop,
-                              size: 18,
-                              color: backendManager.isIntelMac
-                                  ? Colors.grey
-                                  : theme.iconTheme.color,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Pseudo-Remote',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: backendManager.isIntelMac
-                                    ? Colors.grey
-                                    : null,
-                              ),
-                            ),
-                          ],
-                        ),
-                        value: BackendType.pseudoRemote,
-                        groupValue: llmProvider.activeBackend,
-                        onChanged: backendManager.isIntelMac
-                            ? null
-                            : (val) async {
-                                if (val != null) {
-                                  await llmProvider.setActiveBackend(val);
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Switched to Pseudo-Remote backend.',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                      ),
-                    ),
-                    Expanded(
-                      child: RadioListTile<BackendType>(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Row(
-                          children: [
-                            Icon(
-                              Icons.cloud,
-                              size: 18,
-                              color: theme.iconTheme.color,
-                            ),
-                            const SizedBox(width: 6),
-                            const Text(
-                              'Remote API',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                          ],
-                        ),
-                        value: BackendType.openRouter,
-                        groupValue: llmProvider.activeBackend,
-                        onChanged: (val) async {
-                          if (val != null) {
-                            await llmProvider.setActiveBackend(val);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Switched to Remote API backend.',
-                                  ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Local (KoboldCPP)',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: backendManager.isIntelMac
+                                      ? Colors.grey
+                                      : null,
                                 ),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: RadioListTile<BackendType>(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Row(
-                          children: [
-                            Icon(
-                              Icons.apple,
-                              size: 18,
-                              color: Platform.isMacOS
-                                  ? theme.iconTheme.color
-                                  : Colors.grey,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'oMLX',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Platform.isMacOS ? null : Colors.grey,
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          value: BackendType.kobold,
+                          enabled: !backendManager.isIntelMac,
                         ),
-                        value: BackendType.omlx,
-                        groupValue: llmProvider.activeBackend,
-                        onChanged: Platform.isMacOS
-                            ? (val) async {
-                                if (val != null) {
-                                  await llmProvider.setActiveBackend(val);
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Switched to oMLX backend.',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              }
-                            : null,
                       ),
-                    ),
-                  ],
+                      Expanded(
+                        child: RadioListTile<BackendType>(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Row(
+                            children: [
+                              Icon(
+                                Icons.laptop,
+                                size: 18,
+                                color: backendManager.isIntelMac
+                                    ? Colors.grey
+                                    : theme.iconTheme.color,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Pseudo-Remote',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: backendManager.isIntelMac
+                                      ? Colors.grey
+                                      : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          value: BackendType.pseudoRemote,
+                          enabled: !backendManager.isIntelMac,
+                        ),
+                      ),
+                      Expanded(
+                        child: RadioListTile<BackendType>(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Row(
+                            children: [
+                              Icon(
+                                Icons.cloud,
+                                size: 18,
+                                color: theme.iconTheme.color,
+                              ),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Remote API',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                          value: BackendType.openRouter,
+                        ),
+                      ),
+                      Expanded(
+                        child: RadioListTile<BackendType>(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Row(
+                            children: [
+                              Icon(
+                                Icons.apple,
+                                size: 18,
+                                color: Platform.isMacOS
+                                    ? theme.iconTheme.color
+                                    : Colors.grey,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'oMLX',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Platform.isMacOS ? null : Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          value: BackendType.omlx,
+                          enabled: Platform.isMacOS,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 if (llmProvider.activeBackend == BackendType.kobold)
                   Text(
