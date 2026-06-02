@@ -452,3 +452,24 @@ This completes "flutter verify and fix" for everything not deferred to future st
 
 Stage 2 (and integrated hygiene) now even cleaner.
 
+
+## Fix for the 8 deprecated Radio usages in settings_page.dart
+
+**Date:** 2026-06-01 (follow-up to verify pass)
+
+User requested explicit fix for the remaining `deprecated_member_use` on old Radio `onChanged`/`groupValue` (the 8 instances from the backend selector, integrated via PR#42).
+
+- Migrated the 4 `RadioListTile<BackendType>` (Kobold, Pseudo-Remote, Remote API, oMLX) to use `RadioGroup<BackendType>`.
+- Wrapped the `Row` of tiles.
+- Removed `groupValue` and `onChanged` from each `RadioListTile`.
+- Added `enabled: ...` to replicate the previous per-tile conditional disabling (e.g. `!backendManager.isIntelMac` for local options, `Platform.isMacOS` for oMLX).
+- Single `onChanged` on the `RadioGroup` that calls `setActiveBackend` and shows the appropriate snack (using `switch` on the value for the message).
+- This resolves all 8 deprecation infos for this code.
+- `dart format` applied.
+- `flutter analyze` on the file: "No issues found!"
+- Overall project issues now 30 (all the out-of-scope doc comment infos in services).
+
+Committed and pushed as `079de13`.
+
+This was the last actionable item from the "flutter verify and fix" for non-future-stage issues.
+
