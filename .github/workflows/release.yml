@@ -748,8 +748,19 @@ jobs:
             Front_Porch_AI.dmg
           if-no-files-found: ignore
 
+  publish-release:
+    name: Publish Release
+    needs: release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: build-*
+          merge-multiple: true
+
       - name: Create or Update Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -765,7 +776,7 @@ jobs:
   # ── Publish .deb to APT repository at apt.dreamersai.art ──
   publish-apt:
     name: Publish to APT Repository
-    needs: release
+    needs: [release, publish-release]
     if: ${{ !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'dev') }}
     runs-on: ubuntu-latest
     steps:
@@ -820,7 +831,7 @@ jobs:
   # ── Publish .rpm to RPM repository at rpm.dreamersai.art ──
   publish-rpm:
     name: Publish to RPM Repository
-    needs: release
+    needs: [release, publish-release]
     if: ${{ !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'dev') }}
     runs-on: ubuntu-latest
     steps:
@@ -873,7 +884,7 @@ jobs:
   # ── Update AUR stable package (front-porch-ai-bin) ──
   publish-aur:
     name: Update AUR Package
-    needs: release
+    needs: [release, publish-release]
     if: ${{ !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'dev') }}
     runs-on: ubuntu-latest
     steps:
