@@ -55,12 +55,13 @@ lib/
 ├── services/                    # Business logic (~50 services)
 │   ├── chat/                    # Domain subservices managing chat mechanics (leaf services extracted in Stage 3 god-file modularization; orchestration + group state remains in god for now)
 │   │   ├── chaos_mode_service.dart # Pure simulation core for Chaos Mode / Chance Time events
-│   │   ├── expression_classifier.dart # ONNX/LLM emotion classification (and reclassification)
+│   │   ├── expression_classifier.dart # Extracted plain ExpressionService (wraps low-level classifiers for use inside ChatService)
 │   │   ├── needs_simulation.dart # Sims-style per-character needs simulation logic (decay, buffers, apply/compute deltas)
 │   │   └── relationship_service.dart # Bond/trust/fixation/spatial/inter-char relationship tracking
 │   ├── cloud_providers/         # Implementations of cloud storage backends (Google Drive, OneDrive, WebDAV)
 │   ├── grpc/                    # gRPC-generated code and services for external API integrations (e.g. Draw Things)
 │   ├── chat_service.dart        # Core chat logic, context building, message streaming, Realism orchestration, _groupRealism map, post-gen wiring
+│   ├── expression_classifier.dart # Legacy ExpressionClassifierService (ChangeNotifier) + low-level LLM/ONNX classifiers + Emotion* models. Still the home of core classifier impls; chat/ version delegates to it. Exported from services barrel.
 │   ├── kobold_service.dart      # KoboldCpp API client
 │   ├── llm_provider.dart        # Abstraction over Kobold/OpenRouter/external APIs
 │   ├── character_repository.dart # Character CRUD via Drift
@@ -72,7 +73,8 @@ lib/
 │   ├── cloud_sync_service.dart  # Google Drive / WebDAV sync
 │   ├── hardware_service.dart    # GPU detection, VRAM estimation
 │   ├── backend_manager.dart     # KoboldCpp lifecycle (start/stop/restart)
-│   └── ...
+│   ├── services.dart            # Curated high-frequency public barrel (see "Barrel files..." policy below; exports chat_service, llm_*, tts/stt, cloud_sync, character/group repos, etc. Note: does *not* re-export the chat/ domain leaves)
+│   └── ... (40+ other top-level service files)
 ├── ui/
 │   ├── chat_components/         # Componentized chat UI elements (refactored out of main pages/widgets)
 │   │   ├── chat_components.dart # Main barrel for chat components
@@ -395,6 +397,7 @@ The project uses barrel files to reduce hundreds of repetitive intra-package imp
 - `package:front_porch_ai/utils/utils.dart`
 - `package:front_porch_ai/services/services.dart` (curated — only the high-frequency public surface)
 - `package:front_porch_ai/ui/widgets/widgets.dart`
+- `package:front_porch_ai/ui/chat_components/chat_components.dart` (barrel for the componentized chat UI layer)
 
 **Preferred style for new code and refactors** is to import the barrel(s) instead of many individual files.
 
