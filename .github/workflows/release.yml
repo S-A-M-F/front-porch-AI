@@ -489,6 +489,14 @@ jobs:
 
           echo "✓ Certificate identity found in keychain"
 
+      - name: Clean xattrs from app bundle (before code signing)
+        if: matrix.platform == 'macos'
+        run: |
+          APP_PATH=$(ls -d build/macos/Build/Products/Release/*.app 2>/dev/null | head -1)
+          echo "Cleaning xattrs on $APP_PATH (must be before codesigning and notarization)"
+          xattr -cr "$APP_PATH" || true
+          find "$APP_PATH" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
+
       - name: Code Sign macOS App (Developer ID)
         if: matrix.platform == 'macos'
         env:
@@ -554,12 +562,7 @@ jobs:
           Copy-Item "installers\windows\Front_Porch_AI_Setup.exe" -Destination "."
         shell: pwsh
 
-      - name: Clean xattrs from app bundle (required for notarization)
-        if: matrix.platform == 'macos'
-        run: |
-          APP_PATH="build/macos/Build/Products/Release/FrontPorchAI.app"
-          xattr -cr "$APP_PATH" || true
-          find "$APP_PATH" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
+
 
       - name: Package MacOS (DMG)
         if: matrix.platform == 'macos'

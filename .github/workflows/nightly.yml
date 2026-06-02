@@ -476,6 +476,26 @@ jobs:
 
           echo "✓ Certificate identity found in keychain"
 
+      # Simplified notarization flow (Apple-recommended for DMG distribution):
+      #
+      # 1. Clean xattrs from the built .app (must be before codesigning).
+      # 2. Sign the .app bundle (done in next step).
+      # 3. Build the DMG containing the signed .app.
+      # 4. Notarize the DMG — Apple's notary service processes nested apps inside
+      #    disk images, so the .app inside is covered automatically. See:
+      #    https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
+      # 5. Staple the DMG.
+      #
+      # Stapling the .app separately before packaging it is NOT required and was
+      # the source of ordering bugs (staple ticket stripped by create-dmg or xattr).
+      - name: Clean xattrs from app bundle (before code signing)
+        if: matrix.platform == 'macos'
+        run: |
+          APP_PATH=$(ls -d build/macos/Build/Products/Release/*.app 2>/dev/null | head -1)
+          echo "Cleaning xattrs on $APP_PATH (must be before codesigning and notarization)"
+          xattr -cr "$APP_PATH" || true
+          find "$APP_PATH" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
+
       - name: Code Sign macOS App (Developer ID)
         if: matrix.platform == 'macos'
         env:
@@ -518,26 +538,6 @@ jobs:
           codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME"
 
           echo "✓ App signed with Developer ID"
-
-      # Simplified notarization flow (Apple-recommended for DMG distribution):
-      #
-      # 1. Sign the .app (done in previous step).
-      # 2. Clean xattrs from the signed .app (must be before creating the DMG).
-      # 3. Build the DMG containing the signed .app.
-      # 4. Notarize the DMG — Apple's notary service processes nested apps inside
-      #    disk images, so the .app inside is covered automatically. See:
-      #    https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
-      # 5. Staple the DMG.
-      #
-      # Stapling the .app separately before packaging it is NOT required and was
-      # the source of ordering bugs (staple ticket stripped by create-dmg or xattr).
-      - name: Clean xattrs from signed app bundle (before DMG creation)
-        if: matrix.platform == 'macos'
-        run: |
-          APP_PATH=$(ls -d build/macos/Build/Products/Release/*.app 2>/dev/null | head -1)
-          echo "Cleaning xattrs on $APP_PATH (must be before DMG creation and notarization)"
-          xattr -cr "$APP_PATH" || true
-          find "$APP_PATH" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
 
       - name: Build macOS DMG (Nightly)
         if: matrix.platform == 'macos'
