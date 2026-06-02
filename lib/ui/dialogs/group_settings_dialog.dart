@@ -1118,6 +1118,10 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
   List<CharacterCard> _chars = [];
 
+  // Per-character static preference overrides (e.g. enjoys low hygiene) for this group.
+  // These are persisted via the member's private card extensions or group default state.
+  final Map<String, bool> _enjoysLowHygiene = {};
+
   // Baseline seeding state (only bond/trust/emotion/time/day)
   final Map<String, Map<String, dynamic>> _baselineSeeds = {};
 
@@ -1148,6 +1152,45 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       _baselineSeeds[_getCharId(c)] = Map<String, dynamic>.from(
         cs.getBaselineSeedForGroupCharacter(c),
       );
+      final id = _getCharId(c);
+      _enjoysLowHygiene[id] = c.frontPorchExtensions?.enjoysLowHygiene ?? false;
+    }
+  }
+
+  void _updateMemberEnjoysLowHygiene(CharacterCard char, bool value) {
+    final id = _getCharId(char);
+    setState(() {
+      _enjoysLowHygiene[id] = value;
+      // Update the in-memory card extension so reads pick it up immediately
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+            enjoysLowHygiene: value,
+          );
+    });
+
+    // Persist to the group's defaultMemberRealismState so new sessions / loads pick it up.
+    // This makes the per-member static pref editable in group settings.
+    try {
+      final group = widget.chatService.activeGroup;
+      if (group != null) {
+        final map =
+            group.defaultMemberRealismState.isNotEmpty &&
+                group.defaultMemberRealismState != '{}'
+            ? (jsonDecode(group.defaultMemberRealismState)
+                      as Map<String, dynamic>? ??
+                  {})
+            : <String, dynamic>{};
+        final perChar = (map['perChar'] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        final current = (perChar[id] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        current['enjoysLowHygiene'] = value;
+        perChar[id] = current;
+        map['perChar'] = perChar;
+        group.defaultMemberRealismState = jsonEncode(map);
+      }
+    } catch (_) {
+      // Non-fatal; the in-memory card update will help for current session.
     }
   }
 
@@ -1653,6 +1696,39 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                                 color: Colors.white38,
                               ),
                               overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            // Per-member static pref for enjoys low hygiene (group equivalent of 1:1 character setting).
+                            // Persisted to group defaultMemberRealismState per-char entry.
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Enjoys low hygiene',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: Checkbox(
+                                    value:
+                                        _enjoysLowHygiene[_getCharId(char)] ??
+                                        false,
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        _updateMemberEnjoysLowHygiene(char, v);
+                                      }
+                                    },
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),

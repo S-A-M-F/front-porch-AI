@@ -573,10 +573,13 @@ class RealismFormSection extends StatelessWidget {
                   ),
                 ],
 
-                // Enjoys low hygiene can appear under Optional Features even if we hide the Needs master row
-                // (used in group creator where Needs is a global toggle).
-                if (needsSimEnabled && !showNeedsToggle) ...[
-                  const SizedBox(height: 8),
+                // "Enjoys low hygiene" is a per-character preference that inverts hygiene need behavior.
+                // It appears when Needs Simulation is enabled.
+                // - In normal 1:1 character editors (showNeedsToggle=true): shown right under the Needs toggle.
+                // - In group per-character editors (showNeedsToggle=false): shown standalone under Optional Features
+                //   (because the master Needs toggle is suppressed at the group level).
+                if (needsSimEnabled) ...[
+                  if (showNeedsToggle) const SizedBox(height: 8),
                   _toggleRow(
                     icon: Icons.water_drop_outlined,
                     label: 'Enjoys low hygiene',

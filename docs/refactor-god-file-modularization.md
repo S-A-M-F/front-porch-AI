@@ -938,3 +938,20 @@ Re-confirmed "0 open on step 1-4 surfaces after round 2 corrections". The 3 nits
 
 All constraints from docs/refactoring-guide.md, AGENTS.md, CLAUDE.md, and the explicit user command obeyed. Tree left runnable (analyze gate passed for surface + full; build succeeded; tests green on new + core paths with only pre-existing unrelated failure). Main Rawhide pristine.
 
+## Post-Step 4 UI Bugfix: "Enjoys low hygiene" in Group Settings
+
+During testing after the Step 4 extraction (and prior needs/relationship work), the "Enjoys low hygiene" per-character preference was reported missing "in the group UI settings or otherwise".
+
+- Root: In `RealismFormSection`, the toggle was only rendered under `if (needsSimEnabled && !showNeedsToggle)` (the group-creation workaround where the master Needs row is hidden). Normal 1:1 `EditCharacterPage` (and group settings) used defaults (`showNeedsToggle=true`), so it never appeared. Group creation had it (via the special flags), but post-creation "Group Settings" dialog (Realism & Needs tab → Per-Character Realism Baselines) and `EditGroupPage` had no UI for the static per-member override at all (only live state resets; `defaultMemberRealismState` was opaque JSON).
+
+- Fix:
+  - Updated `RealismFormSection` rendering: the "Enjoys low hygiene" toggle now appears whenever `needsSimEnabled` (with conditional spacer for the normal `showNeedsToggle=true` case so it sits under the Needs row in 1:1 editors; standalone under Optional Features for group per-member when `showNeedsToggle=false`).
+  - In `group_settings_dialog.dart` (_RealismNeedsTab): added per-char `_enjoysLowHygiene` state (loaded from member `CharacterCard.frontPorchExtensions`), a checkbox in each per-character row, and `_updateMemberEnjoysLowHygiene` that mutates the card extension (for immediate reads) + rewrites the group's `defaultMemberRealismState` JSON `perChar[id]['enjoysLowHygiene']` so the preference persists in the definition and is picked up on session loads/new chats.
+  - 1:1 path (`edit_character_page.dart` etc.) now works via the widget change (state binding was already present).
+
+- Result: The option is now present and editable for group members in the in-chat Group Settings dialog (the primary "group UI settings"), consistent with the creation wizard and the 1:1 character edit (right-click). Persists correctly. No behavior change to NeedsSimulation or chat_service logic (which were already using the per-char/group seed values).
+
+- Verification (cd + abs paths): `dart format` clean; `flutter analyze --no-fatal-warnings --no-fatal-infos` on the three files → "No issues found!". Matches project rules (AppColors, smallest targeted change, no new god privates, etc.).
+
+This was a latent UI gap exposed while exercising the realism/needs surfaces post-extraction. Hygiene Summary for this delta: 0 new private methods; small targeted additions for the missing control + persistence; analyze clean; no duplication introduced.
+
