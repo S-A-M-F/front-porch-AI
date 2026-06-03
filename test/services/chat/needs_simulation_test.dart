@@ -12,6 +12,8 @@
 // (no more universal speakerId=null forcing for 1:1 paths).
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:front_porch_ai/models/needs_impact.dart';
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 
 /// Test factory to reduce 13+ callback boilerplate across tests (and future extractions).
@@ -646,7 +648,7 @@ void main() {
         expect(s.arousalSuppressionTurnsRemaining, 5);
         expect(s.postClimaxCrashTurnsRemaining, 3);
         // fulfill restore
-        expect(s.vector['hunger'] > 50, true);
+        expect((s.vector['hunger'] ?? 0) > 50, true);
       },
     );
 
@@ -663,7 +665,7 @@ void main() {
         s.setVector({'energy': 80, 'hunger': 80, 'fun': 80, 'social': 80});
         s.tickDecay();
         // night energy extra + no afterglow etc -> decay
-        expect(s.vector['energy'] < 80, true);
+        expect((s.vector['energy'] ?? 100) < 80, true);
       },
     );
   });

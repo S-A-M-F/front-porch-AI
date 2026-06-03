@@ -53,4 +53,28 @@ class NeedsImpact {
   String toString() =>
       'NeedsImpact(deltas: $deltas, startAfterglow: $startAfterglow, '
       'intensity: $intensity, reason: $reason, activities: $detectedActivities)';
+
+  NeedsImpact copyWith({
+    Map<String, int>? deltas,
+    bool? startAfterglow,
+    int? afterglowTurns,
+    int? suppressionTurns,
+    int? crashTurns,
+    Map<String, bool>? fulfillments,
+    String? reason,
+    int? intensity,
+    List<String>? detectedActivities,
+  }) {
+    return NeedsImpact(
+      deltas: deltas ?? this.deltas,
+      startAfterglow: startAfterglow ?? this.startAfterglow,
+      afterglowTurns: afterglowTurns ?? this.afterglowTurns,
+      suppressionTurns: suppressionTurns ?? this.suppressionTurns,
+      crashTurns: crashTurns ?? this.crashTurns,
+      fulfillments: fulfillments ?? this.fulfillments,
+      reason: reason ?? this.reason,
+      intensity: intensity ?? this.intensity,
+      detectedActivities: detectedActivities ?? this.detectedActivities,
+    );
+  }
 }

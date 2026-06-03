@@ -241,6 +241,18 @@ class NeedsImpactEvaluator {
 
   // ── Modifiers pipeline (ordered, pure, documented; Proposal A core) ─────────
 
+  /// Shared explicit mess detection (creampie/fluids etc) for hygiene modifiers.
+  /// Extracted to kill dupe (romance context + explicit stance hygiene).
+  bool _hasExplicitMess(String lower) {
+    return lower.contains('creampie') ||
+        lower.contains('cum on') ||
+        lower.contains('cum inside') ||
+        lower.contains('fluids') ||
+        lower.contains('messy') ||
+        lower.contains('internal cum') ||
+        lower.contains('filled her');
+  }
+
   NeedsImpact _applyRomanceContextModifier(
     NeedsImpact impact,
     String responseTextLower,
@@ -264,16 +276,9 @@ class NeedsImpactEvaluator {
 
     // Hygiene: only if explicit mess words (creampie, cum, fluids, messy, on body etc)
     // or high intensity + stance suggests exposure. Base may have - , zero it unless.
-    final hasExplicitMess =
-        responseTextLower.contains('creampie') ||
-        responseTextLower.contains('cum on') ||
-        responseTextLower.contains('cum inside') ||
-        responseTextLower.contains('fluids') ||
-        responseTextLower.contains('messy') ||
-        responseTextLower.contains('internal cum') ||
-        responseTextLower.contains('filled her');
+    final hasExplicitMess = _hasExplicitMess(responseTextLower);
     final highIntensity = (impact.intensity ?? 5) >= 7;
-    final stance = relationshipService.spatialStance.toLowerCase();
+    final stance = (relationshipService.spatialStance ?? '').toLowerCase();
     final exposedStance =
         stance.contains('bed') ||
         stance.contains('floor') ||
@@ -366,15 +371,9 @@ class NeedsImpactEvaluator {
         (impact.deltas['hygiene'] ?? 0) >= 0) {
       return impact;
     }
-    final hasMess =
-        respLower.contains('creampie') ||
-        respLower.contains('cum on') ||
-        respLower.contains('cum inside') ||
-        respLower.contains('fluids') ||
-        respLower.contains('messy') ||
-        respLower.contains('internal cum');
+    final hasMess = _hasExplicitMess(respLower);
     final high = (impact.intensity ?? 5) >= 7;
-    final stance = relationshipService.spatialStance.toLowerCase();
+    final stance = (relationshipService.spatialStance ?? '').toLowerCase();
     final exposed =
         stance.contains('bed') ||
         stance.contains('floor') ||

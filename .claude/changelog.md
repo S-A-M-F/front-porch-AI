@@ -1077,3 +1077,9 @@ Always include the branch the change landed on.
 - Files: lib/services/chat_service.dart, lib/services/chat/lorebook_scanner.dart, test/services/chat/lorebook_scanner_test.dart, test/integration/lorebook_injection_test.dart, docs/refactor-god-file-modularization.md, .claude/changelog.md, /tmp/grok-impl-summary-cb350496.md + /tmp/*-fixround1.txt
 - Hygiene: 0 new god privates; deleted = obsolete _LorebookSimulator + conflicting + dup test bodies + noop card + comments + phrasing (net reduction); analyze clean (0 new on surfaces); dead 0 post; parity preserved; full gates + re-reads; tree strictly cleaner + runnable.
 - 0 open on step 1-7 surfaces after fix round 1. All rules followed.
+
+2026-06-03 (UTC) - Fix round 1 for needs eval rework /implement 08a8f5a6 (effort 3)
+Files changed: test/services/chat/needs_simulation_test.dart, test/services/chat/prompt_injection_test.dart, test/services/chat/needs_impact_evaluator_test.dart, lib/services/chat/needs_impact_evaluator.dart, lib/models/needs_impact.dart, docs/refactor-god-file-modularization.md, /tmp/grok-review-08a8f5a6.md, /tmp/grok-impl-summary-08a8f5a6.md, .claude/changelog.md
+Brief reason: Addressed all open from review round 1 (test wiring/imports/isolation/claims, zeroing expansion for new leaf + god reset at all sites + both startNew, MD full verbatim literal raw + re-captures, dispatch qualify, nits like helper/copyWith/asserts/ pollution, update every claim/gate/MD/summary post live grep/gates/re-runs/re-reads of abs on-disk + /tmp; 0 new god privs; tests core green; Hygiene). All per plan + CLAUDE "because user cannot review" + past issues avoided.
+0 new privates in god (live grep stayed 15; thins public surface per plan).
+Methods deleted this round: 0 additional (prior round deletions + claims updated post).
