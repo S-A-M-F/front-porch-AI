@@ -1980,3 +1980,52 @@ This verify pass was performed after all step 9 + Fix Round 1 edits/fixes/build 
 [Full details mirroring the MD Fix Round 1 + Hygiene + re-runs + re-reads + 0 open + main pristine + "Step 9 complete; interactive manual smoke required by human pre-landing"; all gates re-ran with long cmds + literal from recaps; review_file updated with all 8 Status:fixed + Responses; .claude/changelog/CLAUDE.md/headers re-synced with qualified priv claims + "11 tests" + "unexercised by design"; no new god priv beyond thins; 0 open after round 1 from all 3.]
 
 (End of MD update for Fix Round 1.)
+
+## Post-Step 9 Bugfix: Sidebar Short-Term Bond / Long-Term Bond / Trust not updating from realism eval results (chips emission); Lust worked
+
+**Symptom (user report):** "we are experiencing issues with the Realism mode, all of the tracked realism aspects are not displaying in the sidebar correctly. ironically the NSFW Lust does work correctly, but short term bond, Long Term and trust are not updating based on the realism results chips emission."
+
+The delta chips for bond/trust (from rel eval results in message bubbles under AI responses) and/or the [Realism:Relationship] logs showed shifts, but the sidebar's live bars/tiers/numbers for Short-Term Bond, Long-Term Bond, and Trust did not reflect the new absolutes after turns. Lust/arousal (in the NSFW sub-section of the same sidebar) + its chips updated as expected. Affected both 1:1 (scalar path) and group (per-speaker via load/save scalars + _groupRealism map + member cards + main sidebar scalars left as last speaker).
+
+**Root cause:** Step 3 (RelationshipService extraction) moved the mutation logic verbatim into the plain (non-ChangeNotifier) class:
+- applyScoreDelta (short-term affection + _relationshipTier + triggers _evalLongTermGrowth every 5)
+- applyTrustDelta (trust clamp + arm repair only on ≤-20)
+- _evalLongTermGrowth (the cementing of long-term from recent avg short tier)
+- applyShortTermDecay (the every-10-turn drift toward 0, 1:1 + group per-char)
+
+The onNotify() (passed in ctor, used by ChatService's notifyListeners so Consumer<ChatService> sidebars/cards rebuild) was only retained inside applyTrustDelta for the severe-drop arm case. Normal forward deltas from the LLM rel eval (the "realism results" that also emit the bond_delta/trust_delta into _pendingRealismMetadata for chips) + growth + decay did not signal. God post-eval code did reach notifyListeners() (after 500ms delay in common cleanup for 1:1; in finally for group speaker eval), but the combination of timing, peripheral paths (pre-eval decay, indirect long growth, non-severe trust), and "results should drive live tracked sidebar" expectation produced the observed stale display. 
+
+NsfwService uses "dumb" setters (no onNotify even wired per its extraction comment: "god owns save/notify for post-gen climax/sexual fidelity"); post-gen checks (_runPostGenNeedsChecks + climax/sexual/daily) + physical eval path had explicit _save + notify calls that covered Lust updates. Hence the irony.
+
+(The apply calls themselves were correct and reached via the llm_eval_engine cbs in both oneShot and multi paths, for both 1:1 and group impersonation; pending/metadata/chips emission and captureRealismState also worked. Only the live UI signal for the rel-owned tracked aspects was missing.)
+
+**Fix:** Added onNotify() on actual visible tracked state change inside the 4 mutation sites in RelationshipService (the owner of short/long/trust/fixation state):
+- applyScoreDelta: inside the `if (score or tier changed)` after debug (covers short-term bond updates from rel eval results)
+- applyTrustDelta: after clamp+debug for *any* nonzero delta (moved the call out of the only-severe if; arming + debug unchanged)
+- _evalLongTermGrowth: inside the `if (longScore or longTier changed)` (covers the cementing)
+- applyShortTermDecay: after the >=10 block executes + counter reset (covers periodic short-term drift; fires for both 1:1 and group paths)
+
+This ensures realism *results* (the eval that produces the chips) immediately drive sidebar listeners for the tracked aspects, matching the pattern in NeedsSimulation.applyDeltas (which does onSaveChat + onNotify) and the severe-trust precedent. All math, clamps (±300 bond, ±100 trust), tier calc, long-growth rules, decay, group cbs/load/save/impersonation, 1:1 parity, inter-char, fixation, snapshot/restore, reset hygiene, and prompt injection surfaces untouched. 0 new god private methods (only edited the already-extracted leaf; god's void _ count stayed exactly 15 per live grep). 0 edits to god/chat_service.dart.
+
+**Verification (strict per plan + CLAUDE + prior bugfix precedent; all in worktree via abs cd + abs paths; main /Users/linux4life/dev/front-porch-AI only ever read-only git status/log/diff --stat confirming pre-existing dirt only):**
+- All terminal/file ops used `cd /Users/linux4life/dev/front-porch-stage1-experiment && ...` + absolute paths for reads/edits.
+- Self-contained gate recaps with EXIT inside via long cmds + redirect + echo + cat | cat; re-executed + re-read of on-disk abs sources + /tmp after *every* edit + final.
+- Format: `cd /Users/linux4life/dev/front-porch-stage1-experiment && dart format --set-exit-if-changed lib/services/chat/relationship_service.dart > /tmp/grok-fmt-relfix.txt 2>&1 ; echo "FORMAT_EXIT=$?" ; cat /tmp/grok-fmt-relfix.txt | cat` → "Formatted 1 file (0 changed) in 0.01 seconds.\nFORMAT_EXIT=0" (re-run post: same).
+- Dart fix: `... dart fix --dry-run ... > /tmp/grok-dartfix-relfix.txt 2>&1 ; echo "DARTFIX_EXIT=$?" ; cat ...` → "Nothing to fix!\nDARTFIX_EXIT=0".
+- Analyze (touched + god + test): `cd ... && flutter analyze --no-fatal-warnings --no-fatal-infos lib/services/chat/relationship_service.dart lib/services/chat_service.dart test/services/chat/relationship_service_test.dart > /tmp/grok-analyze-relfix.txt 2>&1 ; echo "ANALYZE_EXIT=$?" ; cat ... | cat` → "No issues found! (ran in 0.7s)\nANALYZE_EXIT=0" (re-run post-edits + final: "No issues found! (ran in 0.1s)").
+- Dedicated test: `cd ... && flutter test test/services/chat/relationship_service_test.dart -r compact > /tmp/grok-test-relfix.txt 2>&1 ; echo "TEST_REL_EXIT=$?" ; cat ... | cat` → "All tests passed! ... 00:00 +12: All tests passed!" (TEST_REL_EXIT=0). New [Realism] Short-Term Bond shift logs + Trust shifted now appear (notifies fired); existing "expect(n, contains('notify'))" for severe trust still holds (now receives for +30/-25/-30 too); score-delta test (creates with notifies list but no length assert) unaffected.
+- Integration realism (pre-existing unrelated fails only): `cd ... && flutter test test/services/chat_service_realism_engine_test.dart test/services/chat_service_group_realism_test.dart test/services/chat_service_realism_test.dart -r compact > /tmp/grok-test-chatrealism-relfix.txt 2>&1 ; echo "TEST_CHATREALISM_EXIT=$?" ; cat ... | tail -40 | cat` → exit 1 but only the known "large group (5 members) hits the 4-char hard cap" tests (flagged in prior MDs + step9); core paths +61 or +62 passing; logs show exactly the fix working: "[Realism:RawEval] ... relationship_delta ...", "[Realism] Short-Term Bond: 50 → 54 ...", "[Realism:Relationship] Trust shifted by 12 -> 47", "[Realism:Relationship] Bond: 4 ... Trust: 12", "Attaching to new message: bond_delta=4", etc. No new failures.
+- Dead/priv hygiene re-capture (post): `cd ... && grep -c '^\s*void _[a-zA-Z]' lib/services/chat_service.dart ; echo "GOD_PRIV_COUNT=$(...)" ; grep -n 'onNotify();' lib/services/chat/relationship_service.dart | cat` → "15\nGOD_PRIV_COUNT=15\n590: onNotify();\n600: onNotify(); // notify...\n640: onNotify();\n706: onNotify();\nRE_READ_EXIT=0". (4 sites now; god exactly 15 no growth.)
+- Build gate: `cd ... && flutter build macos --debug > /tmp/grok-build-relfix.txt 2>&1 ; echo "BUILD_EXIT=$?" ; tail -5 /tmp/... | cat` → "✓ Built build/macos/Build/Products/Debug/FrontPorchAI.app\nBUILD_EXIT=0".
+- Re-runs + immediate re-reads of abs on-disk after every edit + final: on-disk rel service (the 4 onNotify + comments), god (priv count + no touched), test (still 12 passing), /tmp/*.txt (literal EXIT + raw), MD (this section).
+- Main pristine verification (multiple, including final): only `cd /Users/linux4life/dev/front-porch-AI && git status --porcelain --branch && git log --oneline -1 && git diff --stat | cat` (read-only); confirmed pre-existing dirt/untracked only, zero additional from this fix.
+- MD update: this full Post-Step 9 Bugfix section appended (modeled exactly on the existing "Post-Step 4 Bugfix: Needs tracking, chips/sidebar display, and double climax..." section: symptom verbatim, root, fix, **Verification** with unabbreviated long cd+abs+redirect+echo+cat + literal raw from the /tmp recaps + re-runs + re-read bullets of abs paths + /tmp + Hygiene + status + "interactive manual smoke ... required by human pre-landing").
+- .claude/changelog.md appended (see entry).
+- No pollution of user-facing Rawhide.md / docs/<Branch>.md.
+- 0 new god private _ methods (enforced + live grep); deletion part of task (n/a); all "because user cannot review" + AGENTS + CLAUDE + refactoring-guide rules followed (paranoid self-audit, gates, re-reads, abs worktree only, etc.).
+
+**Hygiene delta (for this fix):** 0 new god private _ methods (grep confirmed stayed 15); 0 methods deleted (edits only inside pre-existing apply*/growth/decay); analyze clean on surfaces (0 new warnings); no duplication introduced (no parallel paths); tree left strictly better (now bond/long/trust from realism results reliably drive sidebar live, like Lust + needs chips/sidebar); app still launches/runs clean post-build.
+
+All constraints obeyed. Tree left runnable (analyze 0 new w; build succeeded; core tests green; no startup red). Main pristine. Interactive manual smoke of 1:1+group (realism on, multiple turns, observe bond/long/trust sidebar + per-char cards + chips update from results, Lust still works, no regression) still required by human pre-landing (as noted after step 9).
+
+**Status:** Step 1+..+9 complete + this post-9 bugfix. Interactive manual smoke required pre-landing.

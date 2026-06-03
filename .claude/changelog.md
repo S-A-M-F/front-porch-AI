@@ -13,6 +13,14 @@
 - Files: `lib/services/chat_service.dart`, `docs/Rawhide.md`, `.claude/changelog.md`
 - Hygiene: 0 new private methods. Small targeted change to two GenerationParams + two post-processing sites + comments. Tree left better for thinking models on the objective system.
 
+## 2026-06-03 (Post-Step 9 bugfix: sidebar bond/long/trust not live-updating from realism results/chips emission)
+- Files changed: lib/services/chat/relationship_service.dart (added onNotify() on visible changes in applyScoreDelta, applyTrustDelta, _evalLongTermGrowth, applyShortTermDecay), docs/refactor-god-file-modularization.md (detailed Post-Step 9 Bugfix section with verbatim gates/raw/re-runs/re-reads), .claude/changelog.md (this).
+- Reason: After step 9 (llm_eval), the tracked Realism sidebar values for short-term bond, long-term bond, and trust were not reflecting the deltas from rel eval results (the chips emission source), while Lust/arousal did. Root in extraction (step 3): mutations in plain RelationshipService did not signal onNotify except for severe trust arm. Callers notified post-eval but timing/paths left sidebar stale.
+- Fix: onNotify() on actual change in the 4 result paths (score/tier, any trust, long growth, decay block). Makes results drive sidebar immediately (like needs apply). 0 god changes, 0 new god privates (void_ stayed 15), parity preserved, tests/build/analyze green (core; pre-existing cap fails untouched).
+- Verification: full self-contained gates (cd abs worktree, format/analyze/dartfix/test/build/dead/priv with > /tmp + echo EXIT + cat; re-runs + abs re-reads of on-disk + /tmp post edits + final); main pristine (read-only git only); MD updated modeled on prior bugfix + step9; claims exact vs live.
+- Hygiene: 0 new god priv; 0 deleted methods; analyze "No issues found!"; build ✓; dedicated + key tests green on paths (new notifies exercised in mocks + logs show shifts); god priv count 15; 4 onNotify sites now in leaf. Tree cleaner + runnable. Interactive smoke still required pre-landing.
+- No user-facing doc pollution; all worktree abs only.
+
 ## 2026-06-03 (Correction: autonomous AI-proposed objectives now reliably auto-generate subtasks; user-created do not)
 - User clarification: "The AI generates objectives for the character autonomously but they never have tasks for the character to accomplish to get to that goal. it is poor design to automate task generation for a user created objective/quest".
 - Previous implementation had the polarity backwards. Corrected in this pass:

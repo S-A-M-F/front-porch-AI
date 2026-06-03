@@ -587,6 +587,7 @@ class RelationshipService {
         '[Realism] Short-Term Bond: $oldScore \u2192 $_affectionScore, '
         'Tier: $oldTier \u2192 $_relationshipTier ($shortTermTierName)',
       );
+      onNotify();
     }
   }
 
@@ -596,11 +597,11 @@ class RelationshipService {
     debugPrint(
       '[Realism:Relationship] Trust shifted by $delta -> $_trustLevel',
     );
+    onNotify(); // notify on any trust shift (bond/long/short already do on change) so sidebar live-updates from realism eval results / chips
     // Arm the repair window on any severe single-turn drop
     if (delta <= -20) {
       _pendingTrustRepair = true;
       debugPrint('[Realism:Trust] Severe drop — repair window armed');
-      onNotify();
     }
   }
 
@@ -636,6 +637,7 @@ class RelationshipService {
         '[Realism] Long-Term Bond updated: $oldLTScore \u2192 $_longTermScore, '
         'Tier: $oldLTTier \u2192 $_longTermTier ($longTermTierName)',
       );
+      onNotify();
     } else {
       debugPrint(
         '[Realism] Long-Term Bond check (No change) - Status: $_longTermScore ($longTermTierName)',
@@ -701,6 +703,7 @@ class RelationshipService {
         }
       }
       _turnsSinceDecayCheck = 0;
+      onNotify();
     }
   }
 
