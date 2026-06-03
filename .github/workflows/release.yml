@@ -557,10 +557,8 @@ jobs:
         shell: pwsh
 
 
-
-      # Notarize the .app BEFORE packaging it into the DMG so that the copy
-      # users drag to /Applications already contains the embedded staple ticket.
-      - name: Notarize .app and staple before DMG packaging
+      # Notarize the .app BEFORE packaging it into the DMG so Apple issues a ticket for its CDHash
+      - name: Notarize .app (pre-DMG)
         if: matrix.platform == 'macos'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -578,19 +576,10 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
-
-          echo "Stapling notarization ticket directly into .app bundle..."
-          xcrun stapler staple "$APP_NAME"
-
-          echo "Verifying .app staple..."
-          xcrun stapler validate "$APP_NAME" \
-            && echo "✓ .app staple verified — DMG will contain pre-stapled bundle" \
-            || { echo "ERROR: .app staple validation failed"; exit 1; }
+            --wait || { echo "ERROR: .app notarization failed"; exit 1; }
 
           rm -f "$APP_ZIP"
-          echo "✓ .app is notarized and stapled before DMG packaging"
-
+          echo "✓ .app is notarized. CDHash is now known to Apple."
       - name: Package MacOS (DMG)
         if: matrix.platform == 'macos'
         run: |
@@ -616,7 +605,52 @@ jobs:
           fi
           echo "✓ DMG created successfully"
 
-      - name: Notarize and Staple macOS DMG
+      - name: Staple the .app inside the DMG
+        if: matrix.platform == 'macos'
+        run: |
+          DMG_NAME="Front_Porch_AI.dmg"
+          RW_DMG="rw_${DMG_NAME}"
+          
+          echo "Converting DMG to read-write format to staple inner .app..."
+          hdiutil convert "$DMG_NAME" -format UDRW -o "$RW_DMG"
+          
+          echo "Mounting read-write DMG..."
+          MOUNT_PATH="/Volumes/Front Porch AI"
+          hdiutil attach "$RW_DMG" -mountpoint "$MOUNT_PATH" -nobrowse
+          
+          echo "Stapling .app inside the DMG..."
+          APP_PATH=$(ls -d "$MOUNT_PATH"/*.app | head -1)
+          if [ -d "$APP_PATH" ]; then
+            # This downloads the ticket generated from the pre-DMG notarization step!
+            xcrun stapler staple "$APP_PATH"
+            xcrun stapler validate "$APP_PATH" || { echo "ERROR: Inner .app staple validation failed"; hdiutil detach "$MOUNT_PATH"; exit 1; }
+            echo "✓ Inner .app staple verified"
+          else
+            echo "ERROR: Could not find .app in mounted DMG"
+            hdiutil detach "$MOUNT_PATH"
+            exit 1
+          fi
+          
+          echo "Unmounting DMG..."
+          hdiutil detach "$MOUNT_PATH"
+          
+          echo "Converting DMG back to read-only compressed format..."
+          rm -f "$DMG_NAME"
+          hdiutil convert "$RW_DMG" -format UDZO -o "$DMG_NAME"
+          rm -f "$RW_DMG"
+
+      # Light, targeted cleanup on the DMG file itself before submission.
+      - name: Clean quarantine/FinderInfo from DMG file only (before notarization)
+        if: matrix.platform == 'macos'
+        run: |
+          DMG="Front_Porch_AI.dmg"
+          if [ -f "$DMG" ]; then
+            echo "Light xattr cleanup on DMG file only (not recursive)"
+            xattr -d com.apple.quarantine "$DMG" 2>/dev/null || true
+            xattr -d com.apple.FinderInfo "$DMG" 2>/dev/null || true
+          fi
+
+      - name: Submit final DMG to notarization and Staple
         if: matrix.platform == 'macos'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -628,14 +662,15 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
-
+            --wait || { echo "ERROR: DMG notarization failed"; exit 1; }
+          
           echo "Stapling notarization ticket to DMG..."
           xcrun stapler staple Front_Porch_AI.dmg
           xcrun stapler validate Front_Porch_AI.dmg \
             && echo "✓ DMG staple verified" \
-            || echo "⚠ DMG staple validation failed"
-          echo "✓ Build complete: DMG contains a pre-stapled .app — Gatekeeper will accept offline"
+            || { echo "⚠ DMG staple validation failed"; exit 1; }
+          
+          echo "✓ Build complete: DMG and inner .app are fully notarized and stapled!"
 
       - name: Get Version
         id: get_version
