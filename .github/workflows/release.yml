@@ -575,6 +575,39 @@ jobs:
 
 
 
+      # Notarize the .app BEFORE packaging it into the DMG so that the copy
+      # users drag to /Applications already contains the embedded staple ticket.
+      - name: Notarize .app and staple before DMG packaging
+        if: matrix.platform == 'macos'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app | head -1)
+          APP_ZIP="${APP_NAME%.app}.zip"
+
+          echo "Creating ZIP of signed .app for notarization submission..."
+          ditto -c -k --keepParent "$APP_NAME" "$APP_ZIP"
+
+          echo "Submitting .app to Apple notary service (this may take 1–5 minutes)..."
+          xcrun notarytool submit "$APP_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          echo "Stapling notarization ticket directly into .app bundle..."
+          xcrun stapler staple "$APP_NAME"
+
+          echo "Verifying .app staple..."
+          xcrun stapler validate "$APP_NAME" \
+            && echo "✓ .app staple verified — DMG will contain pre-stapled bundle" \
+            || { echo "ERROR: .app staple validation failed"; exit 1; }
+
+          rm -f "$APP_ZIP"
+          echo "✓ .app is notarized and stapled before DMG packaging"
+
       - name: Package MacOS (DMG)
         if: matrix.platform == 'macos'
         run: |
@@ -600,7 +633,7 @@ jobs:
           fi
           echo "✓ DMG created successfully"
 
-      - name: Notarize and Staple macOS DMG + App
+      - name: Notarize and Staple macOS DMG
         if: matrix.platform == 'macos'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -614,12 +647,12 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-          echo "Stapling notarization ticket..."
+          echo "Stapling notarization ticket to DMG..."
           xcrun stapler staple Front_Porch_AI.dmg
-
-          APP_NAME=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
-          xcrun stapler staple "$APP_NAME"
-          echo "✓ Notarization and stapling complete"
+          xcrun stapler validate Front_Porch_AI.dmg \
+            && echo "✓ DMG staple verified" \
+            || echo "⚠ DMG staple validation failed"
+          echo "✓ Build complete: DMG contains a pre-stapled .app — Gatekeeper will accept offline"
 
       - name: Get Version
         id: get_version
