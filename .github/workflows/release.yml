@@ -516,29 +516,12 @@ jobs:
               2>&1 | grep -v "already signed" || true
           done < <(find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) -print0)
 
-          # ── Sign PyInstaller Python.framework bundles as units FIRST ──────────────
-          # PyInstaller bundles a Python.framework with internal symlinks:
-          #   Python.framework/Python → Versions/Current/Python → Versions/3.11/Python
-          # Signing individual files inside the framework (via find -type f) invalidates
-          # the framework's bundle seal, causing Apple notary to reject with
-          # "signature of binary is invalid". We must sign the .framework directory as
-          # a bundle before the per-file loop reaches any files inside it.
-          # --deep handles the internal symlink chain correctly.
-          while IFS= read -r -d '' fw; do
-            echo "Signing Python.framework bundle: $fw"
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-              --entitlements "$SIDECAR_ENT" --deep "$fw"
-          done < <(find "$APP_NAME/Contents/Resources" -name "Python.framework" -type d -print0)
-
           # ── Sign individual Mach-O binaries in Resources ───────────────────────────
-          # Use process substitution (not pipe) so codesign failures propagate correctly.
-          # Skip any file whose path is inside a Python.framework bundle — those were
-          # already covered by the framework-level signing above.
+          # PyInstaller's Python.framework inside _internal/ has no Info.plist, making
+          # its bundle format "ambiguous" — codesign --deep fails on it. Because there
+          # is no proper bundle seal, signing each Mach-O binary inside it individually
+          # is both correct and safe. The per-file loop below handles everything.
           while IFS= read -r -d '' f; do
-            # Skip files inside Python.framework (already signed as a bundle above)
-            if [[ "$f" == *"/Python.framework/"* ]]; then
-              continue
-            fi
             if file "$f" | grep -q "Mach-O"; then
               echo "Signing native binary: $f"
               codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
