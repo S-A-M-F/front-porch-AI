@@ -1,35 +1,5 @@
 # Changelog
 
-## 2026-06-03 (Thinking models: increase objective/task generation limits + robust stripping)
-- User report: "most models think way more than 600 tokens" for subtask generation. The previous 600 maxLength (and 1024 for completion checks) was insufficient once <think> reasoning is emitted before the final "Output ONLY a numbered list..." or "Answer only YES or NO".
-- Changes:
-  - `generateObjectiveTasks`: maxLength 600 → 2000.
-  - `_checkTaskCompletionInBackground` (task + taskless objective checks): maxLength 1024 → 2000.
-  - Both now call the central `_stripThinkBlocks` (instead of the naive inline replaceAll) so unclosed `<think>` tags are also handled by taking everything before the open tag. Added explanatory comments referencing the 2000 limit and thinking model support.
-- Context: Autonomous proposals already used `_fireLLMEval` with maxLength:4000 + `_stripThinkBlocks`. Task gen and completion checks are the ones that actually produce the numbered tasks and drive auto-completion of objectives. These are used for both auto-triggered autonomous objectives and manual "Generate Tasks" / completion checks.
-- No behavior change for non-thinking models or short-reasoning ones. The prompt still says "Output ONLY..." so good models should still be concise after the think block.
-- Verification: format (0 changed), surface + full analyze (0 new issues, still 138 pre-existing), dart fix "Nothing to fix!", git diff confirms 0 new private methods.
-- Updated `docs/Rawhide.md` (friendly bullet) and this file.
-- Files: `lib/services/chat_service.dart`, `docs/Rawhide.md`, `.claude/changelog.md`
-- Hygiene: 0 new private methods. Small targeted change to two GenerationParams + two post-processing sites + comments. Tree left better for thinking models on the objective system.
-
-## 2026-06-03 (Correction: autonomous AI-proposed objectives now reliably auto-generate subtasks; user-created do not)
-- User clarification: "The AI generates objectives for the character autonomously but they never have tasks for the character to accomplish to get to that goal. it is poor design to automate task generation for a user created objective/quest".
-- Previous implementation had the polarity backwards. Corrected in this pass:
-  - `autoGenerateTasks` now defaults to false. All manual/user-created paths (UI add box, As Primary/As Side buttons, group dialog) do **not** auto-generate subtasks. The player is in control of their own quests/objectives and can explicitly use the Generate Tasks UI (with its per-dialog count + NSFW toggle) when they want AI help.
-  - The autonomous paths (the "proposed_objective" parsing in _evaluateNarrativeCall and _evaluateOneShotCall) now pass `autoGenerateTasks: true`. Generation is handled inside setObjective immediately after the correct insert (using the target char we resolved). This is more reliable than the old post-set text-match lookup against whatever _activeObjectives happened to contain at that instant (especially under the temporary speaker impersonation + objective list swap in groups).
-- Group targeting fix (key to making autonomous work): setObjective's group fallback used to unconditionally pick `nextCharacter`. During `_evaluateRealismForUpcomingGroupSpeaker` the code impersonates `_activeCharacter = speaker` (and loads that speaker's objectives) before calling the narrative/one-shot evals that may propose a goal. We now detect that the current _activeCharacter is a group member and prefer it for the proposal, so the goal + its new tasks attach to the right character.
-- The isPrimary write fix from the first pass is retained (now dynamic objectives correctly record whether they are primary or secondary).
-- Removed the duplicate lookup + manual unawaited gen after the autonomous set calls (the flag + central logic replaces it cleanly).
-- Seeds (V2.5 currentTask) remain on default=false (no auto tasks), as before.
-- 0 new private methods. Centralised the "if this creation should auto-task, do it here" logic.
-- Re-ran full gates post-correction (format clean, analyze 0 new on the diff, dart fix nothing, build success).
-- docs/Rawhide.md updated with accurate description; previous incorrect bullet replaced.
-- Files touched: `lib/services/chat_service.dart`, `docs/Rawhide.md`, `.claude/changelog.md`.
-- Hygiene: 0 new god privates. The changes (flag default, one targeted if in target resolution calling an existing helper, removal of fragile duplicate code) leave the autonomous objective system working as the user described while keeping user-created manual. All rules followed.
-
-## 2026-06-02 (CI gate fixed for real — Rawhide now compares against its own current state, not dev)
-
 ## 2026-06-02 (CI gate fixed for real — Rawhide now compares against its own current state, not dev)
 - Follow-up correction from the user: the previous "fix" (using `github.event.before..HEAD` for pushes) was still not the real design. The original ci.yml was garbage all along because it privileged `dev` as the eternal baseline with `origin/${{ github.base_ref || 'dev' }}...HEAD`. Rawhide (the primary rolling development branch where all real work happens) must compare its "changed Dart files" gate against the current state of Rawhide itself.
 - Real fix: dynamic baseline — `BASE_BRANCH="${{ github.base_ref || github.ref_name || 'Rawhide' }}"` then `origin/$BASE_BRANCH...HEAD`. This makes:

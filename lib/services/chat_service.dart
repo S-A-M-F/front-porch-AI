@@ -7297,20 +7297,10 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Set a new objective for the current session (or for a specific character when in group mode).
-  ///
-  /// [autoGenerateTasks] defaults to false. User-created objectives (typed in the UI) should
-  /// not auto-generate subtasks — the user is in control of their own quests and can use the
-  /// explicit "Generate Tasks" button if desired.
-  ///
-  /// Autonomous objectives proposed by the character (via the realism "proposed_objective"
-  /// evals) pass true so that the character's self-generated goals come with concrete
-  /// sequential tasks. This makes the AI-driven objectives feel organic and like something
-  /// the character is actively striving to accomplish.
   Future<void> setObjective(
     String goal, {
     bool isPrimary = true,
     CharacterCard? targetCharacter,
-    bool autoGenerateTasks = false,
   }) async {
     if (goal.trim().isEmpty) return;
     if (_currentSessionId == null) return;
@@ -7318,21 +7308,7 @@ class ChatService extends ChangeNotifier {
     CharacterCard? target = targetCharacter;
     if (target == null) {
       if (_activeGroup != null) {
-        // During per-speaker group realism evals (which propose autonomous objectives),
-        // _activeCharacter is temporarily impersonated to the evaluated speaker. Prefer it
-        // so the character's own internal goal attaches to *them*, not nextCharacter.
-        final currentIsGroupMember =
-            _activeCharacter != null &&
-            _groupCharacters.any(
-              (c) =>
-                  _getCharacterIdFromCard(c) ==
-                  _getCharacterIdFromCard(_activeCharacter!),
-            );
-        if (currentIsGroupMember) {
-          target = _activeCharacter;
-        } else {
-          target = nextCharacter ?? _groupCharacters.firstOrNull;
-        }
+        target = nextCharacter ?? _groupCharacters.firstOrNull;
       } else {
         target = _activeCharacter;
       }
@@ -7370,36 +7346,17 @@ class ChatService extends ChangeNotifier {
       }
     }
 
-    final newId = const Uuid().v4();
     await _db.insertObjective(
       ObjectivesCompanion.insert(
-        id: newId,
+        id: const Uuid().v4(),
         characterId: charId,
         objective: goal.trim(),
         chatId: drift.Value(_currentSessionId),
-        active: const drift.Value(true),
-        isPrimary: drift.Value(isPrimary),
       ),
     );
 
     await _loadActiveObjectives();
     _messagesSinceLastCheck = 0;
-
-    if (autoGenerateTasks) {
-      try {
-        final forChar = await getActiveObjectivesFor(target);
-        final matches = forChar.where((o) => o.id == newId);
-        final addedObj = matches.isNotEmpty ? matches.first : null;
-        if (addedObj != null) {
-          unawaited(
-            generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
-          );
-        }
-      } catch (_) {
-        // Objective created successfully; task generation is best-effort and non-fatal.
-        // User can always tap "Generate Tasks" manually.
-      }
-    }
   }
 
   /// Generate subtasks for the current objective using the LLM.
@@ -7472,7 +7429,7 @@ class ChatService extends ChangeNotifier {
 
       final params = GenerationParams(
         prompt: prompt,
-        maxLength: 2000,
+        maxLength: 600,
         temperature: 0.7,
         stopSequences: [],
       );
@@ -7482,10 +7439,10 @@ class ChatService extends ChangeNotifier {
         responseText += chunk;
       }
 
-      // Strip <think>...</think> blocks (and unclosed ones) so thinking models can
-      // reason at length before emitting the final numbered list. We increased
-      // maxLength to 2000 to give them room.
-      responseText = _stripThinkBlocks(responseText);
+      // Strip think blocks
+      responseText = responseText
+          .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
+          .trim();
 
       debugPrint('[Objective] Raw tasks response:\n$responseText');
 
@@ -7734,7 +7691,7 @@ class ChatService extends ChangeNotifier {
 
         final params = GenerationParams(
           prompt: prompt,
-          maxLength: 2000,
+          maxLength: 1024,
           temperature: 0.1,
           stopSequences: [],
         );
@@ -7744,10 +7701,9 @@ class ChatService extends ChangeNotifier {
           responseText += chunk;
         }
 
-        // Strip <think>...</think> blocks (and unclosed ones). Thinking models can
-        // emit long internal reasoning before the final YES/NO. maxLength bumped
-        // to 2000 to accommodate.
-        responseText = _stripThinkBlocks(responseText);
+        responseText = responseText
+            .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
+            .trim();
 
         debugPrint(
           '[Objective] Completion check for "${obj.objective}${currentTask != null ? ' - $currentTask' : ''}": $responseText',
@@ -10255,14 +10211,19 @@ class ChatService extends ChangeNotifier {
             debugPrint(
               '[Realism:Narrative] Autonomous objective proposed: $newObj',
             );
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
+            await setObjective(newObj, isPrimary: false);
+            final addedObj = _activeObjectives
+                .where(
+                  (o) =>
+                      o.objective.toLowerCase() == newObj.toLowerCase() &&
+                      !o.isPrimary,
+                )
+                .firstOrNull;
+            if (addedObj != null) {
+              unawaited(
+                generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
+              );
+            }
           }
         }
       }
@@ -10486,15 +10447,21 @@ class ChatService extends ChangeNotifier {
             debugPrint(
               '[Realism:OneShot] Autonomous objective proposed: $newObj',
             );
-            // Auto objectives are strictly secondary (isPrimary = false).
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
+            // Auto objectives are strictly secondary (isPrimary = false)
+            await setObjective(newObj, isPrimary: false);
+            // Auto-generate tasks for the new side quest (3 tasks)
+            final addedObj = _activeObjectives
+                .where(
+                  (o) =>
+                      o.objective.toLowerCase() == newObj.toLowerCase() &&
+                      !o.isPrimary,
+                )
+                .firstOrNull;
+            if (addedObj != null) {
+              unawaited(
+                generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
+              );
+            }
           }
         }
       }
