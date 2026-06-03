@@ -6,6 +6,11 @@
 // (multi-turn sendMessage → eval → delta application → _tickNeedsDecay,
 // one-shot preference at construction, cancelRealismEval).
 //
+// aug exercising only passive/qualified (no needs-eval-specific aug file edits;
+// full in dedicated needs_impact_evaluator_test + manual; exercised via god thins
+// + fake LLM returning needs_impact JSON for A behaviors/chips/sidebar/group per-char/no-random/parity).
+// Qualified notes only in dedicated header + god + MD per precedent.
+//
 // Note: Full dynamic one-shot vs multi-call *parity of deltas during sendMessage*
 // is exercised via the controlled multi-turn path (default mode) + a construction
 // smoke confirming the preference is respected. Deeper dynamic parity under one-shot
@@ -120,6 +125,16 @@ class _ControllableFakeLlm extends LLMService {
         p.contains('_fulfilled')) {
       // Real production _verifyNeedFulfillmentCall path — return proper JSON for the test.
       response = '{"hunger_fulfilled": true, "energy_fulfilled": false}';
+    } else if (p.contains('activities') ||
+        p.contains('sexual_climax') ||
+        p.contains('needs impact') ||
+        p.contains('unambiguous description of the *act*')) {
+      // Passive support for new consolidated needs_impact eval (via god thin + engine).
+      // Returns Proposal A safe JSON (no energy/hunger replenish in romance; hygiene only on mess).
+      // Full coverage + factory cbs + edges + A scenarios in dedicated needs_impact_evaluator_test.dart
+      // (aug exercising only passive/qualified; no leaf-specific logic edits here; exercised via thins).
+      response =
+          '{"activities": [], "intensity": 0, "energy_delta": 0, "hunger_delta": 0, "hygiene_delta": 0, "reason": "none"}';
     } else if (p.contains('autonomous story engine') ||
         p.contains('one shot') ||
         p.contains('bond_delta')) {

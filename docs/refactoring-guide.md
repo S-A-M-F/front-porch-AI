@@ -152,6 +152,7 @@ lib/services/chat/
 │   ├── chaos_injection.dart
 │   └── needs_injection.dart
 ├── llm_eval_engine.dart       ← _fireLLMEval, JSON extractors, _stripThinkBlocks
+├── needs_impact_evaluator.dart ← consolidated needs impact (LLM + Proposal A table + modifiers); sibling to needs_simulation
 ├── realism_evals.dart         ← 5 evaluation calls (rel, emotion, phys, narr, one-shot)
 ├── objective_service.dart     ← objectives CRUD, tasks, completion checking
 ├── summary_service.dart       ← auto-summary generation
@@ -174,6 +175,7 @@ Extract **leaf dependencies first** (no references to other extracted code), the
 | 7 | `lorebook_scanner.dart` | nothing |
 | 8 | All `prompt_injection/*` | needs_simulation, time_service, etc. |
 | 9 | `llm_eval_engine.dart` | prompt_injection (for prompt building) |
+| 9b | `needs_impact_evaluator.dart` | needs_simulation (apply + context), llm_eval_engine (via fire/strip/extract cbs in god wiring); grouped under needs domain (sibling to needs_simulation) |
 | 10 | `realism_evals.dart` | llm_eval_engine |
 | 11 | `objective_service.dart` | llm_eval_engine |
 | 12 | `summary_service.dart` | llm_eval_engine |

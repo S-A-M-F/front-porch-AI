@@ -57,6 +57,7 @@ lib/
 │   │   ├── chaos_mode_service.dart # Pure simulation core for Chaos Mode / Chance Time events
 │   │   ├── expression_classifier.dart # Extracted plain ExpressionService (wraps low-level classifiers for use inside ChatService)
 │   │   ├── needs_simulation.dart # Sims-style per-character needs simulation logic (decay, buffers, apply/compute deltas)
+│   │   ├── needs_impact_evaluator.dart # Consolidated needs impact (rich LLM JSON + Proposal A table + modifiers pipeline); sibling to sim; thins in god
 │   │   └── relationship_service.dart # Bond/trust/fixation/spatial/inter-char relationship tracking
 │   ├── cloud_providers/         # Implementations of cloud storage backends (Google Drive, OneDrive, WebDAV)
 │   ├── grpc/                    # gRPC-generated code and services for external API integrations (e.g. Draw Things)
@@ -94,7 +95,8 @@ lib/
 ### Critical Services
 
 - **ChatService** (`lib/services/chat_service.dart`): Orchestrates chat sessions, builds context windows, handles message streaming, Realism Engine evaluations + post-generation needs/climax/sexual/daily checks, _groupRealism map + load/save scalars for group per-char state, chip delta attachment, and all cross-service wiring/callbacks.
-- **NeedsSimulation** (`lib/services/chat/needs_simulation.dart`): Domain service owning Sims-style needs (hunger, bladder, energy, social, fun, hygiene, comfort) decay, post-climax arousal suppression/afterglow buffers, catastrophe narrative triggers, applyNeedsDeltas, and computeNeedsDeltasWithReasons (for chips + snapshots). Pure class; all cross-state (group, time, arousal, enjoysLowHygiene) via callbacks.
+- **NeedsSimulation** (`lib/services/chat/needs_simulation.dart`): Domain service owning Sims-style needs (hunger, bladder, energy, social, fun, hygiene, comfort) decay, post-climax arousal suppression/afterglow buffers, catastrophe narrative triggers, applyNeedsDeltas, applySceneImpact, computeNeedsDeltasWithReasons, and context helpers for injection. Pure class; all cross-state (group, time, arousal, enjoysLowHygiene) via callbacks.
+- **NeedsImpactEvaluator** (`lib/services/chat/needs_impact_evaluator.dart`): Consolidated needs impact/eval layer (rich LLM "needs_impact" JSON + declarative Proposal A table + ordered modifiers pipeline for romance/stance/enjoys etc). Produces NeedsImpact and applies via sim. Plain class; god late final (after sim) + thins (_runPostGenNeedsChecks + 4 _check*); cbs for engine fire/strip/extract + cross services. 0 new god privs; aug passive only; reset hygiene (stateless); parity qualified.
 - **ChaosModeService** (`lib/services/chat/chaos_mode_service.dart`): Domain service owning Chaos Mode pressure growth, Chance Time wheel random event selection, and custom event text prompt injection.
 - **RelationshipService** (`lib/services/chat/relationship_service.dart`): Bond/trust/fixation/spatial stance/inter-character feelings. Extracted; scalars loaded/saved via group impersonation paths in ChatService.
 - **ExpressionClassifier** (`lib/services/chat/expression_classifier.dart`): ONNX + LLM emotion classification and reclassification (inertia, manual overrides, avatar selection). Extracted with many granular callbacks.
@@ -169,10 +171,16 @@ Use this map the next time you see symptoms like:
 
 - **Domain simulation (no ChangeNotifier, callback-driven, testable in isolation)** (`lib/services/chat/needs_simulation.dart`):
   - `applyNeedsDeltas(Map, {fromSexualActivity})` — the source of the "[Realism:Needs] Applied deltas: {...}" and afterglow buffer logs. Clamps, triggers afterglow if high positive impact from sexual, calls onSaveChat + onNotify.
+  - `applySceneImpact(NeedsImpact)` — entry for consolidated impact (deltas + startAfterglow + crash + fulfillments).
   - `computeNeedsDeltasWithReasons(preTurn)` — exactly what feeds the chips (and the 'deltas' inside realism_state['needs']). Compares pre vs current _vector, chooses reason (Afterglow buffer, Post-orgasm exhaustion, Natural decay, Stable, Scene action...).
   - `tickDecay()` — has the explicit group vs 1:1 branch: `if (getIsGroupNonObserverMode()) { sid = getCurrentSpeakerIdForRealism(); needs = getGroupNeeds(sid); mutate the map copy; setGroupNeeds; return; } else { full scalar + catas + enjoys mutation + buffers tickdown }`.
   - Buffers and state: afterglowTurnsRemaining, postClimaxCrash, arousalSuppression, pendingCatastrophe, vector.
   - Fresh start: `initializeFresh()` (all 100) vs legacy 80s.
+  - Context helpers (getInjectionEffectiveStep etc) for injection delegation.
+- **Needs impact / eval (consolidated)** (`lib/services/chat/needs_impact_evaluator.dart`):
+  - `evaluateAndApply(responseText)` — the single post-gen entry (via god thin). Builds rich prompt (via engine), parses, table base + modifiers (romance A first for energy/hunger/hygiene), produces NeedsImpact, applySceneImpact + onClimax cb.
+  - activityEffects table (Proposal A tuned).
+  - Modifiers pipeline (romance context, enjoys, explicit mess/stance, etc).
   - Callbacks (passed at construction in ChatService): getTimeOfDay, getIsGroupNonObserverMode, getCurrentSpeakerIdForRealism, getGroupNeeds/setGroupNeeds, getEnjoysLowHygiene, getNeedsSimEnabled, setArousalLevel, etc. This is how it stays decoupled from the god and from group vs 1:1.
 
 - **Display consumers (chips + sidebar + cards)**:
@@ -184,7 +192,7 @@ Use this map the next time you see symptoms like:
 - **Other related surfaces**:
   - Regen/swipe/timeline: the preTurnNeeds restore from 'needs_pre_turn_vector' or realism_state, then re-compute deltas after the re-_generateResponse.
   - "Enjoys low hygiene" static pref: CharacterCard.frontPorchExtensions, defaultMemberRealismState JSON perChar in group settings/creation, read by getEnjoysLowHygiene cb (used in daily bathe hygieneGain and some needs prompts).
-  - The _runPostGenNeedsChecks + the four check methods are the current home of the LLM "did they do X in the response" evals that produce the needs side-effects.
+  - The _runPostGenNeedsChecks (thin delegate to _needsImpactEvaluator) + the 4 _check* thins are the current home of the (now consolidated) LLM "did they do X" evals that produce the needs side-effects. Full in needs_impact_evaluator (table + Proposal A modifiers).
 
 **Tracing recipe (from the actual debug session)**:
 1. Reproduce with logging on (the [Realism:Needs], [Realism:Climax], [Realism:RawEval] prints are your friends).
@@ -194,6 +202,7 @@ Use this map the next time you see symptoms like:
 5. For sidebar/group cards: after the turn, call getNeedsForGroupCharacter in a debug print or the REPL and compare to the scalar _needsSimulation.vector at that moment.
 6. If in group, walk the load → (tick on map) → per-speaker load (which sets scalar) → gen → post apply (on scalar) → saveScalars (writes map) flow.
 7. Remember the impersonation dance is only for the *checks* (so LLM prompts name the right character); the scalars are already the right speaker's when post runs.
+8. For the consolidated needs impact (post rework): the _runPostGenNeedsChecks thin calls _needsImpactEvaluator.evaluateAndApply; look for "[Realism:Needs] Consolidated impact" and the engine "[Realism:Needs] Running consolidated impact eval (via engine)" logs. The table/modifiers are in the evaluator; Proposal A romance guards are there.
 
 When you touch any of the above for a realism/needs/group change, you **must**:
 - Keep the 1:1 and group paths producing equivalent observable deltas/behavior.

@@ -49,6 +49,7 @@ import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart'; // top-level for ExpressionClassifierService type in @Dep shim (pre-existing)
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
+import 'package:front_porch_ai/services/chat/needs_impact_evaluator.dart';
 import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/expression_classifier.dart'; // leaf for ExpressionService (post-extraction)
@@ -349,18 +350,18 @@ class ChatService extends ChangeNotifier {
   String _emotionIntensity = ''; // mild/moderate/strong
 
   // Expression images + classification (extracted to ExpressionService in chat/expression_classifier.dart).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). All runtime label/manual/onnx cache/avatar last/random
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). All runtime label/manual/onnx cache/avatar last/random
   // state now owned by the service; god thins to delegation + shims. (cross-ref setActiveCharacter:1572 etc)
 
   // Passage of time (core state + advance/nudge/OOC/resolve/reset/seed/load logic extracted to TimeService).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). All scalars, clock, narrativeWeekday,
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). All scalars, clock, narrativeWeekday,
   // resolve, nudge, detect, pre-turn advance, injection builder, and helpers now owned by the service;
   // god thins to delegation + 5 @Deprecated shims. 0 new private methods added in god for time.
   // time injection only thin wrapper here; full in step8. (cross-ref setActiveCharacter:1572 etc)
 
   // NSFW cooldown & lust (core state + tier calc + reset/seed/load/restore + group per-char scalars
   // + applyClimax/decrement extracted to NsfwService).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). All scalars, tier getters,
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). All scalars, tier getters,
   // cooldown mutations, arousal, and helpers now owned by the service; god thins to delegation
   // + 5 @Deprecated shims. 0 new private methods added in god for nsfw.
   // climax/sexual/daily LLM checks + _runPostGen + nsfw injection stay thin in god (step 8 for full builders). (cross-ref setActiveCharacter:1572 etc)
@@ -374,10 +375,11 @@ class ChatService extends ChangeNotifier {
   bool _chanceTimePendingTrigger =
       false; // true for one cycle to pop the overlay
 
-  // ── Sims/Needs Simulation (extracted to NeedsSimulation) ───────────────────
-  // State (_needsVector, buffers, pendingCatastrophe) + consts + decay/step/catastrophe
-  // logic live in _needsSimulation (plain class). ChatService owns it and delegates.
-  // _needsSimEnabled and _enjoysLowHygiene kept here (control + char-derived).
+  // ── Sims/Needs Simulation (extracted to NeedsSimulation) + Needs Impact Evaluator ──
+  // State + decay/step/catastrophe/buffers/apply/compute live in _needsSimulation (plain).
+  // Consolidated eval/impact (rich LLM + Proposal A table + modifiers pipeline + NeedsImpact +
+  // applySceneImpact) in _needsImpactEvaluator (plain, after sim in ordering). ChatService owns
+  // both via late finals + thins. _needsSimEnabled / _enjoysLowHygiene kept here (control).
   bool _needsSimEnabled = false;
   bool _enjoysLowHygiene =
       false; // inversion for hygiene (enjoys being dirty/sweaty/musky)
@@ -414,7 +416,7 @@ class ChatService extends ChangeNotifier {
   // group per-speaker load/save scalars, applyClimax/decrement live in _nsfwService (plain class).
   // ChatService owns via late final + delegates. (Declared before needs for init safety because
   // needs closes over the getArousal/getNsfw/getCooldown/setArousal cbs.)
-  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) comments)
+  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) comments)
   // without god privates. 0 new private methods in god.
   // climax/sexual/daily checks stay in god (step 8 for full nsfw injection).
   // 3 group cbs only (onNotify/onSaveChat removed as dead/unused; god owns save/notify for post-gen climax/sexual fidelity per plan boundaries). (cross-ref setActiveCharacter:1572 etc)
@@ -475,6 +477,63 @@ class ChatService extends ChangeNotifier {
     },
   );
 
+  // ── Needs Impact Evaluator (consolidated post-gen LLM + rules table + modifiers for needs deltas/buffers/fulfill/climax-needs; Proposal A semantics) ──
+  // Plain class (sibling to NeedsSimulation). Owns the rich "needs_impact" eval (one call consolidating the 4 prior checks),
+  // declarative activityEffects table (Proposal A: energy/hunger neutral-or-costing + hygiene-only-on-explicit-mess in romance/sex w/o daily acts),
+  // ordered modifiers pipeline (romance context first, enjoys, explicit mess/stance, arousal damp, intensity, etc.), NeedsImpact production,
+  // and applySceneImpact + onClimax cb.
+  // Wired after _needsSimulation (per plan ordering). Granular cbs (fire/strip/extract via llm engine thins, active/group/speaker for prompts + per-char,
+  // messages, nsfw/rel for stance/arousal/cooldown in modifiers, group needs cbs, onNotify/onSave, flags, + direct needsSimulation for apply/context).
+  // onClimaxDetected: live closure for nsfw refractory + pre-climax meta save (so _checkClimax nsfw path parity preserved while detection unified).
+  // 0 @Deprecated. 0 new god private _ methods (thins + late final + comment syncs only; void _ count stays 15; thins/calls/late final only per plan).
+  // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync" comments (full prior+current list + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + cross-refs e.g. setActiveCharacter:1572); both startNew branches explicit.
+  // (stateless or prompt-only; no reset calls needed) + cross-refs e.g. setActiveCharacter:1572); both startNewChat branches explicit.
+  // 1:1 vs group + oneShot/normal dispatch/parity preserved exactly (cbs + god's impersonation dance + load/saveScalarsIntoGroupRealism before post checks).
+  // aug exercising only passive/qualified (no needs-eval-specific aug file edits; full in dedicated needs_impact_evaluator_test + manual;
+  // exercised via god thins _runPostGenNeedsChecks + _check* ; qualified notes only in dedicated header + god + MD per precedent).
+  // Dispatch preserved. Realism/Needs/Objectives parity qualified (1:1 equivalent deltas/behavior; oneShot vs normal for impact too).
+  // Some post-gen coordination (impersonation, pre/post load/save scalars for group per-speaker, preTurn snapshot for chips, long-gen, attach metadata, _save/notify) stayed thin in god per plan (qualify).
+  late final _needsImpactEvaluator = NeedsImpactEvaluator(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    fireLLMEval: (p, {onChunk}) => _fireLLMEval(p, onChunk: onChunk),
+    stripThinkBlocks: _stripThinkBlocks,
+    extractJsonInt: _extractJsonInt,
+    extractJsonBool: _extractJsonBool,
+    evaluateNeedsImpactCall: _llmEvalEngine.evaluateNeedsImpactCall,
+    getActiveCharacter: () => _activeCharacter,
+    getActiveGroup: () => _activeGroup,
+    getIsObserverMode: () => _observerMode,
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getGroupNeeds: _getGroupNeeds,
+    setGroupNeeds: _setGroupNeeds,
+    getGroupCharacters: () => _groupCharacters,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+    getMessages: () => _messages,
+    needsSimulation: _needsSimulation,
+    nsfwService: _nsfwService,
+    relationshipService: _relationshipService,
+    timeService: _timeService,
+    getNeedsSimEnabled: () => _needsSimEnabled,
+    getRealismEnabled: () => _realismEnabled,
+    getEnjoysLowHygiene: () => _enjoysLowHygiene,
+    onClimaxDetected: (preArousal, refractoryTurns) {
+      // nsfw + regen pre-climax meta (moved from old _checkClimax body; keeps parity for refractory + swipe restore).
+      if (_messages.isNotEmpty && !_messages.last.isUser) {
+        final msg = _messages.last;
+        final meta = Map<String, dynamic>.from(msg.activeMetadata ?? {});
+        meta['climax_triggered'] = true;
+        meta['pre_climax_arousal'] = preArousal;
+        msg.swipeMetadata[msg.swipeIndex] = meta;
+      }
+      _nsfwService.applyClimaxEffects(turns: refractoryTurns);
+      debugPrint(
+        '[Realism:Climax] (via impact) refractory cooldown started ($refractoryTurns turns), pre-arousal saved for regen',
+      );
+    },
+  );
+
   // Public aliases (now delegate to the extracted canonical source of truth).
   static const int needUrgentThreshold = NeedsSimulation.needUrgentThreshold;
   static const int needCriticalThreshold =
@@ -503,7 +562,7 @@ class ChatService extends ChangeNotifier {
   // per-char load/save scalars live in _relationshipService (plain class).
   // ChatService owns via late final + delegates. Prompt injection builders and
   // _groupRealism map itself stay in god (step 8+). Reset helpers on service keep
-  // the multiple "keep reset blocks in sync" sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) included in comments). (cross-ref setActiveCharacter:1572 etc)
+  // the multiple "keep reset blocks in sync" sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) included in comments). (cross-ref setActiveCharacter:1572 etc)
   late final _relationshipService = RelationshipService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -591,7 +650,7 @@ class ChatService extends ChangeNotifier {
   // lastAvatarId now owned by ExpressionService (plain class).
   // ChatService owns via late final + delegates. Prompt injection (label lists) + command
   // coordination kept in god (step 8). Reset/invalidate helpers on service keep the
-  // multiple "keep reset blocks in sync" + regen sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
+  // multiple "keep reset blocks in sync" + regen sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
   late final _expressionService = ExpressionService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -1741,7 +1800,7 @@ class ChatService extends ChangeNotifier {
     if (_activeCharacter != null) {
       // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
       // without god privates; constants skipped, non-const zeroed for char + attached worlds).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
       _lorebookScanner.resetLorebookTriggerState();
 
       // Reset realism state to prevent bleeding from previous character.
@@ -1762,13 +1821,13 @@ class ChatService extends ChangeNotifier {
       _characterEmotion = '';
       _emotionIntensity = '';
       // Time reset via extracted service (keeps multiple reset blocks in sync).
-      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
+      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
       _timeService.resetForFreshChat();
       // Chaos reset via extracted service (keeps multiple reset blocks in sync).
-      // See chaos_mode_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
+      // See chaos_mode_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
       _chaosModeService.resetForFreshChat();
       // Nsfw reset via extracted service (keeps multiple reset blocks in sync).
-      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
+      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
       _nsfwService.resetForFreshChat();
       // Lorebook already reset above via _lorebookScanner (keeps blocks in sync; see cross-ref comment at top of this reset).
       _relationshipService.resetForFreshChat();
@@ -1906,7 +1965,7 @@ class ChatService extends ChangeNotifier {
     // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
     // Nsfw (arousal/cooldown) via service.
     // Lorebook triggers via scanner (for group fresh/0-session hygiene; parallels time/nsfw defensive zeros).
-    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) for group fresh/0-session; incomplete zeroing now complete).
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) for group fresh/0-session; incomplete zeroing now complete).
     // (cross-ref setActiveCharacter:1572)
     _relationshipService.resetForFreshChat();
     _expressionService.resetForFreshChat();
@@ -2024,7 +2083,7 @@ class ChatService extends ChangeNotifier {
     await _seedImportedMemberObjectivesIfPresent();
 
     // Lorebook trigger reset via extracted service (group path; see setActiveCharacter for the 1:1 counterpart + keep-sync cross-refs).
-    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) alongside prior services; incomplete zeroing now complete).
+    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) alongside prior services; incomplete zeroing now complete).
     // (cross-ref setActiveCharacter:1572)
     _lorebookScanner.resetLorebookTriggerState();
 
@@ -2646,7 +2705,7 @@ class ChatService extends ChangeNotifier {
       // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
       // Nsfw (cooldown/arousal) reset for same (incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue).
       // Lorebook triggers/depth reset for same (incomplete zeroing of lore on 0-session/new-group was a prior hygiene pattern to avoid).
-      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete); incomplete zeroing now complete).
+      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed); incomplete zeroing now complete).
       // (cross-ref setActiveCharacter:1572)
       _timeService.resetForFreshChat();
       _nsfwService.resetForFreshChat();
@@ -3355,7 +3414,7 @@ class ChatService extends ChangeNotifier {
       // without god privates; now includes startNewChat 1:1 ext-seed path to prevent bleed of prior
       // isTriggered/remainingDepth into fresh New Chat for 1:1; constants skipped. See setActiveCharacter:1572
       // + "incomplete zeroing of secondary realism configuration fields" briefing pattern (cross-ref step6 nsfw).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
       _lorebookScanner.resetLorebookTriggerState();
       // Time seed via extracted service (keeps startNewChat / setActive / ext-seed blocks in sync).
       _timeService.seedFromV2OrExt(
@@ -3382,6 +3441,8 @@ class ChatService extends ChangeNotifier {
         _needsSimulation.clearVector();
       }
       _needsSimulation.resetBuffers();
+      // needs_impact_evaluator is stateless/prompt-only (no reset calls needed on it;
+      // see full list in "keep reset blocks in sync" comments + cross-ref setActiveCharacter:1572).
       // pending covered by relationship service reset in the ext-seed or non-ext paths below.
       // Always reset per-chat runtime realism fields (arousal/fixation/cooldowns) for a fresh
       // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter
@@ -3425,18 +3486,19 @@ class ChatService extends ChangeNotifier {
         // Will be populated later with greeting in non-group modes
         // Preserve realism state for proper post-greeting eval (don't reset here)
       } else {
-        // Relationship + Expression + Time + Nsfw reset via service helpers (keeps reset blocks in sync with setActiveCharacter:1572 etc / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + full list in "keep reset blocks" comments including + llm_eval_engine (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+        // Relationship + Expression + Time + Nsfw reset via service helpers (keeps reset blocks in sync with setActiveCharacter:1572 etc / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + full list in "keep reset blocks" comments including + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
         // Time now explicitly reset in group 0-session/empty paths + setActiveGroup defensive + _loadLast empty (cross-check needs bugfix hygiene).
         _relationshipService.resetForFreshChat();
         _expressionService.resetForFreshChat();
         _timeService.resetForFreshChat();
         _nsfwService.resetForFreshChat();
         // Lorebook trigger reset via extracted service (keeps reset blocks in sync with setActiveCharacter:1572 / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary ... on 0-session/new-character/group" + startNew 1:1+group now complete + full list in keep-sync comments incl llm_eval_engine). (cross-ref setActiveCharacter:1572 etc)
-        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) for group/0-session/new-chat hygiene; incomplete zeroing now complete).
+        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) for group/0-session/new-chat hygiene; incomplete zeroing now complete).
         // (cross-ref setActiveCharacter:1572)
         _lorebookScanner.resetLorebookTriggerState();
         // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
         // Time reset helper kept in sync with other blocks.
+        // needs_impact_evaluator (stateless/prompt-only; no reset calls needed) covered in keep-sync lists.
       }
     }
 
@@ -5819,12 +5881,12 @@ class ChatService extends ChangeNotifier {
         }
 
         // For group non-observer turns, temporarily re-impersonate the speaker of the *just generated*
-        // response so the post-gen needs checks (_checkClimaxInResponse, _checkSexualActivityInResponse,
-        // _checkDailyActivityEffects, _verifyNeedFulfillmentCall) use the correct _activeCharacter
-        // (for name, personality injection in climax prompt, and any speaker-specific guards).
-        // The pre-speaker-eval left the *scalars* (incl. needs vector) loaded for this speaker but
-        // restored the _activeCharacter pointer to the prior speaker; checks rely on the pointer.
-        // We restore the pointer after the checks (scalars remain correct for the persist below).
+        // response so the post-gen needs checks (now _runPostGenNeedsChecks thin to
+        // _needsImpactEvaluator) use the correct _activeCharacter (for name, personality/stance
+        // in the consolidated needs impact prompt). The pre-speaker-eval left the *scalars*
+        // (incl. needs vector) loaded for this speaker but restored the _activeCharacter pointer
+        // to the prior speaker; the thin delegate relies on the pointer for cbs. We restore the
+        // pointer after the checks (scalars remain correct for the persist below).
         CharacterCard? prePostActiveChar;
         if (_activeGroup != null && !_observerMode) {
           prePostActiveChar = _activeCharacter;
@@ -7969,12 +8031,10 @@ class ChatService extends ChangeNotifier {
     return _chaosInjection.buildChanceTimeInjection();
   }
 
-  // ── LLM Eval Thins (step 9; full in LlmEvalEngine) ──
-  // 0 new god privates beyond required thin delegates (fire/strip/extract/evaluate*/check/gen thins; void_ count 15; +1 late final); thins only (public surface for now per plan); objective proposal coordination + some
-  // prompt/obj mgmt stayed thin in god per plan (qualified in engine header + here + test + MD).
-  // All call sites (5 firing points, gen/check, proposal, direct fire/strip/extract in eval paths)
-  // now delegate; non-eval uses of fire/strip/extract (fact, needs checks, etc) also route via
-  // these thins (centralized, no parallel).
+  // ── LLM Eval Thins (step 9; full in LlmEvalEngine) + Needs Impact Thins (consolidated) ──
+  // 0 new god privates beyond required thin delegates (fire/strip/extract/evaluate*/check/gen thins + _runPostGenNeedsChecks + the 4 _check* thins for needs impact; void_ count 15; +1 late final); thins only (public surface for now per plan); objective proposal coordination + some
+  // prompt/obj mgmt + post-gen needs orchestration (impersonation dance, pre/post group scalars, long-gen, metadata attach) stayed thin in god per plan (qualified in evaluator header + here + test + MD).
+  // All call sites (5 firing points, gen/check, proposal, direct fire/strip/extract in eval paths, post-gen needs) now delegate; non-eval uses ... also route via these thins (centralized, no parallel).
 
   Future<String?> _fireLLMEval(
     String prompt, {
@@ -8004,6 +8064,15 @@ class ChatService extends ChangeNotifier {
 
   Future<void> _evaluateOneShotCall({void Function(String)? onChunk}) =>
       _llmEvalEngine.evaluateOneShotCall(onChunk: onChunk);
+
+  // Thin for consolidated needs impact (full prompt+fire+strip in engine; parse/apply/modifiers
+  // in evaluator leaf). Not directly called (driven via _runPostGenNeedsChecks thin); surface
+  // for parity with other _evaluate*Call thins + future.
+  // ignore: unused_element
+  Future<String?> _evaluateNeedsImpactCall(
+    String responseText, {
+    void Function(String)? onChunk,
+  }) => _llmEvalEngine.evaluateNeedsImpactCall(responseText, onChunk: onChunk);
 
   /// One-shot trust repair evaluator.
   ///
@@ -8494,64 +8563,13 @@ class ChatService extends ChangeNotifier {
     return _needsInjection.buildNeedsInjection();
   }
 
-  Future<void> _verifyNeedFulfillmentCall({
-    void Function(String)? onChunk,
-  }) async {
-    if (!_needsSimEnabled || !_realismEnabled || _activeCharacter == null) {
-      return;
-    }
-
-    final pendingNeeds = _needsSimulation.vector.entries
-        .where((e) => e.value <= needFulfillmentScanThreshold)
-        .map((e) => e.key)
-        .toList();
-    if (pendingNeeds.isEmpty) return;
-
-    final recentCount = _messages.length < 2 ? _messages.length : 2;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final needListStr = pendingNeeds.join(', ');
-
-    final prompt =
-        'You are verifying whether character needs were actually fulfilled in a roleplay scene. '
-        'A need is only fulfilled if the action was COMPLETED in the scene — not just mentioned. '
-        'Character needs at critical or urgent level: $needListStr\n\n'
-        'Recent exchange:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object with "<need>_fulfilled": true or false.';
-
-    try {
-      debugPrint('[Realism:Needs] Running fulfillment verification');
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      for (final need in pendingNeeds) {
-        final fulfilled = _extractJsonBool(text, '${need}_fulfilled') ?? false;
-        if (fulfilled) {
-          final restore = _needsSimulation.needRestoreAmount(need);
-          final current = _needsSimulation.vector[need] ?? 50;
-          _needsSimulation.setNeedValue(need, current + restore);
-          debugPrint('[Realism:Needs] ✅ $need fulfilled (+$restore)');
-        } else {
-          debugPrint('[Realism:Needs] ✗ $need NOT fulfilled');
-        }
-      }
-      _saveChat(); // persist restored vector
-    } catch (e) {
-      debugPrint('[Realism:Needs] Fulfillment verification failed: $e');
-    }
+  // Thin delegate (full consolidated in NeedsImpactEvaluator; fulfillment now part of
+  // the single rich needs_impact JSON + applySceneImpact). Signature preserved for
+  // any regen/fire-and-forget sites; body excised as part of task.
+  // ignore: unused_element
+  Future<void> _verifyNeedFulfillmentCall() async {
+    // No-op: unified into _runPostGenNeedsChecks -> evaluator (which still supports
+    // fulfillment scan via the same recent context + LLM). Old body deleted.
   }
 
   void _restoreRealismStateFromMessage(ChatMessage? msg) {
@@ -8598,335 +8616,42 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Runs all post-generation needs-related checks (climax, sexual activity,
-  /// daily activities, fulfillment). Used by _generateResponse as fire-and-forget,
-  /// and by the regen path when we need the results synchronously.
+  /// daily activities, fulfillment) via thin delegate to the consolidated
+  /// NeedsImpactEvaluator (rich LLM + table + modifiers per Proposal A).
+  /// Orchestration (guards, group impersonation dance + loadGroupRealismIntoScalars
+  /// before call so prompts see correct $charName/personality/stance, preTurn
+  /// snapshot for chips, post _saveScalarsIntoGroupRealism + attach needs_deltas,
+  /// long-gen decay, _save/notify) stays in god. Dispatch preserved exactly.
   Future<void> _runPostGenNeedsChecks(String responseText) async {
-    // Climax check
-    if (_realismEnabled &&
-        _nsfwService.nsfwCooldownEnabled &&
-        _nsfwService.cooldownTurnsRemaining <= 0 &&
-        (_activeGroup == null || !_observerMode)) {
-      await _checkClimaxInResponse(responseText);
-    }
-
-    // Non-climax sexual/intimate activity
-    if (_needsSimEnabled && _realismActiveThisMode) {
-      await _checkSexualActivityInResponse(responseText);
-    }
-
-    // Daily activity effects
-    if (_needsSimEnabled &&
-        _realismActiveThisMode &&
-        _nsfwService.cooldownTurnsRemaining <= 0) {
-      await _checkDailyActivityEffects(responseText);
-    }
-
-    // Needs fulfillment verification
-    if (_needsSimEnabled && _realismActiveThisMode) {
-      await _verifyNeedFulfillmentCall();
-    }
+    await _needsImpactEvaluator.evaluateAndApply(responseText);
   }
 
-  /// Fired post-generation against the AI's completed response text.
-  /// The LLM writes the scene first — THEN we detect climax and apply
-  /// the refractory cooldown so the *next* turn's prompt blocks re-escalation.
+  /// Thin delegate for climax detection (nsfw refractory + regen meta now in the
+  /// onClimaxDetected cb wired to evaluator; needs deltas/crash/afterglow now via
+  /// consolidated impact). Full old body (prompt + apply + intensity crash calc +
+  /// hardcoded positive energy etc) excised as part of task (replaced by table +
+  /// Proposal A modifiers in evaluator). Signature kept for call sites.
+  // ignore: unused_element
   Future<void> _checkClimaxInResponse(String responseText) async {
-    if (responseText.trim().isEmpty) return;
-    if (_activeCharacter == null) return;
-    final charName = _activeCharacter!.name;
-
-    String personalityInjection = '';
-    if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality;
-      personalityInjection = 'Character Personality Traits:\n"$p"\n\n';
-    }
-
-    final currentStance = _relationshipService.spatialStance.isNotEmpty
-        ? 'Current physical position/stance of $charName: "${_relationshipService.spatialStance}". '
-        : '';
-
-    final prompt =
-        'Read the following character response and answer ONE question.\n\n'
-        '$personalityInjection'
-        '$currentStance'
-        'RESPONSE:\n$responseText\n\n'
-        'Question: Did $charName (and ONLY $charName) PHYSICALLY reach climax/orgasm in this response? '
-        'This must be an event actively occurring or just occurred in the text — '
-        '$charName specifically physically reaching orgasm right now. '
-        'If the response describes the user climaxing, but NOT $charName, you MUST answer false.\n'
-        'If true, ALSO report "orgasm_intensity" (1-10): how physically powerful and draining the orgasm was for $charName '
-        '(10 = shattering full-body after long intense session; 5 = solid satisfying climax; 1-2 = mild/quick).\n'
-        'Do NOT answer true for: dirty talk, innuendo, arousal build-up, '
-        'sexual activity that has not yet reached completion, or casual use of words like "cum". '
-        'ONLY answer true if $charName\'s orgasm/climax is unambiguously depicted as actively happening.\n'
-        'If true, ALSO estimate their "refractory_turns" (recovery time before they can be aroused again). '
-        'A normal character might take 5-7 turns. A highly sexual/nympho character takes 1-2 turns. Use their personality traits to decide.\n\n'
-        'If climax_detected is true, ALSO provide realistic physical consequences for needs based on the described act AND the current physical stance:\n'
-        '- "hygiene_delta": integer (strongly negative when messy — internal cum, cum on tits/face/stomach/sheets, creampie, etc. Typical range -12 to -25. Use spatial stance to judge how contained or exposed the mess is).\n'
-        '- "bladder_delta": integer (usually small or zero from orgasm itself. Positive only if the scene explicitly shows them relieving themselves right after. Do not invent bathroom visits.)\n\n'
-        'Respond with ONLY a JSON object: {"climax_detected": <true|false>, "refractory_turns": <number 1-8>, "orgasm_intensity": <1-10>, "hygiene_delta": <int>, "bladder_delta": <int>, "reason": "<brief>"}';
-
-    try {
-      debugPrint('[Realism:Climax] Checking AI response for climax...');
-      final raw = await _fireLLMEval(prompt);
-      if (raw == null) return;
-
-      final searchText = _stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
-
-      if (_extractJsonBool(text, 'climax_detected') == true) {
-        int turns = 5;
-        final refTurns = _extractJsonInt(text, 'refractory_turns');
-        if (refTurns != null) {
-          turns = refTurns.clamp(1, 10);
-        }
-
-        // Save pre-climax state on the message so regen can restore it
-        final preClimaxArousal = _nsfwService.arousalLevel;
-        if (_messages.isNotEmpty && !_messages.last.isUser) {
-          final msg = _messages.last;
-          final meta = Map<String, dynamic>.from(msg.activeMetadata ?? {});
-          meta['climax_triggered'] = true;
-          meta['pre_climax_arousal'] = preClimaxArousal;
-          msg.swipeMetadata[msg.swipeIndex] = meta;
-        }
-
-        _nsfwService.applyClimaxEffects(turns: turns);
-
-        // Apply sexual activity cross-effects + start Afterglow Buffer.
-        // Energy is deliberately given a solid positive here (orgasm as a
-        // "shot of adrenaline / monster energy" effect) so characters stay
-        // awake and engaged through intense scenes instead of collapsing.
-        if (_needsSimEnabled) {
-          // Use LLM-provided grounded deltas when available. These take the
-          // current spatial stance into account (e.g. "sprawled in bed after creampie"
-          // produces a much harder hygiene hit than "in the shower").
-          final llmHygiene = _extractJsonInt(text, 'hygiene_delta');
-          final llmBladder = _extractJsonInt(text, 'bladder_delta');
-
-          final hygieneDelta =
-              llmHygiene ?? -18; // Strong default — cumming is messy
-          final bladderDelta =
-              llmBladder ?? 0; // Orgasm itself does not fill the bladder
-
-          _needsSimulation.applyNeedsDeltas({
-            'fun': 16,
-            'social': 9,
-            'bladder': bladderDelta,
-            'energy':
-                10, // was -7; now a noticeable rush (like caffeine/adrenaline)
-            'hunger': -4,
-            'hygiene': hygieneDelta,
-          }, fromSexualActivity: true);
-
-          // Delayed post-climax crash (lethargy). Only on confirmed physical orgasm.
-          // Intensity-scaled duration. Gated effect so it respects afterglow + lust haze.
-          final intensity = _extractJsonInt(text, 'orgasm_intensity') ?? 5;
-          int crashDur = 0;
-          if (intensity >= 9) {
-            crashDur = 5;
-          } else if (intensity >= 7) {
-            crashDur = 4;
-          } else if (intensity >= 5) {
-            crashDur = 3;
-          } else if (intensity >= 3) {
-            crashDur = 2;
-          }
-
-          if (crashDur > 0) {
-            final current = _needsSimulation.postClimaxCrashTurnsRemaining;
-            _needsSimulation.setPostClimaxCrashTurns(
-              current > crashDur ? current : crashDur,
-            );
-            debugPrint(
-              '[Realism:Needs] Post-climax crash scheduled ($crashDur turns, intensity=$intensity)',
-            );
-          }
-        }
-
-        debugPrint(
-          '[Realism:Climax] Confirmed — refractory cooldown started ($turns turns), '
-          'arousal $preClimaxArousal → -3 (pre-climax saved for regen)',
-        );
-        _saveChat();
-        notifyListeners();
-      } else {
-        debugPrint('[Realism:Climax] No climax detected.');
-      }
-    } catch (e) {
-      debugPrint('[Realism:Climax] Check failed: $e');
-    }
+    // Unified into evaluator via _runPostGenNeedsChecks. Old 100+ LOC (including
+    // the "was -7; now +10" energy, stance hygiene, intensity crash) deleted.
+    // nsfw + meta side effects now handled in the cb from late final wiring.
   }
 
-  /// Lightweight check for significant sexual or intimate activity that did *not*
-  /// result in climax. This ensures ongoing scenes (making out, oral, fingering,
-  /// heavy petting, etc.) still deliver Fun/Social rewards and start the afterglow
-  /// buffer so sex remains a net positive.
+  /// Thin delegate for non-climax sexual (now unified in evaluator's rich impact
+  /// + table + romance modifiers that force energy/hunger per Proposal A).
+  /// Old body (prompt + intensity strength + hardcoded +3 energy etc) excised.
+  // ignore: unused_element
   Future<void> _checkSexualActivityInResponse(String responseText) async {
-    if (responseText.trim().isEmpty) return;
-    if (_activeCharacter == null) return;
-
-    // NOTE: We intentionally no longer early-return on low _arousalLevel here.
-    // The check is now primarily content-driven (what the response text describes).
-    // This is required for correct needs deltas (including the new spatial-aware
-    // hygiene/bladder impacts) during message regeneration, where the restored
-    // historical state may have low arousal even if the new text is highly sexual.
-    // The LLM will still only report sexual_activity=true when the text clearly
-    // supports it.
-
-    // Still avoid double-applying immediately after a confirmed climax in the
-    // *current* state (climax handler already applied the strong effects).
-    if (_nsfwService.cooldownTurnsRemaining > 0) return;
-
-    final charName = _activeCharacter!.name;
-
-    final currentStance = _relationshipService.spatialStance.isNotEmpty
-        ? 'Current physical position/stance of $charName: "${_relationshipService.spatialStance}". '
-        : '';
-
-    final prompt =
-        'Read the following character response.\n\n'
-        '$currentStance'
-        'RESPONSE:\n$responseText\n\n'
-        'Did $charName engage in significant sexual or intimate physical activity '
-        '(kissing, touching, oral, fingering, grinding, heavy petting, titty fuck, creampie risk, etc.) even if they did not reach orgasm? '
-        'Answer ONLY with a JSON object: {"sexual_activity": true/false, "intensity": 1-10, "reason": "short"}. '
-        'If sexual_activity is true, ALSO include realistic physical consequences:\n'
-        '- "hygiene_delta": integer (negative when fluids are involved — especially if cum lands on body, face, tits, stomach, sheets, or inside during creampie/titty fuck/etc. Use a hard negative when the current stance makes the mess difficult to contain or clean up immediately).\n'
-        '- "bladder_delta": integer (almost always 0 or very small from sexual activity alone).';
-
-    try {
-      final raw = await _fireLLMEval(prompt);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      final sexual = _extractJsonBool(text, 'sexual_activity') ?? false;
-      if (!sexual) return;
-
-      final intensity = _extractJsonInt(text, 'intensity') ?? 5;
-      final strength = (intensity / 10.0).clamp(0.4, 1.0);
-
-      // Use LLM-grounded deltas when available. These are informed by the
-      // described act + the character's current physical stance (spatial awareness).
-      // This prevents nonsense like positive bladder from cumming, and makes
-      // hygiene correctly punishing when things get messy (titty fuck, creampie,
-      // cum on sheets while cuddling, etc.).
-      final llmHygiene = _extractJsonInt(text, 'hygiene_delta');
-      final llmBladder = _extractJsonInt(text, 'bladder_delta');
-
-      final hygieneDelta = llmHygiene ?? (-8 * strength).round();
-      final bladderDelta =
-          llmBladder ?? (2 * strength).round(); // very small by default
-
-      _needsSimulation.applyNeedsDeltas({
-        'fun': (12 * strength).round(),
-        'social': (7 * strength).round(),
-        'bladder': bladderDelta,
-        'energy': (3 * strength)
-            .round(), // was negative; now a mild boost (1-3 per turn)
-        'hunger': (-3 * strength).round(),
-        'hygiene': hygieneDelta,
-      }, fromSexualActivity: true);
-
-      debugPrint(
-        '[Realism:Needs] Non-climax sexual activity detected (intensity $intensity) → applied effects + afterglow',
-      );
-    } catch (e) {
-      debugPrint('[Realism:SexualActivity] Check failed: $e');
-    }
+    // Unified; old ~70 LOC deleted as part of task.
   }
 
-  /// Detects common daily activities that have natural cross-effects on multiple needs.
-  /// Examples: eating a proper meal, sleeping/napping, taking a bath/shower.
+  /// Thin delegate for daily (ate/slept/bathed) effects. Now part of consolidated
+  /// impact (table + modifiers for recentSexual reduction + enjoysLow). Old body
+  /// (prompt + strength + if ate/slept/bathed + hygieneGain special cases) excised.
+  // ignore: unused_element
   Future<void> _checkDailyActivityEffects(String responseText) async {
-    if (responseText.trim().isEmpty) return;
-    if (_activeCharacter == null) return;
-
-    final charName = _activeCharacter!.name;
-
-    final prompt =
-        'Read the following character response.\n\n'
-        'RESPONSE:\n$responseText\n\n'
-        'Did $charName do any of the following in this response?\n'
-        '- Ate or drank a significant meal / snack / drink\n'
-        '- Slept, napped, or had a good rest\n'
-        '- Took a deliberate, non-sexual bath, shower, or thorough cleaning (not just quick rinse during/after sex)\n\n'
-        'Answer ONLY with a flat JSON object:\n'
-        '{"ate": true/false, "slept": true/false, "bathed": true/false, "quality": 1-10}';
-
-    try {
-      final raw = await _fireLLMEval(prompt);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      final ate = _extractJsonBool(text, 'ate') ?? false;
-      final slept = _extractJsonBool(text, 'slept') ?? false;
-      final bathed = _extractJsonBool(text, 'bathed') ?? false;
-      final quality = _extractJsonInt(text, 'quality') ?? 5;
-      final strength = (quality / 10.0).clamp(0.5, 1.0);
-
-      final deltas = <String, int>{};
-
-      if (ate) {
-        deltas['hunger'] = (22 * strength).round();
-        deltas['fun'] = (6 * strength).round();
-        deltas['social'] = (4 * strength).round();
-        deltas['energy'] = (5 * strength).round();
-        deltas['bladder'] = (4 * strength).round();
-      }
-
-      if (slept) {
-        deltas['energy'] = (deltas['energy'] ?? 0) + (25 * strength).round();
-        deltas['fun'] = (deltas['fun'] ?? 0) + (5 * strength).round();
-        deltas['hunger'] = (deltas['hunger'] ?? 0) + (-3 * strength).round();
-        deltas['bladder'] = (deltas['bladder'] ?? 0) + (5 * strength).round();
-      }
-
-      if (bathed) {
-        // Hygiene from bathing is intentionally reduced in two cases:
-        // 1. Recent sexual activity (e.g. sex in the shower) — cleaning during/after
-        //    messy sex shouldn't count as a full refreshing reset.
-        // 2. Characters with "Enjoys low hygiene" get less benefit from cleaning
-        //    because they like being sweaty/musky/dirty.
-        int hygieneGain = (25 * strength).round();
-
-        final bool recentSexualActivity =
-            _needsSimulation.afterglowTurnsRemaining > 0 ||
-            _needsSimulation.postClimaxCrashTurnsRemaining > 0;
-
-        if (recentSexualActivity) {
-          hygieneGain = (hygieneGain * 0.35).round().clamp(0, 100);
-        }
-
-        if (_enjoysLowHygiene) {
-          hygieneGain = (hygieneGain * 0.5).round().clamp(0, 100);
-          // Lower comfort/fun payoff from bathing for these characters
-          deltas['comfort'] = (deltas['comfort'] ?? 0) + (6 * strength).round();
-          deltas['fun'] = (deltas['fun'] ?? 0) + (3 * strength).round();
-        } else {
-          deltas['comfort'] =
-              (deltas['comfort'] ?? 0) + (12 * strength).round();
-          deltas['fun'] = (deltas['fun'] ?? 0) + (6 * strength).round();
-        }
-
-        deltas['hygiene'] = hygieneGain;
-      }
-
-      if (deltas.isNotEmpty) {
-        _needsSimulation.applyNeedsDeltas(deltas);
-        debugPrint(
-          '[Realism:Needs] Daily activities detected → applied cross-effects: $deltas',
-        );
-      }
-    } catch (e) {
-      debugPrint('[Realism:DailyActivities] Check failed: $e');
-    }
+    // Unified in evaluator; old ~80 LOC deleted as part of task.
   }
 
   // ── Score / State Helpers (thinned; core logic + counters in RelationshipService) ──

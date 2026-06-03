@@ -22,7 +22,11 @@ import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 
 /// Plain needs injection builder (_getNeedsInjection).
 /// Per-char in group via cbs, 1:1 scalar, suppression, erotic special case, secondary note, post-crash.
-/// Step 8.
+/// Step 8. Simplified post needs impact rework: hard calc (effective step after enjoys/damp,
+/// urgency prefix, secondary note, post-crash suffix, romantic context) delegated to
+/// NeedsSimulation context helpers (getInjectionEffectiveStep etc); keeps only dispatch,
+/// the erotic bladder tension text as data, and formatting. Exact prior behavior +
+/// Proposal A milder notes via romantic context if used.
 class NeedsInjection {
   final NeedsSimulation needsSimulation;
   final NsfwService nsfwService;
@@ -91,95 +95,50 @@ class NeedsInjection {
       ..sort((a, b) => a.value.compareTo(b.value));
 
     final top = sorted.first;
-    final step = needsSimulation.getNeedStep(top.key, top.value);
-
-    // Hygiene inversion support ("Enjoys low hygiene")
-    int effectiveStep = step;
-    if (getEnjoysLowHygiene() && top.key == 'hygiene') {
-      // Invert the perceived urgency: low hygiene = "comfortable/good" for these characters
-      effectiveStep = (5 - step).clamp(0, 5);
-    }
+    final rawStep = needsSimulation.getNeedStep(top.key, top.value);
 
     // Only inject when the need is noticeable or worse.
     // Mild needs (step 4) no longer force injection — reduces wack-a-mole behavior.
-    if (step >= 4) return '';
-
-    // Catastrophe (step 0) is never suppressed — the disaster must be narrated.
-    final bool suppressionActive =
-        needsSimulation.arousalSuppressionTurnsRemaining > 0 ||
-        (nsfwService.arousalLevel >=
-                NeedsSimulation.arousalSuppressionThreshold &&
-            (needsSimulation.afterglowTurnsRemaining > 0 ||
-                nsfwService.cooldownTurnsRemaining > 0));
+    if (rawStep >= 4) return '';
 
     // Preserve (and keep strong) the special erotic bladder + high-arousal tension case.
     // This one deliberately uses the *original* step so desperate holding while
     // extremely turned on can still create charged, kinky flavor even when other
-    // needs are being softened by lust.
+    // needs are being softened by lust. (Kept as data here per plan.)
     if (top.key == 'bladder' &&
         nsfwService.nsfwCooldownEnabled &&
         nsfwService.arousalLevel >= 40 &&
-        step <= 2) {
-      final tension = step <= 1
+        rawStep <= 2) {
+      final tension = rawStep <= 1
           ? 'She is *desperately* holding on while extremely aroused — the combination is overwhelming and humiliating.'
           : 'The combination of bladder desperation and current arousal (level: ${nsfwService.arousalLevel}/10) creates a charged, uncomfortable tension.';
       return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
     }
 
-    // Apply arousal suppression (lust haze) on top of any hygiene inversion
-    if (suppressionActive && step >= 1 && step <= 3) {
-      // Dampen urgency by 1-2 steps when the character is deep in a lust haze.
-      // Stronger effect at very high arousal (tier 6+ or raw >= 60).
-      final int dampen = (nsfwService.arousalLevel >= 60) ? 2 : 1;
-      effectiveStep = (effectiveStep + dampen).clamp(0, 5);
-    }
+    // Delegate effective step (enjoys inversion + suppression damp) + prefix/secondary/postcrash
+    // to sim helpers (kills prior 10+ ifs for calc in this file).
+    final effectiveStep = needsSimulation.getInjectionEffectiveStep(
+      top.key,
+      top.value,
+    );
 
-    // If suppression pushed this need into "comfortable" territory for the LLM,
-    // skip injecting it this turn (it will still decay normally in the background).
     if (effectiveStep >= 5) return '';
 
-    // Get the graduated text for this *effective* step (so suppressed needs read milder)
-    final texts = NeedsSimulation.needSteppedText[top.key] ?? const <String>[];
-    final baseText = effectiveStep < texts.length
-        ? texts[effectiveStep]
-        : texts.last;
+    final baseText =
+        (NeedsSimulation.needSteppedText[top.key] ??
+        const <String>[])[effectiveStep.clamp(0, 4)];
 
-    // Build a more immersive prefix that escalates with severity
-    final urgencyPrefix = switch (effectiveStep) {
-      0 =>
-        'CATASTROPHIC — this has already happened and must be roleplayed immediately.',
-      1 => 'CRITICAL — she is in real, urgent distress from this need.',
-      2 =>
-        'Strong need — this is heavily weighing on her and affecting her focus.',
-      3 =>
-        'Noticeable need — this is a clear background pressure on her mood and attention.',
-      _ => 'Mild background sensation — this is subtly coloring her state.',
-    };
-
-    // Secondary low need note (only for effective steps 1-3 to avoid noise at catastrophe)
-    String secondaryNote = '';
-    if (effectiveStep >= 1 && effectiveStep <= 3) {
-      final secondary = sorted
-          .where(
-            (e) =>
-                e.key != top.key &&
-                needsSimulation.getNeedStep(e.key, e.value) <= 3,
-          )
-          .firstOrNull;
-      if (secondary != null) {
-        secondaryNote = ' (She is also feeling the ${secondary.key} need.)';
-      }
-    }
-
-    // Optional explicit "post-sex crash" flavor when energy surfaces during the active crash phase
-    // (afterglow + haze have expired). Keeps the erotic "sated exhaustion" feeling.
-    final String postCrashSuffix =
-        (needsSimulation.postClimaxCrashTurnsRemaining > 0 &&
-            needsSimulation.afterglowTurnsRemaining == 0 &&
-            needsSimulation.arousalSuppressionTurnsRemaining == 0 &&
-            (top.key == 'energy' || top.key == 'fun'))
-        ? ' (This heavy, sated exhaustion has the warm, post-orgasm quality — limbs like lead, deep drowsiness after intense release.)'
-        : '';
+    final urgencyPrefix = needsSimulation.getUrgencyPrefixForStep(
+      effectiveStep,
+    );
+    final secondaryNote = needsSimulation.getSecondaryLowNeedNote(
+      sorted,
+      top.key,
+      effectiveStep,
+    );
+    final postCrashSuffix = needsSimulation.getPostCrashSuffixIfRelevant(
+      top.key,
+    );
 
     return '[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n';
   }

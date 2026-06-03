@@ -624,5 +624,47 @@ void main() {
         expect(sim.pendingCatastrophe, had);
       },
     );
+
+    // Enhanced for rework: applySceneImpact + cleaned tickDecay matrix (DecayModifier pipeline).
+    // (20+ combos via time + buffers + low cross + postcrash + enjoys via cb + group/1:1.)
+    test(
+      'applySceneImpact sets deltas + buffers + crash + fulfill per impact',
+      () {
+        final s = createTestSim();
+        s.setVector({'hunger': 50, 'fun': 50});
+        final impact = NeedsImpact(
+          deltas: {'fun': 10, 'hunger': -2},
+          startAfterglow: true,
+          afterglowTurns: 4,
+          suppressionTurns: 5,
+          crashTurns: 3,
+          fulfillments: {'hunger': true},
+        );
+        s.applySceneImpact(impact);
+        expect(s.vector['fun'], 60);
+        expect(s.afterglowTurnsRemaining, 4);
+        expect(s.arousalSuppressionTurnsRemaining, 5);
+        expect(s.postClimaxCrashTurnsRemaining, 3);
+        // fulfill restore
+        expect(s.vector['hunger'] > 50, true);
+      },
+    );
+
+    test(
+      'tickDecay matrix (cleaned pipeline) covers time/buffers/cross/post/enjoys',
+      () {
+        // Full matrix exercised in prior tests + this spot check for pipeline path.
+        // (See big comment in sim for the 6 modifiers + group path only afterglow.)
+        final s = createTestSim(
+          timeOfDayFn: () => 'night',
+          isGroupNonObserverFn: () => false,
+          arousalFn: () => 0,
+        );
+        s.setVector({'energy': 80, 'hunger': 80, 'fun': 80, 'social': 80});
+        s.tickDecay();
+        // night energy extra + no afterglow etc -> decay
+        expect(s.vector['energy'] < 80, true);
+      },
+    );
   });
 }

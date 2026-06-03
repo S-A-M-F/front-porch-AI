@@ -46,6 +46,8 @@ import 'package:front_porch_ai/models/group_chat.dart';
 ///
 /// Extracted as step 9 (immediately after prompt_injection step 8 per the
 /// 15-step leaf-first order in docs/refactoring-guide.md).
+/// + needs impact support (evaluateNeedsImpactCall + consolidated prompt for
+/// the needs_impact_evaluator sibling leaf in the needs domain rework).
 ///
 /// Depends on prompt_injection only in the ordering sense (prompt builders
 /// for main chat context are step 8); this engine's eval prompts are
@@ -64,7 +66,7 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// _fire/_strip/_extract calls, proposed_objective sites in narr/oneShot,
 /// gen/check sites, objective proposal + JSON parse sites). 0 @Deprecated
 /// shims for this new surface (thins stay in god as the public surface for now).
-/// 0 new god private _ methods beyond the required thin delegates (_fireLLMEval/_strip/_extract*/_evaluate*Call/_check + gen thins; void _ count stayed 15; +1 late final only; thins/calls/late final only per plan;
+/// 0 new god private _ methods beyond the required thin delegates (_fireLLMEval/_strip/_extract*/_evaluate*Call/_check + gen thins + evaluateNeedsImpactCall; void _ count stayed 15; +1 late final only; thins/calls/late final only per plan;
 /// reset comment syncs only).
 ///
 /// Ctor receives state via granular callbacks (modeled exactly on steps 6-8:
@@ -1287,6 +1289,83 @@ class LlmEvalEngine {
     } finally {
       setIsCheckingCompletion(false);
       onNotify();
+    }
+  }
+
+  // ── Needs impact (consolidated; Proposal A + rich JSON) ─────────────────────
+  /// Thin + full impl for the consolidated needs impact eval (one call replacing
+  /// the 4 prior god checks: climax/sexual/daily/fulfillment).
+  /// Prompt reuses personality/stance/recent patterns from rel/phys/narr/oneShot.
+  /// Strict: "ONLY unambiguous description of the *act*" (eating food not metaphor;
+  /// deliberate non-sexual bath not rinse; completed sleep; physical climax for $charName only).
+  /// Includes activities, intensity, grounded deltas for all needs, fulfillments,
+  /// reason, refractory/orgasm_intensity if climax. 1:1/group parity qualified
+  /// (via god impersonation + cbs); oneShot vs normal also (same path).
+  /// "some coordination stayed thin in god per plan (qualify)".
+  /// The evaluator sibling owns table/modifiers/parse/apply/NeedsImpact; this
+  /// centralizes the LLM fire/strip (4000 budget) + prompt.
+  Future<String?> evaluateNeedsImpactCall(
+    String responseText, {
+    void Function(String)? onChunk,
+  }) async {
+    if (!getRealismEnabled()) return null;
+    if (getActiveCharacter() == null && getActiveGroup() == null) return null;
+    if (getActiveGroup() != null && getIsObserverMode()) {
+      return null; // Director
+    }
+
+    final msgs = getMessages();
+    final recentCount = msgs.length < 3 ? msgs.length : 3;
+    final recent = msgs.reversed
+        .take(recentCount)
+        .toList()
+        .reversed
+        .map((m) => '${m.sender}: ${m.displayText}')
+        .join('\n');
+
+    final char = getActiveCharacter();
+    final charName = char?.name ?? 'the character';
+    String personalityInjection = '';
+    if (char != null && char.personality.isNotEmpty) {
+      final p = char.personality;
+      personalityInjection = 'Character Personality Traits:\n"$p"\n\n';
+    }
+    final currentStance = relationshipService.spatialStance.isNotEmpty
+        ? 'Current physical position/stance of $charName: "${relationshipService.spatialStance}". '
+        : '';
+
+    final prompt =
+        'Read the following character response and detect *completed* scene actions that affect needs. '
+        'A need is only fulfilled or a daily/sexual act only counts if the action was COMPLETED and unambiguously described in the scene — not just mentioned or used as metaphor.\n\n'
+        '$personalityInjection'
+        '$currentStance'
+        'RESPONSE:\n$responseText\n\n'
+        'Recent exchange for context:\n$recent\n\n'
+        'Detect ONLY if unambiguous description of the *act* (e.g. "she ate the full dinner", "they slept for hours", "he came inside her", "she took a long hot shower"). '
+        'Do NOT trigger on metaphors ("devoured her lips", "sated by your touch", "waves of pleasure washed over" alone do not count as ate/slept/sexual for positives). '
+        'For pure romantic/sexual scenes without explicit eat/drink/sleep/bath words: energy and hunger deltas must be neutral or small negative (no replenish from intimacy). '
+        'Hygiene negative only on explicit mess (creampie, cum on face/tits/stomach/sheets, fluids, messy, internal) or high intensity + stance shows exposure (not contained in shower/bath).\n\n'
+        'Respond with ONLY a flat JSON object:\n'
+        '{"activities": ["sexual_climax" or "sexual_nonclimax" or "ate" or "slept" or "bathed"], '
+        '"intensity": 1-10, '
+        '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
+        '"fulfillment": {"hunger": true/false, "energy": ..., ... for any low needs in context}, '
+        '"reason": "<brief grounded reason>", '
+        '"refractory_turns": <1-8 or omit>, "orgasm_intensity": <1-10 or omit>, '
+        '"is_climax": true/false }\n'
+        'If no clear completed act matching the rules, return {"activities": [], "intensity": 0, ... all deltas 0, "reason": "none"}.';
+
+    try {
+      debugPrint(
+        '[Realism:Needs] Running consolidated impact eval (via engine)...',
+      );
+      final raw = await fireLLMEval(prompt, onChunk: onChunk);
+      if (raw == null) return null;
+      final searchText = stripThinkBlocks(raw);
+      return searchText.isNotEmpty ? searchText : raw;
+    } catch (e) {
+      debugPrint('[Realism:Needs] Engine impact call failed: $e');
+      return null;
     }
   }
 }

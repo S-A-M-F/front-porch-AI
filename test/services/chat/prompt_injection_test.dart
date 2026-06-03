@@ -755,5 +755,34 @@ void main() {
       ch.buildChanceTimeInjection();
       ne.buildNeedsInjection();
     });
+
+    // Enhanced post delegation: romantic context / effective via sim helpers still produce
+    // expected milder or special texts (no ifs in injection).
+    test(
+      'needs injection after delegation preserves special bladder + postcrash',
+      () {
+        final ns = createTestNsfw(
+          arousal: 50,
+          cooldownEnabled: true,
+          cooldown: 0,
+        );
+        final sim = createTestSim(
+          afterglow: 0,
+          supp: 0,
+          postCrash: 1,
+          vector: {'energy': 20, 'bladder': 10},
+        );
+        final inj = createTestNeeds(
+          needsSim: sim,
+          nsfw: ns,
+          needsEnabled: true,
+          realism: true,
+          isGroup: false,
+        );
+        final text = inj.buildNeedsInjection();
+        expect(text, contains('sated exhaustion')); // post crash
+        // bladder special would trigger if arousal high + step low, but here energy top.
+      },
+    );
   });
 }

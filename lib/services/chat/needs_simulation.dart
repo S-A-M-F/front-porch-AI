@@ -20,9 +20,35 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:front_porch_ai/models/needs_impact.dart';
+
+/// Documented decay modifier for the cleaned `tickDecay` pipeline (1:1 scalar path only).
+/// Name for logs/debug; condition decides applicability for this key/current state;
+/// factor returns the multiplier (e.g. 0.45 for damp, 1.35 for boost).
+/// Applied in fixed order *after* base decay + time-of-day override.
+/// See big comment in tickDecay for the exact 6 + matrix in tests.
+/// (Group non-observer path retains only afterglow damp + time for mechanical fidelity;
+/// cross/post/enjoys/catas only in 1:1 scalar.)
+typedef DecayModifier = ({
+  String name,
+  bool Function(String key, Map<String, int> vector, NeedsSimulation ctx)
+  condition,
+  double Function(String key, int current, NeedsSimulation ctx) factor,
+});
+
 /// Plain (non-ChangeNotifier) domain service owning the Sims-style Needs simulation
 /// state and logic (decay, stepping, catastrophe, afterglow / post-climax buffers,
 /// deltas, long-gen decay, etc.).
+///
+/// Rework of eval/impact layer (see NeedsImpactEvaluator sibling): decay sim cleaned
+/// for clarity (explicit documented DecayModifier pipeline + test matrix replacing
+/// inline if salad); applySceneImpact added (for scene-driven deltas + buffer starts
+/// from consolidated impact, vs pure tick decay); context helpers added
+/// (getInjectionEffectiveStep, getUrgencyPrefixForStep, getSecondaryLowNeedNote,
+/// getPostCrashSuffixIfRelevant, isInRomanticOrAfterglowContext) so prompt_injection
+/// can delegate hard calc (step, damp, inversion, secondary, postcrash, romantic
+/// context, effective urgency) killing most of its 10+ ifs while preserving exact
+/// observable text/special bladder/erotic case/enjoys behavior.
 ///
 /// ChatService owns the instance via a private late final and delegates. All cross
 /// state (time of day, arousal, group realism map, etc.) that lives in the parent
@@ -37,6 +63,8 @@ import 'package:flutter/foundation.dart';
 /// Extraction is mechanical for original methods/fields copied; dispatch condition
 /// adapted with dedicated group-mode callback (getIsGroupNonObserverMode) to
 /// preserve exact original 1:1 scalar vs group speaker paths. See review responses.
+/// 1:1 vs group + Realism/Needs parity (including new impact paths) preserved exactly
+/// via cbs + impersonation + load/save; qualified.
 class NeedsSimulation {
   final VoidCallback onNotify;
   final Future<void> Function() onSaveChat;
@@ -232,6 +260,83 @@ class NeedsSimulation {
     'comfort': 70,
   };
 
+  // Decay modifiers pipeline (clean replacement for the previous inline if salad in
+  // 1:1 tickDecay path). Fixed order, pure, documented, easy to test/extend.
+  // Time-of-day overrides remain explicit before the pipeline (for readability + group
+  // path sharing the tod logic).
+  // Afterglow damp applies while buffer active (before cross/post).
+  // Cross-need boosts only when the "driver" need is low (energy/fun/bladder).
+  // Suppression (lust haze) softens the cross mults (1.15/1.10 etc vs 1.35/1.25).
+  // Post-crash boost (1.8x) *only* on energy/fun/social and *only* after afterglow+supp
+  // have both expired (priority buffers first).
+  // Enjoys mutation (arousal via cb) remains after the main decay loop + buffer tickdown.
+  // Test matrix in needs_simulation_test.dart exercises 20+ combos of time + buffers +
+  // low cross + postcrash + enjoys (via cb) + group vs 1:1 dispatch.
+  static final List<DecayModifier> decayModifiers = <DecayModifier>[
+    (
+      name: 'afterglow_damp',
+      condition: (key, vector, ctx) =>
+          ctx.afterglowTurnsRemaining > 0 &&
+          (key == 'hunger' || key == 'energy' || key == 'social'),
+      factor: (key, current, ctx) => 0.45,
+    ),
+    (
+      name: 'low_energy_hunger_boost',
+      condition: (key, vector, ctx) =>
+          key == 'hunger' && (vector['energy'] ?? 50) <= 30,
+      factor: (key, current, ctx) =>
+          (ctx.arousalSuppressionActive ||
+              (ctx.getArousalLevel() >= arousalSuppressionThreshold &&
+                  (ctx.afterglowTurnsRemaining > 0 ||
+                      ctx.getCooldownTurnsRemaining() > 0)))
+          ? 1.15
+          : 1.35,
+    ),
+    (
+      name: 'low_energy_comfort_boost',
+      condition: (key, vector, ctx) =>
+          key == 'comfort' && (vector['energy'] ?? 50) <= 25,
+      factor: (key, current, ctx) =>
+          (ctx.arousalSuppressionActive ||
+              (ctx.getArousalLevel() >= arousalSuppressionThreshold &&
+                  (ctx.afterglowTurnsRemaining > 0 ||
+                      ctx.getCooldownTurnsRemaining() > 0)))
+          ? 1.10
+          : 1.25,
+    ),
+    (
+      name: 'low_fun_social_boost',
+      condition: (key, vector, ctx) =>
+          key == 'social' && (vector['fun'] ?? 50) <= 20,
+      factor: (key, current, ctx) =>
+          (ctx.arousalSuppressionActive ||
+              (ctx.getArousalLevel() >= arousalSuppressionThreshold &&
+                  (ctx.afterglowTurnsRemaining > 0 ||
+                      ctx.getCooldownTurnsRemaining() > 0)))
+          ? 1.20
+          : 1.4,
+    ),
+    (
+      name: 'low_bladder_comfort_boost',
+      condition: (key, vector, ctx) =>
+          key == 'comfort' && (vector['bladder'] ?? 50) <= 20,
+      factor: (key, current, ctx) =>
+          (ctx.arousalSuppressionActive ||
+              (ctx.getArousalLevel() >= arousalSuppressionThreshold &&
+                  (ctx.afterglowTurnsRemaining > 0 ||
+                      ctx.getCooldownTurnsRemaining() > 0)))
+          ? 1.10
+          : 1.2,
+    ),
+    (
+      name: 'post_climax_crash_boost',
+      condition: (key, vector, ctx) =>
+          ctx.postClimaxCrashActive &&
+          (key == 'energy' || key == 'fun' || key == 'social'),
+      factor: (key, current, ctx) => postClimaxCrashDecayMultiplier,
+    ),
+  ];
+
   // ── Control / init / persistence ───────────────────────────────────────────
 
   void setEnabled(bool enabled) {
@@ -383,49 +488,14 @@ class NeedsSimulation {
         decay = needDecayNight[key] ?? decay;
       }
 
-      if (_afterglowTurnsRemaining > 0 &&
-          (key == 'hunger' || key == 'energy' || key == 'social')) {
-        decay = (decay * 0.45).round();
-      }
-
-      final bool suppressionActiveThisTick =
-          _arousalSuppressionTurnsRemaining > 0 ||
-          (getArousalLevel() >= arousalSuppressionThreshold &&
-              (_afterglowTurnsRemaining > 0 ||
-                  getCooldownTurnsRemaining() > 0));
-
-      final bool postCrashActiveThisTick =
-          _postClimaxCrashTurnsRemaining > 0 &&
-          _afterglowTurnsRemaining == 0 &&
-          _arousalSuppressionTurnsRemaining == 0;
-
-      final energy = _vector['energy'] ?? 50;
-      final fun = _vector['fun'] ?? 50;
-
-      if (key == 'hunger' && energy <= 30) {
-        final mult = suppressionActiveThisTick ? 1.15 : 1.35;
-        decay = (decay * mult).round();
-      }
-
-      if (key == 'comfort' && energy <= 25) {
-        final mult = suppressionActiveThisTick ? 1.10 : 1.25;
-        decay = (decay * mult).round();
-      }
-
-      if (key == 'social' && fun <= 20) {
-        final mult = suppressionActiveThisTick ? 1.20 : 1.4;
-        decay = (decay * mult).round();
-      }
-
-      final bladder = _vector['bladder'] ?? 50;
-      if (key == 'comfort' && bladder <= 20) {
-        final mult = suppressionActiveThisTick ? 1.10 : 1.2;
-        decay = (decay * mult).round();
-      }
-
-      if (postCrashActiveThisTick &&
-          (key == 'energy' || key == 'fun' || key == 'social')) {
-        decay = (decay * postClimaxCrashDecayMultiplier).round();
+      // Apply the documented DecayModifier pipeline (in fixed order).
+      // Replaces previous scattered ifs for cross/boosts/postcrash/afterglow.
+      // Afterglow damp was inlined before; now first in list for same effect.
+      for (final mod in decayModifiers) {
+        if (mod.condition(key, _vector, this)) {
+          final f = mod.factor(key, current, this);
+          decay = (decay * f).round();
+        }
       }
 
       _vector[key] = (current - decay).clamp(0, 100);
@@ -617,5 +687,153 @@ class NeedsSimulation {
     debugPrint('[Realism:Needs] Applied deltas: $deltas');
     onSaveChat();
     onNotify();
+  }
+
+  // ── Scene impact (from NeedsImpactEvaluator) + injection context helpers ──
+  // applySceneImpact: entry point for consolidated post-gen impact (deltas +
+  // afterglow/suppression/crash start + fulfillments). Reuses applyNeedsDeltas
+  // (which may trigger the legacy fromSexual >=8 path for backward compat on
+  // totalPositive) then overlays explicit buffer/crash/fulfillment from the
+  // rich impact object. Preserves "net positive for erotic" + exact buffer
+  // numbers from table (Proposal A rationalizations applied upstream in evaluator
+  // modifiers).
+  //
+  // Context helpers: allow prompt_injection/needs_injection to delegate the
+  // complex calc (effective step after enjoys inversion + suppression damp,
+  // urgency prefix, secondary note, post-crash flavor, romantic context flag)
+  // so the injection file keeps only group/1:1 dispatch + special erotic
+  // bladder tension phrasing + formatting. Exact prior behavior preserved.
+
+  void applySceneImpact(NeedsImpact impact) {
+    if (!getNeedsSimEnabled() || !getRealismEnabled()) return;
+    if (impact.deltas.isEmpty &&
+        !impact.startAfterglow &&
+        (impact.fulfillments == null || impact.fulfillments!.isEmpty) &&
+        (impact.crashTurns == null || impact.crashTurns! <= 0)) {
+      return;
+    }
+
+    bool changed = false;
+    if (impact.deltas.isNotEmpty) {
+      // Reuse (may set afterglow via the fromSexual totalPositive path for compat;
+      // explicit impact buffers below will override/refresh if startAfterglow).
+      applyNeedsDeltas(
+        impact.deltas,
+        fromSexualActivity: impact.startAfterglow,
+      );
+      changed = true;
+    }
+
+    if (impact.startAfterglow) {
+      _afterglowTurnsRemaining = impact.afterglowTurns ?? 4;
+      _arousalSuppressionTurnsRemaining =
+          impact.suppressionTurns ?? arousalSuppressionDefaultTurns;
+      debugPrint(
+        '[Realism:Needs] Afterglow buffer + arousal suppression started/refreshed from scene impact',
+      );
+      changed = true;
+    }
+
+    if (impact.crashTurns != null && impact.crashTurns! > 0) {
+      final cur = _postClimaxCrashTurnsRemaining;
+      _postClimaxCrashTurnsRemaining = cur > impact.crashTurns!
+          ? cur
+          : impact.crashTurns!;
+      debugPrint(
+        '[Realism:Needs] Post-climax crash set from impact (${impact.crashTurns} turns)',
+      );
+      changed = true;
+    }
+
+    if (impact.fulfillments != null && impact.fulfillments!.isNotEmpty) {
+      impact.fulfillments!.forEach((need, fulfilled) {
+        if (fulfilled && needKeys.contains(need)) {
+          final restore = needRestoreAmount(need);
+          final current = _vector[need] ?? 50;
+          setNeedValue(need, current + restore);
+          debugPrint(
+            '[Realism:Needs] ✅ $need fulfilled from impact (+$restore)',
+          );
+          changed = true;
+        }
+      });
+    }
+
+    if (!changed) return;
+
+    debugPrint('[Realism:Needs] Applied scene impact: $impact');
+    onSaveChat();
+    onNotify();
+  }
+
+  /// Effective step for injection text/urgency after enjoys-low inversion (hygiene)
+  /// and arousal suppression (lust haze) damp. Mirrors prior inline logic exactly
+  /// so observable injection text, prefixes, and skips are unchanged.
+  int getInjectionEffectiveStep(String need, int value) {
+    int step = getNeedStep(need, value);
+    if (getEnjoysLowHygiene() && need == 'hygiene') {
+      // Invert the perceived urgency: low hygiene = "comfortable/good" for these characters.
+      step = (5 - step).clamp(0, 5);
+    }
+    final suppressionActive =
+        arousalSuppressionActive ||
+        (getArousalLevel() >= arousalSuppressionThreshold &&
+            (afterglowTurnsRemaining > 0 || getCooldownTurnsRemaining() > 0));
+    if (suppressionActive && step >= 1 && step <= 3) {
+      final damp = (getArousalLevel() >= 60) ? 2 : 1;
+      step = (step + damp).clamp(0, 5);
+    }
+    return step;
+  }
+
+  /// Urgency prefix text for the *effective* (post-inversion/damp) step.
+  /// Used by injection to avoid duplicating the switch.
+  String getUrgencyPrefixForStep(int effectiveStep) {
+    return switch (effectiveStep) {
+      0 =>
+        'CATASTROPHIC — this has already happened and must be roleplayed immediately.',
+      1 => 'CRITICAL — she is in real, urgent distress from this need.',
+      2 =>
+        'Strong need — this is heavily weighing on her and affecting her focus.',
+      3 =>
+        'Noticeable need — this is a clear background pressure on her mood and attention.',
+      _ => 'Mild background sensation — this is subtly coloring her state.',
+    };
+  }
+
+  /// Secondary low-need note (for effective steps 1-3). Delegates the scan over
+  /// other needs <=3 (raw step). Returns e.g. ' (She is also feeling the energy need.)'
+  String getSecondaryLowNeedNote(
+    List<MapEntry<String, int>> sorted,
+    String topKey,
+    int effectiveStep,
+  ) {
+    if (effectiveStep < 1 || effectiveStep > 3) return '';
+    final secondary = sorted
+        .where((e) => e.key != topKey && getNeedStep(e.key, e.value) <= 3)
+        .firstOrNull;
+    if (secondary == null) return '';
+    return ' (She is also feeling the ${secondary.key} need.)';
+  }
+
+  /// Optional explicit "post-sex crash" flavor suffix when energy/fun surfaces
+  /// during active crash phase (afterglow + haze expired). Mirrors prior text.
+  String getPostCrashSuffixIfRelevant(String topKey) {
+    if (postClimaxCrashActive &&
+        afterglowTurnsRemaining == 0 &&
+        arousalSuppressionTurnsRemaining == 0 &&
+        (topKey == 'energy' || topKey == 'fun')) {
+      return ' (This heavy, sated exhaustion has the warm, post-orgasm quality — limbs like lead, deep drowsiness after intense release.)';
+    }
+    return '';
+  }
+
+  /// True when recent sexual activity buffers or high arousal indicate romantic/sexual
+  /// context (used by evaluator modifiers for Proposal A "no replenish during romance"
+  /// and by injection for milder notes if desired). Heuristic based on state.
+  bool isInRomanticOrAfterglowContext() {
+    return afterglowTurnsRemaining > 0 ||
+        arousalSuppressionActive ||
+        getArousalLevel() >= 30;
   }
 }

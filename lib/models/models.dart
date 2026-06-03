@@ -40,3 +40,4 @@ export 'local_model_info.dart';
 export 'lorebook.dart';
 export 'story_project.dart';
 export 'world.dart';
+export 'needs_impact.dart';
