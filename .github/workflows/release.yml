@@ -306,22 +306,27 @@ jobs:
             # --paths tells PyInstaller to trace imports from the sibling directory at
             # bundle time, so hidden-import client / imageService_pb2 are actually found.
             echo "Building Draw Things gRPC client..."
-            pyinstaller tools/dt-grpc-python/dt_grpc_client.py \
+            # Use $(pwd) absolute paths for --add-data: when --specpath is set,
+            # PyInstaller resolves relative paths relative to the spec file location
+            # (./build_tmp/dt_grpc/), not the workspace root. Absolute paths are
+            # unambiguous regardless of where the spec file lives.
+            GRPC_SRC="$(pwd)/tools/dt-grpc-python"
+            pyinstaller "$GRPC_SRC/dt_grpc_client.py" \
               --onedir \
               --name dt_grpc_client \
-              --paths tools/dt-grpc-python \
-              --add-data "tools/dt-grpc-python/client.py:." \
-              --add-data "tools/dt-grpc-python/imageService_pb2.py:." \
-              --add-data "tools/dt-grpc-python/imageService_pb2_grpc.py:." \
-              --add-data "tools/dt-grpc-python/GenerationConfiguration.py:." \
-              --add-data "tools/dt-grpc-python/SamplerType.py:." \
-              --add-data "tools/dt-grpc-python/SeedMode.py:." \
-              --add-data "tools/dt-grpc-python/LoRA.py:." \
-              --add-data "tools/dt-grpc-python/LoRAMode.py:." \
-              --add-data "tools/dt-grpc-python/Control.py:." \
-              --add-data "tools/dt-grpc-python/ControlInputType.py:." \
-              --add-data "tools/dt-grpc-python/ControlMode.py:." \
-              --add-data "tools/dt-grpc-python/ca_chain.pem:." \
+              --paths "$GRPC_SRC" \
+              --add-data "$GRPC_SRC/client.py:." \
+              --add-data "$GRPC_SRC/imageService_pb2.py:." \
+              --add-data "$GRPC_SRC/imageService_pb2_grpc.py:." \
+              --add-data "$GRPC_SRC/GenerationConfiguration.py:." \
+              --add-data "$GRPC_SRC/SamplerType.py:." \
+              --add-data "$GRPC_SRC/SeedMode.py:." \
+              --add-data "$GRPC_SRC/LoRA.py:." \
+              --add-data "$GRPC_SRC/LoRAMode.py:." \
+              --add-data "$GRPC_SRC/Control.py:." \
+              --add-data "$GRPC_SRC/ControlInputType.py:." \
+              --add-data "$GRPC_SRC/ControlMode.py:." \
+              --add-data "$GRPC_SRC/ca_chain.pem:." \
               --collect-all grpcio \
               --collect-all flatbuffers \
               --collect-all fpzip \
