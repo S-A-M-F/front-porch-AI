@@ -3499,6 +3499,12 @@ class ChatService extends ChangeNotifier {
         // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
         // Time reset helper kept in sync with other blocks.
         // needs_impact_evaluator (stateless/prompt-only; no reset calls needed) covered in keep-sync lists.
+
+        // Explicit zero for secondary config flags in group/non-ext/0-session/new-chat path (keeps "incomplete zeroing of secondary config on group/0-session/new-chat now complete" true in *code* not just comments; matches ext-seed 1:1 + setActiveCharacter + setActiveGroup defensive; cross-ref setActiveCharacter:1572 + full list in keep-sync comments incl + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)).
+        _needsSimEnabled = false;
+        _enjoysLowHygiene = false;
+        _needsSimulation.clearVector();
+        _needsSimulation.resetBuffers();
       }
     }
 

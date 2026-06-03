@@ -278,7 +278,7 @@ class NeedsImpactEvaluator {
     // or high intensity + stance suggests exposure. Base may have - , zero it unless.
     final hasExplicitMess = _hasExplicitMess(responseTextLower);
     final highIntensity = (impact.intensity ?? 5) >= 7;
-    final stance = (relationshipService.spatialStance ?? '').toLowerCase();
+    final stance = relationshipService.spatialStance.toLowerCase();
     final exposedStance =
         stance.contains('bed') ||
         stance.contains('floor') ||
@@ -373,7 +373,7 @@ class NeedsImpactEvaluator {
     }
     final hasMess = _hasExplicitMess(respLower);
     final high = (impact.intensity ?? 5) >= 7;
-    final stance = (relationshipService.spatialStance ?? '').toLowerCase();
+    final stance = relationshipService.spatialStance.toLowerCase();
     final exposed =
         stance.contains('bed') ||
         stance.contains('floor') ||

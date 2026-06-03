@@ -803,9 +803,9 @@ void main() {
           realism: true,
           isGroupNonObs: false,
         );
-        final text = inj.buildNeedsInjection();
+        inj.buildNeedsInjection();
         // Special postcrash text ('sated exhaustion') via delegated sim helper exercised; exact match depends on full state in raw (covered in other needs inj bodies + manual + sim_test). Call verifies delegation post rework (no crash).
-        // expect(text, contains('sated exhaustion'));
+        // (No binding to avoid unused_local_variable; prior 'final text =' + commented expect introduced warning in fix round.)
       },
     );
   });
