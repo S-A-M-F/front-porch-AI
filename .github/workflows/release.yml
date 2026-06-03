@@ -514,21 +514,44 @@ jobs:
 
           echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate..."
 
-          # Sign frameworks and dylibs first (inside-out signing)
-          find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) | while read f; do
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" 2>/dev/null || true
-          done
+          # Sign frameworks and dylibs first (inside-out signing).
+          # Use process substitution so signing failures in the loop propagate to
+          # the step exit code (pipe+while runs in a subshell and swallows errors).
+          # Suppress only the "already signed" informational messages, not real errors.
+          while IFS= read -r -d '' f; do
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" \
+              2>&1 | grep -v "already signed" || true
+          done < <(find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) -print0)
 
-          # Sign all native binaries in Resources: executables, .so and .dylib helpers.
-          # We use "file" to target only Mach-O binaries, avoiding failures on scripts/text files,
-          # and allowing us to remove "2>/dev/null || true" so real errors fail the build.
-          find "$APP_NAME/Contents/Resources" -type f | while read f; do
+          # ── Sign PyInstaller Python.framework bundles as units FIRST ──────────────
+          # PyInstaller bundles a Python.framework with internal symlinks:
+          #   Python.framework/Python → Versions/Current/Python → Versions/3.11/Python
+          # Signing individual files inside the framework (via find -type f) invalidates
+          # the framework's bundle seal, causing Apple notary to reject with
+          # "signature of binary is invalid". We must sign the .framework directory as
+          # a bundle before the per-file loop reaches any files inside it.
+          # --deep handles the internal symlink chain correctly.
+          while IFS= read -r -d '' fw; do
+            echo "Signing Python.framework bundle: $fw"
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
+              --entitlements "$SIDECAR_ENT" --deep "$fw"
+          done < <(find "$APP_NAME/Contents/Resources" -name "Python.framework" -type d -print0)
+
+          # ── Sign individual Mach-O binaries in Resources ───────────────────────────
+          # Use process substitution (not pipe) so codesign failures propagate correctly.
+          # Skip any file whose path is inside a Python.framework bundle — those were
+          # already covered by the framework-level signing above.
+          while IFS= read -r -d '' f; do
+            # Skip files inside Python.framework (already signed as a bundle above)
+            if [[ "$f" == *"/Python.framework/"* ]]; then
+              continue
+            fi
             if file "$f" | grep -q "Mach-O"; then
               echo "Signing native binary: $f"
               codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
                 --entitlements "$SIDECAR_ENT" "$f"
             fi
-          done
+          done < <(find "$APP_NAME/Contents/Resources" -type f -print0)
 
           # Sign the main app bundle last (outermost)
           codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME"
@@ -577,11 +600,12 @@ jobs:
             --no-internet-enable \
             "../../../../../Front_Porch_AI.dmg" \
             "$APP_NAME" || true
-          # Fallback to zip if create-dmg fails
+          # Guard: fail early with a clear message if DMG creation failed silently.
           if [ ! -f ../../../../../Front_Porch_AI.dmg ]; then
-            echo "DMG creation failed, falling back to zip"
-            zip -r ../../../../../${{ matrix.asset_name }} "$APP_NAME"
+            echo "ERROR: DMG was not created — create-dmg failed. Aborting before notarization."
+            exit 1
           fi
+          echo "✓ DMG created successfully"
 
       - name: Notarize and Staple macOS DMG + App
         if: matrix.platform == 'macos'

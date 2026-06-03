@@ -476,18 +476,24 @@ jobs:
 
           echo "✓ Certificate identity found in keychain"
 
-      # Simplified notarization flow (Apple-recommended for DMG distribution):
+      # macOS notarization flow:
       #
       # 1. Clean xattrs from the built .app (must be before codesigning).
-      # 2. Sign the .app bundle (done in next step).
+      # 2. Sign the .app bundle (inside-out: frameworks → Resources Mach-O → app).
       # 3. Build the DMG containing the signed .app.
-      # 4. Notarize the DMG — Apple's notary service processes nested apps inside
-      #    disk images, so the .app inside is covered automatically. See:
-      #    https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
-      # 5. Staple the DMG.
-      #
-      # Stapling the .app separately before packaging it is NOT required and was
-      # the source of ordering bugs (staple ticket stripped by create-dmg or xattr).
+      # 4. Notarize the DMG (--wait) — Apple's notary service processes the DMG
+      #    and all nested .app binaries inside it.
+      # 5. Staple the DMG — covers the DMG as a distribution unit.
+      # 6. ALSO staple the .app inside the DMG — this is REQUIRED for Gatekeeper
+      #    on user machines. When a user drags the .app from the mounted DMG to
+      #    /Applications, macOS copies the .app as a standalone file and inherits
+      #    the quarantine xattr onto it. Gatekeeper then checks whether that
+      #    standalone .app has its own staple ticket for offline verification.
+      #    Without this staple, Gatekeeper must reach Apple's OCSP servers on every
+      #    first launch — and if that network check fails (slow/corporate/offline
+      #    network), the app is blocked. xcrun stapler can staple the .app after
+      #    DMG notarization succeeds, because the ticket is then available on
+      #    Apple's CDN keyed by the app's bundle ID + binary hash.
       - name: Clean xattrs from app bundle (before code signing)
         if: matrix.platform == 'macos'
         run: |
@@ -513,21 +519,44 @@ jobs:
 
           echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate..."
 
-          # Sign frameworks and dylibs first (inside-out signing)
-          find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) | while read f; do
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" 2>/dev/null || true
-          done
+          # Sign frameworks and dylibs first (inside-out signing).
+          # Use process substitution so signing failures in the loop propagate to
+          # the step exit code (pipe+while runs in a subshell and swallows errors).
+          # Suppress only the "already signed" informational messages, not real errors.
+          while IFS= read -r -d '' f; do
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" \
+              2>&1 | grep -v "already signed" || true
+          done < <(find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) -print0)
 
-          # Sign all native binaries in Resources: executables, .so and .dylib helpers.
-          # We use "file" to target only Mach-O binaries, avoiding failures on scripts/text files,
-          # and allowing us to remove "2>/dev/null || true" so real errors fail the build.
-          find "$APP_NAME/Contents/Resources" -type f | while read f; do
+          # ── Sign PyInstaller Python.framework bundles as units FIRST ──────────────
+          # PyInstaller bundles a Python.framework with internal symlinks:
+          #   Python.framework/Python → Versions/Current/Python → Versions/3.11/Python
+          # Signing individual files inside the framework (via find -type f) invalidates
+          # the framework's bundle seal, causing Apple notary to reject with
+          # "signature of binary is invalid". We must sign the .framework directory as
+          # a bundle before the per-file loop reaches any files inside it.
+          # --deep handles the internal symlink chain correctly.
+          while IFS= read -r -d '' fw; do
+            echo "Signing Python.framework bundle: $fw"
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
+              --entitlements "$SIDECAR_ENT" --deep "$fw"
+          done < <(find "$APP_NAME/Contents/Resources" -name "Python.framework" -type d -print0)
+
+          # ── Sign individual Mach-O binaries in Resources ───────────────────────────
+          # Use process substitution (not pipe) so codesign failures propagate correctly.
+          # Skip any file whose path is inside a Python.framework bundle — those were
+          # already covered by the framework-level signing above.
+          while IFS= read -r -d '' f; do
+            # Skip files inside Python.framework (already signed as a bundle above)
+            if [[ "$f" == *"/Python.framework/"* ]]; then
+              continue
+            fi
             if file "$f" | grep -q "Mach-O"; then
               echo "Signing native binary: $f"
               codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
                 --entitlements "$SIDECAR_ENT" "$f"
             fi
-          done
+          done < <(find "$APP_NAME/Contents/Resources" -type f -print0)
 
           # Sign the main app bundle last (outermost)
           codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME"
@@ -552,6 +581,12 @@ jobs:
             --no-internet-enable \
             "../../../../../Front_Porch_AI_Nightly.dmg" \
             "$APP_NAME" || true
+          # Guard: fail early with a clear message if DMG creation failed silently.
+          if [ ! -f "../../../../../Front_Porch_AI_Nightly.dmg" ]; then
+            echo "ERROR: DMG was not created — create-dmg failed. Aborting before notarization."
+            exit 1
+          fi
+          echo "✓ DMG created successfully"
 
       # Light, targeted cleanup on the DMG file itself before submission.
       - name: Clean quarantine/FinderInfo from DMG file only (before notarization)
@@ -578,12 +613,27 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-      - name: Staple the DMG
+      - name: Staple DMG and app bundle
         if: matrix.platform == 'macos'
         run: |
           echo "Stapling notarization ticket to DMG..."
           xcrun stapler staple Front_Porch_AI_Nightly.dmg
-          echo "✓ DMG notarized and stapled (nested .app covered by Apple notary service)"
+          echo "✓ DMG stapled"
+
+          # CRITICAL: Also staple the .app bundle itself.
+          # When a user drags the .app from the mounted DMG to /Applications, macOS
+          # copies it as a standalone file and quarantines it. Gatekeeper then needs
+          # to verify the .app's notarization offline (no network = blocked launch).
+          # xcrun stapler downloads the ticket from Apple's CDN using the app's hash
+          # (available now that the DMG notarization succeeded) and embeds it in the
+          # .app's Contents/CodeSignature so Gatekeeper can verify it without internet.
+          APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app | head -1)
+          echo "Stapling notarization ticket to .app: $APP_NAME"
+          xcrun stapler staple "$APP_NAME"
+          echo "✓ .app stapled — Gatekeeper will accept it offline after drag-to-Applications"
+
+          echo "Verifying staple on .app..."
+          xcrun stapler validate "$APP_NAME" && echo "✓ Staple validated" || echo "⚠ Staple validation failed"
 
       - name: Package Linux Nightly (AppImage + tar.gz)
         if: matrix.platform == 'linux'
