@@ -98,6 +98,7 @@ lib/
 - **ChaosModeService** (`lib/services/chat/chaos_mode_service.dart`): Domain service owning Chaos Mode pressure growth, Chance Time wheel random event selection, and custom event text prompt injection.
 - **RelationshipService** (`lib/services/chat/relationship_service.dart`): Bond/trust/fixation/spatial stance/inter-character feelings. Extracted; scalars loaded/saved via group impersonation paths in ChatService.
 - **ExpressionClassifier** (`lib/services/chat/expression_classifier.dart`): ONNX + LLM emotion classification and reclassification (inertia, manual overrides, avatar selection). Extracted with many granular callbacks.
+- **Prompt injection builders** (step 8): 8 files under `lib/services/chat/prompt_injection/` (author_note_builder, relationship_injection, emotion_injection, behavioral_injection, time_injection, nsfw_injection, chaos_injection, needs_injection). Plain classes; god wires late finals + thins with cbs for group/1:1 + service deps. Some injection text stayed thin in god per plan. 0 new god privates.
 - **KoboldService** (`lib/services/kobold_service.dart`): HTTP client for KoboldCpp API (`/api/v1/generate`, `/api/extras/abort`, etc.)
 - **StorageService** (`lib/services/storage_service.dart`): Manages data directories. Beta builds use `FrontPorchAI-Beta/` with `beta_` prefixed SharedPreferences keys
 - **EmbeddingSidecar** (`lib/services/embedding_sidecar.dart`): Manages the Rust `embed_server` subprocess for ONNX-based text embeddings (RAG memory)

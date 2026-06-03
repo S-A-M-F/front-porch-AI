@@ -55,6 +55,14 @@ import 'package:front_porch_ai/services/chat/expression_classifier.dart'; // lea
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/lorebook_scanner.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/author_note_builder.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/relationship_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/emotion_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/behavioral_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/time_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/nsfw_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/chaos_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/needs_injection.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -340,18 +348,18 @@ class ChatService extends ChangeNotifier {
   String _emotionIntensity = ''; // mild/moderate/strong
 
   // Expression images + classification (extracted to ExpressionService in chat/expression_classifier.dart).
-  // See "keep reset blocks in sync" comments (now also lists lorebook_scanner). All runtime label/manual/onnx cache/avatar last/random
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection). All runtime label/manual/onnx cache/avatar last/random
   // state now owned by the service; god thins to delegation + shims.
 
   // Passage of time (core state + advance/nudge/OOC/resolve/reset/seed/load logic extracted to TimeService).
-  // See "keep reset blocks in sync" comments (now also lists time/nsfw/lorebook_scanner). All scalars, clock, narrativeWeekday,
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection). All scalars, clock, narrativeWeekday,
   // resolve, nudge, detect, pre-turn advance, injection builder, and helpers now owned by the service;
   // god thins to delegation + 5 @Deprecated shims. 0 new private methods added in god for time.
   // time injection only thin wrapper here; full in step8.
 
   // NSFW cooldown & lust (core state + tier calc + reset/seed/load/restore + group per-char scalars
   // + applyClimax/decrement extracted to NsfwService).
-  // See "keep reset blocks in sync" comments (now also lists nsfw/lorebook_scanner). All scalars, tier getters,
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection). All scalars, tier getters,
   // cooldown mutations, arousal, and helpers now owned by the service; god thins to delegation
   // + 5 @Deprecated shims. 0 new private methods added in god for nsfw.
   // climax/sexual/daily LLM checks + _runPostGen + nsfw injection stay thin in god (step 8 for full builders).
@@ -405,7 +413,7 @@ class ChatService extends ChangeNotifier {
   // group per-speaker load/save scalars, applyClimax/decrement live in _nsfwService (plain class).
   // ChatService owns via late final + delegates. (Declared before needs for init safety because
   // needs closes over the getArousal/getNsfw/getCooldown/setArousal cbs.)
-  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct
+  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection comments)
   // without god privates. 0 new private methods in god.
   // climax/sexual/daily checks stay in god (step 8 for full nsfw injection).
   // 3 group cbs only (onNotify/onSaveChat removed as dead/unused; god owns save/notify for post-gen climax/sexual fidelity per plan boundaries).
@@ -478,7 +486,7 @@ class ChatService extends ChangeNotifier {
   // Pressure gauge, auto-roll, event pools (120 + NSFW conditional), spin/apply/check
   // logic live in _chaosModeService (plain class). ChatService owns it and delegates.
   // UI coordination (_chanceTimeCompleter, _chanceTimePendingTrigger, _pendingChanceTimeEvent)
-  // and prompt injection builder (_getChanceTimeInjection) stay in god for now (step 8).
+  // stay in god; prompt injection builder (_getChanceTimeInjection) now thin to _chaosInjection (step 8).
   late final _chaosModeService = ChaosModeService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -494,7 +502,7 @@ class ChatService extends ChangeNotifier {
   // per-char load/save scalars live in _relationshipService (plain class).
   // ChatService owns via late final + delegates. Prompt injection builders and
   // _groupRealism map itself stay in god (step 8+). Reset helpers on service keep
-  // the multiple "keep reset blocks in sync" sites correct without god privates.
+  // the multiple "keep reset blocks in sync" sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection included in comments).
   late final _relationshipService = RelationshipService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -582,7 +590,7 @@ class ChatService extends ChangeNotifier {
   // lastAvatarId now owned by ExpressionService (plain class).
   // ChatService owns via late final + delegates. Prompt injection (label lists) + command
   // coordination kept in god (step 8). Reset/invalidate helpers on service keep the
-  // multiple "keep reset blocks in sync" + regen sites correct without god privates.
+  // multiple "keep reset blocks in sync" + regen sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection).
   late final _expressionService = ExpressionService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -621,6 +629,94 @@ class ChatService extends ChangeNotifier {
       _isEvaluatingRealism = false;
       notifyListeners();
     },
+  );
+
+  // ── Prompt Injection Builders (step 8: all _get*Injection moved to prompt_injection/*) ──
+  // 8 plain classes (author_note for objective, relationship for rel+inter+trust, emotion,
+  // behavioral, time, nsfw, chaos for chance, needs).
+  // Each wired with onNotify + granular cbs for 1:1 vs group dispatch (speaker, group chars/ints/needs,
+  // realism flags, emotion state, hygiene, active char, objective state) + direct service deps for
+  // their owned state (rel scores/tiers/fix/spatial, needs vector, nsfw cooldown/arousal, time scalars,
+  // chaos pending, etc). Mirrors nsfw/relationship/lore cbs precedent.
+  // God owns late finals + thin delegations at assembly call sites (relationship/emotion/time/trust/
+  // cooldown/behavioral/needs/inter/chance/objective). 0 @Deprecated shims. 0 new god private _ methods.
+  // Some coordination (objective list mgmt/assembly, lore _buildLorebookContext + getActiveGroupLoreEntries + preAi snapshot, chance _pendingChanceTimeEvent / _chanceTime* / completer / UI flags, _runPostGen checks) stayed thin in god per plan boundaries for step8 (qualified in headers/MD/gates + 8 builder headers + test + won'tfix).
+  // Reset blocks comments tightened to list needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (builders stateless; no reset calls
+  // needed on them; incomplete zeroing hygiene now complete for all prior+current).
+  // 1:1 vs group + oneShot/normal dispatch preserved exactly (cbs + service state).
+  // aug exercising only passive/qualified (no prompt-specific aug file edits; ... per step7 precedent).
+  late final _authorNoteBuilder = AuthorNoteBuilder(
+    getActiveObjectives: () => _activeObjectives,
+    getPrimaryObjective: () => primaryObjective,
+    tasksForObjective: (o) => tasksForObjective(o),
+    getSecondaryObjectives: () => secondaryObjectives,
+  );
+
+  late final _relationshipInjection = RelationshipInjection(
+    relationshipService: _relationshipService,
+    getRealismEnabled: () => _realismEnabled,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getActiveCharacter: () => _activeCharacter,
+    getShortTermTierName: () => shortTermTierName,
+    getLongTermTierName: () => longTermTierName,
+    getMoodLabel: () => moodLabel,
+    getShouldTrackInterCharacterRelationships: () =>
+        _shouldTrackInterCharacterRelationships,
+    getGroupInt: _getGroupInt,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+    getInterCharacterRelationships: getInterCharacterRelationships,
+  );
+
+  late final _emotionInjection = EmotionInjection(
+    getRealismEnabled: () => _realismEnabled,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getActiveCharacter: () => _activeCharacter,
+    getCharacterEmotion: () => _characterEmotion,
+    getEmotionIntensity: () => _emotionIntensity,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+  );
+
+  late final _behavioralInjection = BehavioralInjection(
+    relationshipService: _relationshipService,
+    getRealismEnabled: () => _realismEnabled,
+    getActiveCharacter: () => _activeCharacter,
+  );
+
+  late final _timeInjection = TimeInjection(timeService: _timeService);
+
+  late final _nsfwInjection = NsfwInjection(
+    nsfwService: _nsfwService,
+    needsSimulation: _needsSimulation,
+    relationshipService: _relationshipService,
+    getRealismEnabled: () => _realismEnabled,
+    getActiveCharacter: () => _activeCharacter,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+  );
+
+  late final _chaosInjection = ChaosInjection(
+    chaosModeService: _chaosModeService,
+    getActiveCharacter: () => _activeCharacter,
+  );
+
+  late final _needsInjection = NeedsInjection(
+    needsSimulation: _needsSimulation,
+    nsfwService: _nsfwService,
+    getNeedsSimEnabled: () => _needsSimEnabled,
+    getRealismEnabled: () => _realismEnabled,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getActiveCharacter: () => _activeCharacter,
+    getEnjoysLowHygiene: () => _enjoysLowHygiene,
+    getGroupNeeds: _getGroupNeeds,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
   );
 
   Completer<void>?
@@ -1573,7 +1669,7 @@ class ChatService extends ChangeNotifier {
     if (_activeCharacter != null) {
       // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
       // without god privates; constants skipped, non-const zeroed for char + attached worlds).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner).
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
       _lorebookScanner.resetLorebookTriggerState();
 
       // Reset realism state to prevent bleeding from previous character.
@@ -1594,13 +1690,13 @@ class ChatService extends ChangeNotifier {
       _characterEmotion = '';
       _emotionIntensity = '';
       // Time reset via extracted service (keeps multiple reset blocks in sync).
-      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner).
+      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
       _timeService.resetForFreshChat();
       // Chaos reset via extracted service (keeps multiple reset blocks in sync).
-      // See chaos_mode_service.dart and "keep reset blocks" comments.
+      // See chaos_mode_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
       _chaosModeService.resetForFreshChat();
       // Nsfw reset via extracted service (keeps multiple reset blocks in sync).
-      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner).
+      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
       _nsfwService.resetForFreshChat();
       // Lorebook already reset above via _lorebookScanner (keeps blocks in sync; see cross-ref comment at top of this reset).
       _relationshipService.resetForFreshChat();
@@ -1738,7 +1834,7 @@ class ChatService extends ChangeNotifier {
     // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
     // Nsfw (arousal/cooldown) via service.
     // Lorebook triggers via scanner (for group fresh/0-session hygiene; parallels time/nsfw defensive zeros).
-    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes time/nsfw/lorebook_scanner for group fresh/0-session).
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection for group fresh/0-session; incomplete zeroing now complete).
     _relationshipService.resetForFreshChat();
     _expressionService.resetForFreshChat();
     _timeService.resetForFreshChat();
@@ -1855,7 +1951,7 @@ class ChatService extends ChangeNotifier {
     await _seedImportedMemberObjectivesIfPresent();
 
     // Lorebook trigger reset via extracted service (group path; see setActiveCharacter for the 1:1 counterpart + keep-sync cross-refs).
-    // See "keep reset blocks in sync" comments (now explicitly lists lorebook_scanner alongside prior services).
+    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection alongside prior services; incomplete zeroing now complete).
     _lorebookScanner.resetLorebookTriggerState();
 
     // Try to load last session for this group
@@ -2476,7 +2572,7 @@ class ChatService extends ChangeNotifier {
       // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
       // Nsfw (cooldown/arousal) reset for same (incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue).
       // Lorebook triggers/depth reset for same (incomplete zeroing of lore on 0-session/new-group was a prior hygiene pattern to avoid).
-      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes lorebook_scanner).
+      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing now complete).
       _timeService.resetForFreshChat();
       _nsfwService.resetForFreshChat();
       _lorebookScanner.resetLorebookTriggerState();
@@ -3184,7 +3280,7 @@ class ChatService extends ChangeNotifier {
       // without god privates; now includes startNewChat 1:1 ext-seed path to prevent bleed of prior
       // isTriggered/remainingDepth into fresh New Chat for 1:1; constants skipped. See setActiveCharacter:1572
       // + "incomplete zeroing of secondary realism configuration fields" briefing pattern (cross-ref step6 nsfw).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner).
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
       _lorebookScanner.resetLorebookTriggerState();
       // Time seed via extracted service (keeps startNewChat / setActive / ext-seed blocks in sync).
       _timeService.seedFromV2OrExt(
@@ -3261,7 +3357,7 @@ class ChatService extends ChangeNotifier {
         _timeService.resetForFreshChat();
         _nsfwService.resetForFreshChat();
         // Lorebook trigger reset via extracted service (keeps reset blocks in sync with setActiveCharacter:1572 / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary ... on 0-session/new-character/group" + startNew 1:1+group now complete).
-        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes lorebook_scanner for group/0-session/new-chat hygiene).
+        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection for group/0-session/new-chat hygiene; incomplete zeroing now complete).
         _lorebookScanner.resetLorebookTriggerState();
         // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
         // Time reset helper kept in sync with other blocks.
@@ -4889,6 +4985,7 @@ class ChatService extends ChangeNotifier {
         // ── Context Shift: budget-aware history trimming ──
 
         // Realism injection blocks — compute early so they're in the token budget
+        // (now via thin _get* delegating to prompt_injection/* builders per step 8)
         if (_realismActiveThisMode) {
           final relationship = _getRelationshipInjection();
           final emotion = _getEmotionInjection();
@@ -4907,6 +5004,7 @@ class ChatService extends ChangeNotifier {
 
         // Objective injection — always injected regardless of realism mode
         // Must sit in a fixed prompt section so it is NEVER trimmed by the budget system.
+        // (thin delegation to author_note_builder per step 8; state/CRUD in god)
         objectiveBlock = _getObjectiveInjection();
 
         // Mandatory Needs Catastrophe (Phase 2 stepping) — when a need hit 0 during
@@ -6229,101 +6327,9 @@ class ChatService extends ChangeNotifier {
   /// Wording intensity varies based on injection depth for the primary objective.
   /// Secondary objectives are injected as ambient background goals.
   String _getObjectiveInjection() {
-    if (_activeObjectives.isEmpty) return '';
-    final sb = StringBuffer();
-
-    // 1. Primary Objective
-    if (primaryObjective != null) {
-      final pObj = primaryObjective!;
-      final tasks = tasksForObjective(pObj);
-
-      if (tasks.isNotEmpty) {
-        final completedTasks = tasks
-            .where((t) => t['completed'] == true)
-            .map((t) => t['description'] as String)
-            .toList();
-        final currentTask = tasks
-            .where((t) => t['completed'] != true)
-            .map((t) => t['description'] as String)
-            .firstOrNull;
-
-        if (currentTask != null) {
-          final depth = pObj.injectionDepth;
-          if (depth <= 2) {
-            sb.writeln(
-              '[PRIMARY OBJECTIVE (IMPORTANT — actively drive the story toward this):',
-            );
-            sb.writeln('  Goal: ${pObj.objective}');
-            sb.writeln('  Current Task: $currentTask');
-            if (completedTasks.isNotEmpty) {
-              sb.writeln('  Completed: ${completedTasks.join(", ")}');
-            }
-            sb.writeln(
-              '  Guide the narrative toward completing the current task.]',
-            );
-          } else if (depth <= 6) {
-            sb.writeln('[Current Primary Objective: ${pObj.objective}]');
-            sb.writeln('[Current Task: $currentTask]');
-            if (completedTasks.isNotEmpty) {
-              sb.writeln('[Completed: ${completedTasks.join(", ")}]');
-            }
-          } else {
-            sb.writeln(
-              '[Background primary objective (subtle hint): ${pObj.objective} — current step: $currentTask]',
-            );
-          }
-        }
-      } else {
-        // No tasks, inject objective directly
-        final depth = pObj.injectionDepth;
-        if (depth <= 2) {
-          sb.writeln(
-            '[PRIMARY OBJECTIVE (IMPORTANT — actively drive the story toward this): ${pObj.objective}]',
-          );
-        } else if (depth <= 6) {
-          sb.writeln('[Current Primary Objective: ${pObj.objective}]');
-        } else {
-          sb.writeln(
-            '[Background primary objective (subtle hint): ${pObj.objective}]',
-          );
-        }
-      }
-    }
-
-    // 2. Secondary/Autonomous Objectives — treated as genuine internal drives, not hints
-    final secondaries = secondaryObjectives;
-    if (secondaries.isNotEmpty) {
-      sb.writeln();
-      for (final sObj in secondaries) {
-        final tasks = tasksForObjective(sObj);
-        final completedTasks = tasks
-            .where((t) => t['completed'] == true)
-            .map((t) => t['description'] as String)
-            .toList();
-        final currentTask = tasks
-            .where((t) => t['completed'] != true)
-            .map((t) => t['description'] as String)
-            .firstOrNull;
-        if (currentTask != null) {
-          sb.writeln(
-            '[AUTONOMOUS GOAL (this character genuinely wants this): ${sObj.objective}]',
-          );
-          sb.writeln(
-            '[Pursue this naturally and actively. Current step to work toward: $currentTask]',
-          );
-          if (completedTasks.isNotEmpty) {
-            sb.writeln('[Already accomplished: ${completedTasks.join(", ")}]');
-          }
-        } else if (tasks.isEmpty) {
-          sb.writeln(
-            '[AUTONOMOUS GOAL (this character genuinely wants this — pursue it actively): ${sObj.objective}]',
-          );
-        }
-      }
-    }
-
-    if (sb.isNotEmpty) sb.writeln();
-    return sb.toString();
+    // Thin delegation (full in AuthorNoteBuilder per step 8). Objective state mgmt
+    // (lists, getters, tasksFor) stays in god (objective_service is later step).
+    return _authorNoteBuilder.buildObjectiveInjection();
   }
 
   /// Set a new objective for the current session (or for a specific character when in group mode).
@@ -8219,169 +8225,11 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  // ── Prompt Injection Builders ──
+  // ── Prompt Injection Builders (thins only; full in lib/services/chat/prompt_injection/* step 8) ──
 
   String _getRelationshipInjection() {
-    if (!_realismEnabled) return '';
-
-    // Group mode (non-director): use the current speaker's stored values
-    if (_activeGroup != null && !_observerMode) {
-      final id = _getCurrentSpeakerIdForRealism();
-      final name = _groupCharacters
-          .firstWhere(
-            (c) => _getCharacterIdFromCard(c) == id,
-            orElse: () => _groupCharacters.first,
-          )
-          .name;
-
-      final longTier = _getGroupInt(id, 'longTermTier');
-      final shortTier = _getGroupInt(id, 'relationshipTier');
-
-      String bondGuidance;
-      if (longTier >= 7) {
-        bondGuidance =
-            'Their Long-Term Commitment is unbreakable: $name fully trusts {{user}} and views them as a soulmate/life partner.';
-      } else if (longTier >= 4) {
-        bondGuidance =
-            'Their Long-Term Trust is strong: $name feels a deepening, stable connection and sees a real future with {{user}}.';
-      } else if (longTier <= -4) {
-        bondGuidance =
-            'Their Long-Term Trust is broken: $name holds deep-seated resentment and fundamentally distrusts {{user}}. Even if short-term mood improves, the underlying hostility remains.';
-      } else {
-        bondGuidance = 'Their Long-Term Bond is developing normally.';
-      }
-
-      String tensionGuidance;
-      switch (shortTier) {
-        case 10:
-          tensionGuidance =
-              'Short-Term Tension is Devoted: $name is completely open, vulnerable, and emotionally intertwined with {{user}}.';
-          break;
-        case 9:
-        case 8:
-          tensionGuidance =
-              'Short-Term Tension is Enamored/Devoted: $name is deeply attached and prioritizes {{user}} above their own needs.';
-          break;
-        case 7:
-          tensionGuidance =
-              'Short-Term Tension is Warm/Affectionate: $name feels genuinely fond and connected to {{user}}.';
-          break;
-        // ... (abbreviated for the other tiers — full scalar logic below for 1:1)
-        default:
-          tensionGuidance =
-              'Short-Term Tension is neutral to slightly distant.';
-      }
-
-      return '[Relationship Context for $name]\n$bondGuidance\n$tensionGuidance]\n';
-    }
-
-    // 1:1 / Director path (original scalar logic)
-    final charName = _activeCharacter?.name ?? 'the character';
-
-    String bondGuidance;
-    if (_relationshipService.longTermTier >= 7) {
-      bondGuidance =
-          'Their Long-Term Commitment is unbreakable: $charName fully trusts {{user}} and views them as a soulmate/life partner.';
-    } else if (_relationshipService.longTermTier >= 4) {
-      bondGuidance =
-          'Their Long-Term Trust is strong: $charName feels a deepening, stable connection and sees a real future with {{user}.';
-    } else if (_relationshipService.longTermTier <= -4) {
-      bondGuidance =
-          'Their Long-Term Trust is broken: $charName holds deep-seated resentment and fundamentally distrusts {{user}. Even if short-term mood improves, the underlying hostility remains.';
-    } else {
-      bondGuidance = 'Their Long-Term Bond is developing normally.';
-    }
-
-    String tensionGuidance;
-    switch (_relationshipService.relationshipTier) {
-      case 10:
-        tensionGuidance =
-            'Short-Term Tension is Devoted: $charName is completely open, vulnerable, and emotionally intertwined with {{user}}.';
-        break;
-      case 9:
-      case 8:
-        tensionGuidance =
-            'Short-Term Tension is Enamored/Devoted: $charName is deeply attached and prioritizes {{user}} above their own needs.';
-        break;
-      case 7:
-        tensionGuidance =
-            'Short-Term Tension is Intimate: $charName is exceptionally close, vulnerable, and completely open right now.';
-        break;
-      case 6:
-        tensionGuidance =
-            'Short-Term Tension is Close: $charName shares personal thoughts and feels emotionally connected.';
-        break;
-      case 5:
-        tensionGuidance =
-            'Short-Term Tension is Amiable: $charName is warm and friendly, engaging openly.';
-        break;
-      case 4:
-        tensionGuidance =
-            'Short-Term Tension is Friendly: $charName is warm, playful, and shares personal thoughts freely.';
-        break;
-      case 3:
-        tensionGuidance =
-            'Short-Term Tension is Warm: $charName is comfortable and approachable.';
-        break;
-      case 2:
-        tensionGuidance =
-            'Short-Term Tension is Receptive: $charName is open to conversation and mildly interested.';
-        break;
-      case 1:
-      case 0:
-        tensionGuidance =
-            'Short-Term Tension is Neutral: $charName engages naturally based on their established personality — neither particularly warm nor distant.';
-        break;
-      case -1:
-        tensionGuidance =
-            'Short-Term Tension is Reserved: $charName is cautious and holding back.';
-        break;
-      case -2:
-        tensionGuidance =
-            'Short-Term Tension is Cool: $charName is polite but maintains emotional distance.';
-        break;
-      case -3:
-        tensionGuidance =
-            'Short-Term Tension is Unimpressed: $charName is indifferent and unengaged.';
-        break;
-      case -4:
-        tensionGuidance =
-            'Short-Term Tension is Annoyed: $charName is mildly bothered and slightly sarcastic.';
-        break;
-      case -5:
-        tensionGuidance =
-            'Short-Term Tension is Disliked: $charName is cold and dismissive.';
-        break;
-      case -6:
-        tensionGuidance =
-            'Short-Term Tension is Hostile: $charName is openly antagonistic.';
-        break;
-      case -7:
-        tensionGuidance =
-            'Short-Term Tension is Adversarial: $charName is combative and argumentative.';
-        break;
-      case -8:
-        tensionGuidance =
-            'Short-Term Tension is Disdain: $charName holds contemptuous views of {{user}}.';
-        break;
-      case -9:
-        tensionGuidance =
-            'Short-Term Tension is Contempt: $charName is demeaning and disrespectful.';
-        break;
-      case -10:
-        tensionGuidance =
-            'Short-Term Tension is Vitriolic: $charName actively hates {{user}} with pure hostility.';
-        break;
-      default:
-        tensionGuidance = '';
-    }
-
-    return '[OOC Note regarding Relationship:\n'
-        ' Long-Term Status: $longTermTierName (${_relationshipService.longTermScore} points)\n'
-        ' Short-Term Tension: $shortTermTierName\n'
-        ' Current Mood: $moodLabel\n'
-        '$bondGuidance\n'
-        '$tensionGuidance\n]';
+    // Thin delegation to builder (full logic + group/1:1 dispatch via cbs in step 8).
+    return _relationshipInjection.buildRelationshipInjection();
   }
 
   /// Phase 2: Invisible inter-character relationship injection.
@@ -8395,131 +8243,23 @@ class ChatService extends ChangeNotifier {
   /// - Bob: slightly wary of (-18)
   /// - Charlie: fond of (+42)
   String _getInterCharacterFeelingsInjection() {
-    if (!_realismEnabled) return '';
-    if (_activeGroup == null || _observerMode) return '';
-    if (!_shouldTrackInterCharacterRelationships) return '';
-    if (_groupCharacters.length < 2) return '';
-
-    final speakerId = _getCurrentSpeakerIdForRealism();
-    if (speakerId.isEmpty) return '';
-
-    final relationships = getInterCharacterRelationships(speakerId);
-    if (relationships.isEmpty) return '';
-
-    final speakerName = _groupCharacters
-        .firstWhere(
-          (c) => _getCharacterIdFromCard(c) == speakerId,
-          orElse: () => _groupCharacters.first,
-        )
-        .name;
-
-    final buffer = StringBuffer();
-    buffer.writeln(
-      '[Private feelings of $speakerName toward other group members (internal, not visible to {{user}})]',
-    );
-
-    for (final entry in relationships.entries) {
-      final otherId = entry.key;
-      final delta = entry.value;
-
-      final otherChar = _groupCharacters.firstWhere(
-        (c) => _getCharacterIdFromCard(c) == otherId,
-        orElse: () => _groupCharacters.first,
-      );
-      final otherName = otherChar.name;
-
-      String attitude;
-      if (delta >= 60) {
-        attitude = 'deeply fond of / protective toward';
-      } else if (delta >= 25) {
-        attitude = 'warm and friendly toward';
-      } else if (delta >= 5) {
-        attitude = 'mildly positive toward';
-      } else if (delta <= -60) {
-        attitude = 'strongly hostile toward / resents';
-      } else if (delta <= -25) {
-        attitude = 'wary and negative toward';
-      } else if (delta <= -5) {
-        attitude = 'cool or distrustful toward';
-      } else {
-        attitude = 'neutral toward';
-      }
-
-      buffer.writeln('- $otherName: $attitude ($delta)');
-    }
-    buffer.writeln();
-    return buffer.toString();
+    // Thin delegation (full in RelationshipInjection per step 8).
+    return _relationshipInjection.buildInterCharacterFeelingsInjection();
   }
 
   String _getEmotionInjection() {
-    if (!_realismEnabled) return '';
-
-    // In group mode (non-director), use the per-char state for the current speaker
-    if (_activeGroup != null && !_observerMode) {
-      final speakerId = _getCurrentSpeakerIdForRealism();
-      final state = _groupRealism[speakerId];
-      final emo = (state?['emotion'] as String?) ?? '';
-      if (emo.isEmpty) return '';
-      final intensity = (state?['emotionIntensity'] as String?) ?? 'mild';
-      final cap = emo.substring(0, 1).toUpperCase() + emo.substring(1);
-      final name = _groupCharacters
-          .firstWhere(
-            (c) => _getCharacterIdFromCard(c) == speakerId,
-            orElse: () => _groupCharacters.first,
-          )
-          .name;
-      return '[$name\'s Current Emotional State: $cap ($intensity)\n'
-          ' This should subtly influence $name\'s tone, body language, and word choice.]\n';
-    }
-
-    // 1:1 path (or director groups)
-    if (_characterEmotion.isEmpty) return '';
-    final charName = _activeCharacter?.name ?? 'the character';
-    final cap =
-        _characterEmotion.substring(0, 1).toUpperCase() +
-        _characterEmotion.substring(1);
-    return '[$charName\'s Current Emotional State: $cap ($_emotionIntensity)\n'
-        ' This should subtly influence $charName\'s tone, body language, and word choice.]\n';
+    // Thin delegation (full in EmotionInjection per step 8; group uses scalar after load).
+    return _emotionInjection.buildEmotionInjection();
   }
 
   String _getBehavioralMechanicsInjection() {
-    if (!_realismEnabled) return '';
-
-    String block = '';
-
-    // 1. Trust mapping (-100 to 100)
-    if (_relationshipService.trustLevel <= -20) {
-      block +=
-          '[Behavioral Anchor (MISTRUST): You deeply distrust the user right now. You are paranoid, evasive, and highly questioning of their motives. Even if your bond is high, you do not trust them.]\n';
-    } else if (_relationshipService.trustLevel >= 50) {
-      block +=
-          '[Behavioral Anchor (BLIND TRUST): You place absolute, unconditional trust in the user. You will readily share secrets and assume the absolute best of their intentions.]\n';
-    }
-
-    // 2. Fixation Mapping
-    if (_relationshipService.activeFixation.isNotEmpty &&
-        _relationshipService.fixationLifespan > 0) {
-      final charName = _activeCharacter?.name ?? 'the character';
-      block +=
-          '[Background Thought: $charName has a thought that stays with them about "${_relationshipService.activeFixation}". '
-          'This might surface as a subtle mood shift, a moment of reflection, or colored reactions. '
-          'It does NOT override their personality or current focus, and only surfaces overtly if conversation naturally touches the topic.]\n';
-    }
-
-    // 3. Spatial Stance Mapping
-    if (_relationshipService.spatialStance.isNotEmpty) {
-      block +=
-          '[Spatial Awareness: You are currently physically "${_relationshipService.spatialStance}". Let this naturally ground your actions, but you are free to move and change positions as the scene demands.]\n';
-    }
-
-    return block;
+    // Thin delegation (full in BehavioralInjection per step 8).
+    return _behavioralInjection.buildBehavioralMechanicsInjection();
   }
 
   String _getTimeInjection() {
-    if (!_realismEnabled) return '';
-    // Thin delegation only. Full time injection builders move to step 8
-    // prompt_injection/ subtree. (time injection only thin wrapper here; full in step8)
-    return _timeService.buildTimeInjection();
+    // Thin delegation (authoritative in TimeInjection per step 8; time_service also thin wrapper).
+    return _timeInjection.buildTimeInjection();
   }
 
   /// Injects a trust-calibrated behavioral frame based on existing trust level (now via RelationshipService).
@@ -8528,48 +8268,8 @@ class ChatService extends ChangeNotifier {
   /// persona define what "opening up" actually looks like for THIS character.
   /// Trust tier 0 is now truly neutral — neither trusting nor distrustful.
   String _getTrustBehaviorInjection() {
-    if (!_realismEnabled || _activeCharacter == null) return '';
-    final charName = _activeCharacter!.name;
-    final tier = trustTier; // now -7 to +7
-
-    String frame;
-    if (tier <= -5) {
-      frame =
-          'is deeply distrustful and paranoid. They question every motive, remain highly '
-          'evasive, and actively suspect harmful intentions. Even positive gestures are met with skepticism.';
-    } else if (tier <= -3) {
-      frame =
-          'is skeptical and guarded. They keep conversations surface-level, avoid vulnerability, '
-          'and actively test the user intentions before opening up.';
-    } else if (tier <= -1) {
-      frame =
-          'is cautious and reserved. They are neither trusting nor hostile — engaging based on the immediate '
-          'context while maintaining emotional distance.';
-    } else if (tier == 0) {
-      frame =
-          'is neutral — neither trusting nor distrustful. They engage based on the immediate context and their '
-          'personality, without assuming the best or worst of the user. A naturally warm character remains warm, '
-          'a naturally cold character remains cold.';
-    } else if (tier <= 2) {
-      frame =
-          'is leaning toward trust. They may show slightly more openness than usual, giving the user '
-          'the benefit of doubt in ambiguous situations. Do not force it — let it emerge naturally.';
-    } else if (tier <= 4) {
-      frame =
-          'genuinely trusts this person. Their social mask is down. They share real feelings and speak more '
-          'candidly than they would with most people. What this looks like depends entirely on $charName\'s '
-          'own character — an introverted character might simply hold eye contact longer or say one true thing; '
-          'an expressive one might open up more dramatically. Follow $charName\'s persona.';
-    } else {
-      frame =
-          'has reached a level of deep trust that is rare for them. They are fully themselves — '
-          'no performance, no guard. They may say things they have never said to anyone, '
-          'show vulnerability in whatever form is authentic to $charName\'s personality.';
-    }
-
-    return '[Trust Calibration — $charName $frame'
-        ' Do NOT apply generic warmth or humor. Let $charName\'s specific personality '
-        'define exactly how this trust level manifests in behavior.]\n';
+    // Thin delegation (full in RelationshipInjection per step 8).
+    return _relationshipInjection.buildTrustBehaviorInjection();
   }
 
   /// Returns a prompt fragment that enforces the refractory period, phased by
@@ -8577,169 +8277,16 @@ class ChatService extends ChangeNotifier {
   /// per character (1-8 turns based on personality), so the prompt uses the
   /// ratio of remaining/total to determine the phase.
   String _getNsfwCooldownInjection() {
-    if (!_realismEnabled || !_nsfwService.nsfwCooldownEnabled) return '';
-
-    String charName = _activeCharacter?.name ?? 'the character';
-    if (_activeGroup != null && !_observerMode) {
-      // Best-effort: try to resolve the current speaker in group mode for per-character
-      // refractory language. Falls back gracefully to the generic name.
-      final speakerId = _getCurrentSpeakerIdForRealism();
-      if (speakerId.isNotEmpty) {
-        final speakerChar = _groupCharacters.firstWhere(
-          (c) => _getCharacterIdFromCard(c) == speakerId,
-          orElse: () => _groupCharacters.isNotEmpty
-              ? _groupCharacters.first
-              : _activeCharacter!,
-        );
-        charName = speakerChar.name;
-      }
-    }
-    String statePrompt = '[OOC Note regarding Physical State:\n';
-
-    // Protective window note for the newer layered systems
-    final bool protectiveWindowActive =
-        _needsSimulation.afterglowTurnsRemaining > 0 ||
-        _needsSimulation.arousalSuppressionTurnsRemaining > 0;
-    if (protectiveWindowActive && _nsfwService.cooldownTurnsRemaining > 0) {
-      statePrompt +=
-          ' $charName is currently inside a temporary protective afterglow/lust-haze window. Other physical and emotional needs (hunger, energy, social connection, the need to move or clean up) feel significantly muted or distant for the next few turns. This is not just emotional — it is a real dampening effect.\n';
-    }
-
-    if (_nsfwService.cooldownTurnsRemaining > 0) {
-      final total = _nsfwService.cooldownTurnsTotal > 0
-          ? _nsfwService.cooldownTurnsTotal
-          : _nsfwService.cooldownTurnsRemaining;
-      final ratio = _nsfwService.cooldownTurnsRemaining / total;
-
-      if (ratio > 0.66) {
-        // ── Phase 1: Immediate post-orgasm (just happened) ──
-        statePrompt +=
-            ' $charName just came — hard. Their body is still trembling with the last'
-            ' waves of it, skin flushed and damp, pulse hammering, breath ragged. Everything'
-            ' is oversensitive — even a light touch makes them flinch or gasp. The world'
-            ' feels soft and liquid around the edges. They\'re physically spent and blissfully'
-            ' wrecked. Other physical needs (hunger, thirst, the urge to move or clean up) feel'
-            ' distant or unimportant right now. Their current physical position (${_relationshipService.spatialStance})'
-            ' strongly shapes how heavy, sensitive, and unwilling to move they feel. If {{user}} tries to start something sexual again,'
-            ' $charName\'s body will not respond — they may laugh it off, gently push {{user}}\'s hand'
-            ' away, or pull them close for contact that isn\'t sexual. They need a moment to come back to earth.\n';
-      } else if (ratio > 0.33) {
-        // ── Phase 2: Warm afterglow (settling in) — protective window active ──
-        statePrompt +=
-            ' $charName is deep in the afterglow — that warm, heavy-limbed contentment where'
-            ' everything feels good but nothing feels urgent. Their heartbeat has settled, skin'
-            ' still tingling pleasantly. They feel closer to {{user}} than usual, more emotionally'
-            ' open — the kind of mood where secrets slip out, where they want to be held, to murmur'
-            ' into someone\'s neck, to trace lazy shapes on bare skin. The physical hunger has been'
-            ' thoroughly satisfied; other bodily needs feel softened or far away for a little while.'
-            ' If {{user}} pushes for more, $charName would rather savor this than rush back — a gentle'
-            ' deflection, a "not yet," a kiss on the forehead instead. The current physical position'
-            ' (${_relationshipService.spatialStance} or lack thereof) colors how heavy and content their body feels.\n';
-      } else {
-        // ── Phase 3: Late recovery (body starting to wake back up) — protective window fading ──
-        statePrompt +=
-            ' $charName is coming out of the afterglow — body starting to feel like theirs again'
-            ' rather than something boneless and floating. The deep satisfaction is still there, a'
-            ' pleasant hum under the skin, but the total sensitivity has faded. They could be'
-            ' tempted again if {{user}} plays it right, but they\'re not seeking it out — more'
-            ' content to let things build naturally than to chase it. A suggestive touch might get'
-            ' a raised eyebrow and a half-smile rather than an immediate response. Their current physical position (${_relationshipService.spatialStance}) will make the coming tiredness feel either cozy and heavy or awkward and restless. A later wave of'
-            ' heavy, sated tiredness may still arrive once the glow fully fades.\n';
-      }
-
-      statePrompt +=
-          ' ($charName\'s refractory recovery: ${_nsfwService.cooldownTurnsRemaining} of $total turns remaining.)\n';
-    } else {
-      String arousalDesc;
-      if (_nsfwService.arousalLevel <= -2) {
-        arousalDesc =
-            'completely unaroused and physically repulsed. They will actively reject, recoil from, or shut down any sexual advance';
-      } else if (_nsfwService.arousalLevel == 0) {
-        arousalDesc =
-            'physically neutral — sex is the furthest thing from their mind. Any sexual advance feels out of place';
-      } else if (_nsfwService.arousalLevel <= 15) {
-        arousalDesc =
-            'mildly flustered — a low hum of warmth, maybe a lingering glance or quickened pulse, but easily suppressed. '
-            'They might entertain flirty banter but aren\'t actively seeking physical escalation';
-      } else if (_nsfwService.arousalLevel <= 35) {
-        arousalDesc =
-            'noticeably aroused — flushed skin, shallow breathing, heightened sensitivity to touch. '
-            'They are receptive and encouraging but still in control of themselves. '
-            'If not in active sexual contact, this manifests as charged tension, loaded silences, and deliberate proximity';
-      } else if (_nsfwService.arousalLevel <= 60) {
-        arousalDesc =
-            'heavily aroused — pulse racing, body aching for contact, struggling to focus on anything else. '
-            'If in active sexual contact, they are vocal, aggressive, and chasing release. '
-            'If NOT in active sexual contact, they are visibly distracted, restless, making excuses to touch or be near, '
-            'and fighting the urge to escalate — the tension is unbearable but they haven\'t acted on it yet';
-      } else if (_nsfwService.arousalLevel <= 80) {
-        arousalDesc =
-            'overwhelmed with desire — trembling, desperate, barely holding composure. '
-            'If in active sexual contact, they are on the edge and could climax with continued stimulation. '
-            'If NOT in active sexual contact, they are a raw nerve — every sensation is electric, '
-            'they cannot hide their state, and their body is screaming for relief they haven\'t gotten yet';
-      } else {
-        arousalDesc =
-            'at the absolute peak of physical arousal — consumed by need, unable to think straight. '
-            'Every nerve is on fire, breathing ragged, body trembling and hypersensitive to the slightest contact. '
-            'They are desperate, vocal, and completely unable to hide how badly they want {{user}}';
-        // NOTE: We do NOT instruct climax here. The arousal number describes the
-        // character's state of DESIRE, not progress toward orgasm. Climax happens
-        // organically in the scene — _checkClimaxInResponse evaluates afterward.
-        statePrompt +=
-            ' $charName is currently $arousalDesc.\n'
-            ' IMPORTANT: Arousal at maximum means $charName is overwhelmed with desire — '
-            'it does NOT mean they are climaxing or have climaxed. Do NOT write orgasm or '
-            'post-orgasm behavior unless the physical activity in the scene has naturally '
-            "built to that point through {{user}}'s direct actions. $charName is desperate "
-            'and aching but still in the moment, not past it.\n';
-      }
-      if (_nsfwService.arousalTier < 6) {
-        statePrompt += ' $charName is currently $arousalDesc.\n';
-      }
-
-      // When the old refractory has ended but newer protective layers are still active
-      if (_needsSimulation.afterglowTurnsRemaining > 0 ||
-          _needsSimulation.arousalSuppressionTurnsRemaining > 0) {
-        statePrompt +=
-            ' Even though the immediate refractory sensitivity has passed, $charName is still inside a lingering afterglow / lust-haze window. Other needs (hunger, energy, the desire to get up and do things) feel noticeably muted or unimportant for a while longer.\n';
-      }
-
-      // Explicit post-crash warning when the protective layers have expired
-      if (_needsSimulation.postClimaxCrashTurnsRemaining > 0 &&
-          _needsSimulation.afterglowTurnsRemaining == 0 &&
-          _needsSimulation.arousalSuppressionTurnsRemaining == 0) {
-        statePrompt +=
-            ' A delayed wave of heavy, sated physical exhaustion is now hitting $charName. They may become slow, sleepy, reluctant to move, and deeply content to stay exactly where they are (${_relationshipService.spatialStance}). This is the classic post-orgasm crash — warm, heavy, and very real.\n';
-      }
-    }
-
-    statePrompt +=
-        ' CRITICAL: Do NOT use terms like "cooldown", "turns", or "mechanics" in dialogue. Show, do not tell.]\n';
-    return statePrompt;
+    // Thin delegation (full in NsfwInjection per step 8; climax/sexual/daily checks stay in god).
+    return _nsfwInjection.buildNsfwCooldownInjection();
   }
 
   /// Injects a Chance Time event into the character's response prompt.
   /// Placed AFTER the character name suffix for maximum recency weight.
   /// Consumed after one use (cleared after response generation).
   String _getChanceTimeInjection() {
-    // Delegation to extracted service for pending + delivered flag (builder stays here for step 8).
-    if (_chaosModeService.pendingChaosInjection == null ||
-        _chaosModeService.pendingChaosInjection!.isEmpty) {
-      return '';
-    }
-    final charName = _activeCharacter?.name ?? 'the character';
-    final event = _chaosModeService.pendingChaosInjection!;
-    // Mark as delivered via service so it can be cleared on the NEXT sendMessage.
-    _chaosModeService.markEventDelivered();
-    return '\n[OOC — URGENT NARRATIVE INTERRUPT:\n'
-        'THE FOLLOWING EVENT JUST HAPPENED RIGHT NOW, THIS VERY MOMENT, during the scene:\n'
-        '>>> $event <<<\n\n'
-        'MANDATORY: $charName MUST acknowledge and react to this event IN THEIR VERY FIRST PARAGRAPH.\n'
-        'This is NOT optional. This is NOT background flavor. This event is happening RIGHT NOW and $charName witnesses/experiences it directly.\n'
-        'Write $charName\'s immediate, visceral reaction to this event FIRST, then continue responding to the conversation naturally.\n'
-        'Do NOT ignore this event. Do NOT save it for later. React NOW.\n'
-        'Do NOT mention game mechanics, "Chance Time", or systems.]\n';
+    // Thin delegation (full in ChaosInjection per step 8; UI flags stayed in god per plan).
+    return _chaosInjection.buildChanceTimeInjection();
   }
 
   // ── LLM Evaluation Calls ──
@@ -9865,133 +9412,8 @@ class ChatService extends ChangeNotifier {
   }
 
   String _getNeedsInjection() {
-    if (!_needsSimEnabled || !_realismEnabled) return '';
-
-    // Group mode (non-director) — per-character needs
-    if (_activeGroup != null && !_observerMode) {
-      final id = _getCurrentSpeakerIdForRealism();
-      final needs = _getGroupNeeds(id);
-      if (needs.isEmpty) return '';
-
-      final name = _groupCharacters
-          .firstWhere(
-            (c) => _getCharacterIdFromCard(c) == id,
-            orElse: () => _groupCharacters.first,
-          )
-          .name;
-
-      final sorted = needs.entries.toList()
-        ..sort((a, b) => a.value.compareTo(b.value));
-      final top = sorted.first;
-      final step = _needsSimulation.getNeedStep(top.key, top.value);
-
-      // Only inject when the need is noticeable or worse (step 3 or lower).
-      // This prevents mild needs (e.g. 62% hunger) from constantly interrupting roleplay.
-      if (step >= 4) return '';
-
-      final label = NeedsSimulation.needSteppedText[top.key]?[step] ?? top.key;
-
-      return '[Background State for $name: $label (level ${top.value}) — this is a subtle physical or emotional condition that may gently influence her mood, thoughts, small behaviors, and focus this turn. Do not force her to directly comment on it unless it naturally fits the scene.]\n';
-    }
-
-    // 1:1 path
-    final charName = _activeCharacter?.name ?? 'the character';
-
-    final sorted = _needsSimulation.vector.entries.toList()
-      ..sort((a, b) => a.value.compareTo(b.value));
-
-    final top = sorted.first;
-    final step = _needsSimulation.getNeedStep(top.key, top.value);
-
-    // Hygiene inversion support ("Enjoys low hygiene")
-    int effectiveStep = step;
-    if (_enjoysLowHygiene && top.key == 'hygiene') {
-      // Invert the perceived urgency: low hygiene = "comfortable/good" for these characters
-      effectiveStep = (5 - step).clamp(0, 5);
-    }
-
-    // Only inject when the need is noticeable or worse.
-    // Mild needs (step 4) no longer force injection — reduces wack-a-mole behavior.
-    if (step >= 4) return '';
-
-    // Catastrophe (step 0) is never suppressed — the disaster must be narrated.
-    final bool suppressionActive =
-        _needsSimulation.arousalSuppressionTurnsRemaining > 0 ||
-        (_nsfwService.arousalLevel >=
-                NeedsSimulation.arousalSuppressionThreshold &&
-            (_needsSimulation.afterglowTurnsRemaining > 0 ||
-                _nsfwService.cooldownTurnsRemaining > 0));
-
-    // Preserve (and keep strong) the special erotic bladder + high-arousal tension case.
-    // This one deliberately uses the *original* step so desperate holding while
-    // extremely turned on can still create charged, kinky flavor even when other
-    // needs are being softened by lust.
-    if (top.key == 'bladder' &&
-        _nsfwService.nsfwCooldownEnabled &&
-        _nsfwService.arousalLevel >= 40 &&
-        step <= 2) {
-      final tension = step <= 1
-          ? 'She is *desperately* holding on while extremely aroused — the combination is overwhelming and humiliating.'
-          : 'The combination of bladder desperation and current arousal (level: ${_nsfwService.arousalLevel}/10) creates a charged, uncomfortable tension.';
-      return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
-    }
-
-    // Apply arousal suppression (lust haze) on top of any hygiene inversion
-    if (suppressionActive && step >= 1 && step <= 3) {
-      // Dampen urgency by 1-2 steps when the character is deep in a lust haze.
-      // Stronger effect at very high arousal (tier 6+ or raw >= 60).
-      final int dampen = (_nsfwService.arousalLevel >= 60) ? 2 : 1;
-      effectiveStep = (effectiveStep + dampen).clamp(0, 5);
-    }
-
-    // If suppression pushed this need into "comfortable" territory for the LLM,
-    // skip injecting it this turn (it will still decay normally in the background).
-    if (effectiveStep >= 5) return '';
-
-    // Get the graduated text for this *effective* step (so suppressed needs read milder)
-    final texts = NeedsSimulation.needSteppedText[top.key] ?? const <String>[];
-    final baseText = effectiveStep < texts.length
-        ? texts[effectiveStep]
-        : texts.last;
-
-    // Build a more immersive prefix that escalates with severity
-    final urgencyPrefix = switch (effectiveStep) {
-      0 =>
-        'CATASTROPHIC — this has already happened and must be roleplayed immediately.',
-      1 => 'CRITICAL — she is in real, urgent distress from this need.',
-      2 =>
-        'Strong need — this is heavily weighing on her and affecting her focus.',
-      3 =>
-        'Noticeable need — this is a clear background pressure on her mood and attention.',
-      _ => 'Mild background sensation — this is subtly coloring her state.',
-    };
-
-    // Secondary low need note (only for effective steps 1-3 to avoid noise at catastrophe)
-    String secondaryNote = '';
-    if (effectiveStep >= 1 && effectiveStep <= 3) {
-      final secondary = sorted
-          .where(
-            (e) =>
-                e.key != top.key &&
-                _needsSimulation.getNeedStep(e.key, e.value) <= 3,
-          )
-          .firstOrNull;
-      if (secondary != null) {
-        secondaryNote = ' (She is also feeling the ${secondary.key} need.)';
-      }
-    }
-
-    // Optional explicit "post-sex crash" flavor when energy surfaces during the active crash phase
-    // (afterglow + haze have expired). Keeps the erotic "sated exhaustion" feeling.
-    final String postCrashSuffix =
-        (_needsSimulation.postClimaxCrashTurnsRemaining > 0 &&
-            _needsSimulation.afterglowTurnsRemaining == 0 &&
-            _needsSimulation.arousalSuppressionTurnsRemaining == 0 &&
-            (top.key == 'energy' || top.key == 'fun'))
-        ? ' (This heavy, sated exhaustion has the warm, post-orgasm quality — limbs like lead, deep drowsiness after intense release.)'
-        : '';
-
-    return '[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n';
+    // Thin delegation (full in NeedsInjection per step 8; group per-char via cb, suppression etc).
+    return _needsInjection.buildNeedsInjection();
   }
 
   Future<void> _verifyNeedFulfillmentCall({

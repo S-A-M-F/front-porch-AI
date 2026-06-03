@@ -57,6 +57,29 @@
 - Solution: Added a minimal, rule-compliant `@visibleForTesting` seam in ChatService (two fields + 8 conditional sites, 0 new private methods). Built a controllable fake LLM that returns rich JSON exercising every delta type. Created `test/services/chat_service_realism_engine_test.dart` with per-test isolated `AppDatabase.forTesting()` + fresh ChatService instances. The suite now drives real `sendMessage` → `_fireLLMEval` → delta application → `_tickNeedsDecay` → verified fulfillment paths for 1:1, plus the full group per-speaker machinery (`_evaluateRealismForUpcomingGroupSpeaker` with impersonation/scalar swap, `_ensureInterCharacterRelationshipsSeeded` + pruning, `_shouldTrackInterCharacterRelationships` 4-char cap guard, inter-char relationship matrices) using typed Drift inserts + real GroupChatRepository wiring on the test DB.
 - Impact: The core unique value of the app (Realism + Needs + Group Dynamics) now has meaningful automated regression protection instead of only stub tests. +7/-2 in current runs (group tests now reach the real per-speaker eval paths instead of hard schema failures). Hygiene strictly followed (0 new prod private methods, analyze clean on changed files, dead raw-SQL debt deleted, honest docs).
 - Files: `lib/services/chat_service.dart`, `test/services/chat_service_realism_engine_test.dart`, `docs/Rawhide.md`, `.claude/changelog.md`
+
+## 2026-06-03 (Stage 3 god-file modularization step 8 — extract prompt_injection builders (8 files) from chat_service)
+- Pure mechanical leaf extraction per docs/refactoring-guide.md + precedent (steps 1-7).
+- 8 builders moved to lib/services/chat/prompt_injection/ (author_note_builder, relationship_injection, emotion_injection, behavioral_injection, time_injection, nsfw_injection, chaos_injection, needs_injection); thins + 8 late finals + granular cbs in god; 0 new god _ privates; 0 shims.
+- Reset hygiene comments synced with full explicit list (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection) + "stateless; no reset calls" + cross-refs across all ~10 sites (incomplete zeroing hygiene complete).
+- Test: updated prompt_injection_test.dart (fixed RelationshipService ctors for current required cbs, deleted dead noop/placeholder + large commented vestigial body + dups, map support in author builder for test, updated expects/texts, header qualified to 10 tests/10 bodies via live grep -c post deletes).
+- All gates (format 0 changed, analyze 0 new warnings on diff, dart fix Nothing on god, dedicated +10 all passed, key suites pre-existing only, dead excised 0, build ✓) with full verbatim cd+abs+redirect+echo+cat + literal raw + re-runs/re-reads after every edit + post MD/changelog.
+- MD: docs/refactor-god-file-modularization.md appended with full Step 8 section modeled exactly on step7 (New files, chat changes, New test 10, Verification, Design, Recommended commit, Fix Round 1 with closed list + verbatim gates + re-read bullets + 0 open + updated Hygiene + extended won'tfix for 1-8).
+- .claude/changelog.md appended.
+- /tmp/grok-impl-summary-373618d7.md written.
+- Claims exact on-disk (10 via grep, 0 excised, full lists, etc.); briefing avoidance (dead deleted, counts qualified, dispatch preserved, no new god priv, full re-reads verbatim).
+- Files: lib/services/chat_service.dart, lib/services/chat/prompt_injection/*.dart (8), test/services/chat/prompt_injection_test.dart, docs/refactor-god-file-modularization.md, .claude/changelog.md, /tmp/grok-*-373618d7*.txt (gates), /tmp/grok-impl-summary-373618d7.md.
+- Hygiene: 0 new god private _ methods (grep confirmed). Dead deleted as part of task (excised marker + 2+ noop test bodies + commented ~40LOC + dups). Tree strictly cleaner + runnable. All AGENTS/CLAUDE/refactor rules + worktree abs + main pristine.
+
+## 2026-06-03 (Stage 3 step 8 Fix Round 1 — review issues from /tmp/grok-review-373618d7.md)
+- Fixed ~15 open (1 bug + suggestions/nits): dupe _getId unified via cb (no new god priv); needs 1:1 empty guard + special 1:1 test coverage (erotic/suppression); nsfw arousal mid-high desc append gap; vestigial comments + last smoke expect(true,isTrue) removed for exact deletion claims; unwrap safety in group orElse; reset comments uniform; MD/gate captures self-contained + explicit stayed-thin + header qualify; process boundary doc.
+- All re-gates (format/analyze 0 new warnings, dartfix Nothing on god, test +10 green, dead 0, build ✓) with required /tmp/grok-*-fix1-373618d7.txt + appended EXIT for self-contain + literal raw + re-runs + re-reads (abs on-disk + /tmp).
+- MD updated with #### Fix Round 1 (closed list + Responses + verbatim cmds + raw + 0 open + Hygiene + re-reads).
+- review_file updated with Status fixed + Response for each.
+- /tmp/grok-impl-summary-373618d7.md updated.
+- 0 new god privates (grep); claims exact; 0 open after round 1.
+- Files: lib/services/chat_service.dart, lib/services/chat/prompt_injection/{emotion,nsfw,needs}_injection.dart, test/services/chat/prompt_injection_test.dart, docs/refactor-god-file-modularization.md, /tmp/grok-review-373618d7.md, /tmp/grok-impl-summary-373618d7.md, .claude/changelog.md, /tmp/grok-*-fix1-373618d7.txt
+- Hygiene: 0 new god priv (count 888); deleted 3 _getId + last expect; analyze clean; test green; all rules followed.
 - Hygiene: New private methods in prod: 0. Analyze clean. Tree left cleaner (removed ~60 lines of broken schema-fragile raw INSERTs).
 
 ## 2026-05-30 (Chat loading hardened against corrupted per-message state)
