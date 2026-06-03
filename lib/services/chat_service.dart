@@ -54,6 +54,7 @@ import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/expression_classifier.dart'; // leaf for ExpressionService (post-extraction)
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
+import 'package:front_porch_ai/services/chat/lorebook_scanner.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -339,18 +340,18 @@ class ChatService extends ChangeNotifier {
   String _emotionIntensity = ''; // mild/moderate/strong
 
   // Expression images + classification (extracted to ExpressionService in chat/expression_classifier.dart).
-  // See "keep reset blocks in sync" comments. All runtime label/manual/onnx cache/avatar last/random
+  // See "keep reset blocks in sync" comments (now also lists lorebook_scanner). All runtime label/manual/onnx cache/avatar last/random
   // state now owned by the service; god thins to delegation + shims.
 
   // Passage of time (core state + advance/nudge/OOC/resolve/reset/seed/load logic extracted to TimeService).
-  // See "keep reset blocks in sync" comments (now also lists time/nsfw). All scalars, clock, narrativeWeekday,
+  // See "keep reset blocks in sync" comments (now also lists time/nsfw/lorebook_scanner). All scalars, clock, narrativeWeekday,
   // resolve, nudge, detect, pre-turn advance, injection builder, and helpers now owned by the service;
   // god thins to delegation + 5 @Deprecated shims. 0 new private methods added in god for time.
   // time injection only thin wrapper here; full in step8.
 
   // NSFW cooldown & lust (core state + tier calc + reset/seed/load/restore + group per-char scalars
   // + applyClimax/decrement extracted to NsfwService).
-  // See "keep reset blocks in sync" comments (now also lists nsfw). All scalars, tier getters,
+  // See "keep reset blocks in sync" comments (now also lists nsfw/lorebook_scanner). All scalars, tier getters,
   // cooldown mutations, arousal, and helpers now owned by the service; god thins to delegation
   // + 5 @Deprecated shims. 0 new private methods added in god for nsfw.
   // climax/sexual/daily LLM checks + _runPostGen + nsfw injection stay thin in god (step 8 for full builders).
@@ -412,6 +413,37 @@ class ChatService extends ChangeNotifier {
     getGroupInt: _getGroupInt,
     getGroupValue: (charId, key) => _groupRealism[charId]?[key],
     setGroupValue: _setGroupRealismValue,
+  );
+
+  // ── Lorebook scanner (extracted to LorebookScanner) ────────────────────────
+  // Keyword match (_matchKeyword with raw+concat fix), scan (per-char + worlds,
+  // set isTriggered + remaining=sticky), decrement (post-AI pre-set only),
+  // reset of non-const trigger state live in _lorebookScanner (plain class).
+  // ChatService owns via late final + thin delegations at *all* call sites.
+  // getActiveGroupLoreEntries + _buildLorebookContext (injection text) + preAi
+  // snapshot stay in god (per plan; lorebook injection text / full context
+  // building kept thin/stayed in god for step8).
+  // 0 new god private _ methods.
+  // 3 granular cbs (onNotify + getLoreCharacters for group/1:1 cards + resolveWorld)
+  // to access live _groupCharacters/_activeCharacter and _worldRepository without
+  // whole-parent or cycles (mirrors nsfw group scalars precedent; testable via
+  // live closures in createTestLorebookScanner; aug only passive/qualified).
+  // 1:1 vs group parity: scanner processes whatever chars cb provides (all group
+  // members + their worlds for group; single for 1:1); depth per-entry.
+  // Reset hygiene: resetLorebookTriggerState() called from every keep-sync site
+  // (startNewChat 1:1+group/ext+non-ext, setActive*, _load empty/0-session, setActiveGroup defensive+post, etc);
+  // comments now list /lorebook_scanner + cross-ref to "incomplete zeroing..." briefing (fixed in startNew for 1:1+group paths).
+  // aug exercising only passive/qualified (resets/loads/scans hit by pre-existing
+  // startNew/setActive/_loadLast/group; full keyword/depth only in dedicated + manual).
+  late final _lorebookScanner = LorebookScanner(
+    onNotify: notifyListeners,
+    getLoreCharacters: () => _activeGroup != null
+        ? _groupCharacters
+        : (_activeCharacter != null
+              ? [_activeCharacter!]
+              : const <CharacterCard>[]),
+    resolveWorld: (name) =>
+        _worldRepository.worlds.where((w) => w.name == name).firstOrNull,
   );
 
   late final _needsSimulation = NeedsSimulation(
@@ -1539,36 +1571,18 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
 
     if (_activeCharacter != null) {
-      // Reset lorebook trigger state (skip constant entries — they're always active)
-      if (_activeCharacter!.lorebook != null) {
-        for (var entry in _activeCharacter!.lorebook!.entries) {
-          if (!entry.constant) {
-            entry.isTriggered = false;
-            entry.remainingDepth = 0;
-          }
-        }
-      }
-      // Reset world lore triggers
-      for (final worldName in _activeCharacter!.worldNames) {
-        final world = _worldRepository.worlds
-            .where((w) => w.name == worldName)
-            .firstOrNull;
-        if (world != null) {
-          for (final entry in world.lorebook.entries) {
-            if (!entry.constant) {
-              entry.isTriggered = false;
-              entry.remainingDepth = 0;
-            }
-          }
-        }
-      }
+      // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
+      // without god privates; constants skipped, non-const zeroed for char + attached worlds).
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner).
+      _lorebookScanner.resetLorebookTriggerState();
 
       // Reset realism state to prevent bleeding from previous character.
-      // Keep the reset sites (startNewChat, load*Session paths incl. empty for groups, setActiveGroup, setActiveCharacter, delete flows, ext-seed, fork/insert)
+      // Keep the reset sites (startNewChat 1:1+group now with explicit lorebook reset in both branches, load*Session paths incl. empty for groups, setActiveGroup, setActiveCharacter, delete flows, ext-seed, fork/insert)
       // in sync when moving more state in later Stage 3 steps. See needs_simulation.dart for the
       // current owner of vector + buffers (and _needsSimEnabled/_enjoysLowHygiene control fields).
-      // Relationship + Expression + Time + Nsfw via service reset helpers (expression: manual/caches/onnx/lastAvatar/random;
-      // time: clock/day/passage/turns/anchor + narrative weekday; nsfw: cooldown/arousal/tier). All secondary time/nsfw config zeroed on fresh group/0-session paths.
+      // Relationship + Expression + Time + Nsfw + LorebookScanner via service reset helpers (expression: manual/caches/onnx/lastAvatar/random;
+      // time: clock/day/passage/turns/anchor + narrative weekday; nsfw: cooldown/arousal/tier; lorebook: triggers/depth on entries).
+      // All secondary time/nsfw/lorebook config zeroed on fresh group/0-session paths.
       final prevArousal = _nsfwService.arousalLevel;
       final prevFixation = _relationshipService.activeFixation;
       final prevFixationLife = _relationshipService.fixationLifespan;
@@ -1580,14 +1594,15 @@ class ChatService extends ChangeNotifier {
       _characterEmotion = '';
       _emotionIntensity = '';
       // Time reset via extracted service (keeps multiple reset blocks in sync).
-      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw).
+      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner).
       _timeService.resetForFreshChat();
       // Chaos reset via extracted service (keeps multiple reset blocks in sync).
       // See chaos_mode_service.dart and "keep reset blocks" comments.
       _chaosModeService.resetForFreshChat();
       // Nsfw reset via extracted service (keeps multiple reset blocks in sync).
-      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw).
+      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner).
       _nsfwService.resetForFreshChat();
+      // Lorebook already reset above via _lorebookScanner (keeps blocks in sync; see cross-ref comment at top of this reset).
       _relationshipService.resetForFreshChat();
       _expressionService.resetForFreshChat();
       _moodDecayCounter = 0;
@@ -1662,8 +1677,8 @@ class ChatService extends ChangeNotifier {
               isUser: false,
             ),
           );
-          // Scan first message for lore
-          _scanLorebook(_messages.last.text);
+          // Scan first message for lore (thin delegation to extracted scanner).
+          _lorebookScanner.scanLorebook(_messages.last.text);
         }
         // Note: for the direct 0-session setActiveCharacter path (fresh import via home grid <=1 session),
         // _greetingEvalPending is left false here. The post-greeting baseline eval is scheduled only
@@ -1722,11 +1737,13 @@ class ChatService extends ChangeNotifier {
     // Relationship scalars/fixation (affection/trust/tiers/fixation/spatial/pending) via extracted service.
     // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
     // Nsfw (arousal/cooldown) via service.
-    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat/load paths (now includes time/nsfw for group fresh/0-session).
+    // Lorebook triggers via scanner (for group fresh/0-session hygiene; parallels time/nsfw defensive zeros).
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes time/nsfw/lorebook_scanner for group fresh/0-session).
     _relationshipService.resetForFreshChat();
     _expressionService.resetForFreshChat();
     _timeService.resetForFreshChat();
     _nsfwService.resetForFreshChat();
+    _lorebookScanner.resetLorebookTriggerState();
 
     // Auto-start local backend when entering a group chat
     _llmProvider?.ensureManagedBackendIsRunning();
@@ -1837,30 +1854,9 @@ class ChatService extends ChangeNotifier {
     // Seed objectives that came from an imported Group Card (one-time)
     await _seedImportedMemberObjectivesIfPresent();
 
-    // Reset all lorebook triggers (skip constant entries — they're always active)
-    for (final ch in _groupCharacters) {
-      if (ch.lorebook != null) {
-        for (final entry in ch.lorebook!.entries) {
-          if (!entry.constant) {
-            entry.isTriggered = false;
-            entry.remainingDepth = 0;
-          }
-        }
-      }
-      for (final worldName in ch.worldNames) {
-        final world = _worldRepository.worlds
-            .where((w) => w.name == worldName)
-            .firstOrNull;
-        if (world != null) {
-          for (final entry in world.lorebook.entries) {
-            if (!entry.constant) {
-              entry.isTriggered = false;
-              entry.remainingDepth = 0;
-            }
-          }
-        }
-      }
-    }
+    // Lorebook trigger reset via extracted service (group path; see setActiveCharacter for the 1:1 counterpart + keep-sync cross-refs).
+    // See "keep reset blocks in sync" comments (now explicitly lists lorebook_scanner alongside prior services).
+    _lorebookScanner.resetLorebookTriggerState();
 
     // Try to load last session for this group
     await _loadLastSession();
@@ -1903,7 +1899,8 @@ class ChatService extends ChangeNotifier {
             characterId: greetingCharId,
           ),
         );
-        _scanLorebook(_messages.last.text);
+        // Thin delegation to scanner (group greeting scan).
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
       _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
       await _saveChat();
@@ -2478,9 +2475,11 @@ class ChatService extends ChangeNotifier {
       // Time (secondary config: passage, weekday anchors, turns, day/time scalars) reset for fresh 0-session/new-group paths.
       // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
       // Nsfw (cooldown/arousal) reset for same (incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue).
-      // See "keep reset blocks in sync" (setActiveGroup, startNewChat, load* , setActive* all must hit this).
+      // Lorebook triggers/depth reset for same (incomplete zeroing of lore on 0-session/new-group was a prior hygiene pattern to avoid).
+      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes lorebook_scanner).
       _timeService.resetForFreshChat();
       _nsfwService.resetForFreshChat();
+      _lorebookScanner.resetLorebookTriggerState();
       return;
     }
 
@@ -2637,7 +2636,7 @@ class ChatService extends ChangeNotifier {
       }
 
       if (_messages.isNotEmpty) {
-        _scanLorebook(_messages.last.text);
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
     } catch (e) {
       print('Error loading chat session: $e');
@@ -2877,7 +2876,7 @@ class ChatService extends ChangeNotifier {
       }
 
       if (_messages.isNotEmpty) {
-        _scanLorebook(_messages.last.text);
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
       notifyListeners();
     } catch (e) {
@@ -3181,6 +3180,12 @@ class ChatService extends ChangeNotifier {
         trustLevel: extSeed.trustLevel,
       );
       _expressionService.resetForFreshChat();
+      // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
+      // without god privates; now includes startNewChat 1:1 ext-seed path to prevent bleed of prior
+      // isTriggered/remainingDepth into fresh New Chat for 1:1; constants skipped. See setActiveCharacter:1572
+      // + "incomplete zeroing of secondary realism configuration fields" briefing pattern (cross-ref step6 nsfw).
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner).
+      _lorebookScanner.resetLorebookTriggerState();
       // Time seed via extracted service (keeps startNewChat / setActive / ext-seed blocks in sync).
       _timeService.seedFromV2OrExt(
         dayCount: extSeed.dayCount.clamp(1, 9999),
@@ -3217,6 +3222,7 @@ class ChatService extends ChangeNotifier {
       // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
       // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
       // Expression (manual/caches/onnx/lastAvatar) reset via service for no-bleed (new for step 4).
+      // Lorebook (non-const isTriggered/remainingDepth) reset via scanner in both ext-seed (1:1) and non-ext (group/0-session) paths of startNewChat (added for hygiene to match briefing "every keep-sync" + setActiveCharacter etc; prevents bleed into greetings/scans).
       debugPrint(
         '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan})',
       );
@@ -3254,6 +3260,9 @@ class ChatService extends ChangeNotifier {
         _expressionService.resetForFreshChat();
         _timeService.resetForFreshChat();
         _nsfwService.resetForFreshChat();
+        // Lorebook trigger reset via extracted service (keeps reset blocks in sync with setActiveCharacter:1572 / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary ... on 0-session/new-character/group" + startNew 1:1+group now complete).
+        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes lorebook_scanner for group/0-session/new-chat hygiene).
+        _lorebookScanner.resetLorebookTriggerState();
         // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
         // Time reset helper kept in sync with other blocks.
       }
@@ -3297,7 +3306,7 @@ class ChatService extends ChangeNotifier {
             characterId: greetingCharId,
           ),
         );
-        _scanLorebook(_messages.last.text);
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
       _groupManager?.resetTurnState();
     } else if (_activeCharacter != null) {
@@ -3310,7 +3319,7 @@ class ChatService extends ChangeNotifier {
             isUser: false,
           ),
         );
-        _scanLorebook(_messages.last.text);
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
     }
 
@@ -3546,8 +3555,8 @@ class ChatService extends ChangeNotifier {
       debugPrint('[sendMessage] Cleared new chat flag, memories now allowed');
     }
 
-    // Scan user input for lore keywords
-    _scanLorebook(text);
+    // Scan user input for lore keywords (thin to scanner).
+    _lorebookScanner.scanLorebook(text);
 
     // ── Clear consumed chaos event from the previous turn ───────────────
     // Only clear if the event was already delivered in a response.
@@ -3804,7 +3813,7 @@ class ChatService extends ChangeNotifier {
     await _saveChat();
     notifyListeners();
 
-    _scanLorebook(text);
+    _lorebookScanner.scanLorebook(text);
     // Note: depth decrement happens after AI response completes inside _generateResponse.
     // Director-triggered lore is visible for the current generate.
 
@@ -5599,12 +5608,13 @@ class ChatService extends ChangeNotifier {
         }
 
         if (finalResponse.isNotEmpty) {
-          _scanLorebook(finalResponse);
+          _lorebookScanner.scanLorebook(finalResponse);
         }
 
         // Decrement only entries that were active before the AI response.
         // This preserves full depth for lore discovered in the AI's own words.
-        _decrementLoreDepthForEntries(preAiTriggered);
+        // Thin delegation (preAi set computed in god for snapshot; scanner owns decrement).
+        _lorebookScanner.decrementLoreDepthForEntries(preAiTriggered);
 
         // Save session after AI message is complete
         await _saveChat();
@@ -5823,114 +5833,6 @@ class ChatService extends ChangeNotifier {
         );
       }
 
-      notifyListeners();
-    }
-  }
-
-  void _scanLorebook(String text) {
-    // Scan all relevant characters' lorebooks
-    final characters = _activeGroup != null
-        ? _groupCharacters
-        : (_activeCharacter != null ? [_activeCharacter!] : <CharacterCard>[]);
-    if (characters.isEmpty) return;
-
-    final lowerText = text.toLowerCase();
-    bool changed = false;
-
-    for (final ch in characters) {
-      if (ch.lorebook != null) {
-        for (final entry in ch.lorebook!.entries) {
-          if (!entry.enabled) continue;
-
-          final keys = entry.key
-              .split(',')
-              .map((k) => k.trim().toLowerCase())
-              .where((k) => k.isNotEmpty)
-              .toList();
-
-          for (final key in keys) {
-            if (_matchKeyword(key, lowerText)) {
-              if (!entry.isTriggered) {
-                entry.isTriggered = true;
-                changed = true;
-              }
-              entry.remainingDepth = entry.stickyDepth;
-              break;
-            }
-          }
-        }
-      }
-
-      // Scan shared Worlds
-      for (final worldName in ch.worldNames) {
-        final world = _worldRepository.worlds
-            .where((w) => w.name == worldName)
-            .firstOrNull;
-        if (world == null) continue;
-
-        for (final entry in world.lorebook.entries) {
-          if (!entry.enabled) continue;
-
-          final keys = entry.key
-              .split(',')
-              .map((k) => k.trim().toLowerCase())
-              .where((k) => k.isNotEmpty)
-              .toList();
-
-          for (final key in keys) {
-            if (_matchKeyword(key, lowerText)) {
-              if (!entry.isTriggered) {
-                entry.isTriggered = true;
-                changed = true;
-              }
-              entry.remainingDepth = entry.stickyDepth;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    if (changed) {
-      notifyListeners();
-    }
-  }
-
-  /// Match a keyword against text with wildcard (*) and word-boundary support.
-  /// - `pot*` matches `potato`, `pottery`, `potion`
-  /// - `fire` matches `fire` (whole word only, not `fireball`)
-  /// - `*ball` matches `fireball`, `snowball`
-  bool _matchKeyword(String key, String text) {
-    if (key.contains('*')) {
-      // Wildcard pattern: escape regex specials except *, then replace * with .*
-      final escaped = RegExp.escape(key).replaceAll(r'\*', '.*');
-      return RegExp(escaped).hasMatch(text);
-    } else {
-      // Exact word match with word boundaries
-      // Using string concatenation instead of ${} inside a raw string
-      // because Dart raw strings (r'...') do not process ${} interpolation.
-      return RegExp(r'\b' + RegExp.escape(key) + r'\b').hasMatch(text);
-    }
-  }
-
-  /// Decrement remainingDepth only for the provided set of entries.
-  /// Used after AI response finalization so that lore entries *discovered in the AI's
-  /// own response* keep their full stickyDepth for the next user turn.
-  void _decrementLoreDepthForEntries(Set<LorebookEntry> entriesToDecrement) {
-    if (entriesToDecrement.isEmpty) return;
-    bool changed = false;
-
-    for (final entry in entriesToDecrement) {
-      if (entry.isTriggered && !entry.constant) {
-        entry.remainingDepth--;
-        if (entry.remainingDepth <= 0) {
-          entry.isTriggered = false;
-          changed = true;
-        }
-      }
-    }
-
-    if (changed) {
       notifyListeners();
     }
   }
