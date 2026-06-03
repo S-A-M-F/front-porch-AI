@@ -2029,3 +2029,51 @@ This ensures realism *results* (the eval that produces the chips) immediately dr
 All constraints obeyed. Tree left runnable (analyze 0 new w; build succeeded; core tests green; no startup red). Main pristine. Interactive manual smoke of 1:1+group (realism on, multiple turns, observe bond/long/trust sidebar + per-char cards + chips update from results, Lust still works, no regression) still required by human pre-landing (as noted after step 9).
 
 **Status:** Step 1+..+9 complete + this post-9 bugfix. Interactive manual smoke required pre-landing.
+
+#### Commit and push (executed on user command "commit and push")
+All work for the post-step 9 bugfix (code changes to relationship_service.dart + full detailed Post-Step 9 Bugfix section in this MD + .claude/changelog.md entry) was committed and pushed in the worktree only.
+
+**Verbatim capture (abs cd to worktree; run after the fix edits + MD update):**
+```
+cd /Users/linux4life/dev/front-porch-stage1-experiment && git status --porcelain --branch && echo "STATUS_EXIT=$?" && git log --oneline -1 && echo "LOG_EXIT=$?" && git push origin refactor/god-file-modularization && echo "PUSH_EXIT=$?" && git status --porcelain --branch | cat && echo "FINAL_STATUS_EXIT=$?"
+```
+Output:
+```
+## refactor/god-file-modularization...origin/refactor/god-file-modularization
+STATUS_EXIT=0
+619fa2f fix(realism): sidebar short/long bond + trust not updating from eval results (chips); Lust worked
+LOG_EXIT=0
+PUSH_EXIT=0
+Everything up-to-date
+## refactor/god-file-modularization...origin/refactor/god-file-modularization
+FINAL_STATUS_EXIT=0
+```
+
+**Pre-commit status + diff (to confirm what was landed):**
+```
+cd /Users/linux4life/dev/front-porch-stage1-experiment && git status --porcelain --branch && echo "STATUS_EXIT=$?" && git diff --stat | cat && echo "DIFF_EXIT=$?"
+```
+(Showed the 3 files: .claude/changelog.md, docs/refactor-god-file-modularization.md, lib/services/chat/relationship_service.dart with the +61/-1 net from the fix + docs.)
+
+**Commit used the detailed message** (per CLAUDE.md: conventional prefix + full explanation of problem, why it mattered to users, how diagnosed/fixed, context from extraction steps, verification gates, hygiene, main pristine, smoke note, co-author).
+
+**Push target:** origin refactor/god-file-modularization (worktree only).
+
+**Post-push confirmation (clean):**
+- Working tree clean on `refactor/god-file-modularization`.
+- Latest: 619fa2f (the fix commit).
+- `git push` reported "Everything up-to-date".
+
+**Main checkout verification (read-only, multiple times including final):**
+```
+cd /Users/linux4life/dev/front-porch-AI && git status --porcelain --branch && git log --oneline -1 && git diff --stat | cat ; echo "MAIN_READONLY_EXIT=$?"
+```
+Only pre-existing dirt (refactoring-guide.md + some untracked from before this session); zero additional changes from this fix or the commit/push.
+
+**Main pristine rule followed 100%.** All writes/edits/cds used absolute paths to the worktree `/Users/linux4life/dev/front-porch-stage1-experiment`.
+
+The MD already contained the exhaustive gate recaps, re-runs, re-reads of abs on-disk files + /tmp, Hygiene, extended won'tfix, "0 open", "interactive manual smoke required by human pre-landing" etc. This subsection simply records the explicit "commit and push" execution + outputs as requested.
+
+All prior constraints (AGENTS.md, CLAUDE.md, refactoring-guide.md, worktree safety, no main pollution, etc.) observed.
+
+**Status after this commit/push:** The bugfix + its full audit trail in the progress log is now on the branch and pushed. Tree clean. Ready for next (step 10 or human smoke).
