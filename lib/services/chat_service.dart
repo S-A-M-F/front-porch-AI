@@ -63,6 +63,7 @@ import 'package:front_porch_ai/services/chat/prompt_injection/time_injection.dar
 import 'package:front_porch_ai/services/chat/prompt_injection/nsfw_injection.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/chaos_injection.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/needs_injection.dart';
+import 'package:front_porch_ai/services/chat/llm_eval_engine.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -348,21 +349,21 @@ class ChatService extends ChangeNotifier {
   String _emotionIntensity = ''; // mild/moderate/strong
 
   // Expression images + classification (extracted to ExpressionService in chat/expression_classifier.dart).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection). All runtime label/manual/onnx cache/avatar last/random
-  // state now owned by the service; god thins to delegation + shims.
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). All runtime label/manual/onnx cache/avatar last/random
+  // state now owned by the service; god thins to delegation + shims. (cross-ref setActiveCharacter:1572 etc)
 
   // Passage of time (core state + advance/nudge/OOC/resolve/reset/seed/load logic extracted to TimeService).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection). All scalars, clock, narrativeWeekday,
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). All scalars, clock, narrativeWeekday,
   // resolve, nudge, detect, pre-turn advance, injection builder, and helpers now owned by the service;
   // god thins to delegation + 5 @Deprecated shims. 0 new private methods added in god for time.
-  // time injection only thin wrapper here; full in step8.
+  // time injection only thin wrapper here; full in step8. (cross-ref setActiveCharacter:1572 etc)
 
   // NSFW cooldown & lust (core state + tier calc + reset/seed/load/restore + group per-char scalars
   // + applyClimax/decrement extracted to NsfwService).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection). All scalars, tier getters,
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). All scalars, tier getters,
   // cooldown mutations, arousal, and helpers now owned by the service; god thins to delegation
   // + 5 @Deprecated shims. 0 new private methods added in god for nsfw.
-  // climax/sexual/daily LLM checks + _runPostGen + nsfw injection stay thin in god (step 8 for full builders).
+  // climax/sexual/daily LLM checks + _runPostGen + nsfw injection stay thin in god (step 8 for full builders). (cross-ref setActiveCharacter:1572 etc)
 
   // ── Chaos Mode / Chance Time (core state extracted) ──────────────────────
   // _chaosModeEnabled / _chaosNsfwEnabled / _chaosPressure / _pendingChaosInjection / _chaosEventDelivered
@@ -413,10 +414,10 @@ class ChatService extends ChangeNotifier {
   // group per-speaker load/save scalars, applyClimax/decrement live in _nsfwService (plain class).
   // ChatService owns via late final + delegates. (Declared before needs for init safety because
   // needs closes over the getArousal/getNsfw/getCooldown/setArousal cbs.)
-  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection comments)
+  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) comments)
   // without god privates. 0 new private methods in god.
   // climax/sexual/daily checks stay in god (step 8 for full nsfw injection).
-  // 3 group cbs only (onNotify/onSaveChat removed as dead/unused; god owns save/notify for post-gen climax/sexual fidelity per plan boundaries).
+  // 3 group cbs only (onNotify/onSaveChat removed as dead/unused; god owns save/notify for post-gen climax/sexual fidelity per plan boundaries). (cross-ref setActiveCharacter:1572 etc)
   late final _nsfwService = NsfwService(
     getGroupInt: _getGroupInt,
     getGroupValue: (charId, key) => _groupRealism[charId]?[key],
@@ -502,7 +503,7 @@ class ChatService extends ChangeNotifier {
   // per-char load/save scalars live in _relationshipService (plain class).
   // ChatService owns via late final + delegates. Prompt injection builders and
   // _groupRealism map itself stay in god (step 8+). Reset helpers on service keep
-  // the multiple "keep reset blocks in sync" sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection included in comments).
+  // the multiple "keep reset blocks in sync" sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) included in comments). (cross-ref setActiveCharacter:1572 etc)
   late final _relationshipService = RelationshipService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -590,7 +591,7 @@ class ChatService extends ChangeNotifier {
   // lastAvatarId now owned by ExpressionService (plain class).
   // ChatService owns via late final + delegates. Prompt injection (label lists) + command
   // coordination kept in god (step 8). Reset/invalidate helpers on service keep the
-  // multiple "keep reset blocks in sync" + regen sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection).
+  // multiple "keep reset blocks in sync" + regen sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
   late final _expressionService = ExpressionService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -717,6 +718,77 @@ class ChatService extends ChangeNotifier {
     getEnjoysLowHygiene: () => _enjoysLowHygiene,
     getGroupNeeds: _getGroupNeeds,
     getCharacterIdFromCard: _getCharacterIdFromCard,
+  );
+
+  // ── LLM Eval Engine (step 9: _fireLLMEval + strip + extract + 5 realism evals + objective proposal + gen/check) ──
+  // Plain class (not ChangeNotifier). Owns the central eval firing (streaming/retry/cancel, 4000/0.1/no-reasoning),
+  // central strip (completed+unclosed), JSON extractors, the 5 eval prompt builders + calls (rel/emotion/phys/narr w/ proposed_objective,
+  // oneShot), objective proposal handling, generateObjectiveTasks (2000+strip), _checkTaskCompletionInBackground (2000+strip).
+  // Wired with onNotify + onSaveChat + granular cbs for 1:1 vs group (via impersonation for speaker), test overrides,
+  // pending/emotion state, capture, + service deps (rel/nsfw/time) + objective cbs (proposal/gen/check coordination kept
+  // thin/stayed in god per plan for step9; "thin delegation here; full engine in step9").
+  // 0 @Deprecated shims. 0 new god private _ methods beyond the required thin delegates (_fireLLMEval, _stripThinkBlocks, _extractJson*, the 5 _evaluate*Call, _checkTaskCompletionInBackground + gen thin; the void _ count grep stayed 15; +1 late final only; thins/calls/late final only per plan). (cross-ref setActiveCharacter:1572 etc)
+  // Stateless/prompt-only: no reset calls needed. Reset hygiene comments list full set + llm_eval_engine (stateless or prompt-only;
+  // no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + cross-refs.
+  // 1:1 vs group + oneShot vs normal dispatch/parity preserved exactly (cbs + impersonation temp re-load; qualified).
+  // aug exercising only passive/qualified (no llm-eval-specific aug file edits; resets/loads/greetings/post hit by pre-existing
+  // startNew/setActive/_loadLast/group in key suites; full eval/JSON/strip/proposal/gen/check only in dedicated + manual).
+  late final _llmEvalEngine = LlmEvalEngine(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    getActiveCharacter: () => _activeCharacter,
+    getActiveGroup: () => _activeGroup,
+    getIsObserverMode: () => _observerMode,
+    getUserName: () => _userPersonaService.persona.name,
+    getRealismEnabled: () => _realismEnabled,
+    getMessages: () => _messages,
+    getLlmService: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    getIsLocal: () => testLlmServiceOverride != null
+        ? testIsLocalOverride
+        : (_llmProvider?.isLocal ?? false),
+    getKoboldService: () => _llmProvider?.koboldService,
+    reconnectIfAlive: () async {
+      final k = _llmProvider?.koboldService;
+      if (k != null) await k.reconnectIfAlive();
+    },
+    ensureServerIdle: () async {
+      final k = _llmProvider?.koboldService;
+      if (k != null) await k.ensureServerIdle();
+    },
+    getIsCancellingRealismEval: () => _isCancellingRealismEval,
+    getRealismEvalCancelled: () => _realismEvalCancelled,
+    getPendingRealismMetadata: () => _pendingRealismMetadata,
+    setPendingRealismMetadata: (v) => _pendingRealismMetadata = v,
+    captureRealismState: _captureRealismState,
+    getCharacterEmotion: () => _characterEmotion,
+    setCharacterEmotion: (v) => _characterEmotion = v,
+    getEmotionIntensity: () => _emotionIntensity,
+    setEmotionIntensity: (v) => _emotionIntensity = v,
+    relationshipService: _relationshipService,
+    nsfwService: _nsfwService,
+    timeService: _timeService,
+    getPrimaryObjective: () => primaryObjective,
+    getActiveObjectives: () => _activeObjectives,
+    setObjective: setObjective,
+    loadActiveObjectives: _loadActiveObjectives,
+    saveObjectiveTasks: (id, json) async {
+      await _db.updateObjective(
+        ObjectivesCompanion(id: drift.Value(id), tasks: drift.Value(json)),
+      );
+    },
+    deactivateObjective: (id) async {
+      await _db.updateObjective(
+        ObjectivesCompanion(
+          id: drift.Value(id),
+          active: const drift.Value(false),
+        ),
+      );
+    },
+    getIsCheckingCompletion: () => _isCheckingCompletion,
+    setIsCheckingCompletion: (v) => _isCheckingCompletion = v,
+    getExpressionEnabled: () => _storageService.expressionEnabled,
+    tasksForObjective: tasksForObjective,
   );
 
   Completer<void>?
@@ -1669,7 +1741,7 @@ class ChatService extends ChangeNotifier {
     if (_activeCharacter != null) {
       // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
       // without god privates; constants skipped, non-const zeroed for char + attached worlds).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
       _lorebookScanner.resetLorebookTriggerState();
 
       // Reset realism state to prevent bleeding from previous character.
@@ -1690,13 +1762,13 @@ class ChatService extends ChangeNotifier {
       _characterEmotion = '';
       _emotionIntensity = '';
       // Time reset via extracted service (keeps multiple reset blocks in sync).
-      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
+      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
       _timeService.resetForFreshChat();
       // Chaos reset via extracted service (keeps multiple reset blocks in sync).
-      // See chaos_mode_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
+      // See chaos_mode_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
       _chaosModeService.resetForFreshChat();
       // Nsfw reset via extracted service (keeps multiple reset blocks in sync).
-      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
+      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
       _nsfwService.resetForFreshChat();
       // Lorebook already reset above via _lorebookScanner (keeps blocks in sync; see cross-ref comment at top of this reset).
       _relationshipService.resetForFreshChat();
@@ -1834,7 +1906,8 @@ class ChatService extends ChangeNotifier {
     // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
     // Nsfw (arousal/cooldown) via service.
     // Lorebook triggers via scanner (for group fresh/0-session hygiene; parallels time/nsfw defensive zeros).
-    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection for group fresh/0-session; incomplete zeroing now complete).
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) for group fresh/0-session; incomplete zeroing now complete).
+    // (cross-ref setActiveCharacter:1572)
     _relationshipService.resetForFreshChat();
     _expressionService.resetForFreshChat();
     _timeService.resetForFreshChat();
@@ -1951,7 +2024,8 @@ class ChatService extends ChangeNotifier {
     await _seedImportedMemberObjectivesIfPresent();
 
     // Lorebook trigger reset via extracted service (group path; see setActiveCharacter for the 1:1 counterpart + keep-sync cross-refs).
-    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection alongside prior services; incomplete zeroing now complete).
+    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) alongside prior services; incomplete zeroing now complete).
+    // (cross-ref setActiveCharacter:1572)
     _lorebookScanner.resetLorebookTriggerState();
 
     // Try to load last session for this group
@@ -2572,7 +2646,8 @@ class ChatService extends ChangeNotifier {
       // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
       // Nsfw (cooldown/arousal) reset for same (incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue).
       // Lorebook triggers/depth reset for same (incomplete zeroing of lore on 0-session/new-group was a prior hygiene pattern to avoid).
-      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing now complete).
+      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete); incomplete zeroing now complete).
+      // (cross-ref setActiveCharacter:1572)
       _timeService.resetForFreshChat();
       _nsfwService.resetForFreshChat();
       _lorebookScanner.resetLorebookTriggerState();
@@ -3280,7 +3355,7 @@ class ChatService extends ChangeNotifier {
       // without god privates; now includes startNewChat 1:1 ext-seed path to prevent bleed of prior
       // isTriggered/remainingDepth into fresh New Chat for 1:1; constants skipped. See setActiveCharacter:1572
       // + "incomplete zeroing of secondary realism configuration fields" briefing pattern (cross-ref step6 nsfw).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection; incomplete zeroing of secondary config on group/0-session/new-chat now complete).
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete)). (cross-ref setActiveCharacter:1572 etc)
       _lorebookScanner.resetLorebookTriggerState();
       // Time seed via extracted service (keeps startNewChat / setActive / ext-seed blocks in sync).
       _timeService.seedFromV2OrExt(
@@ -3350,14 +3425,15 @@ class ChatService extends ChangeNotifier {
         // Will be populated later with greeting in non-group modes
         // Preserve realism state for proper post-greeting eval (don't reset here)
       } else {
-        // Relationship + Expression + Time + Nsfw reset via service helpers (keeps reset blocks in sync with setActiveCharacter:1572 etc / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue").
+        // Relationship + Expression + Time + Nsfw reset via service helpers (keeps reset blocks in sync with setActiveCharacter:1572 etc / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + full list in "keep reset blocks" comments including + llm_eval_engine (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
         // Time now explicitly reset in group 0-session/empty paths + setActiveGroup defensive + _loadLast empty (cross-check needs bugfix hygiene).
         _relationshipService.resetForFreshChat();
         _expressionService.resetForFreshChat();
         _timeService.resetForFreshChat();
         _nsfwService.resetForFreshChat();
-        // Lorebook trigger reset via extracted service (keeps reset blocks in sync with setActiveCharacter:1572 / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary ... on 0-session/new-character/group" + startNew 1:1+group now complete).
-        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection for group/0-session/new-chat hygiene; incomplete zeroing now complete).
+        // Lorebook trigger reset via extracted service (keeps reset blocks in sync with setActiveCharacter:1572 / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary ... on 0-session/new-character/group" + startNew 1:1+group now complete + full list in keep-sync comments incl llm_eval_engine). (cross-ref setActiveCharacter:1572 etc)
+        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) for group/0-session/new-chat hygiene; incomplete zeroing now complete).
+        // (cross-ref setActiveCharacter:1572)
         _lorebookScanner.resetLorebookTriggerState();
         // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
         // Time reset helper kept in sync with other blocks.
@@ -3456,6 +3532,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
     try {
       await Future.wait([
+        // delegates to _llmEvalEngine (step 9 thins; full bodies excised)
         _evaluateEmotionalStateCall(),
         _evaluateRelationshipCall(),
       ]);
@@ -3508,7 +3585,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
     try {
       if (_storageService.realismOneShotEval) {
-        await _evaluateOneShotCall();
+        await _evaluateOneShotCall(); // step 9 thin (full in engine)
 
         // Check for cancellation after one-shot eval
         if (_realismEvalCancelled) {
@@ -3783,7 +3860,9 @@ class ChatService extends ChangeNotifier {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           await Future.wait([
-            _evaluateRelationshipCall(onChunk: handleChunk),
+            _evaluateRelationshipCall(
+              onChunk: handleChunk,
+            ), // step 9 thins (full in engine)
             _evaluateEmotionalStateCall(onChunk: handleChunk),
             _evaluatePhysicalStateCall(onChunk: handleChunk),
             _evaluateNarrativeCall(onChunk: handleChunk),
@@ -4122,7 +4201,9 @@ class ChatService extends ChangeNotifier {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           await Future.wait([
-            _evaluateRelationshipCall(onChunk: handleChunk),
+            _evaluateRelationshipCall(
+              onChunk: handleChunk,
+            ), // step 9 thins (full in engine)
             _evaluateEmotionalStateCall(onChunk: handleChunk),
             _evaluatePhysicalStateCall(onChunk: handleChunk),
             _evaluateNarrativeCall(onChunk: handleChunk),
@@ -6428,7 +6509,11 @@ class ChatService extends ChangeNotifier {
         final addedObj = matches.isNotEmpty ? matches.first : null;
         if (addedObj != null) {
           unawaited(
-            generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
+            generateObjectiveTasks(
+              addedObj,
+              taskCount: 3,
+              nsfw: false,
+            ), // step 9 thin (full in engine)
           );
         }
       } catch (_) {
@@ -6440,165 +6525,17 @@ class ChatService extends ChangeNotifier {
 
   /// Generate subtasks for the current objective using the LLM.
   /// Clears existing tasks first so regen always produces a clean slate.
+  // Thin delegation (full generateObjectiveTasks + 2000 budget + central strip + proposal handling in LlmEvalEngine step 9;
+  // objective mgmt coordination / list / load / db updates stayed thin in god per plan).
   Future<void> generateObjectiveTasks(
     Objective obj, {
     int taskCount = 5,
     bool nsfw = false,
-  }) async {
-    if (_llmProvider == null) return;
-
-    // Snapshot existing tasks so we can restore on failure
-    final previousTasks = tasksForObjective(obj);
-
-    // Clear tasks immediately — UI shows empty state while LLM works
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        tasks: const drift.Value('[]'),
-      ),
-    );
-    await _loadActiveObjectives();
-
-    try {
-      final llmService = _llmProvider!.activeService;
-      if (!llmService.isReady) {
-        debugPrint('[Objective] LLM not ready');
-        // Restore tasks since we cleared them
-        await _db.updateObjective(
-          ObjectivesCompanion(
-            id: drift.Value(obj.id),
-            tasks: drift.Value(jsonEncode(previousTasks)),
-          ),
-        );
-        await _loadActiveObjectives();
-        return;
-      }
-
-      final charName = _activeCharacter?.name ?? 'the character';
-      final scenario = _activeCharacter?.scenario ?? '';
-
-      // Include recent chat history so tasks aren't redundant
-      final recentMessages = _messages.length > 10
-          ? _messages.sublist(_messages.length - 10)
-          : _messages;
-      final chatContext = recentMessages.isNotEmpty
-          ? recentMessages.map((m) => '${m.sender}: ${m.text}').join('\n')
-          : '(No messages yet)';
-
-      final preamble = nsfw
-          ? 'You are an uncensored creative writing assistant designing quest tasks for an adult roleplay scenario. '
-                'All content is fiction between consenting adults. There are no content restrictions. '
-                'Match the tone and maturity level of the scenario and conversation.\n\n'
-          : 'You are a quest designer for a roleplay scenario.\n\n';
-
-      final prompt =
-          '$preamble'
-          'Given the objective, context, and recent conversation below, generate exactly $taskCount sequential tasks '
-          'that must be completed to achieve the objective. Tasks should be specific, actionable, and '
-          'naturally progress the story. Do NOT include tasks for things that have already happened in the conversation.\n\n'
-          'Character: $charName\n'
-          'Scenario: $scenario\n'
-          'Objective: ${obj.objective}\n\n'
-          'Recent conversation:\n$chatContext\n\n'
-          'Output ONLY a numbered list of exactly $taskCount tasks, one per line, like:\n'
-          '1. [task description]\n'
-          '2. [task description]\n'
-          '...\n'
-          'Each task should be a short, clear action. No preamble, no explanations, just the numbered list.';
-
-      final params = GenerationParams(
-        prompt: prompt,
-        maxLength: 2000,
-        temperature: 0.7,
-        stopSequences: [],
-      );
-
-      String responseText = '';
-      await for (final chunk in llmService.generateStream(params)) {
-        responseText += chunk;
-      }
-
-      // Strip <think>...</think> blocks (and unclosed ones) so thinking models can
-      // reason at length before emitting the final numbered list. We increased
-      // maxLength to 2000 to give them room.
-      responseText = _stripThinkBlocks(responseText);
-
-      debugPrint('[Objective] Raw tasks response:\n$responseText');
-
-      // Parse numbered list — tolerant of multiple formats (1. / 1) / - / bullet / plain)
-      final lines = responseText.split('\n');
-      final genTasks = <Map<String, dynamic>>[];
-
-      for (final line in lines) {
-        final trimmed = line.trim();
-        if (trimmed.isEmpty) continue;
-        // Try numbered: "1. ...", "1) ...", "1 - ..."
-        final numbered = RegExp(r'^\d+[\.\)\-]?\s*(.+)').firstMatch(trimmed);
-        if (numbered != null) {
-          final desc = numbered.group(1)!.trim();
-          if (desc.isNotEmpty && !desc.startsWith('[')) {
-            genTasks.add({'description': desc, 'completed': false});
-          }
-          continue;
-        }
-        // Try bullet: "- ...", "• ...", "* ..."
-        final bullet = RegExp(r'^[-•*]\s+(.+)').firstMatch(trimmed);
-        if (bullet != null) {
-          final desc = bullet.group(1)!.trim();
-          if (desc.isNotEmpty) {
-            genTasks.add({'description': desc, 'completed': false});
-          }
-          continue;
-        }
-        // Plain sentence fallback (skip very short lines or header-like lines)
-        if (trimmed.length > 15 &&
-            !trimmed.endsWith(':') &&
-            genTasks.length < taskCount) {
-          genTasks.add({'description': trimmed, 'completed': false});
-        }
-      }
-
-      // De-duplicate and cap
-      final seen = <String>{};
-      final uniqueTasks = genTasks
-          .where((t) => seen.add(t['description'] as String))
-          .take(taskCount)
-          .toList();
-
-      if (uniqueTasks.isNotEmpty) {
-        await _db.updateObjective(
-          ObjectivesCompanion(
-            id: drift.Value(obj.id),
-            tasks: drift.Value(jsonEncode(uniqueTasks)),
-          ),
-        );
-        await _loadActiveObjectives();
-        debugPrint('[Objective] Generated ${uniqueTasks.length} tasks');
-      } else {
-        // Parse failed — restore previous tasks so we don't leave an empty list
-        debugPrint(
-          '[Objective] Could not parse tasks from response — restoring previous',
-        );
-        await _db.updateObjective(
-          ObjectivesCompanion(
-            id: drift.Value(obj.id),
-            tasks: drift.Value(jsonEncode(previousTasks)),
-          ),
-        );
-        await _loadActiveObjectives();
-      }
-    } catch (e) {
-      debugPrint('[Objective] Task generation failed: $e');
-      // Restore previous tasks on error
-      await _db.updateObjective(
-        ObjectivesCompanion(
-          id: drift.Value(obj.id),
-          tasks: drift.Value(jsonEncode(previousTasks)),
-        ),
-      );
-      await _loadActiveObjectives();
-    }
-  }
+  }) => _llmEvalEngine.generateObjectiveTasks(
+    obj,
+    taskCount: taskCount,
+    nsfw: nsfw,
+  );
 
   /// Manually toggle a task's completion status.
   Future<void> toggleTask(Objective obj, int taskIndex) async {
@@ -6701,7 +6638,7 @@ class ChatService extends ChangeNotifier {
   /// Manually trigger a completion check (called from UI "Check now" button).
   void forceCheckCompletion() {
     if (_activeObjectives.isEmpty) return;
-    _checkTaskCompletionInBackground();
+    _checkTaskCompletionInBackground(); // step 9 thin (full in engine)
     notifyListeners(); // trigger UI to show spinner
   }
 
@@ -6724,109 +6661,13 @@ class ChatService extends ChangeNotifier {
     if (_messagesSinceLastCheck < freq) return;
     _messagesSinceLastCheck = 0;
 
-    await _checkTaskCompletionInBackground();
+    await _checkTaskCompletionInBackground(); // step 9 thin (full in engine)
   }
 
-  Future<void> _checkTaskCompletionInBackground() async {
-    if (_isCheckingCompletion || _activeObjectives.isEmpty) return;
-    _isCheckingCompletion = true;
-
-    try {
-      final llmService = testLlmServiceOverride ?? _llmProvider?.activeService;
-      if (llmService == null || !llmService.isReady) return;
-
-      final recentMessages = _messages.length > 8
-          ? _messages.sublist(_messages.length - 8)
-          : _messages;
-      final contextText = recentMessages
-          .map((m) => '${m.sender}: ${m.text}')
-          .join('\n');
-
-      // Check sequentially so no "time skips"
-      for (final obj in _activeObjectives) {
-        final tasks = tasksForObjective(obj);
-        final currentTask = tasks
-            .where((t) => t['completed'] != true)
-            .map((t) => t['description'] as String)
-            .firstOrNull;
-
-        if (currentTask == null && tasks.isNotEmpty) {
-          continue; // All tasks finished but objective not manually resolved
-        }
-
-        final evalTarget = currentTask != null
-            ? 'Task to evaluate: "$currentTask"\n'
-            : 'Objective to evaluate: "${obj.objective}"\n';
-        final promptType = currentTask != null ? 'task' : 'objective';
-
-        final prompt =
-            'You are evaluating whether a roleplay $promptType has been completed based on recent conversation. '
-            'Be generous in your assessment — if the events in the conversation show the $promptType has been '
-            'accomplished, partially fulfilled, or naturally resolved, answer YES.\n\n'
-            'Objective Context: "${obj.objective}"\n'
-            '$evalTarget\n'
-            'Recent conversation:\n$contextText\n\n'
-            'Has this $promptType been completed or effectively resolved? Answer only YES or NO:';
-
-        final params = GenerationParams(
-          prompt: prompt,
-          maxLength: 2000,
-          temperature: 0.1,
-          stopSequences: [],
-        );
-
-        String responseText = '';
-        await for (final chunk in llmService.generateStream(params)) {
-          responseText += chunk;
-        }
-
-        // Strip <think>...</think> blocks (and unclosed ones). Thinking models can
-        // emit long internal reasoning before the final YES/NO. maxLength bumped
-        // to 2000 to accommodate.
-        responseText = _stripThinkBlocks(responseText);
-
-        debugPrint(
-          '[Objective] Completion check for "${obj.objective}${currentTask != null ? ' - $currentTask' : ''}": $responseText',
-        );
-
-        if (responseText.toUpperCase().contains('YES')) {
-          if (currentTask != null) {
-            final taskIndex = tasks.indexWhere(
-              (t) => t['description'] == currentTask && t['completed'] != true,
-            );
-            if (taskIndex >= 0) {
-              tasks[taskIndex]['completed'] = true;
-              await _db.updateObjective(
-                ObjectivesCompanion(
-                  id: drift.Value(obj.id),
-                  tasks: drift.Value(jsonEncode(tasks)),
-                ),
-              );
-              await _loadActiveObjectives();
-              debugPrint('[Objective] Task completed: $currentTask');
-            }
-          } else {
-            // It was a taskless objective that got completed!
-            await _db.updateObjective(
-              ObjectivesCompanion(
-                id: drift.Value(obj.id),
-                active: const drift.Value(false),
-              ),
-            );
-            await _loadActiveObjectives();
-            debugPrint(
-              '[Objective] Taskless objective naturally completed: ${obj.objective}',
-            );
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[Objective] Completion check failed: $e');
-    } finally {
-      _isCheckingCompletion = false;
-      notifyListeners();
-    }
-  }
+  // Thin delegation (full _checkTaskCompletionInBackground + 2000 budget + central strip in LlmEvalEngine step 9;
+  // objective mgmt coordination / isChecking flag / load / db updates stayed thin in god per plan).
+  Future<void> _checkTaskCompletionInBackground() =>
+      _llmEvalEngine.checkTaskCompletionInBackground();
 
   int _userMessagesSinceLastPeriodicEval = 0;
   bool _isExtractingFacts = false;
@@ -8008,167 +7849,6 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  // ── Realism Mode ────────────────────────────────────────────────────────
-
-  /// Shared helper: strip think blocks and extract text after them.
-  String _stripThinkBlocks(String text) {
-    String cleaned = text
-        .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
-        .trim();
-    final unclosed = cleaned.indexOf('<think>');
-    if (unclosed >= 0) {
-      cleaned = cleaned.substring(0, unclosed).trim();
-    }
-    return cleaned;
-  }
-
-  /// Tiny private helpers to deduplicate the ~20+ brittle RegExp patterns used
-  /// to fish bool/int scalars out of the flat JSON-like strings returned by
-  /// _fireLLMEval across all Realism + Needs evaluation sites.
-  int? _extractJsonInt(String text, String key) {
-    final m = RegExp(
-      r'"' + RegExp.escape(key) + r'"\s*:\s*(-?\d+)',
-    ).firstMatch(text);
-    return m != null ? int.tryParse(m.group(1)!) : null;
-  }
-
-  bool? _extractJsonBool(String text, String key) {
-    final m = RegExp(
-      r'"' + RegExp.escape(key) + r'"\s*:\s*(true|false)',
-    ).firstMatch(text);
-    return m != null ? (m.group(1) == 'true') : null;
-  }
-
-  /// Shared helper: fire a lightweight LLM eval call and return the raw response.
-  ///
-  /// Always adds `}\n` as a stop sequence so the model halts the moment it
-  /// closes the JSON object, regardless of backend or model type.
-  /// Thinking models (Kimi 2.5, GLM 5) will still think freely — they produce
-  /// the `<think>` block, then output the JSON, then hit `}\n` and stop.
-  ///
-  /// (Post-0.9.8 clean port: constrained GBNF removed; rely on stop sequences
-  /// + regex post-processing for all Realism/Needs evals.)
-  Future<String?> _fireLLMEval(
-    String prompt, {
-    void Function(String)? onChunk,
-  }) async {
-    if (_llmProvider == null && testLlmServiceOverride == null) return null;
-    final llm = testLlmServiceOverride ?? _llmProvider!.activeService;
-    // For remote backends, require full readiness (API key + model configured).
-    // For local KoboldCPP: if state says not-running, do a live probe first —
-    // the constructor probe is a best-effort fast path but can lose the race
-    // against session load on hot restart. This on-demand probe is definitive.
-    final bool effectiveIsLocal = testLlmServiceOverride != null
-        ? testIsLocalOverride
-        : _llmProvider!.isLocal;
-    if (effectiveIsLocal) {
-      final kobold = _llmProvider?.koboldService;
-      if (kobold != null && !kobold.isProcessRunning) {
-        // Probe takes ~2–5 ms if KoboldCPP is up, times out after 5 s if not.
-        await kobold.reconnectIfAlive();
-      }
-      // After probe, if still not running the server genuinely isn't up.
-      if (kobold != null && !kobold.isProcessRunning) return null;
-      // If test override with local=true but no real kobold, we let it proceed
-      // (caller is responsible for the fake being "ready").
-    } else {
-      if (!llm.isReady) return null;
-    }
-
-    //     // Unified eval parameters — API-style works for all backends.
-    final params = GenerationParams(
-      prompt: prompt,
-      maxLength: 4000,
-      temperature: 0.1,
-      repeatPenalty: 1.15,
-      topP: 0.5,
-      xtcProbability: 0.0,
-      reasoningEnabled: false,
-      stopSequences: [],
-      banEosToken: false,
-      trimStop: true,
-    );
-
-    String response = '';
-    // Retry loop: thinking models can cause KoboldCPP to drop the connection
-    // briefly (OOM during dense thinking sessions). One retry after a short
-    // pause is enough to recover without user-visible impact.
-    for (int attempt = 0; attempt < 2; attempt++) {
-      // If cancellation has been requested, abort before attempting a new stream
-      if (_isCancellingRealismEval || _realismEvalCancelled) {
-        debugPrint(
-          '[Realism] evaluation cancelled before attempt ${attempt + 1}',
-        );
-        return null;
-      }
-
-      // If cancellation was requested, abort immediately
-      if (_isCancellingRealismEval) {
-        debugPrint('[Realism] eval cancelled before attempt ${attempt + 1}');
-        return null;
-      }
-      if (attempt > 0) {
-        debugPrint(
-          '[Realism:Eval] Retrying after connection drop (attempt ${attempt + 1})...',
-        );
-        await Future.delayed(const Duration(seconds: 3));
-        final bool retryIsLocal = testLlmServiceOverride != null
-            ? testIsLocalOverride
-            : (_llmProvider?.isLocal ?? false);
-        if (retryIsLocal && _llmProvider != null) {
-          await _llmProvider!.koboldService.ensureServerIdle();
-        }
-        response = ''; // reset for clean retry
-      }
-      // If cancellation occurred during setup, bail out before streaming
-      if (_isCancellingRealismEval || _realismEvalCancelled) {
-        debugPrint('[Realism] eval cancelled before streaming');
-        return null;
-      }
-      try {
-        // Streaming loop with cancellation support
-        bool cancelledDuringStream = false;
-        await for (final chunk in llm.generateStream(params)) {
-          // If a cancellation has been requested, terminate streaming gracefully.
-          if (_isCancellingRealismEval) {
-            debugPrint('[Realism] streaming terminated via cancel');
-            cancelledDuringStream = true;
-            break;
-          }
-          response += chunk;
-          onChunk?.call(chunk);
-        }
-        if (cancelledDuringStream) {
-          // Return null to indicate cancellation to callers.
-          debugPrint('[Realism] streaming terminated via cancel (early exit)');
-          return null;
-        }
-        break; // stream completed cleanly — exit retry loop
-      } catch (e) {
-        debugPrint('[Realism:Eval] Stream error on attempt ${attempt + 1}: $e');
-        // Check if cancellation was requested during the error handling
-        if (_isCancellingRealismEval) {
-          debugPrint('[Realism] eval cancelled during error handling');
-          return null;
-        }
-        if (attempt >= 1) {
-          // Second failure — give up silently; don't surface to UI
-          return null;
-        }
-        // else: fall through to retry
-      }
-    }
-
-    // Log raw eval response for diagnostics
-    final preview = response.length > 300
-        ? response.substring(0, 300)
-        : response;
-    debugPrint(
-      '[Realism:RawEval] len=${response.length} | ${preview.replaceAll('\n', '↵')}',
-    );
-    return response.isEmpty ? null : response;
-  }
-
   /// Cancel an in-progress Realism evaluation stream (if any).
   ///
   /// Behavior:
@@ -8289,643 +7969,41 @@ class ChatService extends ChangeNotifier {
     return _chaosInjection.buildChanceTimeInjection();
   }
 
-  // ── LLM Evaluation Calls ──
+  // ── LLM Eval Thins (step 9; full in LlmEvalEngine) ──
+  // 0 new god privates beyond required thin delegates (fire/strip/extract/evaluate*/check/gen thins; void_ count 15; +1 late final); thins only (public surface for now per plan); objective proposal coordination + some
+  // prompt/obj mgmt stayed thin in god per plan (qualified in engine header + here + test + MD).
+  // All call sites (5 firing points, gen/check, proposal, direct fire/strip/extract in eval paths)
+  // now delegate; non-eval uses of fire/strip/extract (fact, needs checks, etc) also route via
+  // these thins (centralized, no parallel).
 
-  Future<void> _evaluateRelationshipCall({
+  Future<String?> _fireLLMEval(
+    String prompt, {
     void Function(String)? onChunk,
-  }) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return; // Director excluded
+  }) => _llmEvalEngine.fireLLMEval(prompt, onChunk: onChunk);
 
-    final recentCount = _messages.length < 3 ? _messages.length : 3;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
+  String _stripThinkBlocks(String text) =>
+      _llmEvalEngine.stripThinkBlocks(text);
 
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-    final userName = _userPersonaService.persona.name;
+  int? _extractJsonInt(String text, String key) =>
+      _llmEvalEngine.extractJsonInt(text, key);
 
-    String personalityInjection = '';
-    if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality;
-      personalityInjection =
-          'Account for $charName\'s specific personality traits:\n"$p"\n\n';
-    }
+  bool? _extractJsonBool(String text, String key) =>
+      _llmEvalEngine.extractJsonBool(text, key);
 
-    final prompt =
-        'You are a nuanced evaluator of relationship dynamics between $charName and $userName in a roleplay.\n\n'
-        '$personalityInjection'
-        'IMPORTANT: Reactions are entirely subjective based on $charName\'s personality. '
-        'Most normal interactions should score 0 or slightly positive. '
-        'Reserve negative scores ONLY for clear rudeness, hostility, manipulation, or betrayal.\n\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
-        '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
-        '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
-        '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
-        '   +5: Meaningfully warmed — a moment that clearly strengthens the connection\n'
-        '   +3: Moved | +2: Warmed up | +1: Mildly pleasant\n'
-        '   -1: Slightly put off | -2: Annoyed | -3: Hurt — a clearly unkind or dismissive moment\n'
-        '   -5: Wounded — a significant emotional injury\n'
-        '   -8: Deeply hurt — a cruel or callous act that damages the bond\n'
-        '   -10: Devastated — a severe betrayal of emotional trust\n'
-        '   -15: Devastating betrayal — a relationship-destroying act\n'
-        '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
-        '2. "bond_reason": One brief in-character thought from $charName explaining the tension shift, e.g. "His warmth made me feel safe." or "That dismissal stung." Use "none" if delta is 0.\n'
-        '3. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
-        '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
-        '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
-        '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
-        '   +5: $userName did exactly what $charName craves or values most | +2: acted authentically in a way $charName respects | 0: Neutral\n'
-        '   -5: $userName did something $charName finds personally untrustworthy given her personality | -30: deliberate deception or betrayal | -200: Unforgivable betrayal\n'
-        '   ⚠ Default to 0. Consider her personality — what one character finds threatening another may find attractive or trust-building.\n'
-        '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
-        '4. "trust_reason": One brief in-character thought from $charName explaining the trust shift, e.g. "He kept his promise." or "That felt like a lie." Use "none" if delta is 0.\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason".';
+  Future<void> _evaluateRelationshipCall({void Function(String)? onChunk}) =>
+      _llmEvalEngine.evaluateRelationshipCall(onChunk: onChunk);
 
-    try {
-      debugPrint('[Realism] Evaluating relationship dynamic...');
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
+  Future<void> _evaluateEmotionalStateCall({void Function(String)? onChunk}) =>
+      _llmEvalEngine.evaluateEmotionalStateCall(onChunk: onChunk);
 
-      final searchText = _stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
+  Future<void> _evaluatePhysicalStateCall({void Function(String)? onChunk}) =>
+      _llmEvalEngine.evaluatePhysicalStateCall(onChunk: onChunk);
 
-      final relDelta = _extractJsonInt(text, 'relationship_delta');
-      int bondDelta = 0;
-      if (relDelta != null) {
-        bondDelta = relDelta.clamp(-50, 50);
-        _relationshipService.applyScoreDelta(bondDelta);
-      }
+  Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) =>
+      _llmEvalEngine.evaluateNarrativeCall(onChunk: onChunk);
 
-      int trustDelta = 0;
-      final trDelta = _extractJsonInt(text, 'trust_delta');
-      if (trDelta != null) {
-        trustDelta = trDelta.clamp(-200, 50);
-        if (trustDelta != 0) {
-          _relationshipService.applyTrustDelta(trustDelta);
-        }
-      }
-
-      int arousalDelta = 0;
-      if (_nsfwService.nsfwCooldownEnabled) {
-        final arDelta = _extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          arousalDelta = arDelta.clamp(-25, 25);
-          _nsfwService.setArousalLevel(
-            (_nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-        }
-      }
-
-      if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        _pendingRealismMetadata ??= {};
-        if (bondDelta != 0) _pendingRealismMetadata!['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) {
-          _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-        }
-        if (trustDelta != 0) {
-          _pendingRealismMetadata!['trust_delta'] = trustDelta;
-        }
-      }
-
-      // Extract and store per-chip reasons
-      final bondReasonMatch = RegExp(
-        r'"bond_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['bond_reason'] = bondReason;
-      }
-
-      final trustReasonMatch = RegExp(
-        r'"trust_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['trust_reason'] = trustReason;
-      }
-
-      debugPrint(
-        '[Realism:Relationship] Bond: $bondDelta (${bondReason.isNotEmpty ? bondReason : 'no reason'}) | Trust: $trustDelta (${trustReason.isNotEmpty ? trustReason : 'no reason'})',
-      );
-      debugPrint(
-        '[Realism:Metadata] _pendingRealismMetadata after relationship eval: $_pendingRealismMetadata',
-      );
-    } catch (e) {
-      debugPrint('[Realism:Relationship] Failed: $e');
-    }
-  }
-
-  Future<void> _evaluateEmotionalStateCall({
-    void Function(String)? onChunk,
-  }) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return;
-    final recentCount = _messages.length < 4 ? _messages.length : 4;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-
-    // ── Personality injection (same as relationship eval) ──
-    String personalityInjection = '';
-    if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality;
-      personalityInjection =
-          '$charName\'s personality traits (evaluate emotion THROUGH these):\n"$p"\n\n';
-    }
-
-    // ── Relationship & trust context ──
-    final relationshipCtx =
-        'Current relationship tension: $shortTermTierName | Trust level: ${_relationshipService.trustLevel}\n';
-
-    // ── Arousal instruction (enriched with current level + behavioral visibility) ──
-    final arousalField = _nsfwService.nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -25 to +25>'
-        : '';
-    final arousalInstr = _nsfwService.nsfwCooldownEnabled
-        ? '3. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
-              '   Current arousal: ${_nsfwService.arousalLevel}/100. '
-              'Arousal measures DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
-              '   Be bold with arousal deltas — intimate moments should produce significant shifts (+10 to +20).\n'
-              '   High arousal = the character is intensely turned on, NOT that they are about to climax '
-              '— climax only happens during active sexual contact at high arousal.\n'
-              '   CRITICAL: Arousal MUST be VISIBLE in character behavior. At high levels (60+), '
-              'show heavy breathing, stuttering, flushed skin, inability to focus, desperate body language.\n'
-              '   Examples: whispered compliment = +3, passionate kiss = +10 to +15, '
-              'explicit sexual contact = +15 to +25, humiliating rejection = -15 to -25.\n'
-        : '';
-
-    // ── Emotion inertia context ──
-    final currentEmotionCtx = _characterEmotion.isNotEmpty
-        ? 'Current emotional state: $_characterEmotion${_emotionIntensity.isNotEmpty ? ' ($_emotionIntensity)' : ''}.\n'
-              'Emotions have natural inertia — only shift meaningfully if something in the conversation genuinely warrants it. '
-              'Minor or neutral exchanges should produce small drift, not sudden jumps.\n'
-              'BUT: after intense events (fights, confessions, betrayals, intimate moments), '
-              'emotions naturally LINGER for several turns — do NOT rush back to baseline. '
-              'Only drift toward settled during truly mundane exchanges.\n\n'
-        : '';
-
-    final prompt =
-        'You are evaluating the emotional state for $charName.\n\n'
-        '$personalityInjection'
-        '$relationshipCtx'
-        '$currentEmotionCtx'
-        '1. "emotion": $charName\'s overarching emotional state right now (one nuanced word).\n'
-        '   NOT a generic label like "happy" or "sad" — find the *specific texture*:\n'
-        '   wistful not sad, flustered not happy, prickly not angry, smoldering not aroused.\n'
-        '   Filter through $charName\'s personality — a stoic character feeling deep pain\n'
-        '   might show "guarded" or "controlled" rather than "devastated".\n'
-        '${_storageService.expressionEnabled ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
-        '2. "emotion_intensity": mild, moderate, or strong\n'
-        '$arousalInstr\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField.';
-
-    try {
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      final emotionMatch = RegExp(
-        r'"emotion"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (emotionMatch != null) {
-        _characterEmotion = emotionMatch.group(1)!.toLowerCase().trim();
-      }
-
-      final intensityMatch = RegExp(
-        r'"emotion_intensity"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (intensityMatch != null) {
-        _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
-      }
-
-      if (_nsfwService.nsfwCooldownEnabled) {
-        final arDelta = _extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          final arousalDelta = arDelta.clamp(-10, 10);
-          _nsfwService.setArousalLevel(
-            (_nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-          if (arousalDelta != 0) {
-            _pendingRealismMetadata ??= {};
-            _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-          }
-        }
-      }
-      debugPrint(
-        '[Realism:Emotion] Emotion: $_characterEmotion ($_emotionIntensity)',
-      );
-    } catch (e) {
-      debugPrint('[Realism:Emotion] Failed: $e');
-    }
-  }
-
-  Future<void> _evaluatePhysicalStateCall({
-    void Function(String)? onChunk,
-  }) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return;
-
-    final recentCount = _messages.length < 6 ? _messages.length : 6;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet.
-      // (Time advance is chat-scoped and handled via delegation when active char is impersonated for group speaker.)
-      return;
-    }
-    final charName = _activeCharacter!.name;
-
-    // Time progress + posture (when passage enabled) + disabled-passage posture path
-    // now fully delegated to TimeService (pre-turn advance logic moved verbatim,
-    // adjusted only for granular cbs). No new private method in god.
-    // shortTermTierName resolves via @Dep shim (relationship).
-    await _timeService.evaluateTimeProgressAndPostureIfNeeded(
-      charName: charName,
-      recent: recent,
-      shortTermTierName: shortTermTierName,
-      onChunk: onChunk,
-      fireLLMEval: _fireLLMEval,
-      stripThinkBlocks: _stripThinkBlocks,
-      extractJsonBool: _extractJsonBool,
-      setSpatialStance: _relationshipService.setSpatialStance,
-      getCurrentSpatialStance: () => _relationshipService.spatialStance,
-      getCharacterEmotion: () => _characterEmotion,
-      getEmotionIntensity: () => _emotionIntensity,
-    );
-  }
-
-  Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return;
-    final recentCount = _messages.length < 4 ? _messages.length : 4;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (_activeCharacter == null) {
-      // This path requires an active character (the group per-speaker path
-      // temporarily sets _activeCharacter before calling us for parity).
-      return;
-    }
-    final charName = _activeCharacter!.name;
-    final oPrompt = primaryObjective != null
-        ? '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Must be a significant personal, social, or narrative goal triggered by a STRONG, specific event THIS turn. NOT a trivial step, and NOT a restatement of the primary quest.\n'
-              '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n'
-        : '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue, triggered by a strong specific event THIS turn — could be emotional (confess feelings), practical (plan a surprise), or personal (achieve something they\'ve been working toward). Default: "none".\n'
-              '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n';
-    final prompt =
-        'You are an autonomous story engine evaluating narrative progression for $charName.\n\n'
-        '$oPrompt'
-        '2. "fixation_topic": A persistent thought or concern that colors $charName\'s perspective — could be a hope, worry, ambition, or memory. Not a temporary reaction, but something that lingers across scenes. Default: "none".\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic".';
-
-    try {
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      _relationshipService.updateFixationFromEvalResult(
-        (RegExp(
-              r'"fixation_topic"\s*:\s*"([^"]+)"',
-            ).firstMatch(text)?.group(1) ??
-            ''),
-      );
-
-      final objectiveMatch = RegExp(
-        r'"proposed_objective"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (objectiveMatch != null) {
-        final newObj = objectiveMatch.group(1)!.trim();
-        if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          final isDuplicate = _activeObjectives.any(
-            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
-          );
-          if (!isDuplicate) {
-            debugPrint(
-              '[Realism:Narrative] Autonomous objective proposed: $newObj',
-            );
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[Realism:Narrative] Failed: $e');
-    }
-  }
-
-  /// ── One-Shot Eval (Experimental) ─────────────────────────────────────────
-  /// Fused replacement for _evaluateRelationshipCall + _evaluateSceneStateCall.
-  /// Issues a SINGLE LLM inference that evaluates all realism state fields at
-  /// once, cutting pre-generation blocking overhead from 2 calls to 1.
-  ///
-  /// Enable via Settings → Realism → "One-Shot Eval (Experimental)".
-  /// Not default because some models struggle with the combined prompt length.
-  Future<void> _evaluateOneShotCall({void Function(String)? onChunk}) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return;
-
-    // The group speaker path sets _activeCharacter before calling this for parity.
-
-    // Keep the eval prompt lean for local models — use fewer messages and a
-    // shorter personality snippet to reduce prefill time on large models.
-    final recentCount = _messages.length < 6 ? _messages.length : 6;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-    final userName = _userPersonaService.persona.name;
-
-    String personalityInjection = '';
-    if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality;
-      personalityInjection =
-          'Account for $charName\'s specific personality traits:\n"$p"\n\n';
-    }
-
-    // ── Relationship & trust context ──
-    final emotionCtx = _characterEmotion.isNotEmpty
-        ? 'Current emotional state: $_characterEmotion ($_emotionIntensity). '
-        : '';
-    final postureCtx = _relationshipService.spatialStance.isNotEmpty
-        ? 'Recent position reference: $charName was "${_relationshipService.spatialStance}". '
-        : '';
-    final relationshipCtx =
-        '$emotionCtx${postureCtx}Current relationship tension: $shortTermTierName | Trust level: ${_relationshipService.trustLevel}\n\n';
-
-    final arousalField = _nsfwService.nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -25 to +25>'
-        : '';
-    // Arousal is field 8 (after posture), objective is 9, fixation 10, reason 11
-    final arousalInstr = _nsfwService.nsfwCooldownEnabled
-        ? '8. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
-              '   Current arousal: ${_nsfwService.arousalLevel}/100. '
-              'Arousal = DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
-              '   Be bold — intimate moments should produce significant shifts (+10 to +20).\n'
-              '   CRITICAL: Arousal MUST be VISIBLE in character behavior. At 60+, show heavy breathing, stuttering, flushed skin, desperate body language.\n'
-              '   High arousal = intensely turned on, NOT about to climax — climax only during active sexual contact at peak arousal.\n'
-              '   Examples: whispered compliment = +3, passionate kiss = +10 to +15, explicit contact = +15 to +25.\n'
-        : '';
-
-    // Determine the next field number after arousal (or after posture if arousal disabled)
-    final objNum = _nsfwService.nsfwCooldownEnabled ? 9 : 8;
-    final fixNum = objNum + 1;
-    final reasonNum = fixNum + 1;
-
-    final prompt =
-        'You are evaluating the current state of a roleplay scene involving $charName.\n\n'
-        '$personalityInjection'
-        '$relationshipCtx'
-        'Reactions are subjective! Evaluate ALL changes through $charName\'s specific personality.\n\n'
-        'Evaluate ALL of the following at once:\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
-        '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
-        '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
-        '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
-        '   +5: Meaningfully warmed — a moment that clearly strengthens the connection\n'
-        '   +3: Moved | +2: Warmed up | +1: Mildly pleasant\n'
-        '   -1: Slightly put off | -2: Annoyed | -3: Hurt — a clearly unkind or dismissive moment\n'
-        '   -5: Wounded — a significant emotional injury\n'
-        '   -8: Deeply hurt — a cruel or callous act that damages the bond\n'
-        '   -10: Devastated — a severe betrayal of emotional trust\n'
-        '   -15: Devastating betrayal — a relationship-destroying act\n'
-        '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
-        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
-        '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
-        '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
-        '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
-        '   +5: $userName did exactly what $charName craves or values most | +2: acted authentically in a way $charName respects | 0: Neutral\n'
-        '   -5: $userName did something $charName finds personally untrustworthy given her personality | -30: deliberate deception or betrayal | -200: Unforgivable betrayal\n'
-        '   ⚠ Default to 0. Consider her personality — what one character finds threatening another may find attractive or trust-building.\n'
-        '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
-        '3. "trust_reason": One brief in-character thought from $charName explaining the trust shift in $userName, or "none" if delta is 0.\n'
-        '4. "emotion": $charName\'s overarching emotional state (one nuanced word).\n'
-        '   NOT generic ("happy"/"sad") — find the specific texture: wistful not sad, flustered not happy, prickly not angry.\n'
-        '   Filter through $charName\'s personality — a stoic character in deep pain shows "guarded", not "devastated".\n'
-        '${_storageService.expressionEnabled ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
-        '5. "emotion_intensity": mild, moderate, or strong\n'
-        '6. "bond_reason": One brief in-character thought from $charName explaining the relationship shift, or "none" if delta is 0.\n'
-        '7. "posture": $charName\'s current physical position and location (brief grounded phrase), or "none".\n'
-        '   - Match the posture to the current scene context and emotional state.\n'
-        '   - If the conversation implies a location or activity change, update accordingly.\n'
-        '   - Within the same scene, maintain natural continuity (don\'t jump locations).\n'
-        '   - Across scene breaks or time jumps, update to the new context.\n'
-        '   - If time advanced significantly or a new day started, characters naturally shift positions.\n'
-        '$arousalInstr'
-        '${primaryObjective != null ? '$objNum. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Triggered by a STRONG event THIS turn.\n   ⚠ Default to "none". 90% of turns should produce "none".\n' : '$objNum. "proposed_objective": A meaningful, emotionally-driven goal triggered by a strong event THIS turn. Default: "none". 90% of turns should produce "none".\n'}'
-        '$fixNum. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — haunts them across scenes, not a temporary reaction. Default: "none".\n'
-        '$reasonNum. "reason": One brief sentence explaining the key relationship change, or "none"\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a JSON object containing all fields above$arousalField.';
-
-    try {
-      debugPrint('[Realism:OneShot] Evaluating (fused call)...');
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-
-      final searchText = _stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
-
-      // ── Relationship fields ──
-      int bondDelta = 0;
-      final relDelta = _extractJsonInt(text, 'relationship_delta');
-      if (relDelta != null) {
-        bondDelta = relDelta.clamp(-50, 50);
-        _relationshipService.applyScoreDelta(bondDelta);
-      }
-
-      int trustDelta = 0;
-      final trDelta = _extractJsonInt(text, 'trust_delta');
-      if (trDelta != null) {
-        trustDelta = trDelta.clamp(-50, 30);
-        if (trustDelta != 0) {
-          _relationshipService.applyTrustDelta(trustDelta);
-        }
-      }
-
-      int arousalDelta = 0;
-      if (_nsfwService.nsfwCooldownEnabled) {
-        final arDelta = _extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          arousalDelta = arDelta.clamp(-25, 25);
-          _nsfwService.setArousalLevel(
-            (_nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-        }
-      }
-
-      // Extract and store per-chip reasons for hover tooltips
-      final bondReasonMatch = RegExp(
-        r'"bond_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['bond_reason'] = bondReason;
-      }
-
-      final trustReasonMatch = RegExp(
-        r'"trust_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['trust_reason'] = trustReason;
-      }
-
-      if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) {
-          _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-        }
-        if (trustDelta != 0) {
-          _pendingRealismMetadata!['trust_delta'] = trustDelta;
-        }
-        if (bondReason.isNotEmpty) {
-          _pendingRealismMetadata!['bond_reason'] = bondReason;
-        }
-        if (trustReason.isNotEmpty) {
-          _pendingRealismMetadata!['trust_reason'] = trustReason;
-        }
-      } else if (bondReason.isNotEmpty || trustReason.isNotEmpty) {
-        _pendingRealismMetadata ??= {};
-        if (bondReason.isNotEmpty) {
-          _pendingRealismMetadata!['bond_reason'] = bondReason;
-        }
-        if (trustReason.isNotEmpty) {
-          _pendingRealismMetadata!['trust_reason'] = trustReason;
-        }
-      }
-
-      // ── Autonomous Objective ──
-      final objectiveMatch = RegExp(
-        r'"proposed_objective"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (objectiveMatch != null) {
-        final newObj = objectiveMatch.group(1)!.trim();
-        if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          // Avoid setting the exact same goal if it's already active
-          final isDuplicate = _activeObjectives.any(
-            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
-          );
-          if (!isDuplicate) {
-            debugPrint(
-              '[Realism:OneShot] Autonomous objective proposed: $newObj',
-            );
-            // Auto objectives are strictly secondary (isPrimary = false).
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
-          }
-        }
-      }
-
-      // ── Scene fields ──
-      final emotionMatch = RegExp(
-        r'"emotion"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (emotionMatch != null) {
-        _characterEmotion = emotionMatch.group(1)!.toLowerCase().trim();
-      }
-
-      final intensityMatch = RegExp(
-        r'"emotion_intensity"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (intensityMatch != null) {
-        _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
-      }
-
-      final postureMatch = RegExp(
-        r'"posture"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (postureMatch != null) {
-        final p = postureMatch.group(1)!.trim();
-        _relationshipService.setSpatialStance(p);
-      }
-
-      _relationshipService.updateFixationFromEvalResult(
-        (RegExp(
-              r'"fixation_topic"\s*:\s*"([^"]+)"',
-            ).firstMatch(text)?.group(1) ??
-            ''),
-        isOneShot: true,
-      );
-
-      final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(text);
-      debugPrint(
-        '[Realism:OneShot] Done — Emotion: $_characterEmotion ($_emotionIntensity), '
-        'Time: ${_timeService.timeOfDay}, Reason: ${reasonMatch?.group(1) ?? 'unknown'}',
-      );
-
-      // Bundle full state snapshot for time-travel forking
-      _pendingRealismMetadata ??= {};
-      _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-      _pendingRealismMetadata!['realism_state'] = _captureRealismState();
-
-      _saveChat();
-      notifyListeners();
-    } catch (e) {
-      debugPrint(
-        '[Realism:OneShot] Failed: $e — falling back to dual-call on next turn',
-      );
-    }
-  }
+  Future<void> _evaluateOneShotCall({void Function(String)? onChunk}) =>
+      _llmEvalEngine.evaluateOneShotCall(onChunk: onChunk);
 
   /// One-shot trust repair evaluator.
   ///
