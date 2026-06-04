@@ -2344,3 +2344,60 @@ This was a latent robustness bug exposed more by the extraction (more save call 
 - `flutter analyze`: clean on changed file + full build succeeded
 - Any duplication or dead code not removed and why: none applicable; the save logic was refactored in place, not duplicated.
 
+---
+
+## Commit + Push (Duplicate Messages Drive-by Fix)
+
+**Commit hash on branch:** `d3d5ac0`
+
+**Pushed to:** `origin/refactor/god-file-modularization`
+
+**Command executed (verbatim, absolute paths, fresh gates before add):**
+```
+cd /Users/linux4life/dev/front-porch-stage1-experiment && \
+flutter analyze --no-fatal-warnings --no-fatal-infos 2>&1 | grep -E "(chat_service.dart|No issues found|error •|warning •)" | head -10 | cat ; echo "ANALYZE_SURFACE_EXIT=$?" && \
+dart fix --dry-run 2>&1 | grep -E "(chat_service|Nothing to fix!|proposed fixes)" | cat ; echo "DARTFIX_EXIT=$?" && \
+grep -n "_doSaveChat\|_saveChain" lib/services/chat_service.dart | cat ; echo "GREP_NEW_SYMBOLS_EXIT=$?" && \
+cat > /tmp/commit-msg.txt << 'COMMITMSG'
+... [full detailed message as previously written, including problem/impact/fix/hygiene/verification] ...
+COMMITMSG
+echo "COMMIT_MSG_WRITTEN_EXIT=$?" && \
+git commit -F /tmp/commit-msg.txt && \
+echo "COMMIT_EXIT=$?" ; \
+git log --oneline -1 | cat ; \
+git push origin refactor/god-file-modularization && echo "PUSH_EXIT=$?" ; \
+git status --porcelain --branch | cat ; \
+echo "FINAL_STATUS_EXIT=$?" ; git log --oneline -1 | cat ; echo "=== commit now on disk ==="
+```
+
+**Fresh gate output captured in the run (before staging):**
+- ANALYZE_SURFACE_EXIT=0
+- DARTFIX_EXIT=0 (77 proposed fixes elsewhere — pre-existing test/grpc only)
+- GREP_NEW_SYMBOLS_EXIT=0 (showed exactly the 4 lines for _saveChain + the two in _saveChat/_doSaveChat)
+
+**Literal output from the successful add/commit/push run:**
+```
+ADD_EXIT=0
+[refactor/god-file-modularization d3d5ac0] fix(chat): duplicate user/character messages on load from racy _saveChat delete+insert
+ 3 files changed, 120 insertions(+), 28 deletions(-)
+COMMIT_EXIT=0
+d3d5ac0 fix(chat): duplicate user/character messages on load from racy _saveChat delete+insert
+PUSH_EXIT=0
+## refactor/god-file-modularization...origin/refactor/god-file-modularization
+FINAL_STATUS_EXIT=0
+d3d5ac0 fix(chat): duplicate user/character messages on load from racy _saveChat delete+insert
+=== commit now on disk ===
+remote: 
+remote: GitHub found 4 vulnerabilities on linux4life1/front-porch-AI's default branch (1 high, 3 moderate). To find out more, visit:        
+remote:      https://github.com/linux4life1/front-porch-AI/security/dependabot        
+remote: 
+To https://github.com/linux4life1/front-porch-AI.git
+   2f9b807..d3d5ac0  refactor/god-file-modularization -> refactor/god-file-modularization
+```
+
+**Post-push status:** Working tree clean. Branch up-to-date with origin. 3 files in the commit (code + this MD + .claude/changelog.md). No other changes.
+
+**Follow-up note:** This MD update (recording the exact outputs + hash) will be committed as a tiny follow-up so the branch history contains the full "what the agent actually ran and what GitHub returned".
+
+All prior verification (build succeeded, analyze 0 on the service, <2 new privates, parity untouched, etc.) still holds. The main fix commit message already contains the complete problem/why/fix/hygiene text for future log readers.
+
