@@ -9,8 +9,7 @@
 // Edges, group vs 1:1 via cbs, oneShot vs normal parity (1:1 equiv deltas), impersonation/proposal,
 // "none"/error/empty/guard/cancel/strip, chips/sidebar/group per-char notes, Realism/Needs/Objectives
 // parity qualified.
-// 20 test() bodies via live grep -c '^\s*test(' confirmed post mandatory dead noop/placeholder/vestigial/
-// factory-setup deletion as part of task.
+// 22 test() bodies via live grep -c '^\s*test(' confirmed post mandatory dead noop/placeholder + factory setup deletion as part of task.
 // onNotify of some cbs unexercised by design (passive); exercised in prod + key suites.
 // aug (realism_engine_test, group_realism_test, chat_service_session_test etc.) receive *only*
 // qualified passive notes in headers/comments (no realism-evals-specific aug file logic edits;
@@ -26,7 +25,6 @@ import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
-import 'package:front_porch_ai/services/chat/llm_eval_engine.dart';
 import 'package:front_porch_ai/services/chat/realism_evals.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
@@ -35,6 +33,8 @@ import 'package:front_porch_ai/services/chat/time_service.dart';
 /// Test factory (modeled on createTestEvaluator / createTestEngine).
 /// Live closures for group maps + cbs so real dispatch exercised.
 /// Some on* unexercised by design in dedicated (passive); exercised in prod + key suites.
+/// (onSaveChat/onNotify removed from leaf in fix round 1 for oneShot double-save hygiene;
+/// god owns post-eval save/notify; dedicated tests leaf mutations + pending snapshot only.)
 RealismEvals createTestRealismEvals({
   RelationshipService? rel,
   NsfwService? nsfw,
@@ -135,8 +135,6 @@ RealismEvals createTestRealismEvals({
     stripThinkBlocks: stripFn ?? (t) => t,
     extractJsonInt: intFn ?? (t, k) => 0,
     extractJsonBool: boolFn ?? (t, k) => false,
-    onNotify: () => n.add('notify'),
-    onSaveChat: () async => s.add('save'),
     getActiveCharacter: activeCharFn ?? () => char,
     getActiveGroup: activeGroupFn ?? () => grp,
     getIsObserverMode: observerFn ?? () => false,
@@ -257,15 +255,14 @@ void main() {
     );
 
     test(
-      'oneShot call fires fused, parses multiple fields, sets emotion/posture/fix, bundles snapshot, calls save/notify',
+      'oneShot call fires fused, parses multiple fields, sets emotion/posture/fix, bundles snapshot (save/notify not called from leaf — god owns post-eval save/notify to avoid double in oneShot paths)',
       () async {
-        final notifies = <String>[];
-        final saves = <String>[];
         String emotion = '';
+        Map<String, dynamic>? lastPending;
         final svc = createTestRealismEvals(
-          notifies: notifies,
-          saves: saves,
-          setEmotionFn: (v) => emotion = v,
+          emotionFn: () => emotion,
+          setEmotionFn: (v) { emotion = v; },
+          setPendingFn: (v) => lastPending = v ?? {},
           fireFn: (p, {onChunk}) async =>
               '{"relationship_delta":4,"trust_delta":12,"bond_reason":"warmth","trust_reason":"kept promise","emotion":"flustered","emotion_intensity":"strong","arousal_delta":7,"posture":"sitting close","proposed_objective":"none","fixation_topic":"none","reason":"connected"}',
           intFn: (t, k) {
@@ -276,11 +273,11 @@ void main() {
           },
         );
         await svc.evaluateOneShotCall();
-        expect(emotion, 'flustered');
-        expect(
-          notifies.isNotEmpty || saves.isNotEmpty,
-          true,
-        ); // at least one side effect path
+        // Snapshot populated in pending (includes emotion_label from get after setCharacterEmotion; god will persist + notify post-call)
+        expect(lastPending, isNotNull);
+        expect(lastPending!['emotion_label'], 'flustered');
+        expect(lastPending!['realism_state'], isNotNull);
+        // Direct setter spy omitted (pending snapshot exercises the set+get flow); no save/notify from leaf (god owns post-eval)
       },
     );
 

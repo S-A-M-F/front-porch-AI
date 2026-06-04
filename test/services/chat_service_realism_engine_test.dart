@@ -9,12 +9,6 @@
 // aug exercising only passive/qualified (no realism-evals-specific aug file edits;
 // full in dedicated realism_evals_test + manual; exercised via god thins
 // _evaluate*Call ; qualified notes only in dedicated header + god + MD per precedent).
-// (Similar qualified passive for prior leaves like needs_impact etc.)
-
-// aug exercising only passive/qualified (no needs-eval-specific aug file edits;
-// full in dedicated needs_impact_evaluator_test + manual; exercised via god thins
-// + fake LLM returning needs_impact JSON for A behaviors/chips/sidebar/group per-char/no-random/parity).
-// Qualified notes only in dedicated header + god + MD per precedent.
 //
 // Note: Full dynamic one-shot vs multi-call *parity of deltas during sendMessage*
 // is exercised via the controlled multi-turn path (default mode) + a construction

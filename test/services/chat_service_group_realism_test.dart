@@ -9,11 +9,6 @@
 // that replicates the relevant logic from ChatService so tests are fast,
 // isolated, and don't require the full service + LLM + DB stack.
 //
-// aug exercising only passive/qualified (no needs-eval-specific aug file edits;
-// full in dedicated needs_impact_evaluator_test + manual; exercised via god thins
-// + fake LLM returning needs_impact JSON for A behaviors/chips/sidebar/group per-char/no-random/parity).
-// Qualified notes only in dedicated header + god + MD per precedent.
-//
 // aug exercising only passive/qualified (no realism-evals-specific aug file edits;
 // full in dedicated realism_evals_test + manual; exercised via god thins
 // _evaluate*Call ; qualified notes only in dedicated header + god + MD per precedent).

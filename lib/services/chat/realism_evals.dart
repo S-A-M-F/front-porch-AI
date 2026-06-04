@@ -52,7 +52,7 @@ import 'package:front_porch_ai/utils/emotion_labels.dart';
 /// receives fire cbs) may stay thin/coordinated in god per precedent (qualify).
 ///
 /// Ctor receives state via granular callbacks (modeled on steps 6-9b + needs_impact:
-/// fireLLMEval/strip/extract* (via god thins over engine), onNotify/onSaveChat,
+/// fireLLMEval/strip/extract* (via god thins over engine),
 /// getActiveCharacter/getActiveGroup/getIsObserverMode (for guards + 1:1 vs group
 /// dispatch via god's impersonation), getUserName, getRealismEnabled, getMessages,
 /// get/setPendingRealismMetadata, captureRealismState, get/setCharacterEmotion,
@@ -60,9 +60,11 @@ import 'package:front_porch_ai/utils/emotion_labels.dart';
 /// physical + ctx in oneShot), getExpressionEnabled (for prompt label list),
 /// getPrimaryObjective/getActiveObjectives/setObjective (for narr/oneShot proposed
 /// objective under impersonation), getMessages for recent etc).
-/// ~25+ granular cbs total. Live closures in god for test overrides + group
-/// per-speaker impersonation/load scalars without cycles; testable with small
-/// factory in dedicated test.
+/// ~23+ granular cbs total (onSave/onNotify removed in fix round 1: god owns
+/// post-eval save/notify after pre-turn evals to avoid double in oneShot paths
+/// and races; leaf populates pending snapshot for god to persist). Live closures
+/// in god for test overrides + group per-speaker impersonation/load scalars
+/// without cycles; testable with small factory in dedicated test.
 ///
 /// 1:1 vs group + oneShot vs normal parity 1:1 equivalent deltas/behavior at all
 /// times (Realism Engine bond/trust ±300/±100 clamps, emotion, fixation, spatial,
@@ -101,9 +103,9 @@ import 'package:front_porch_ai/utils/emotion_labels.dart';
 /// zeroing of secondary config on group/0-session/new-chat now complete" language
 /// includes this leaf.
 ///
-/// Header + god + test + MD all qualify the aug note + "onNotify of some cbs
-/// unexercised by design in dedicated (passive design; exercised in prod + key
-/// suites)".
+/// Header + god + test + MD all qualify the aug note (onSave/onNotify cbs removed
+/// in fix round 1 for oneShot double-save hygiene; unexercised by design from leaf
+/// in dedicated — god owns post-eval save/notify; exercised in prod + key suites).
 ///
 /// Barrel: not added (internal to ChatService only; per checklist "unless 3+
 /// locations"; opportunistic when touching for other reason).
@@ -116,9 +118,6 @@ class RealismEvals {
   final String Function(String) stripThinkBlocks;
   final int? Function(String, String) extractJsonInt;
   final bool? Function(String, String) extractJsonBool;
-
-  final VoidCallback onNotify;
-  final Future<void> Function() onSaveChat;
 
   // Character / group / mode state (for guard + 1:1 vs group dispatch via impersonation)
   final CharacterCard? Function() getActiveCharacter;
@@ -169,8 +168,6 @@ class RealismEvals {
     required this.stripThinkBlocks,
     required this.extractJsonInt,
     required this.extractJsonBool,
-    required this.onNotify,
-    required this.onSaveChat,
     required this.getActiveCharacter,
     required this.getActiveGroup,
     required this.getIsObserverMode,
@@ -284,6 +281,9 @@ class RealismEvals {
 
       int arousalDelta = 0;
       if (nsfwService.nsfwCooldownEnabled) {
+        // best-effort; relationship prompt does not request 'arousal_delta' (arousal
+        // primarily via emotional state / physical state / oneShot evals). Harmless no-op
+        // if absent (pre-existing behavior preserved from engine move).
         final arDelta = extractJsonInt(text, 'arousal_delta');
         if (arDelta != null) {
           arousalDelta = arDelta.clamp(-25, 25);
@@ -829,14 +829,14 @@ class RealismEvals {
         'Time: ${timeService.timeOfDay}, Reason: ${reasonMatch?.group(1) ?? 'unknown'}',
       );
 
-      // Bundle full state snapshot for time-travel forking
+      // Bundle full state snapshot for time-travel forking (god will persist via
+      // post-eval _saveChat + synthesize in the calling pre-gen / baseline paths;
+      // removing the cb calls here eliminates double save/notify for oneShot vs
+      // multi-call paths and the save-race window).
       var pending = getPendingRealismMetadata() ?? {};
       pending['emotion_label'] = getCharacterEmotion();
       pending['realism_state'] = captureRealismState();
       setPendingRealismMetadata(pending);
-
-      await onSaveChat();
-      onNotify();
     } catch (e) {
       debugPrint(
         '[Realism:OneShot] Failed: $e — falling back to dual-call on next turn',
