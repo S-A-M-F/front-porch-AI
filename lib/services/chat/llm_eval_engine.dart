@@ -29,25 +29,29 @@ import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
-import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 
 /// Plain (non-ChangeNotifier) domain service owning the central LLM eval
 /// firing (_fireLLMEval with full streaming + retry loop + cancel support,
 /// fixed params maxLength:4000 / temp 0.1 / reasoningEnabled:false / stop []),
 /// the tiny _extractJsonInt/_extractJsonBool helpers, the central
-/// _stripThinkBlocks (handles completed + unclosed &lt;think&gt; prefix), the 5
-/// realism eval prompt builders + call methods (relationship, emotional,
-/// physical, narrative with proposed_objective logic, one-shot fused), the
+/// _stripThinkBlocks (handles completed + unclosed &lt;think&gt; prefix), the
 /// objective proposal path handling (autonomous "none" vs value, dedup,
 /// autoGenerateTasks:true only for autonomous), generateObjectiveTasks
 /// (2000 budget + central strip for thinking models), and
 /// _checkTaskCompletionInBackground (2000 + strip).
+/// (The 5 realism eval prompt builders + call methods (relationship, emotional,
+/// physical, narrative with proposed_objective logic, one-shot fused) moved to
+/// sibling leaf realism_evals.dart in step 10 per extraction order; this engine
+/// now provides the fire/strip/extract cbs + evaluateNeedsImpactCall for the
+/// needs domain + objective paths.)
 ///
 /// Extracted as step 9 (immediately after prompt_injection step 8 per the
 /// 15-step leaf-first order in docs/refactoring-guide.md).
 /// + needs impact support (evaluateNeedsImpactCall + consolidated prompt for
 /// the needs_impact_evaluator sibling leaf in the needs domain rework).
+/// + step 10 sibling realism_evals uses this engine's fire/strip/extract for the
+/// 5 realism calls (granular cbs; prompt builders full in leaf).
 ///
 /// Depends on prompt_injection only in the ordering sense (prompt builders
 /// for main chat context are step 8); this engine's eval prompts are
@@ -60,13 +64,13 @@ import 'package:front_porch_ai/models/group_chat.dart';
 ///
 /// ChatService owns via 1 late final (inserted after the 8 prompt_injection
 /// ones) + thin public delegates (_fireLLMEval, _stripThinkBlocks,
-/// _extract*, the 5 _evaluate*Call, generateObjectiveTasks,
-/// _checkTaskCompletionInBackground) at *every* prior call site (the 5
-/// firing points in sendMessage + oneShot/greeting/post paths, all direct
-/// _fire/_strip/_extract calls, proposed_objective sites in narr/oneShot,
-/// gen/check sites, objective proposal + JSON parse sites). 0 @Deprecated
-/// shims for this new surface (thins stay in god as the public surface for now).
-/// 0 new god private _ methods beyond the required thin delegates (_fireLLMEval/_strip/_extract*/_evaluate*Call/_check + gen thins + evaluateNeedsImpactCall; void _ count stayed 15; +1 late final only; thins/calls/late final only per plan;
+/// _extract*, generateObjectiveTasks, _checkTaskCompletionInBackground,
+/// evaluateNeedsImpactCall) at *every* prior call site (firing points,
+/// direct _fire/_strip/_extract calls, gen/check sites, objective proposal +
+/// JSON parse sites, needs impact thin). The 5 _evaluate*Call thins now delegate
+/// to realism_evals (step 10). 0 @Deprecated shims for this surface (thins stay
+/// in god as the public surface for now).
+/// 0 new god private _ methods beyond the required thin delegates (_fireLLMEval/_strip/_extract*/_check + gen thins + evaluateNeedsImpactCall; void _ count stayed 15; +1 late final only; thins/calls/late final only per plan;
 /// reset comment syncs only).
 ///
 /// Ctor receives state via granular callbacks (modeled exactly on steps 6-8:
@@ -81,7 +85,8 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// plus for fire readiness + cancel: getLlmService, getIsLocal, getKoboldService,
 /// reconnectIfAlive, ensureServerIdle, getIsCancellingRealismEval,
 /// getRealismEvalCancelled,
-/// plus for state sets in evals: get/setPendingRealismMetadata, captureRealismState,
+/// plus for state sets (now used by needs impact + objective; realism evals use
+/// via their own leaf cbs): get/setPendingRealismMetadata, captureRealismState,
 /// get/setCharacterEmotion, get/setEmotionIntensity,
 /// plus dep services for their owned state (relationshipService for apply deltas /
 /// updateFixation / setSpatial / shortTermTierName / trustLevel / spatialStance,
@@ -97,7 +102,8 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// autonomous get autoGenerateTasks:true + correct target even under
 /// impersonation, user-created do not; dispatch preserved via cbs +
 /// impersonation temp re-load) qualified (preserved exactly; exercised in
-/// dedicated + key suites + manual).
+/// dedicated + key suites + manual). The 5 realism calls now in sibling leaf
+/// (step 10) inherit the same cbs/impersonation for parity.
 ///
 /// All &lt;think&gt; stripping uses the central stripThinkBlocks (2000 budget
 /// already applied in gen/check/objective paths; naive inlines in non-eval
@@ -108,7 +114,8 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// "needs/chaos/relationship/expression/time/nsfw/lorebook_scanner +
 /// prompt_injection (stateless builders; no reset calls needed) +
 /// llm_eval_engine (stateless or prompt-only; no reset calls needed;
-/// incomplete zeroing of secondary config on group/0-session/new-chat now complete)"
+/// incomplete zeroing of secondary config on group/0-session/new-chat now complete)
+/// + realism_evals (stateless or prompt-only; no reset calls needed)"
 /// + cross-refs (e.g. setActiveCharacter:1572) at all ~12-15 sites (top ctor
 /// docs + setActiveCharacter, setActiveGroup x2, _loadLast empty, startNewChat
 /// 1:1 ext-seed + group non-ext both branches, other load/seed); both startNew
@@ -121,12 +128,12 @@ import 'package:front_porch_ai/models/group_chat.dart';
 ///
 /// test count 11 (11 bodies via grep -c '^\s*test(' confirmed post dead noop/placeholder deletion as part of task).
 /// (onNotify of cbs unexercised by design (no onNotify wiring in this passive factory; exercised in prod + key suites)).
-/// 0 new god private _ methods beyond required thin delegates (fire/strip/extract/eval/check thins; void_ grep 15; +1 late final only; thins/calls/late final only per plan; confirmed grep).
+/// 0 new god private _ methods beyond required thin delegates (fire/strip/extract/check thins; void_ grep 15; +1 late final only; thins/calls/late final only per plan; confirmed grep).
 /// dispatch preserved.
 /// realism/oneShot/group parity qualified.
 ///
 /// Some objective mgmt / prompt coordination stayed thin in god per plan for step9
-/// (qualify everywhere).
+/// (qualify everywhere). Realism evals (step 10) own their 5 calls + prompts.
 class LlmEvalEngine {
   final VoidCallback onNotify;
   final Future<void> Function() onSaveChat;
@@ -393,668 +400,6 @@ class LlmEvalEngine {
       '[Realism:RawEval] len=${response.length} | ${preview.replaceAll('\n', '↵')}',
     );
     return response.isEmpty ? null : response;
-  }
-
-  Future<void> evaluateRelationshipCall({
-    void Function(String)? onChunk,
-  }) async {
-    if (!getRealismEnabled()) return;
-    if (getActiveCharacter() == null && getActiveGroup() == null) return;
-    if (getActiveGroup() != null && getIsObserverMode()) {
-      return; // Director excluded
-    }
-
-    final msgs = getMessages();
-    final recentCount = msgs.length < 3 ? msgs.length : 3;
-    final recent = msgs.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-
-    if (getActiveCharacter() == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = getActiveCharacter()!.name;
-    final userName = getUserName();
-
-    String personalityInjection = '';
-    if (getActiveCharacter()!.personality.isNotEmpty) {
-      final p = getActiveCharacter()!.personality;
-      personalityInjection =
-          'Account for $charName\'s specific personality traits:\n"$p"\n\n';
-    }
-
-    final prompt =
-        'You are a nuanced evaluator of relationship dynamics between $charName and $userName in a roleplay.\n\n'
-        '$personalityInjection'
-        'IMPORTANT: Reactions are entirely subjective based on $charName\'s personality. '
-        'Most normal interactions should score 0 or slightly positive. '
-        'Reserve negative scores ONLY for clear rudeness, hostility, manipulation, or betrayal.\n\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
-        '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
-        '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
-        '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
-        '   +5: Meaningfully warmed — a moment that clearly strengthens the connection\n'
-        '   +3: Moved | +2: Warmed up | +1: Mildly pleasant\n'
-        '   -1: Slightly put off | -2: Annoyed | -3: Hurt — a clearly unkind or dismissive moment\n'
-        '   -5: Wounded — a significant emotional injury\n'
-        '   -8: Deeply hurt — a cruel or callous act that damages the bond\n'
-        '   -10: Devastated — a severe betrayal of emotional trust\n'
-        '   -15: Devastating betrayal — a relationship-destroying act\n'
-        '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
-        '2. "bond_reason": One brief in-character thought from $charName explaining the tension shift, e.g. "His warmth made me feel safe." or "That dismissal stung." Use "none" if delta is 0.\n'
-        '3. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
-        '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
-        '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
-        '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
-        '   +5: $userName did exactly what $charName craves or values most | +2: acted authentically in a way $charName respects | 0: Neutral\n'
-        '   -5: $userName did something $charName finds personally untrustworthy given her personality | -30: deliberate deception or betrayal | -200: Unforgivable betrayal\n'
-        '   ⚠ Default to 0. Consider her personality — what one character finds threatening another may find attractive or trust-building.\n'
-        '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
-        '4. "trust_reason": One brief in-character thought from $charName explaining the trust shift, e.g. "He kept his promise." or "That felt like a lie." Use "none" if delta is 0.\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason".';
-
-    try {
-      debugPrint('[Realism] Evaluating relationship dynamic...');
-      final raw = await fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-
-      final searchText = stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
-
-      final relDelta = extractJsonInt(text, 'relationship_delta');
-      int bondDelta = 0;
-      if (relDelta != null) {
-        bondDelta = relDelta.clamp(-50, 50);
-        relationshipService.applyScoreDelta(bondDelta);
-      }
-
-      int trustDelta = 0;
-      final trDelta = extractJsonInt(text, 'trust_delta');
-      if (trDelta != null) {
-        trustDelta = trDelta.clamp(-200, 50);
-        if (trustDelta != 0) {
-          relationshipService.applyTrustDelta(trustDelta);
-        }
-      }
-
-      int arousalDelta = 0;
-      if (nsfwService.nsfwCooldownEnabled) {
-        final arDelta = extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          arousalDelta = arDelta.clamp(-25, 25);
-          nsfwService.setArousalLevel(
-            (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-        }
-      }
-
-      if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        var pending = getPendingRealismMetadata() ?? {};
-        if (bondDelta != 0) pending['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) {
-          pending['arousal_delta'] = arousalDelta;
-        }
-        if (trustDelta != 0) {
-          pending['trust_delta'] = trustDelta;
-        }
-        setPendingRealismMetadata(pending);
-      }
-
-      // Extract and store per-chip reasons
-      final bondReasonMatch = RegExp(
-        r'"bond_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['bond_reason'] = bondReason;
-        setPendingRealismMetadata(pending);
-      }
-
-      final trustReasonMatch = RegExp(
-        r'"trust_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['trust_reason'] = trustReason;
-        setPendingRealismMetadata(pending);
-      }
-
-      debugPrint(
-        '[Realism:Relationship] Bond: $bondDelta (${bondReason.isNotEmpty ? bondReason : 'no reason'}) | Trust: $trustDelta (${trustReason.isNotEmpty ? trustReason : 'no reason'})',
-      );
-      debugPrint(
-        '[Realism:Metadata] _pendingRealismMetadata after relationship eval: ${getPendingRealismMetadata()}',
-      );
-    } catch (e) {
-      debugPrint('[Realism:Relationship] Failed: $e');
-    }
-  }
-
-  Future<void> evaluateEmotionalStateCall({
-    void Function(String)? onChunk,
-  }) async {
-    if (!getRealismEnabled()) return;
-    if (getActiveCharacter() == null && getActiveGroup() == null) return;
-    if (getActiveGroup() != null && getIsObserverMode()) return;
-    final msgs = getMessages();
-    final recentCount = msgs.length < 4 ? msgs.length : 4;
-    final recent = msgs.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (getActiveCharacter() == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = getActiveCharacter()!.name;
-
-    // ── Personality injection (same as relationship eval) ──
-    String personalityInjection = '';
-    if (getActiveCharacter()!.personality.isNotEmpty) {
-      final p = getActiveCharacter()!.personality;
-      personalityInjection =
-          '$charName\'s personality traits (evaluate emotion THROUGH these):\n"$p"\n\n';
-    }
-
-    // ── Relationship & trust context ──
-    final relationshipCtx =
-        'Current relationship tension: ${relationshipService.shortTermTierName} | Trust level: ${relationshipService.trustLevel}\n';
-
-    // ── Arousal instruction (enriched with current level + behavioral visibility) ──
-    final arousalField = nsfwService.nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -25 to +25>'
-        : '';
-    final arousalInstr = nsfwService.nsfwCooldownEnabled
-        ? '3. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
-              '   Current arousal: ${nsfwService.arousalLevel}/100. '
-              'Arousal measures DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
-              '   Be bold with arousal deltas — intimate moments should produce significant shifts (+10 to +20).\n'
-              '   High arousal = the character is intensely turned on, NOT that they are about to climax '
-              '— climax only happens during active sexual contact at high arousal.\n'
-              '   CRITICAL: Arousal MUST be VISIBLE in character behavior. At high levels (60+), '
-              'show heavy breathing, stuttering, flushed skin, inability to focus, desperate body language.\n'
-              '   Examples: whispered compliment = +3, passionate kiss = +10 to +15, '
-              'explicit sexual contact = +15 to +25, humiliating rejection = -15 to -25.\n'
-        : '';
-
-    // ── Emotion inertia context ──
-    final curEmotion = getCharacterEmotion();
-    final curIntensity = getEmotionIntensity();
-    final currentEmotionCtx = curEmotion.isNotEmpty
-        ? 'Current emotional state: $curEmotion${curIntensity.isNotEmpty ? ' ($curIntensity)' : ''}.\n'
-              'Emotions have natural inertia — only shift meaningfully if something in the conversation genuinely warrants it. '
-              'Minor or neutral exchanges should produce small drift, not sudden jumps.\n'
-              'BUT: after intense events (fights, confessions, betrayals, intimate moments), '
-              'emotions naturally LINGER for several turns — do NOT rush back to baseline. '
-              'Only drift toward settled during truly mundane exchanges.\n\n'
-        : '';
-
-    final prompt =
-        'You are evaluating the emotional state for $charName.\n\n'
-        '$personalityInjection'
-        '$relationshipCtx'
-        '$currentEmotionCtx'
-        '1. "emotion": $charName\'s overarching emotional state right now (one nuanced word).\n'
-        '   NOT a generic label like "happy" or "sad" — find the *specific texture*:\n'
-        '   wistful not sad, flustered not happy, prickly not angry, smoldering not aroused.\n'
-        '   Filter through $charName\'s personality — a stoic character feeling deep pain\n'
-        '   might show "guarded" or "controlled" rather than "devastated".\n'
-        '${getExpressionEnabled() ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
-        '2. "emotion_intensity": mild, moderate, or strong\n'
-        '$arousalInstr\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField.';
-
-    try {
-      final raw = await fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-      final text = stripThinkBlocks(raw).isNotEmpty
-          ? stripThinkBlocks(raw)
-          : raw;
-
-      final emotionMatch = RegExp(
-        r'"emotion"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (emotionMatch != null) {
-        setCharacterEmotion(emotionMatch.group(1)!.toLowerCase().trim());
-      }
-
-      final intensityMatch = RegExp(
-        r'"emotion_intensity"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (intensityMatch != null) {
-        setEmotionIntensity(intensityMatch.group(1)!.toLowerCase().trim());
-      }
-
-      if (nsfwService.nsfwCooldownEnabled) {
-        final arDelta = extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          final arousalDelta = arDelta.clamp(-10, 10);
-          nsfwService.setArousalLevel(
-            (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-          if (arousalDelta != 0) {
-            var pending = getPendingRealismMetadata() ?? {};
-            pending['arousal_delta'] = arousalDelta;
-            setPendingRealismMetadata(pending);
-          }
-        }
-      }
-      debugPrint(
-        '[Realism:Emotion] Emotion: ${getCharacterEmotion()} (${getEmotionIntensity()})',
-      );
-    } catch (e) {
-      debugPrint('[Realism:Emotion] Failed: $e');
-    }
-  }
-
-  Future<void> evaluatePhysicalStateCall({
-    void Function(String)? onChunk,
-  }) async {
-    if (!getRealismEnabled()) return;
-    if (getActiveCharacter() == null && getActiveGroup() == null) return;
-    if (getActiveGroup() != null && getIsObserverMode()) return;
-
-    final msgs = getMessages();
-    final recentCount = msgs.length < 6 ? msgs.length : 6;
-    final recent = msgs.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (getActiveCharacter() == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet.
-      // (Time advance is chat-scoped and handled via delegation when active char is impersonated for group speaker.)
-      return;
-    }
-    final charName = getActiveCharacter()!.name;
-
-    // Time progress + posture (when passage enabled) + disabled-passage posture path
-    // now fully delegated to TimeService (pre-turn advance logic moved verbatim,
-    // adjusted only for granular cbs). No new private method in god.
-    // shortTermTierName resolves via relationshipService.
-    await timeService.evaluateTimeProgressAndPostureIfNeeded(
-      charName: charName,
-      recent: recent,
-      shortTermTierName: relationshipService.shortTermTierName,
-      onChunk: onChunk,
-      fireLLMEval: fireLLMEval,
-      stripThinkBlocks: stripThinkBlocks,
-      extractJsonBool: extractJsonBool,
-      setSpatialStance: relationshipService.setSpatialStance,
-      getCurrentSpatialStance: () => relationshipService.spatialStance,
-      getCharacterEmotion: getCharacterEmotion,
-      getEmotionIntensity: getEmotionIntensity,
-    );
-  }
-
-  Future<void> evaluateNarrativeCall({void Function(String)? onChunk}) async {
-    if (!getRealismEnabled()) return;
-    if (getActiveCharacter() == null && getActiveGroup() == null) return;
-    if (getActiveGroup() != null && getIsObserverMode()) return;
-    final msgs = getMessages();
-    final recentCount = msgs.length < 4 ? msgs.length : 4;
-    final recent = msgs.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (getActiveCharacter() == null) {
-      // This path requires an active character (the group per-speaker path
-      // temporarily sets _activeCharacter before calling us for parity).
-      return;
-    }
-    final charName = getActiveCharacter()!.name;
-    final primary = getPrimaryObjective();
-    final oPrompt = primary != null
-        ? '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primary.objective}"). Must be a significant personal, social, or narrative goal triggered by a STRONG, specific event THIS turn. NOT a trivial step, and NOT a restatement of the primary quest.\n'
-              '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n'
-        : '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue, triggered by a strong specific event THIS turn — could be emotional (confess feelings), practical (plan a surprise), or personal (achieve something they\'ve been working toward). Default: "none".\n'
-              '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n';
-    final prompt =
-        'You are an autonomous story engine evaluating narrative progression for $charName.\n\n'
-        '$oPrompt'
-        '2. "fixation_topic": A persistent thought or concern that colors $charName\'s perspective — could be a hope, worry, ambition, or memory. Not a temporary reaction, but something that lingers across scenes. Default: "none".\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic".';
-
-    try {
-      final raw = await fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-      final text = stripThinkBlocks(raw).isNotEmpty
-          ? stripThinkBlocks(raw)
-          : raw;
-
-      relationshipService.updateFixationFromEvalResult(
-        (RegExp(
-              r'"fixation_topic"\s*:\s*"([^"]+)"',
-            ).firstMatch(text)?.group(1) ??
-            ''),
-      );
-
-      final objectiveMatch = RegExp(
-        r'"proposed_objective"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (objectiveMatch != null) {
-        final newObj = objectiveMatch.group(1)!.trim();
-        if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          final active = getActiveObjectives();
-          final isDuplicate = active.any(
-            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
-          );
-          if (!isDuplicate) {
-            debugPrint(
-              '[Realism:Narrative] Autonomous objective proposed: $newObj',
-            );
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            // (thin delegation to god setObjective per plan for step9; full proposal logic here)
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[Realism:Narrative] Failed: $e');
-    }
-  }
-
-  /// ── One-Shot Eval (Experimental) ─────────────────────────────────────────
-  /// Fused replacement for _evaluateRelationshipCall + _evaluateSceneStateCall.
-  /// Issues a SINGLE LLM inference that evaluates all realism state fields at
-  /// once, cutting pre-generation blocking overhead from 2 calls to 1.
-  ///
-  /// Enable via Settings → Realism → "One-Shot Eval (Experimental)".
-  /// Not default because some models struggle with the combined prompt length.
-  Future<void> evaluateOneShotCall({void Function(String)? onChunk}) async {
-    if (!getRealismEnabled()) return;
-    if (getActiveCharacter() == null && getActiveGroup() == null) return;
-    if (getActiveGroup() != null && getIsObserverMode()) return;
-
-    // The group speaker path sets _activeCharacter before calling this for parity.
-
-    // Keep the eval prompt lean for local models — use fewer messages and a
-    // shorter personality snippet to reduce prefill time on large models.
-    final msgs = getMessages();
-    final recentCount = msgs.length < 6 ? msgs.length : 6;
-    final recent = msgs.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-
-    if (getActiveCharacter() == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = getActiveCharacter()!.name;
-    final userName = getUserName();
-
-    String personalityInjection = '';
-    if (getActiveCharacter()!.personality.isNotEmpty) {
-      final p = getActiveCharacter()!.personality;
-      personalityInjection =
-          'Account for $charName\'s specific personality traits:\n"$p"\n\n';
-    }
-
-    // ── Relationship & trust context ──
-    final curEmotion = getCharacterEmotion();
-    final curIntensity = getEmotionIntensity();
-    final emotionCtx = curEmotion.isNotEmpty
-        ? 'Current emotional state: $curEmotion ($curIntensity). '
-        : '';
-    final postureCtx = relationshipService.spatialStance.isNotEmpty
-        ? 'Recent position reference: $charName was "${relationshipService.spatialStance}". '
-        : '';
-    final relationshipCtx =
-        '$emotionCtx${postureCtx}Current relationship tension: ${relationshipService.shortTermTierName} | Trust level: ${relationshipService.trustLevel}\n\n';
-
-    final arousalField = nsfwService.nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -25 to +25>'
-        : '';
-    // Arousal is field 8 (after posture), objective is 9, fixation 10, reason 11
-    final arousalInstr = nsfwService.nsfwCooldownEnabled
-        ? '8. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
-              '   Current arousal: ${nsfwService.arousalLevel}/100. '
-              'Arousal = DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
-              '   Be bold — intimate moments should produce significant shifts (+10 to +20).\n'
-              '   CRITICAL: Arousal MUST be VISIBLE in character behavior. At 60+, show heavy breathing, stuttering, flushed skin, desperate body language.\n'
-              '   High arousal = intensely turned on, NOT about to climax — climax only during active sexual contact at peak arousal.\n'
-              '   Examples: whispered compliment = +3, passionate kiss = +10 to +15, explicit contact = +15 to +25.\n'
-        : '';
-
-    // Determine the next field number after arousal (or after posture if arousal disabled)
-    final objNum = nsfwService.nsfwCooldownEnabled ? 9 : 8;
-    final fixNum = objNum + 1;
-    final reasonNum = fixNum + 1;
-
-    final primary = getPrimaryObjective();
-    final prompt =
-        'You are evaluating the current state of a roleplay scene involving $charName.\n\n'
-        '$personalityInjection'
-        '$relationshipCtx'
-        'Reactions are subjective! Evaluate ALL changes through $charName\'s specific personality.\n\n'
-        'Evaluate ALL of the following at once:\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
-        '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
-        '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
-        '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
-        '   +5: Meaningfully warmed — a moment that clearly strengthens the connection\n'
-        '   +3: Moved | +2: Warmed up | +1: Mildly pleasant\n'
-        '   -1: Slightly put off | -2: Annoyed | -3: Hurt — a clearly unkind or dismissive moment\n'
-        '   -5: Wounded — a significant emotional injury\n'
-        '   -8: Deeply hurt — a cruel or callous act that damages the bond\n'
-        '   -10: Devastated — a severe betrayal of emotional trust\n'
-        '   -15: Devastating betrayal — a relationship-destroying act\n'
-        '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
-        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
-        '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
-        '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
-        '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
-        '   +5: $userName did exactly what $charName craves or values most | +2: acted authentically in a way $charName respects | 0: Neutral\n'
-        '   -5: $userName did something $charName finds personally untrustworthy given her personality | -30: deliberate deception or betrayal | -200: Unforgivable betrayal\n'
-        '   ⚠ Default to 0. Consider her personality — what one character finds threatening another may find attractive or trust-building.\n'
-        '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
-        '3. "trust_reason": One brief in-character thought from $charName explaining the trust shift in $userName, or "none" if delta is 0.\n'
-        '4. "emotion": $charName\'s overarching emotional state (one nuanced word).\n'
-        '   NOT generic ("happy"/"sad") — find the specific texture: wistful not sad, flustered not happy, prickly not angry.\n'
-        '   Filter through $charName\'s personality — a stoic character in deep pain shows "guarded", not "devastated".\n'
-        '${getExpressionEnabled() ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
-        '5. "emotion_intensity": mild, moderate, or strong\n'
-        '6. "bond_reason": One brief in-character thought from $charName explaining the relationship shift, or "none" if delta is 0.\n'
-        '7. "posture": $charName\'s current physical position and location (brief grounded phrase), or "none".\n'
-        '   - Match the posture to the current scene context and emotional state.\n'
-        '   - If the conversation implies a location or activity change, update accordingly.\n'
-        '   - Within the same scene, maintain natural continuity (don\'t jump locations).\n'
-        '   - Across scene breaks or time jumps, update to the new context.\n'
-        '   - If time advanced significantly or a new day started, characters naturally shift positions.\n'
-        '$arousalInstr'
-        '${primary != null ? '$objNum. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primary.objective}"). Triggered by a STRONG event THIS turn.\n   ⚠ Default to "none". 90% of turns should produce "none".\n' : '$objNum. "proposed_objective": A meaningful, emotionally-driven goal triggered by a strong event THIS turn. Default: "none". 90% of turns should produce "none".\n'}'
-        '$fixNum. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — haunts them across scenes, not a temporary reaction. Default: "none".\n'
-        '$reasonNum. "reason": One brief sentence explaining the key relationship change, or "none"\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a JSON object containing all fields above$arousalField.';
-
-    try {
-      debugPrint('[Realism:OneShot] Evaluating (fused call)...');
-      final raw = await fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-
-      final searchText = stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
-
-      // ── Relationship fields ──
-      int bondDelta = 0;
-      final relDelta = extractJsonInt(text, 'relationship_delta');
-      if (relDelta != null) {
-        bondDelta = relDelta.clamp(-50, 50);
-        relationshipService.applyScoreDelta(bondDelta);
-      }
-
-      int trustDelta = 0;
-      final trDelta = extractJsonInt(text, 'trust_delta');
-      if (trDelta != null) {
-        trustDelta = trDelta.clamp(-50, 30);
-        if (trustDelta != 0) {
-          relationshipService.applyTrustDelta(trustDelta);
-        }
-      }
-
-      int arousalDelta = 0;
-      if (nsfwService.nsfwCooldownEnabled) {
-        final arDelta = extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          arousalDelta = arDelta.clamp(-25, 25);
-          nsfwService.setArousalLevel(
-            (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-        }
-      }
-
-      // Extract and store per-chip reasons for hover tooltips
-      final bondReasonMatch = RegExp(
-        r'"bond_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['bond_reason'] = bondReason;
-        setPendingRealismMetadata(pending);
-      }
-
-      final trustReasonMatch = RegExp(
-        r'"trust_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['trust_reason'] = trustReason;
-        setPendingRealismMetadata(pending);
-      }
-
-      if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) {
-          pending['arousal_delta'] = arousalDelta;
-        }
-        if (trustDelta != 0) {
-          pending['trust_delta'] = trustDelta;
-        }
-        if (bondReason.isNotEmpty) {
-          pending['bond_reason'] = bondReason;
-        }
-        if (trustReason.isNotEmpty) {
-          pending['trust_reason'] = trustReason;
-        }
-        setPendingRealismMetadata(pending);
-      } else if (bondReason.isNotEmpty || trustReason.isNotEmpty) {
-        var pending = getPendingRealismMetadata() ?? {};
-        if (bondReason.isNotEmpty) {
-          pending['bond_reason'] = bondReason;
-        }
-        if (trustReason.isNotEmpty) {
-          pending['trust_reason'] = trustReason;
-        }
-        setPendingRealismMetadata(pending);
-      }
-
-      // ── Autonomous Objective ──
-      final objectiveMatch = RegExp(
-        r'"proposed_objective"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (objectiveMatch != null) {
-        final newObj = objectiveMatch.group(1)!.trim();
-        if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          // Avoid setting the exact same goal if it's already active
-          final active = getActiveObjectives();
-          final isDuplicate = active.any(
-            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
-          );
-          if (!isDuplicate) {
-            debugPrint(
-              '[Realism:OneShot] Autonomous objective proposed: $newObj',
-            );
-            // Auto objectives are strictly secondary (isPrimary = false).
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            // (thin delegation to god setObjective per plan for step9)
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
-          }
-        }
-      }
-
-      // ── Scene fields ──
-      final emotionMatch = RegExp(
-        r'"emotion"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (emotionMatch != null) {
-        setCharacterEmotion(emotionMatch.group(1)!.toLowerCase().trim());
-      }
-
-      final intensityMatch = RegExp(
-        r'"emotion_intensity"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (intensityMatch != null) {
-        setEmotionIntensity(intensityMatch.group(1)!.toLowerCase().trim());
-      }
-
-      final postureMatch = RegExp(
-        r'"posture"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (postureMatch != null) {
-        final p = postureMatch.group(1)!.trim();
-        relationshipService.setSpatialStance(p);
-      }
-
-      relationshipService.updateFixationFromEvalResult(
-        (RegExp(
-              r'"fixation_topic"\s*:\s*"([^"]+)"',
-            ).firstMatch(text)?.group(1) ??
-            ''),
-        isOneShot: true,
-      );
-
-      final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(text);
-      debugPrint(
-        '[Realism:OneShot] Done — Emotion: ${getCharacterEmotion()} (${getEmotionIntensity()}), '
-        'Time: ${timeService.timeOfDay}, Reason: ${reasonMatch?.group(1) ?? 'unknown'}',
-      );
-
-      // Bundle full state snapshot for time-travel forking
-      var pending = getPendingRealismMetadata() ?? {};
-      pending['emotion_label'] = getCharacterEmotion();
-      pending['realism_state'] = captureRealismState();
-      setPendingRealismMetadata(pending);
-
-      await onSaveChat();
-      onNotify();
-    } catch (e) {
-      debugPrint(
-        '[Realism:OneShot] Failed: $e — falling back to dual-call on next turn',
-      );
-    }
   }
 
   /// Generate subtasks for the current objective using the LLM.
