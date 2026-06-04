@@ -831,8 +831,6 @@ class ChatService extends ChangeNotifier {
     getEmotionIntensity: () => _emotionIntensity,
     setEmotionIntensity: (v) => _emotionIntensity = v,
     relationshipService: _relationshipService,
-    nsfwService: _nsfwService,
-    timeService: _timeService,
     getPrimaryObjective: () => primaryObjective,
     getActiveObjectives: () => _activeObjectives,
     setObjective: setObjective,

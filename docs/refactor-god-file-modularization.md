@@ -2682,3 +2682,37 @@ All constraints followed. Ready for human smoke or step 11.
 
 (End of Fix Round 1 for step 10.)
 
+## Fix Round 2 for Step 10 (verifier-driven completion of deletion/audit/gate hygiene)
+
+**Context (from /check-work step 10 verifier):** The round 1 fixes (63e2bd0 + 54091a8) addressed the original review opens (headers, dups, oneShot cbs, test count/import). However, independent verification against *full* on-disk + all CLAUDE/plan rules ("deletion part of the task", "claims *exact* vs on-disk via live greps/gates/re-reads", "full surfaces not selective", "dead code audit", 500 LOC note, "0 new warnings on changed .dart", "paranoid self-audit") surfaced 5 issues, including 2 that caused automatic FAIL (broken compile in llm_eval_engine_test.dart from stale calls to excised methods; dead nsfw/time wiring left in engine + its test factory; format mismatch; selective gate surfaces in MD captures; size cap + precedent note needed).
+
+**Fixes executed (deletion + hygiene as part of task):**
+- Excised the 3 obsolete test bodies in `test/services/chat/llm_eval_engine_test.dart` that directly called the moved `evaluate*Call` methods on LlmEvalEngine (relationship delta/pending, narrative proposed_objective, oneShot vs multi parity smoke). Their coverage (including group/impersonation/oneShot/normal parity via live cbs) is now fully in the dedicated `realism_evals_test.dart`. This makes the engine test compile/run cleanly again (was the source of the 4 undefined_method errors).
+- Removed dead `nsfwService` + `timeService` (fields, ctor params, creation dummies in factory, wiring in god late final for engine, imports in engine + its test, comment text) from `llm_eval_engine.dart` + god + `llm_eval_engine_test.dart`. Only relationshipService remains (still used by stayed needs impact path). This is exactly "deletion part of the task" + "anti-accumulation" + "strictly cleaner".
+- Removed the two now-unused imports (nsfw/time) from the engine test (clean 0 warnings).
+- Re-ran format (0 changed on final surfaces), full surfaces analyze (including the engine test + dedicated + aug; "No issues found!" on key surfaces; only pre-existing test infos), dedicated + engine test (all green; +30 "All tests passed!" for the pair), priv/dead greps (15 / only thins), build (✓).
+- All new long-form captures with exact `cd /abs + cmd > /tmp/grok-*-fixround2-*.txt ; echo "EXIT=$?" ; cat` + re-reads of abs on-disk (engine, god, tests) + /tmp post edits.
+- Updated MD with this Fix Round 2 subsection (verbatim captures, "0 open after round 2", cumulative Hygiene, status). Updated .claude/changelog.md.
+- No new god private _ methods (stayed 15; greps post every). No new _ methods created in engine or tests. 0 warnings on the changed surfaces after import cleanup.
+
+**Gates (long-form, post all deletions + format):**
+- Format: `cd ... && dart format --set-exit-if-changed ... > /tmp/grok-fmt-fixround2-004.txt 2>&1 ; echo "FORMAT_EXIT=$?" ; cat ...` → "0 changed", EXIT=0 (and final 008 after import cleanup also 0 changed).
+- Analyze (expanded surfaces incl. previously-broken engine test): ... "No issues found!" (0 errors/warnings on lib/chat surfaces + the engine test; only the usual pre-existing info-level unnecessary_underscores in test factories). Full `flutter analyze` on the 7 files now clean.
+- Dedicated + engine test: +30 "All tests passed!" (no more compilation failure; engine-specific tests + objective/gen/check/strip/extract/ etc. green).
+- Priv: 15 (stayed). Dead greps: 0 stray evaluate*Call bodies in engine; 0 nsfw/time: references left in engine test.
+- Build: "✓ Built ...", EXIT=0.
+
+**Post-round 2 status:** Step 1+..+9b + step 10 + fix round 1 + this fix round 2. 0 open after round 2. All verifier issues addressed. Tree strictly cleaner (dead excised, full surfaces now compile/green in gates, claims match on-disk, selective-gate problem fixed by always including the engine test going forward). Interactive manual smoke still required by human pre-landing (1:1+group, all 5 evals via thins, oneShot/normal/group parity, chips/sidebar, resets, engine test green, no regressions).
+
+**Hygiene Summary (cumulative for step 10 + round 1 + round 2):**
+- New private methods: 0 (grep 15 stayed after every batch + final).
+- Deleted (as part of task): 3 full obsolete test bodies in llm_eval_engine_test (the realism eval smokes now in dedicated); nsfwService + timeService (fields/ctor/wiring/dummies/imports/comments in engine + god + its test factory); 2 unused imports in engine test; prior round's on* cbs etc.
+- `flutter analyze`: 0 errors on full relevant surfaces (incl. engine test + dedicated + aug); 0 new warnings; pre-existing infos only (qualified).
+- Dead/priv: audited post every (15 priv, only thins/comments remain; no strays left in engine or tests).
+- Duplication/gate hygiene: improved (full surfaces in captures, format 0 changed on final, claims now match the engine test reality).
+- All other: parity qualified, main pristine verified (read-only git), abs paths, re-runs + re-reads of on-disk + /tmp, build gate, runnable tree, smoke note, no skeletons, no excess.
+
+Ready for human smoke or next step in the plan.
+
+(End of Fix Round 2 for step 10.)
+

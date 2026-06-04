@@ -25,8 +25,6 @@ import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
-import 'package:front_porch_ai/services/chat/nsfw_service.dart';
-import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
@@ -89,9 +87,8 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// via their own leaf cbs): get/setPendingRealismMetadata, captureRealismState,
 /// get/setCharacterEmotion, get/setEmotionIntensity,
 /// plus dep services for their owned state (relationshipService for apply deltas /
-/// updateFixation / setSpatial / shortTermTierName / trustLevel / spatialStance,
-/// nsfwService for cooldown/arousal/setArousal, timeService for the physical
-/// posture/time progress delegation).
+/// updateFixation / setSpatial / shortTermTierName / trustLevel / spatialStance
+/// used by stayed needs impact path).
 /// Use live closures over god state for any cross (e.g. _pending map, emotion
 /// scalars, test overrides); avoid cycles; testable with small factory in test.
 ///
@@ -176,8 +173,6 @@ class LlmEvalEngine {
 
   // Services for owned state (avoids duplicating scalars/cbs in god for this leaf)
   final RelationshipService relationshipService;
-  final NsfwService nsfwService;
-  final TimeService timeService;
 
   // Objective proposal + gen/check coordination (kept thin/stayed in god per plan;
   // engine calls via cbs only; setObjective may trigger gen which delegates back)
@@ -227,8 +222,6 @@ class LlmEvalEngine {
     required this.getEmotionIntensity,
     required this.setEmotionIntensity,
     required this.relationshipService,
-    required this.nsfwService,
-    required this.timeService,
     required this.getPrimaryObjective,
     required this.getActiveObjectives,
     required this.setObjective,

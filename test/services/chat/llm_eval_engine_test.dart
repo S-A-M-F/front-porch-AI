@@ -46,8 +46,6 @@ import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/chat/llm_eval_engine.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
-import 'package:front_porch_ai/services/chat/nsfw_service.dart';
-import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 
 /// Minimal fake LLMService for dedicated tests (real stream control, no god).
@@ -98,8 +96,6 @@ LlmEvalEngine createTestLlmEvalEngine({
   String emotion = '',
   String intensity = '',
   RelationshipService? relSvc,
-  NsfwService? nsfwSvc,
-  TimeService? timeSvc,
   Objective? primary,
   List<Objective> actives = const [],
   Future<void> Function(String, {bool isPrimary, bool autoGenerateTasks})?
@@ -150,21 +146,6 @@ LlmEvalEngine createTestLlmEvalEngine({
         getGroupInterCharacterRelationships: (id) => const <String, int>{},
         setGroupInterCharacterRelationships: (id, m) {},
       );
-  final ns =
-      nsfwSvc ??
-      NsfwService(
-        getGroupInt: (c, k, {d = 0}) => 0,
-        getGroupValue: (c, k) => null,
-        setGroupValue: (c, k, v) {},
-      );
-  final tm =
-      timeSvc ??
-      TimeService(
-        onNotify: () {},
-        onSaveChat: () async {},
-        onSetPendingRealismMetadata: (k, v) {},
-        onNudgePatchLastMessageRealismState: (t, d) {},
-      );
   final fakeLlm = _FakeLlmService((params) {
     final j =
         getLlmJson?.call() ??
@@ -197,8 +178,6 @@ LlmEvalEngine createTestLlmEvalEngine({
     getEmotionIntensity: () => intensity,
     setEmotionIntensity: (v) {},
     relationshipService: rel,
-    nsfwService: ns,
-    timeService: tm,
     getPrimaryObjective: () => primary,
     getActiveObjectives: () => actives,
     setObjective:
@@ -237,98 +216,9 @@ void main() {
       expect(true, isTrue);
     });
 
-    test('relationship eval 1:1 delta apply + pending + reason', () async {
-      final pending = <String, dynamic>{};
-      final rel = RelationshipService(
-        onNotify: () {},
-        onSaveChat: () async {},
-        getIsGroupActive: () => false,
-        getObserverMode: () => false,
-        getGroupCharacterCount: () => 0,
-        getShouldTrackInterCharacterRelationships: () => false,
-        getCurrentSpeakerIdForRealism: () => 'c1',
-        getCurrentGroupMemberIds: () => {},
-        getOtherGroupMemberIds: (s) => [],
-        getOtherGroupMemberIdToLowerName: (s) => {},
-        getRecentExchangeLowerText: () => '',
-        getMessageCount: () => 0,
-        getIsGroupRealismActive: () => true,
-        getGroupAffectionScore: (id, {defaultValue = 0}) => defaultValue,
-        setGroupAffectionScore: (id, v) {},
-        getGroupLongTermScore: (id, {defaultValue = 0}) => defaultValue,
-        setGroupLongTermScore: (id, v) {},
-        getGroupTrustLevel: (id, {defaultValue = 0}) => defaultValue,
-        setGroupTrustLevel: (id, v) {},
-        getGroupFixation: (id, {defaultValue = ''}) => defaultValue,
-        setGroupFixation: (id, v) {},
-        getGroupFixationLifespan: (id, {defaultValue = 0}) => defaultValue,
-        setGroupFixationLifespan: (id, v) {},
-        getGroupRelationshipTier: (id, {defaultValue = 0}) => defaultValue,
-        setGroupRelationshipTier: (id, v) {},
-        getGroupLongTermTier: (id, {defaultValue = 0}) => defaultValue,
-        setGroupLongTermTier: (id, v) {},
-        getGroupSpatialStance: (id, {defaultValue = ''}) => defaultValue,
-        setGroupSpatialStance: (id, v) {},
-        getGroupInterCharacterRelationships: (id) => const {},
-        setGroupInterCharacterRelationships: (id, m) {},
-      );
-      final e = createTestLlmEvalEngine(
-        activeChar: CharacterCard(name: 'Alice', personality: 'friendly'),
-        userName: 'User',
-        messages: [ChatMessage(text: 'hello', sender: 'User', isUser: true)],
-        getLlmJson: () =>
-            '{"relationship_delta":5,"trust_delta":10,"bond_reason":"nice","trust_reason":"kept word","arousal_delta":2}',
-        pending: pending,
-        relSvc: rel,
-        nsfwSvc: NsfwService(
-          getGroupInt: (c, k, {d = 0}) => d,
-          getGroupValue: (c, k) => null,
-          setGroupValue: (c, k, v) {},
-        ),
-      );
-      await e.evaluateRelationshipCall();
-      // applies via service (test svc no-op but no crash); pending captured via cb
-      expect(
-        pending.containsKey('bond_delta') || pending.isNotEmpty || true,
-        isTrue,
-      ); // qualified smoke
-    });
-
-    test(
-      'narrative proposed_objective "none" vs value + dedup + auto tasks flag',
-      () async {
-        bool called = false;
-        final e = createTestLlmEvalEngine(
-          activeChar: CharacterCard(name: 'Bob'),
-          messages: [ChatMessage(text: 'event', sender: 'User', isUser: true)],
-          getLlmJson: () =>
-              '{"proposed_objective":"find the map","fixation_topic":"none"}',
-          primary: null,
-          actives: [],
-          setObj: (txt, {isPrimary = false, autoGenerateTasks = false}) async {
-            called = true;
-            expect(txt, 'find the map');
-            expect(isPrimary, false);
-            expect(autoGenerateTasks, true); // autonomous only
-          },
-        );
-        await e.evaluateNarrativeCall();
-        expect(called, true);
-      },
-    );
-
-    test('oneShot vs multi parity smoke + objective under impersonation', () async {
-      // smoke: both paths parse same JSON shape, set same deltas via cbs; target correct via getActive cb (god does impersonation)
-      final e = createTestLlmEvalEngine(
-        activeChar: CharacterCard(name: 'Imp'),
-        getLlmJson: () =>
-            '{"relationship_delta":1,"trust_delta":2,"emotion":"curious","emotion_intensity":"mild","proposed_objective":"none","fixation_topic":"none","bond_reason":"x","trust_reason":"y","posture":"standing","arousal_delta":0,"reason":"z"}',
-      );
-      await e.evaluateOneShotCall();
-      await e.evaluateRelationshipCall();
-      // no crash + parity in deltas qualified (exercised in key + manual)
-      expect(true, isTrue);
-    });
+    // Stale realism eval tests (relationship, narrative, oneShot) excised as part of step 10 extraction + "deletion part of the task".
+    // Coverage (including group/1:1/oneShot/parity/impersonation via live cbs) moved to dedicated realism_evals_test.dart (factory).
+    // These bodies called the moved evaluate*Call methods on LlmEvalEngine; engine now only owns fire/strip/extract + objective tasks + needs impact.
 
     test(
       'generateObjectiveTasks 2000 budget + strip + parse (numbered)',
@@ -494,17 +384,6 @@ void main() {
           setGroupSpatialStance: (_, __) {},
           getGroupInterCharacterRelationships: (_) => const {},
           setGroupInterCharacterRelationships: (_, __) {},
-        ),
-        nsfwService: NsfwService(
-          getGroupInt: (_, __, {d = 0}) => d,
-          getGroupValue: (_, __) => null,
-          setGroupValue: (_, __, ___) {},
-        ),
-        timeService: TimeService(
-          onNotify: () {},
-          onSaveChat: () async {},
-          onSetPendingRealismMetadata: (_, __) {},
-          onNudgePatchLastMessageRealismState: (_, __) {},
         ),
         getPrimaryObjective: () => null,
         getActiveObjectives: () => [],
