@@ -261,7 +261,9 @@ void main() {
         Map<String, dynamic>? lastPending;
         final svc = createTestRealismEvals(
           emotionFn: () => emotion,
-          setEmotionFn: (v) { emotion = v; },
+          setEmotionFn: (v) {
+            emotion = v;
+          },
           setPendingFn: (v) => lastPending = v ?? {},
           fireFn: (p, {onChunk}) async =>
               '{"relationship_delta":4,"trust_delta":12,"bond_reason":"warmth","trust_reason":"kept promise","emotion":"flustered","emotion_intensity":"strong","arousal_delta":7,"posture":"sitting close","proposed_objective":"none","fixation_topic":"none","reason":"connected"}',
