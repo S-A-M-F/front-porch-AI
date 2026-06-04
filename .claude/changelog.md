@@ -6,6 +6,7 @@
 - Fix: `_saveChat` now chains via `_saveChain = _saveChain.then((_) => _doSaveChat()); await _saveChain;` so executions are strictly sequential (latest live state at run time). Message delete+insert wrapped in `_db.transaction(...)` for extra safety. 1 new private method (`_doSaveChat`); justified, <2 limit. No schema, no behavior change, no parity impact. Subsequent saves clean any prior dups.
 - Verification: flutter analyze (0 issues on chat_service.dart), `dart fix --dry-run` (no action on our file), `flutter build macos --debug` succeeded ("✓ Built"), dead grep for new symbol only shows delegation, build+analyze gates passed, followed all "user cannot review" + CLAUDE/AGENTS rules (hygiene summary in MD, <2 privates, no parallel paths, etc.). Updated per-branch MD + this changelog.
 - Hygiene: New privates: 1 (`_doSaveChat`); deleted: 0; analyze clean; no dead code left; tree runnable.
+- Commits landed: d3d5ac0 (main fix + MD + this changelog) then 7785fd7 (MD follow-up recording literal outputs). Both pushed. Full command + gate outputs + "Output (literal)" now also in docs/refactor-god-file-modularization.md per branch convention.
 
 ## 2026-06-03 (Thinking models: increase objective/task generation limits + robust stripping)
 - User report: "most models think way more than 600 tokens" for subtask generation. The previous 600 maxLength (and 1024 for completion checks) was insufficient once <think> reasoning is emitted before the final "Output ONLY a numbered list..." or "Answer only YES or NO".
