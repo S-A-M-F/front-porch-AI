@@ -130,6 +130,7 @@ class ChatService extends ChangeNotifier {
 
   CharacterCard? _activeCharacter;
   final List<ChatMessage> _messages = [];
+  Future<void> _saveChain = Future.value();
   Map<String, dynamic>?
   _pendingRealismMetadata; // stores deltas for the next generation
   bool _isGenerating = false;
@@ -2514,6 +2515,11 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> _saveChat() async {
+    _saveChain = _saveChain.then((_) => _doSaveChat());
+    await _saveChain;
+  }
+
+  Future<void> _doSaveChat() async {
     if ((_activeCharacter == null && _activeGroup == null) ||
         _currentSessionId == null) {
       return;
@@ -2650,35 +2656,39 @@ class ChatService extends ChangeNotifier {
       updates: {_db.sessions},
     );
 
-    // Replace all messages for this session using the snapshot
-    await _db.deleteMessagesForSession(_currentSessionId!);
-    final messageBatch = <MessagesCompanion>[];
-    for (int i = 0; i < snapshot.length; i++) {
-      final m = snapshot[i];
-      messageBatch.add(
-        MessagesCompanion(
-          sessionId: drift.Value(_currentSessionId!),
-          position: drift.Value(i),
-          sender: drift.Value(m.sender),
-          isUser: drift.Value(m.isUser),
-          characterId: drift.Value(m.characterId),
-          swipes: drift.Value(jsonEncode(m.swipes)),
-          swipeIndex: drift.Value(m.swipeIndex),
-          swipeDurations: drift.Value(jsonEncode(m.swipeDurations)),
-          metadata: drift.Value(
-            m.metadata != null ? jsonEncode(m.metadata) : null,
+    // Replace all messages for this session using the snapshot.
+    // Use a transaction for the delete+insert to keep the replace atomic even
+    // if other writers (cloud sync, external tools) touch the DB concurrently.
+    await _db.transaction(() async {
+      await _db.deleteMessagesForSession(_currentSessionId!);
+      final messageBatch = <MessagesCompanion>[];
+      for (int i = 0; i < snapshot.length; i++) {
+        final m = snapshot[i];
+        messageBatch.add(
+          MessagesCompanion(
+            sessionId: drift.Value(_currentSessionId!),
+            position: drift.Value(i),
+            sender: drift.Value(m.sender),
+            isUser: drift.Value(m.isUser),
+            characterId: drift.Value(m.characterId),
+            swipes: drift.Value(jsonEncode(m.swipes)),
+            swipeIndex: drift.Value(m.swipeIndex),
+            swipeDurations: drift.Value(jsonEncode(m.swipeDurations)),
+            metadata: drift.Value(
+              m.metadata != null ? jsonEncode(m.metadata) : null,
+            ),
+            swipeMetadata: drift.Value(
+              m.swipeMetadata.any((e) => e != null)
+                  ? jsonEncode(m.swipeMetadata)
+                  : null,
+            ),
           ),
-          swipeMetadata: drift.Value(
-            m.swipeMetadata.any((e) => e != null)
-                ? jsonEncode(m.swipeMetadata)
-                : null,
-          ),
-        ),
-      );
-    }
-    if (messageBatch.isNotEmpty) {
-      await _db.insertMessages(messageBatch);
-    }
+        );
+      }
+      if (messageBatch.isNotEmpty) {
+        await _db.insertMessages(messageBatch);
+      }
+    });
   }
 
   Future<void> _loadLastSession() async {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-04 (Bugfix: duplicate messages on chat load caused by racy _saveChat deletes+inserts)
+- Files changed: `lib/services/chat_service.dart` (added `_saveChain` + `_saveChat` wrapper for serialization + `_doSaveChat` body + transaction around message replace), `docs/refactor-god-file-modularization.md` (new "Drive-by Bug Fix: Duplicate Messages..." section), `.claude/changelog.md` (this entry).
+- Reason: User reported (with screenshot) that on loading into chats, some user + character messages were duplicated as consecutive identical bubbles. Root: `_saveChat` did delete-all-messages-for-session then insert-batch with no mutual exclusion. Many call sites (pre-gen bare saves for pending metadata, post-stream await save, onSaveChat cb from NeedsImpactEvaluator/NeedsSimulation.applySceneImpact during _runPostGenNeedsChecks, post-gen needs_deltas chip attach save, group speaker eval saves, setters, background summary, etc.) could have their async DB work interleave. Two logical saves → two inserts after deletes (or staggered) → duplicate rows for the same logical messages (esp. the just-written AI response). Load then produced dup ChatMessages. Worsened by more onSaveChat cbs from extracted services in god-file modularization.
+- Fix: `_saveChat` now chains via `_saveChain = _saveChain.then((_) => _doSaveChat()); await _saveChain;` so executions are strictly sequential (latest live state at run time). Message delete+insert wrapped in `_db.transaction(...)` for extra safety. 1 new private method (`_doSaveChat`); justified, <2 limit. No schema, no behavior change, no parity impact. Subsequent saves clean any prior dups.
+- Verification: flutter analyze (0 issues on chat_service.dart), `dart fix --dry-run` (no action on our file), `flutter build macos --debug` succeeded ("✓ Built"), dead grep for new symbol only shows delegation, build+analyze gates passed, followed all "user cannot review" + CLAUDE/AGENTS rules (hygiene summary in MD, <2 privates, no parallel paths, etc.). Updated per-branch MD + this changelog.
+- Hygiene: New privates: 1 (`_doSaveChat`); deleted: 0; analyze clean; no dead code left; tree runnable.
+
 ## 2026-06-03 (Thinking models: increase objective/task generation limits + robust stripping)
 - User report: "most models think way more than 600 tokens" for subtask generation. The previous 600 maxLength (and 1024 for completion checks) was insufficient once <think> reasoning is emitted before the final "Output ONLY a numbered list..." or "Answer only YES or NO".
 - Changes:
