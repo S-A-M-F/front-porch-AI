@@ -2752,8 +2752,34 @@ echo "FINAL_STATUS_EXIT=$?" ; git log --oneline -1 | cat ; echo "=== commit now 
 - GOD_PRIV_COUNT=15
 - TEST_BODIES=22 (realism dedicated)
 
-**Literal output from the successful add/commit/push run:**
-[will be filled from actual execution below]
+**Literal output from the successful add/commit/push run (verbatim):**
+```
+   info • Unnecessary use of multiple underscores • test/services/chat/realism_evals_test.dart:86:37 • unnecessary_underscores
+   ... (more infos, all pre-existing test style)
+ANALYZE_SURFACE_EXIT=0
+Nothing to fix!
+DARTFIX_EXIT=0
+15
+GOD_PRIV_COUNT=15
+22
+TEST_BODIES=22
+COMMIT_MSG_WRITTEN_EXIT=0
+[refactor/god-file-modularization e25b0fb] fix(step 10): post-/check-work verification PASS — round 2 hygiene complete; MD recording of commit/push
+ 1 file changed, 43 insertions(+)
+COMMIT_EXIT=0
+e25b0fb fix(step 10): post-/check-work verification PASS — round 2 hygiene complete; MD recording of commit/push
+PUSH_EXIT=0
+## refactor/god-file-modularization...origin/refactor/god-file-modularization
+FINAL_STATUS_EXIT=0
+e25b0fb fix(step 10): post-/check-work verification PASS — round 2 hygiene complete; MD recording of commit/push
+=== commit now on disk ===
+remote: 
+remote: GitHub found 4 vulnerabilities on linux4life1/front-porch-AI's default branch (1 high, 3 moderate). To find out more, visit:        
+remote:      https://github.com/linux4life1/front-porch-AI/security/dependabot        
+remote: 
+To https://github.com/linux4life1/front-porch-AI.git
+   e617e10..e25b0fb  refactor/god-file-modularization -> refactor/god-file-modularization
+```
 
 **Post-push status:** Working tree clean. Branch up-to-date with origin. The MD update recording the exact outputs + hash for the post-verification state is now on the branch.
 
