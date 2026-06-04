@@ -2625,16 +2625,48 @@ git status --porcelain --branch | cat ; \
 echo "FINAL_STATUS_EXIT=$?" ; git log --oneline -1 | cat ; echo "=== fix round 1 commit now on disk ==="
 ```
 
-**Fresh gate output captured (before staging; abbreviated here for MD; full literal in /tmp):**
-- ANALYZE_SURFACE_EXIT=0 (0 errors; infos only pre-existing test underscores)
-- DARTFIX_EXIT=0 ("Nothing to fix!")
-- GOD_PRIV_COUNT=15
-- TEST_BODIES=22
-- TEST_DED_EXIT=0 ("All tests passed!")
-- BUILD_EXIT=0 ("✓ Built ...")
+**Fresh gate output captured (before staging; full literal from the run):**
+```
+   info • Unnecessary use of multiple underscores • test/services/chat/realism_evals_test.dart:86:37 • unnecessary_underscores
+   ... (20 more infos, all pre-existing test style unnecessary_underscores; 0 error • or warning • on surfaces)
+ANALYZE_SURFACE_EXIT=0
+Nothing to fix!
+DARTFIX_EXIT=0
+15
+GOD_PRIV_COUNT=15
+22
+TEST_BODIES=22
+```
 
-**Literal output from the successful add/commit/push run (to be captured on execution):**
-[will be pasted post-run exactly as prior precedent, with EXITs + remote + final status + hash]
+**Literal output from the successful add/commit/push run (verbatim):**
+```
+   info • Unnecessary use of multiple underscores • ... (infos only)
+ANALYZE_SURFACE_EXIT=0
+Nothing to fix!
+DARTFIX_EXIT=0
+15
+GOD_PRIV_COUNT=15
+22
+TEST_BODIES=22
+COMMIT_MSG_WRITTEN_EXIT=0
+[refactor/god-file-modularization 63e2bd0] fix(step 10): round 1 review feedback (aug headers, comment dups, oneShot double save/notify removal, import/count, gate hygiene); 0 open after round 1; gates clean; smoke still required
+  7 files changed, 135 insertions(+), 62 deletions(-)
+COMMIT_EXIT=0
+63e2bd0 fix(step 10): round 1 review feedback (aug headers, comment dups, oneShot double save/notify removal, import/count, gate hygiene); 0 open after round 1; gates clean; smoke still required
+remote: 
+remote: GitHub found 4 vulnerabilities on linux4life1/front-porch-AI's default branch (1 high, 3 moderate). To find out more, visit:        
+remote:      https://github.com/linux4life1/front-porch-AI/security/dependabot        
+remote: 
+To https://github.com/linux4life1/front-porch-AI.git
+   d4d09f5..63e2bd0  refactor/god-file-modularization -> refactor/god-file-modularization
+PUSH_EXIT=0
+## refactor/god-file-modularization...origin/refactor/god-file-modularization
+FINAL_STATUS_EXIT=0
+63e2bd0 fix(step 10): round 1 review feedback (aug headers, comment dups, oneShot double save/notify removal, import/count, gate hygiene); 0 open after round 1; gates clean; smoke still required
+=== fix round 1 commit now on disk ===
+```
+
+**Post-fix-round status:** Step 1+..+9b + step 10 + this fix round 1 (commit 63e2bd0, pushed). Tree clean, branch up-to-date. 0 open after round 1 on the review feedback. Interactive manual smoke 1:1+group (realism evals pre/post/greeting/regen/group per-speaker/oneShot vs normal, chips/sidebar, resets, no double-save side effects, no regression) still required by human pre-landing.
 
 **Post-fix-round status:** Step 1+..+9b + step 10 + this fix round 1. Tree has the fix round changes (5 files). 0 open after round 1 on the review feedback. Interactive manual smoke 1:1+group (realism evals pre/post/greeting/regen/group per-speaker/oneShot vs normal, chips/sidebar, resets, no double-save side effects, no regression) still required by human pre-landing.
 
