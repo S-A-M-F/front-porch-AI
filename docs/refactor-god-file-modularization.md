@@ -3036,3 +3036,57 @@ All prior constraints observed 100%. Co-authored-by: Grok <grok@x.ai>
 
 (End of Step 12 section in MD.)
 
+
+#### Commit and push (for step 12; executed on user command "commit and push")
+
+All work for step 12 (core extraction of summary_service + review fix rounds 1/2 + full MD/CLAUDE/changelog updates with verbatim gates + Hygiene + "0 open after round 3" + this recording) was committed and pushed in the worktree only (on refactor/god-file-modularization). Main /Users/linux4life/dev/front-porch-AI remained read-only pristine throughout (verified multiple times with captures before/after; only its own pre-existing dirt in docs/refactoring-guide.md + untracked build/notarization artifacts; zero additional from this step).
+
+**Pre-commit ritual verifications (fresh, after all code + prior MD edits; self-contained long cd+abs forms with > /tmp/... ; echo "XXX_EXIT=$?" ; cat | cat ; re-reads of abs on-disk + /tmp immediate after):**
+
+- Worktree status + main pristine 1/2/3: `cd /Users/linux4life/dev/front-porch-stage1-experiment && git status --porcelain --branch > /tmp/grok-worktree-status-commit-9a99677d-1.txt 2>&1 ; echo "WORKTREE_STATUS_EXIT=$?" >> ... ; cat ... | cat ; ... cd /Users/linux4life/dev/front-porch-AI && git status --porcelain --branch && git log --oneline -1 && git diff --stat && echo "MAIN_PRISTINE_*_EXIT=$?"` (multiple) → worktree had the expected M for god/aug tests/MD/CLAUDE/changelog + ?? for 2 new; main only pre-existing (Rawhide dirt).
+- Format (darts only): `cd /Users/linux4life/dev/front-porch-stage1-experiment && dart format --set-exit-if-changed lib/services/chat/summary_service.dart lib/services/chat_service.dart test/services/chat/summary_service_test.dart test/services/chat/llm_eval_engine_test.dart test/services/chat_service_session_test.dart test/services/chat_service_group_realism_test.dart test/services/chat_service_realism_engine_test.dart > /tmp/grok-fmt-commit-9a99677d-1.txt 2>&1 ; echo "FORMAT_DART_ONLY_COMMIT_EXIT=$?" >> ... ; cat ... | cat` → "Formatted 7 files (0 changed) in 0.07 seconds.\nFORMAT_DART_ONLY_COMMIT_EXIT=0"
+- Surface analyze (7 files): `cd ... && flutter analyze --no-fatal-warnings --no-fatal-infos [the 7] > /tmp/grok-analyze-surface-commit-9a99677d-1.txt 2>&1 ; echo "ANALYZE_SURFACE_COMMIT_EXIT=$?" >> ... ; cat ... | cat` → "Analyzing 7 items...\nNo issues found! (ran in 0.6s)\nANALYZE_SURFACE_COMMIT_EXIT=0" (0 new warnings on diff surfaces).
+- Priv / test bodies / dead: greps for `^\s*void _[a-zA-Z]` in god =15; `^\s*test(` in dedicated =15; refined grep for method defs of moved symbols in god =2 (only thins expected). Confirmed live.
+- Dart fix per file: "Nothing to fix!" for god/leaf/dedicated test (DARTFIX_*_COMMIT_EXIT=0).
+- Dedicated test: `cd ... && flutter test test/services/chat/summary_service_test.dart --no-pub -r compact > /tmp/... 2>&1 ; echo "TEST_DEDICATED_COMMIT_EXIT=$?" >> ... ; tail -15 ... | cat` → "+15: All tests passed!\nTEST_DEDICATED_COMMIT_EXIT=0" (15 bodies via live grep; cadence/force with expects, group, etc.).
+- Key suites: +66 -2 (pre-existing cap failures in realism_engine_test only; no new regressions; summary gen/cadence/force/pause/RAG/strip exercised in logs).
+- Build: `cd ... && flutter build macos --debug > /tmp/grok-build-commit-9a99677d-1.txt 2>&1 ; echo "BUILD_COMMIT_EXIT=$?" >> ... ; tail -5 ... | cat` → "✓ Built build/macos/Build/Products/Debug/FrontPorchAI.app\nBUILD_COMMIT_EXIT=0"
+- Main pristine (multiple, including final) + worktree status: confirmed only pre-existing dirt (multiple full captures).
+- Refined dead: only thins (2 mentions); full bodies excised.
+
+**Commit + push command (self-contained; run after verifs + staging correct paths incl -f for .claude/changelog.md):**
+```
+cd /Users/linux4life/dev/front-porch-stage1-experiment && git add lib/services/chat/summary_service.dart test/services/chat/summary_service_test.dart lib/services/chat_service.dart test/services/chat/llm_eval_engine_test.dart test/services/chat_service_session_test.dart test/services/chat_service_group_realism_test.dart test/services/chat_service_realism_engine_test.dart docs/refactor-god-file-modularization.md CLAUDE.md && git add -f .claude/changelog.md && git commit -F /tmp/step12-commit-msg.txt > /tmp/grok-commit-push-9a99677d-1.txt 2>&1 ; echo "COMMIT_EXIT=$?" >> ... ; git push origin refactor/god-file-modularization >> ... 2>&1 ; echo "PUSH_EXIT=$?" >> ... ; git log --oneline -1 >> ... ; echo "HASH=$(git rev-parse --short HEAD)" >> ... ; git status --porcelain --branch | cat >> ... ; echo "FINAL_STATUS_EXIT=$?" >> ... ; cat ... | cat
+```
+**Actual output (COMPLETE literal raw):**
+[refactor/god-file-modularization 63e0fe3] refactor(chat): Stage 3 god-file modularization step 12 — extract summary_service.dart (Chat Summary)
+ 10 files changed, 966 insertions(+), 221 deletions(-)
+ create mode 100644 lib/services/chat/summary_service.dart
+ create mode 100644 test/services/chat/summary_service_test.dart
+COMMIT_EXIT=0
+remote: 
+remote: GitHub found 4 vulnerabilities on linux4life1/front-porch-AI's default branch (1 high, 3 moderate). To find out more, visit:        
+remote:      https://github.com/linux4life1/front-porch-AI/security/dependabot        
+remote: 
+To https://github.com/linux4life1/front-porch-AI.git
+   203e75e..63e0fe3  refactor/god-file-modularization -> refactor/god-file-modularization
+PUSH_EXIT=0
+63e0fe3 refactor(chat): Stage 3 god-file modularization step 12 — extract summary_service.dart (Chat Summary)
+HASH=63e0fe3
+## refactor/god-file-modularization...origin/refactor/god-file-modularization
+FINAL_STATUS_EXIT=0
+
+**Post-push confirms:**
+- Main pristine final: only pre-existing (docs/refactoring-guide.md + untracked build bits).
+- Worktree: clean on 63e0fe3.
+- Re-read abs on-disk (post commit): god (priv count 15 stayed, thins, zeros at ~9-10 sites for paused+generating incl loadSession loaded + hygiene comments + timing qualify comment before _maybe, keep-sync lists, cb wiring removed for summary), leaf (full, header with timing qualify + "thin delegation" + 15 bodies note + round notes, no dead cb), dedicated test (15 bodies via grep, factory, cadence with expect, header corrected, group names test), MD (this subsection + round notes + verbatim + hash 63e0fe3 + re-read bullets), /tmp/grok-*-commit-*.txt (full raw + EXIT inside match the quoted), CLAUDE/changelog (updated).
+- All claims exact vs on-disk/greps/logs/captured (15 bodies, 15 priv, 0 dead bodies in god for summary, 0 new warnings on surfaces, format 0, dartfix nothing, dedicated +15, build ✓, main pristine, 0 open after round 3).
+
+**Commit hash:** 63e0fe3
+
+**Status after this commit/push:** Step 12 (extraction + all fix rounds to 0 open after round 3 from 6 reviewers) + full audit trail (verbatim self-contained gates with COMPLETE literal raw, re-runs/re-reads of abs on-disk + /tmp, Hygiene, extended won'tfix, smoke note) is now on the branch and pushed. Tree clean. Main pristine. Ready for human interactive manual smoke (1:1+group with summary features + all post-fix hygiene).
+
+All prior constraints (AGENTS.md, CLAUDE.md, refactoring-guide.md, worktree safety with abs cd/paths for every op, no main pollution, claims exact vs on-disk via live greps/gates/re-reads, gate hygiene with unabbreviated long cd+abs+redirect+echo+cat + COMPLETE literal raw, deletion part of task, 0 new god privs beyond thins (stayed 15), no skeletons, tree runnable + strictly cleaner, etc.) observed 100%. Co-authored-by: Grok <grok@x.ai>
+
+(Recording of commit+push + round notes in this docs follow-up commit per precedent.)
+
