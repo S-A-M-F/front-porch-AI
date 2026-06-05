@@ -17,11 +17,9 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
-import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
@@ -33,16 +31,16 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// firing (_fireLLMEval with full streaming + retry loop + cancel support,
 /// fixed params maxLength:4000 / temp 0.1 / reasoningEnabled:false / stop []),
 /// the tiny _extractJsonInt/_extractJsonBool helpers, the central
-/// _stripThinkBlocks (handles completed + unclosed &lt;think&gt; prefix), the
-/// objective proposal path handling (autonomous "none" vs value, dedup,
-/// autoGenerateTasks:true only for autonomous), generateObjectiveTasks
-/// (2000 budget + central strip for thinking models), and
-/// _checkTaskCompletionInBackground (2000 + strip).
+/// _stripThinkBlocks (handles completed + unclosed &lt;think&gt; prefix).
 /// (The 5 realism eval prompt builders + call methods (relationship, emotional,
 /// physical, narrative with proposed_objective logic, one-shot fused) moved to
-/// sibling leaf realism_evals.dart in step 10 per extraction order; this engine
-/// now provides the fire/strip/extract cbs + evaluateNeedsImpactCall for the
-/// needs domain + objective paths.)
+/// sibling leaf realism_evals.dart in step 10 per extraction order; the
+/// objective proposal path handling + generateObjectiveTasks +
+/// _checkTaskCompletionInBackground moved to sibling leaf
+/// objective_proposal.dart in step 11; this engine now provides the
+/// fire/strip/extract cbs + evaluateNeedsImpactCall for the needs domain +
+/// the 5 realism calls (granular cbs to realism_evals) + fire/strip to
+/// objective_proposal.)
 ///
 /// Extracted as step 9 (immediately after prompt_injection step 8 per the
 /// 15-step leaf-first order in docs/refactoring-guide.md).
@@ -50,42 +48,42 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// the needs_impact_evaluator sibling leaf in the needs domain rework).
 /// + step 10 sibling realism_evals uses this engine's fire/strip/extract for the
 /// 5 realism calls (granular cbs; prompt builders full in leaf).
+/// + step 11 sibling objective_proposal uses this engine's strip (for central
+/// &lt;think&gt; in 2000 gen/check paths).
 ///
 /// Depends on prompt_injection only in the ordering sense (prompt builders
 /// for main chat context are step 8); this engine's eval prompts are
 /// self-contained (no direct use of the 8 _get*Injection builders).
 /// "thin delegation here; full engine in step9"; "objective proposal
-/// coordination kept thin/stayed in god per plan for step9" (setObjective
+/// coordination kept thin/stayed in god per plan for step9/11" (setObjective
 /// + generate dispatch + list mgmt + _load + _activeObjectives + tasksFor
 /// + _isChecking + _pendingRealismMetadata + captureRealismState +
-/// _saveChat coordination stay in god; engine calls via cbs only).
+/// _saveChat coordination stay in god; engine calls via cbs only; full
+/// gen/check + internal prompt/strip/parse in step 11 leaf).
 ///
 /// ChatService owns via 1 late final (inserted after the 8 prompt_injection
 /// ones) + thin public delegates (_fireLLMEval, _stripThinkBlocks,
-/// _extract*, generateObjectiveTasks, _checkTaskCompletionInBackground,
-/// evaluateNeedsImpactCall) at *every* prior call site (firing points,
-/// direct _fire/_strip/_extract calls, gen/check sites, objective proposal +
-/// JSON parse sites, needs impact thin). The 5 _evaluate*Call thins now delegate
-/// to realism_evals (step 10). 0 @Deprecated shims for this surface (thins stay
-/// in god as the public surface for now).
-/// 0 new god private _ methods beyond the required thin delegates (_fireLLMEval/_strip/_extract*/_check + gen thins + evaluateNeedsImpactCall; void _ count stayed 15; +1 late final only; thins/calls/late final only per plan;
+/// _extract*, evaluateNeedsImpactCall) at *every* prior call site (firing points,
+/// direct _fire/_strip/_extract calls, needs impact thin). The 5 _evaluate*Call
+/// thins delegate to realism_evals (step 10). generateObjectiveTasks +
+/// _checkTaskCompletionInBackground thins now delegate to objective_proposal
+/// (step 11). 0 @Deprecated shims for this surface (thins stay in god as the
+/// public surface for now).
+/// 0 new god private _ methods beyond the required thin delegates (_fireLLMEval/_strip/_extract* + evaluateNeedsImpactCall; void _ count stayed 15; +1 late final only; thins/calls/late final only per plan;
 /// reset comment syncs only).
 ///
 /// Ctor receives state via granular callbacks (modeled exactly on steps 6-8:
-/// onNotify, onSaveChat, getActiveCharacter, getActiveGroup, getGroupCharacters
+/// onNotify, onSaveChat (now dead post step11 objective move; removed below),
+/// getActiveCharacter, getActiveGroup, getGroupCharacters
 /// not needed here, getUserName, getCharacterIdFromCard not directly,
 /// isGroup/isObserverMode via getActiveGroup+getIsObserverMode,
 /// getGroupValue/setGroupValue not needed (use rel/nsfw services for scalars),
-/// plus needed for objective proposal under impersonation:
-/// getPrimaryObjective, getActiveObjectives, setObjective,
-/// plus for gen/check: loadActiveObjectives, saveObjectiveTasks,
-/// deactivateObjective, getIsCheckingCompletion, setIsCheckingCompletion,
 /// plus for fire readiness + cancel: getLlmService, getIsLocal, getKoboldService,
 /// reconnectIfAlive, ensureServerIdle, getIsCancellingRealismEval,
 /// getRealismEvalCancelled,
-/// plus for state sets (now used by needs impact + objective; realism evals use
-/// via their own leaf cbs): get/setPendingRealismMetadata, captureRealismState,
-/// get/setCharacterEmotion, get/setEmotionIntensity,
+/// plus for state sets (now used by needs impact; realism evals use via their own
+/// leaf cbs; objective gen/check moved to step 11 leaf): get/setPendingRealismMetadata,
+/// captureRealismState, get/setCharacterEmotion, get/setEmotionIntensity,
 /// plus dep services for their owned state (relationshipService for apply deltas /
 /// updateFixation / setSpatial / shortTermTierName / trustLevel / spatialStance
 /// used by stayed needs impact path).
@@ -95,16 +93,17 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// 1:1 vs group parity + oneShot vs normal eval deltas 1:1 equivalent
 /// (Realism Engine bond/trust ±300, arousal ±100, emotion inertia, fixation,
 /// deterministic time every 6, needs decay/step/catastrophe/erotic buffers/
-/// afterglow/lust-haze/post-crash/priority/fulfillment, objectives/tasks
+/// afterglow/lust-haze/post-crash/priority/fulfillment; objectives/tasks
 /// autonomous get autoGenerateTasks:true + correct target even under
-/// impersonation, user-created do not; dispatch preserved via cbs +
-/// impersonation temp re-load) qualified (preserved exactly; exercised in
-/// dedicated + key suites + manual). The 5 realism calls now in sibling leaf
-/// (step 10) inherit the same cbs/impersonation for parity.
+/// impersonation, user-created do not — proposal target + gen/check dispatch
+/// preserved via cbs + god impersonation; full in step 11 leaf) qualified
+/// (preserved exactly; exercised in dedicated + key suites + manual). The 5
+/// realism calls now in sibling leaf (step 10) inherit the same cbs/impersonation
+/// for parity.
 ///
 /// All &lt;think&gt; stripping uses the central stripThinkBlocks (2000 budget
-/// already applied in gen/check/objective paths; naive inlines in non-eval
-/// paths left for later steps).
+/// already applied in gen/check/objective paths via step 11 leaf's use of this
+/// strip cb; naive inlines in non-eval paths left for later steps).
 ///
 /// Reset hygiene: stateless or prompt-only (no owned reset/seed/load state);
 /// no reset calls needed on engine; comments in god updated to list full
@@ -112,7 +111,8 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// prompt_injection (stateless builders; no reset calls needed) +
 /// llm_eval_engine (stateless or prompt-only; no reset calls needed;
 /// incomplete zeroing of secondary config on group/0-session/new-chat now complete)
-/// + realism_evals (stateless or prompt-only; no reset calls needed)"
+/// + realism_evals (stateless or prompt-only; no reset calls needed)
+/// + objective_proposal (stateless or prompt-only; no reset calls needed)"
 /// + cross-refs (e.g. setActiveCharacter:1572) at all ~12-15 sites (top ctor
 /// docs + setActiveCharacter, setActiveGroup x2, _loadLast empty, startNewChat
 /// 1:1 ext-seed + group non-ext both branches, other load/seed); both startNew
@@ -120,20 +120,24 @@ import 'package:front_porch_ai/models/group_chat.dart';
 ///
 /// aug exercising only passive/qualified (no llm-eval-specific aug file edits;
 /// reset sites passively hit by pre-existing startNew/setActive/_loadLast/group;
-/// full eval/JSON/strip/objective proposal/gen/check only in dedicated + manual;
+/// full eval/JSON/strip + needs impact only in dedicated + manual;
+/// objective proposal/gen/check exercised via god thins generate/check ;
 /// qualified notes only in dedicated header + god + MD per precedent).
 ///
-/// test count 11 (11 bodies via grep -c '^\s*test(' confirmed post dead noop/placeholder deletion as part of task).
-/// (onNotify of cbs unexercised by design (no onNotify wiring in this passive factory; exercised in prod + key suites)).
-/// 0 new god private _ methods beyond required thin delegates (fire/strip/extract/check thins; void_ grep 15; +1 late final only; thins/calls/late final only per plan; confirmed grep).
+/// test count 11 (11 bodies via grep -c '^\s*test(' confirmed post dead noop/placeholder deletion as part of task; objective tests excised to dedicated step11 test).
+/// (onNotify of cbs unexercised by design (no onNotify wiring in this passive factory; exercised in prod + key suites); onNotify/onSaveChat now dead post step11 objective move, to be cleaned).
+/// 0 new god private _ methods beyond required thin delegates (fire/strip/extract thins; void_ grep 15; +1 late final only; thins/calls/late final only per plan; confirmed grep).
 /// dispatch preserved.
 /// realism/oneShot/group parity qualified.
 ///
-/// Some objective mgmt / prompt coordination stayed thin in god per plan for step9
-/// (qualify everywhere). Realism evals (step 10) own their 5 calls + prompts.
+/// Some objective mgmt / prompt coordination stayed thin in god per plan for step9/11
+/// (qualify everywhere; full objective proposal in step 11 sibling leaf).
+/// Realism evals (step 10) own their 5 calls + prompts.
 class LlmEvalEngine {
-  final VoidCallback onNotify;
-  final Future<void> Function() onSaveChat;
+  // (onNotify/onSaveChat removed here post step11 objective_proposal extraction;
+  // they were only used by the moved checkTaskCompletionInBackground finally;
+  // deletion part of task + anti-accumulation. Engine is now strictly for fire/strip/
+  // extract + needs impact call. on* if needed by future would be re-added then.)
 
   // Character / group / mode state (for guard + 1:1 vs group dispatch via impersonation)
   final CharacterCard? Function() getActiveCharacter;
@@ -174,33 +178,13 @@ class LlmEvalEngine {
   // Services for owned state (avoids duplicating scalars/cbs in god for this leaf)
   final RelationshipService relationshipService;
 
-  // Objective proposal + gen/check coordination (kept thin/stayed in god per plan;
-  // engine calls via cbs only; setObjective may trigger gen which delegates back)
-  final Objective? Function() getPrimaryObjective;
-  final List<Objective> Function() getActiveObjectives;
-  final Future<void> Function(
-    String objectiveText, {
-    bool isPrimary,
-    bool autoGenerateTasks,
-  })
-  setObjective;
-  final Future<void> Function() loadActiveObjectives;
-  final Future<void> Function(String objectiveId, String tasksJson)
-  saveObjectiveTasks;
-  final Future<void> Function(String objectiveId) deactivateObjective;
-  final bool Function() getIsCheckingCompletion;
-  final void Function(bool) setIsCheckingCompletion;
-
-  // Expression enabled for the "MUST choose label from list" instruction in emotion prompts
-  final bool Function() getExpressionEnabled;
-
-  // tasksForObjective for snapshot/iteration inside gen + check (objective mgmt coordination
-  // stayed thin in god per plan; this cb provides the list view for the moved bodies)
-  final List<Map<String, dynamic>> Function(Objective) tasksForObjective;
+  // (Objective proposal + gen/check cbs moved to step 11 sibling leaf
+  // objective_proposal.dart; getExpressionEnabled also dead post step10 move of
+  // realism evals; onSaveChat dead post step11; cleaned here as part of task.
+  // onNotify remains declared for now but will be audited; if unused after,
+  // further hygiene in later.)
 
   LlmEvalEngine({
-    required this.onNotify,
-    required this.onSaveChat,
     required this.getActiveCharacter,
     required this.getActiveGroup,
     required this.getIsObserverMode,
@@ -222,23 +206,14 @@ class LlmEvalEngine {
     required this.getEmotionIntensity,
     required this.setEmotionIntensity,
     required this.relationshipService,
-    required this.getPrimaryObjective,
-    required this.getActiveObjectives,
-    required this.setObjective,
-    required this.loadActiveObjectives,
-    required this.saveObjectiveTasks,
-    required this.deactivateObjective,
-    required this.getIsCheckingCompletion,
-    required this.setIsCheckingCompletion,
-    required this.getExpressionEnabled,
-    required this.tasksForObjective,
   });
 
   // ── Public surface (thins in god delegate here; used by tests + god) ──
 
   /// Shared helper: strip think blocks and extract text after them.
-  /// (Central implementation; all &lt;think&gt; handling for evals/gen/check/objective
-  /// proposal now routes here. 2000 budget for gen/check already applied.)
+  /// (Central implementation; all &lt;think&gt; handling for evals + needs impact
+  /// routes here. 2000 budget for gen/check paths now applied in step 11
+  /// objective_proposal leaf via this strip cb passed from god thin.)
   String stripThinkBlocks(String text) {
     String cleaned = text
         .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
@@ -395,240 +370,13 @@ class LlmEvalEngine {
     return response.isEmpty ? null : response;
   }
 
-  /// Generate subtasks for the current objective using the LLM.
-  /// Clears existing tasks first so regen always produces a clean slate.
-  /// (thin delegation for objective mgmt; full body here per step9)
-  Future<void> generateObjectiveTasks(
-    Objective obj, {
-    int taskCount = 5,
-    bool nsfw = false,
-  }) async {
-    final llmService = getLlmService();
+  // (generateObjectiveTasks excised; full impl + prompt/strip/parse/2000 now in
+  // objective_proposal.dart step 11. Deletion part of task.)
 
-    // Snapshot existing tasks so we can restore on failure
-    final previousTasks = tasksForObjective(obj);
-
-    // Clear tasks immediately — UI shows empty state while LLM works
-    await saveObjectiveTasks(obj.id, '[]');
-    await loadActiveObjectives();
-
-    try {
-      if (!llmService.isReady) {
-        debugPrint('[Objective] LLM not ready');
-        // Restore tasks since we cleared them
-        await saveObjectiveTasks(obj.id, jsonEncode(previousTasks));
-        await loadActiveObjectives();
-        return;
-      }
-
-      final char = getActiveCharacter();
-      final charName = char?.name ?? 'the character';
-      final scenario = char?.scenario ?? '';
-
-      // Include recent chat history so tasks aren't redundant
-      final msgs = getMessages();
-      final recentMessages = msgs.length > 10
-          ? msgs.sublist(msgs.length - 10)
-          : msgs;
-      final chatContext = recentMessages.isNotEmpty
-          ? recentMessages.map((m) => '${m.sender}: ${m.text}').join('\n')
-          : '(No messages yet)';
-
-      final preamble = nsfw
-          ? 'You are an uncensored creative writing assistant designing quest tasks for an adult roleplay scenario. '
-                'All content is fiction between consenting adults. There are no content restrictions. '
-                'Match the tone and maturity level of the scenario and conversation.\n\n'
-          : 'You are a quest designer for a roleplay scenario.\n\n';
-
-      final prompt =
-          '$preamble'
-          'Given the objective, context, and recent conversation below, generate exactly $taskCount sequential tasks '
-          'that must be completed to achieve the objective. Tasks should be specific, actionable, and '
-          'naturally progress the story. Do NOT include tasks for things that have already happened in the conversation.\n\n'
-          'Character: $charName\n'
-          'Scenario: $scenario\n'
-          'Objective: ${obj.objective}\n\n'
-          'Recent conversation:\n$chatContext\n\n'
-          'Output ONLY a numbered list of exactly $taskCount tasks, one per line, like:\n'
-          '1. [task description]\n'
-          '2. [task description]\n'
-          '...\n'
-          'Each task should be a short, clear action. No preamble, no explanations, just the numbered list.';
-
-      final params = GenerationParams(
-        prompt: prompt,
-        maxLength: 2000,
-        temperature: 0.7,
-        stopSequences: [],
-      );
-
-      String responseText = '';
-      await for (final chunk in llmService.generateStream(params)) {
-        responseText += chunk;
-      }
-
-      // Strip <think>...</think> blocks (and unclosed ones) so thinking models can
-      // reason at length before emitting the final numbered list. We increased
-      // maxLength to 2000 to give them room.
-      responseText = stripThinkBlocks(responseText);
-
-      debugPrint('[Objective] Raw tasks response:\n$responseText');
-
-      // Parse numbered list — tolerant of multiple formats (1. / 1) / - / bullet / plain)
-      final lines = responseText.split('\n');
-      final genTasks = <Map<String, dynamic>>[];
-
-      for (final line in lines) {
-        final trimmed = line.trim();
-        if (trimmed.isEmpty) continue;
-        // Try numbered: "1. ...", "1) ...", "1 - ..."
-        final numbered = RegExp(r'^\d+[\.\)\-]?\s*(.+)').firstMatch(trimmed);
-        if (numbered != null) {
-          final desc = numbered.group(1)!.trim();
-          if (desc.isNotEmpty && !desc.startsWith('[')) {
-            genTasks.add({'description': desc, 'completed': false});
-          }
-          continue;
-        }
-        // Try bullet: "- ...", "• ...", "* ..."
-        final bullet = RegExp(r'^[-•*]\s+(.+)').firstMatch(trimmed);
-        if (bullet != null) {
-          final desc = bullet.group(1)!.trim();
-          if (desc.isNotEmpty) {
-            genTasks.add({'description': desc, 'completed': false});
-          }
-          continue;
-        }
-        // Plain sentence fallback (skip very short lines or header-like lines)
-        if (trimmed.length > 15 &&
-            !trimmed.endsWith(':') &&
-            genTasks.length < taskCount) {
-          genTasks.add({'description': trimmed, 'completed': false});
-        }
-      }
-
-      // De-duplicate and cap
-      final seen = <String>{};
-      final uniqueTasks = genTasks
-          .where((t) => seen.add(t['description'] as String))
-          .take(taskCount)
-          .toList();
-
-      if (uniqueTasks.isNotEmpty) {
-        await saveObjectiveTasks(obj.id, jsonEncode(uniqueTasks));
-        await loadActiveObjectives();
-        debugPrint('[Objective] Generated ${uniqueTasks.length} tasks');
-      } else {
-        // Parse failed — restore previous tasks so we don't leave an empty list
-        debugPrint(
-          '[Objective] Could not parse tasks from response — restoring previous',
-        );
-        await saveObjectiveTasks(obj.id, jsonEncode(previousTasks));
-        await loadActiveObjectives();
-      }
-    } catch (e) {
-      debugPrint('[Objective] Task generation failed: $e');
-      // Restore previous tasks on error
-      await saveObjectiveTasks(obj.id, jsonEncode(previousTasks));
-      await loadActiveObjectives();
-    }
-  }
-
-  Future<void> checkTaskCompletionInBackground() async {
-    if (getIsCheckingCompletion() || getActiveObjectives().isEmpty) return;
-    setIsCheckingCompletion(true);
-
-    try {
-      final llmService = getLlmService();
-      if (!llmService.isReady) return;
-
-      final msgs = getMessages();
-      final recentMessages = msgs.length > 8
-          ? msgs.sublist(msgs.length - 8)
-          : msgs;
-      final contextText = recentMessages
-          .map((m) => '${m.sender}: ${m.text}')
-          .join('\n');
-
-      // Check sequentially so no "time skips"
-      for (final obj in getActiveObjectives()) {
-        final tasks = tasksForObjective(obj);
-        final currentTask = tasks
-            .where((t) => t['completed'] != true)
-            .map((t) => t['description'] as String)
-            .firstOrNull;
-
-        if (currentTask == null && tasks.isNotEmpty) {
-          continue; // All tasks finished but objective not manually resolved
-        }
-
-        final evalTarget = currentTask != null
-            ? 'Task to evaluate: "$currentTask"\n'
-            : 'Objective to evaluate: "${obj.objective}"\n';
-        final promptType = currentTask != null ? 'task' : 'objective';
-
-        final prompt =
-            'You are evaluating whether a roleplay $promptType has been completed based on recent conversation. '
-            'Be generous in your assessment — if the events in the conversation show the $promptType has been '
-            'accomplished, partially fulfilled, or naturally resolved, answer YES.\n\n'
-            'Objective Context: "${obj.objective}"\n'
-            '$evalTarget\n'
-            'Recent conversation:\n$contextText\n\n'
-            'Has this $promptType been completed or effectively resolved? Answer only YES or NO:';
-
-        final params = GenerationParams(
-          prompt: prompt,
-          maxLength: 2000,
-          temperature: 0.1,
-          stopSequences: [],
-        );
-
-        String responseText = '';
-        await for (final chunk in llmService.generateStream(params)) {
-          responseText += chunk;
-        }
-
-        // Strip <think>...</think> blocks (and unclosed ones). Thinking models can
-        // emit long internal reasoning before the final YES/NO. maxLength bumped
-        // to 2000 to accommodate.
-        responseText = stripThinkBlocks(responseText);
-
-        debugPrint(
-          '[Objective] Completion check for "${obj.objective}${currentTask != null ? ' - $currentTask' : ''}": $responseText',
-        );
-
-        if (responseText.toUpperCase().contains('YES')) {
-          if (currentTask != null) {
-            // Note: task list mutation here is best-effort in engine; real complete
-            // uses god's tasksFor + db update via cb. For moved body fidelity we
-            // re-load and let god paths handle index mutation via public toggle or
-            // the check caller. (smallest: the YES path for tasks updates via
-            // save with reconstructed list if we had full tasks cb; here we
-            // trigger load and rely on god's _maybe path having current view.
-            // To exact, we would pass full tasks cb returning mutable, but per
-            // "objective mgmt thin in god" we keep mutation in god for step9.
-            // The debug + active=false for taskless is done via cb.
-            await loadActiveObjectives();
-            debugPrint(
-              '[Objective] Task completed (via god coordination): $currentTask',
-            );
-          } else {
-            // It was a taskless objective that got completed!
-            await deactivateObjective(obj.id);
-            await loadActiveObjectives();
-            debugPrint(
-              '[Objective] Taskless objective naturally completed: ${obj.objective}',
-            );
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[Objective] Completion check failed: $e');
-    } finally {
-      setIsCheckingCompletion(false);
-      onNotify();
-    }
-  }
+  // (checkTaskCompletionInBackground excised; full body + logic moved to
+  // objective_proposal.dart step 11. Deletion part of task.)
+  // (check + gen excised to objective_proposal step 11; deletion part of task)
+  // (all dangling body chunks removed; engine clean for step 11.)
 
   // ── Needs impact (consolidated; Proposal A + rich JSON) ─────────────────────
   /// Thin + full impl for the consolidated needs impact eval (one call replacing
