@@ -10,6 +10,7 @@
 // full in dedicated realism_evals_test + manual; exercised via god thins
 // _evaluate*Call ; qualified notes only in dedicated header + god + MD per precedent).
 // aug exercising only passive/qualified (no summary-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeUpdateSummary/force/generate ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent).
 //
 // Note: Full dynamic one-shot vs multi-call *parity of deltas during sendMessage*
 // is exercised via the controlled multi-turn path (default mode) + a construction
