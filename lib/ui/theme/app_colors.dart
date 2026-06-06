@@ -157,6 +157,15 @@ class AppColors {
   static const Color logDefault = Color(0xFF86EFAC);
 
   // ---------------------------------------------------------------------------
+  // Creator wizard selected card backgrounds (for mode/backend chips)
+  // Added for AppColors exclusive compliance in Stage 4 extraction.
+  // ---------------------------------------------------------------------------
+
+  /// Selected background for creator mode and backend selection cards.
+  static const Color creatorSelectedCard = Color(0xFF1E3A5F);
+  static const Color creatorSelectedCardLight = Color(0xFFE0F2FE);
+
+  // ---------------------------------------------------------------------------
   // Preset palette for color pickers
   // ---------------------------------------------------------------------------
 
