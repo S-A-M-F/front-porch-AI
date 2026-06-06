@@ -69,6 +69,7 @@ import 'package:front_porch_ai/services/chat/realism_evals.dart';
 import 'package:front_porch_ai/services/chat/objective_proposal.dart';
 import 'package:front_porch_ai/services/chat/summary_service.dart';
 import 'package:front_porch_ai/services/chat/fact_extraction.dart';
+import 'package:front_porch_ai/services/chat/evolution_service.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -111,7 +112,7 @@ class ChatService extends ChangeNotifier {
   List<Objective> _activeObjectives = [];
   int _messagesSinceLastCheck = 0;
   bool _isCheckingCompletion =
-      false; // god-side secondary runtime flag for objective_proposal leaf's get/setIsChecking (early guard in check); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths (like _activeObjectives + _messagesSinceLastCheck) to prevent permanent skip of future task checks after in-flight reset; see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + fact_extraction (stateless or prompt-only; no reset calls needed).
+      false; // god-side secondary runtime flag for objective_proposal leaf's get/setIsChecking (early guard in check); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths (like _activeObjectives + _messagesSinceLastCheck) to prevent permanent skip of future task checks after in-flight reset; see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed).
   bool _isNewChat = false;
 
   List<Objective> get activeObjectives => _activeObjectives;
@@ -357,18 +358,18 @@ class ChatService extends ChangeNotifier {
   String _emotionIntensity = ''; // mild/moderate/strong
 
   // Expression images + classification (extracted to ExpressionService in chat/expression_classifier.dart).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). All runtime label/manual/onnx cache/avatar last/random
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). All runtime label/manual/onnx cache/avatar last/random
   // state now owned by the service; god thins to delegation + shims. (cross-ref setActiveCharacter:1572 etc)
 
   // Passage of time (core state + advance/nudge/OOC/resolve/reset/seed/load logic extracted to TimeService).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). All scalars, clock, narrativeWeekday,
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). All scalars, clock, narrativeWeekday,
   // resolve, nudge, detect, pre-turn advance, injection builder, and helpers now owned by the service;
   // god thins to delegation + 5 @Deprecated shims. 0 new private methods added in god for time.
   // time injection only thin wrapper here; full in step8. (cross-ref setActiveCharacter:1572 etc)
 
   // NSFW cooldown & lust (core state + tier calc + reset/seed/load/restore + group per-char scalars
   // + applyClimax/decrement extracted to NsfwService).
-  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). All scalars, tier getters,
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). All scalars, tier getters,
   // cooldown mutations, arousal, and helpers now owned by the service; god thins to delegation
   // + 5 @Deprecated shims. 0 new private methods added in god for nsfw.
   // climax/sexual/daily LLM checks + _runPostGen + nsfw injection stay thin in god (step 8 for full builders). (cross-ref setActiveCharacter:1572 etc)
@@ -423,7 +424,7 @@ class ChatService extends ChangeNotifier {
   // group per-speaker load/save scalars, applyClimax/decrement live in _nsfwService (plain class).
   // ChatService owns via late final + delegates. (Declared before needs for init safety because
   // needs closes over the getArousal/getNsfw/getCooldown/setArousal cbs.)
-  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) comments)
+  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) comments)
   // without god privates. 0 new private methods in god.
   // climax/sexual/daily checks stay in god (step 8 for full nsfw injection).
   // 3 group cbs only (onNotify/onSaveChat removed as dead/unused; god owns save/notify for post-gen climax/sexual fidelity per plan boundaries). (cross-ref setActiveCharacter:1572 etc)
@@ -493,7 +494,7 @@ class ChatService extends ChangeNotifier {
   // messages, nsfw/rel for stance/arousal/cooldown in modifiers, group needs cbs, onNotify/onSave, flags, + direct needsSimulation for apply/context).
   // onClimaxDetected: live closure for nsfw refractory + pre-climax meta save (so _checkClimax nsfw path parity preserved while detection unified).
   // 0 @Deprecated. 0 new god private _ methods (thins + late final + comment syncs only; void _ count stays 15; thins/calls/late final only per plan).
-  // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync" comments (full prior+current list + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + cross-refs e.g. setActiveCharacter:1572); both startNew branches explicit.
+  // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync" comments (full prior+current list + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + cross-refs e.g. setActiveCharacter:1572); both startNew branches explicit.
   // (stateless or prompt-only; no reset calls needed) + cross-refs e.g. setActiveCharacter:1572); both startNewChat branches explicit.
   // 1:1 vs group + oneShot/normal dispatch/parity preserved exactly (cbs + god's impersonation dance + load/saveScalarsIntoGroupRealism before post checks).
   // aug exercising only passive/qualified (no needs-eval-specific aug file edits; full in dedicated needs_impact_evaluator_test + manual;
@@ -569,7 +570,7 @@ class ChatService extends ChangeNotifier {
   // per-char load/save scalars live in _relationshipService (plain class).
   // ChatService owns via late final + delegates. Prompt injection builders and
   // _groupRealism map itself stay in god (step 8+). Reset helpers on service keep
-  // the multiple "keep reset blocks in sync" sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) included in comments). (cross-ref setActiveCharacter:1572 etc)
+  // the multiple "keep reset blocks in sync" sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) included in comments). (cross-ref setActiveCharacter:1572 etc)
   late final _relationshipService = RelationshipService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -657,7 +658,7 @@ class ChatService extends ChangeNotifier {
   // lastAvatarId now owned by ExpressionService (plain class).
   // ChatService owns via late final + delegates. Prompt injection (label lists) + command
   // coordination kept in god (step 8). Reset/invalidate helpers on service keep the
-  // multiple "keep reset blocks in sync" + regen sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+  // multiple "keep reset blocks in sync" + regen sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
   late final _expressionService = ExpressionService(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -850,7 +851,7 @@ class ChatService extends ChangeNotifier {
   // 0 @Deprecated shims. 0 new god private _ methods (thins stay in god as the public surface; void _ count grep stays 15
   // confirmed after every edit + final; +1 late final + thins/calls + reset comment syncs only per plan).
   // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync" comments at *all* ~15+ sites
-  // (full prior+current list including + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + "incomplete
+  // (full prior+current list including + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + "incomplete
   // zeroing of secondary config on group/0-session/new-chat now complete"; both startNew branches explicit; cross-refs
   // e.g. setActiveCharacter:1572).
   // 1:1 vs group + oneShot vs normal + Realism/Needs/Objectives parity 1:1 equivalent deltas/behavior at all times
@@ -908,7 +909,7 @@ class ChatService extends ChangeNotifier {
   // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync"
   // comments at *all* ~15+ sites (full prior+current list incl + objective_proposal
   // (stateless or prompt-only; no reset calls needed) + summary_service (stateless or
-  // prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + "incomplete zeroing of secondary
+  // prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + "incomplete zeroing of secondary
   // config on group/0-session/new-chat now complete"; both startNew branches explicit;
   // cross-refs e.g. setActiveCharacter:1572).
   // 1:1 vs group + oneShot/normal parity for proposed "none"/value + dedup + auto only
@@ -1023,7 +1024,7 @@ class ChatService extends ChangeNotifier {
   // _runPeriodicEvalsInSequence and the guard/flag use) with *full excision* of the moved bodies from god.
   // 0 @Deprecated shims. 0 new god private _ methods (thins as the public surface; live `grep -c '^\s*void _[a-zA-Z]' lib/services/chat_service.dart` *must stay exactly 15* after *every* edit + final; +1 late final + thins/calls + reset comment syncs only).
   // Stateless/prompt-only (no owned reset/seed/load state for processing — god owns the scalars/flags/cadence; no reset calls needed on leaf).
-  // God reset "keep blocks in sync" comments expanded at *all* ~15+ documented sites (full prior+current list + fact_extraction (stateless or prompt-only; no reset calls needed) + "incomplete zeroing of secondary config on group/0-session/new-chat now complete"; both startNew branches explicit; cross-refs e.g. setActiveCharacter:1572).
+  // God reset "keep blocks in sync" comments expanded at *all* ~15+ documented sites (full prior+current list + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + "incomplete zeroing of secondary config on group/0-session/new-chat now complete"; both startNew branches explicit; cross-refs e.g. setActiveCharacter:1572).
   // 1:1 vs group parity for fact extraction (rejection of current+group char names must work identically; dispatch preserved via cbs; facts are user-global but context for extraction/rejection is chat-specific).
   // aug/integration tests receive *only* qualified passive notes in headers/comments (exact precedent phrasing from step 12: "aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent)"); no leaf-specific logic edits.
   // Anti-accumulation/dead-code audit (explicit greps of affected methods in god; no new _Fact/*Fact/ExtractFact privates in god; deletion of moved + any dead/vestigial as part of task).
@@ -1061,6 +1062,144 @@ class ChatService extends ChangeNotifier {
   // in god per plan; "thin delegation here; full fact extraction in step 13").
   Future<void> _extractFactsInBackground() =>
       _factExtraction.extractFactsInBackground();
+
+  // ── Character Evolution (step 14) wiring ──
+  // Plain leaf sibling to fact_extraction / summary_service / llm_eval_engine etc.
+  // owns the full evolution trigger/extract/reset + effective personality/scenario layering
+  // + group per-char counts + LLM for traits + status/error.
+  // Periodic coordination / enabled / trigger call sites / load/save of evolved scalars/maps
+  // stay thin in god ("thin delegation here; full character evolution in step 14").
+  // God late final (after _factExtraction) + thins/delegates at *every* prior call site for
+  // trigger/manual/getEffective* (full excision of moved bodies), 0 @Deprecated shims,
+  // 0 new god private _ methods (thins as the public surface; live `grep -c '^\s*void _[a-zA-Z]'
+  // lib/services/chat_service.dart` *must stay exactly 15* after *every* edit + final;
+  // +1 late final + thins/calls + reset comment syncs only).
+  // Stateless/prompt-only (no owned reset/seed/load state for evolution processing —
+  // god owns the maps/scalars/flags/counts; no reset calls needed on leaf).
+  // God reset "keep blocks in sync" comments expanded at *all* ~15+ documented sites
+  // (full prior+current list + evolution_service (stateless or prompt-only; no reset calls needed)
+  // + "incomplete zeroing of secondary config on group/0-session/new-chat now complete"
+  // + *both* startNewChat branches explicit + cross-refs e.g. setActiveCharacter:1572).
+  // Explicit _isEvolvingCharacter=false + _evolutionStatus='' + _evolutionError='' (modeled on _isExtractingFacts) added at 10+ sites + decl + startNew both + common in fix round to make "now complete" hold in *code* (not just comments); maps/counts were already present.
+  // 1:1 vs group parity for evolution (per-char counts, effective personality/scenario layering,
+  // trigger behavior must be identical whether 1:1 or group per-speaker; dispatch preserved
+  // via cbs + god's impersonation dance where needed for target).
+  // aug/integration tests receive *only* qualified passive notes in headers/comments (exact
+  // precedent phrasing from step 13: "aug exercising only passive/qualified (no evolution-specific
+  // aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_triggerCharacterEvolution ;
+  // qualified notes only in dedicated header + god + MD per precedent)"); no leaf-specific logic edits.
+  // Anti-accumulation/dead-code audit (explicit greps of affected methods in god; no new
+  // _Evol/*Evol/Evolution privates in god; deletion of moved + any dead/vestigial as part of task).
+  // Barrel not added (internal to ChatService only; per "unless 3+ locations").
+  late final _evolutionService = EvolutionService(
+    getLlmService: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    stripThinkBlocks: _stripThinkBlocks,
+    getUserName: () => _userPersonaService.persona.name,
+    getActiveCharacter: () => _activeCharacter,
+    getGroupCharacters: () => _groupCharacters,
+    getMessages: () => _messages,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+    getSummary: () => _summary,
+    getIsNewChat: () => _isNewChat,
+    fetchRecentMemoryChunksForEvolution: () async {
+      if (_memoryService == null ||
+          !_memoryService!.isOperational ||
+          _isNewChat) {
+        return <String>[];
+      }
+      try {
+        final sourceIds = await _getMemorySourceIds();
+        final chunks = await _memoryService!.getAllContentForCharacters(
+          sourceIds,
+        );
+        if (chunks.isNotEmpty) {
+          final recent = chunks.length > 10
+              ? chunks.sublist(chunks.length - 10)
+              : chunks;
+          return recent;
+        }
+      } catch (e) {
+        debugPrint('[Evolution] RAG retrieval failed (non-fatal via cb): $e');
+      }
+      return <String>[];
+    },
+    getCharacterEvolutionEnabled: () =>
+        _storageService.characterEvolutionEnabled,
+    getEvolvedPersonality: (charId) => _evolvedPersonalities[charId],
+    setEvolvedPersonality: (charId, v) => _evolvedPersonalities[charId] = v,
+    getEvolvedScenario: (charId) => _evolvedScenarios[charId],
+    setEvolvedScenario: (charId, v) => _evolvedScenarios[charId] = v,
+    getEvolutionCountFor: (charId) => _groupEvolutionCounts[charId] ?? 0,
+    setEvolutionCountFor: (charId, v) => _groupEvolutionCounts[charId] = v,
+    // Note (D qualify per re-review): count persistence for group is mem-only (_groupEvolutionCounts snapshot) per current thin god load/save (1:1 has dedicated DB column + mirror in persist). Effective layering / trigger target parity with 1:1 is preserved exactly (via cbs + leaf). Group count UI (cards/sidebar) uses the mem snapshot. This is pre-existing (public surface / load/save of evolved maps/counts stayed thin/coordinated in god per step 14 plan "public surface stay thin in god"; not regressed by extraction).
+    getIsEvolvingCharacter: () => _isEvolvingCharacter,
+    setIsEvolvingCharacter: (v) => _isEvolvingCharacter = v,
+    setEvolutionStatus: (s) {
+      _evolutionStatus = s;
+      notifyListeners();
+    },
+    setEvolutionError: (e) {
+      _evolutionError = e;
+      notifyListeners();
+    },
+    persistEvolvedForCharacter: (charId, pers, scen, count) async {
+      if (_currentSessionId != null) {
+        if (_activeGroup != null) {
+          final session = await _db.getSessionById(_currentSessionId!);
+          if (session != null) {
+            final personalities = _tryParseJsonMap(
+              session.groupEvolvedPersonalities,
+            );
+            final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
+            personalities[charId] = pers;
+            scenarios[charId] = scen;
+            await _db.patchSession(
+              SessionsCompanion(
+                id: drift.Value(_currentSessionId!),
+                groupEvolvedPersonalities: drift.Value(
+                  jsonEncode(personalities),
+                ),
+                groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
+              ),
+            );
+          }
+        } else {
+          await _db.patchSession(
+            SessionsCompanion(
+              id: drift.Value(_currentSessionId!),
+              evolvedPersonality: drift.Value(pers),
+              evolvedScenario: drift.Value(scen),
+              evolutionCount: drift.Value(count),
+            ),
+          );
+        }
+      }
+      _evolvedPersonalities[charId] = pers;
+      _evolvedScenarios[charId] = scen;
+      _groupEvolutionCounts[charId] = count;
+      if (_activeCharacter != null &&
+          _getCharacterIdFromCard(_activeCharacter!) == charId) {
+        _characterEvolutionCount = count;
+      }
+      notifyListeners();
+    },
+  );
+
+  // Thin delegation (full _trigger/_extract + effective layering + group per-char
+  // + LLM/prompt/parse/persist in evolution_service step 14; cadence/flag/periodic
+  // orchestration / enabled / sequence / call sites / load/save of evolved maps
+  // stay thin in god per plan; "thin delegation here; full character evolution in step 14").
+  void _triggerCharacterEvolution() =>
+      _evolutionService.triggerCharacterEvolution();
+  Future<bool> triggerEvolutionNow({CharacterCard? target}) =>
+      _evolutionService.triggerEvolutionNow(target: target);
+
+  // Effective getters now thin to leaf (layering owned in step 14 sibling).
+  String _getEffectivePersonality(CharacterCard card) =>
+      _evolutionService.getEffectivePersonality(card);
+  String _getEffectiveScenario(CharacterCard card) =>
+      _evolutionService.getEffectiveScenario(card);
 
   Completer<void>?
   _chanceTimeCompleter; // pauses sendMessage while wheel is active (UI coordination, stays in god)
@@ -2064,6 +2203,10 @@ class ChatService extends ChangeNotifier {
       _userMessagesSinceLastPeriodicEval = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero on setActiveCharacter main path (incomplete zeroing of secondary config on group/0-session/new-chat now complete; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero on setActiveCharacter main path (incomplete zeroing of secondary config on group/0-session/new-chat now complete; evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572 + full keep-sync lists)
       debugPrint(
         '[ChatService] setActiveCharacter: Reset realism state (baseline + runtime transients cleared; was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
       );
@@ -2153,6 +2296,10 @@ class ChatService extends ChangeNotifier {
         _userMessagesSinceLastPeriodicEval = 0;
         _isExtractingFacts =
             false; // secondary fact flag + counter zero in empty subpath of setActiveCharacter (incomplete zeroing ... now complete; fact_extraction)
+        _isEvolvingCharacter = false;
+        _evolutionStatus = '';
+        _evolutionError =
+            ''; // explicit evo flag/status/error zero in empty subpath of setActiveCharacter (incomplete zeroing of secondary config on group/0-session/new-chat now complete; evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572)
       }
       // Load active objectives for this session (must be after _loadLastSession
       // so _currentSessionId is set)
@@ -2206,7 +2353,7 @@ class ChatService extends ChangeNotifier {
     // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
     // Nsfw (arousal/cooldown) via service.
     // Lorebook triggers via scanner (for group fresh/0-session hygiene; parallels time/nsfw defensive zeros).
-    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) for group fresh/0-session; incomplete zeroing now complete).
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) for group fresh/0-session; incomplete zeroing now complete).
     // (cross-ref setActiveCharacter:1572)
     _relationshipService.resetForFreshChat();
     _expressionService.resetForFreshChat();
@@ -2324,7 +2471,7 @@ class ChatService extends ChangeNotifier {
     await _seedImportedMemberObjectivesIfPresent();
 
     // Lorebook trigger reset via extracted service (group path; see setActiveCharacter for the 1:1 counterpart + keep-sync cross-refs).
-    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) alongside prior services; incomplete zeroing now complete).
+    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) alongside prior services; incomplete zeroing now complete).
     // (cross-ref setActiveCharacter:1572)
     _lorebookScanner.resetLorebookTriggerState();
 
@@ -2339,6 +2486,10 @@ class ChatService extends ChangeNotifier {
     _userMessagesSinceLastPeriodicEval = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero on group fresh entry (incomplete zeroing ... now complete; fact_extraction)
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError =
+        ''; // explicit evo flag/status/error zero on group fresh entry (incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572)
 
     // Try to load last session for this group
     await _loadLastSession();
@@ -2967,7 +3118,7 @@ class ChatService extends ChangeNotifier {
       // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
       // Nsfw (cooldown/arousal) reset for same (incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue).
       // Lorebook triggers/depth reset for same (incomplete zeroing of lore on 0-session/new-group was a prior hygiene pattern to avoid).
-      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed); incomplete zeroing now complete).
+      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed); incomplete zeroing now complete).
       // (cross-ref setActiveCharacter:1572)
       _timeService.resetForFreshChat();
       _nsfwService.resetForFreshChat();
@@ -2983,6 +3134,10 @@ class ChatService extends ChangeNotifier {
       _userMessagesSinceLastPeriodicEval = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadLast empty early return (0-session path hygiene; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero in _loadLast empty early return (0-session path hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
       return;
     }
 
@@ -3094,6 +3249,10 @@ class ChatService extends ChangeNotifier {
     _userMessagesSinceLastPeriodicEval = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero in _loadLast loaded path (incomplete zeroing ... now complete; fact_extraction)
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError =
+        ''; // explicit evo flag/status/error zero in _loadLast loaded path (incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
     try {
       final dbMessages = await _db.getMessagesForSession(_currentSessionId!);
       debugPrint(
@@ -3317,6 +3476,10 @@ class ChatService extends ChangeNotifier {
       _userMessagesSinceLastPeriodicEval = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero on loadSession loaded (symmetric; incomplete zeroing ... now complete; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero on loadSession loaded (symmetric; incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
       _sessionName = session.name;
       _sessionDescription = session.description;
       _parentSessionId = session.parentSession;
@@ -3500,6 +3663,10 @@ class ChatService extends ChangeNotifier {
     _userMessagesSinceLastPeriodicEval = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero on fork (new branch hygiene + incomplete zeroing now complete; fact_extraction)
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError =
+        ''; // explicit evo flag/status/error zero on fork (new branch hygiene + incomplete zeroing now complete; evolution_service (stateless or prompt-only; no reset calls needed))
 
     // Time-Travel Restoration
     if (_messages.isNotEmpty) {
@@ -3683,6 +3850,10 @@ class ChatService extends ChangeNotifier {
     _userMessagesSinceLastPeriodicEval = 0;
     _isExtractingFacts =
         false; // explicit secondary fact flag + counter zero in startNew 1:1/ext-seed branch (both startNew explicit + incomplete zeroing ... now complete; fact_extraction)
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError =
+        ''; // explicit evo flag/status/error zero in startNew 1:1/ext-seed branch (both startNew explicit + incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
 
     // Create new session ID for the new chat
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -3749,7 +3920,7 @@ class ChatService extends ChangeNotifier {
       }
       _needsSimulation.resetBuffers();
       // needs_impact_evaluator is stateless/prompt-only (no reset calls needed on it;
-      // see full list in "keep reset blocks in sync" comments + cross-ref setActiveCharacter:1572 + fact_extraction (stateless or prompt-only; no reset calls needed)).
+      // see full list in "keep reset blocks in sync" comments + cross-ref setActiveCharacter:1572 + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)).
       // pending covered by relationship service reset in the ext-seed or non-ext paths below.
       // Always reset per-chat runtime realism fields (arousal/fixation/cooldowns) for a fresh
       // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter
@@ -3800,7 +3971,7 @@ class ChatService extends ChangeNotifier {
         _timeService.resetForFreshChat();
         _nsfwService.resetForFreshChat();
         // Lorebook trigger reset via extracted service (keeps reset blocks in sync with setActiveCharacter:1572 / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary ... on 0-session/new-character/group" + startNew 1:1+group now complete + full list in keep-sync comments incl llm_eval_engine). (cross-ref setActiveCharacter:1572 etc)
-        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) for group/0-session/new-chat hygiene; incomplete zeroing now complete).
+        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) for group/0-session/new-chat hygiene; incomplete zeroing now complete).
         // (cross-ref setActiveCharacter:1572)
         _lorebookScanner.resetLorebookTriggerState();
         // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
@@ -3823,12 +3994,21 @@ class ChatService extends ChangeNotifier {
         _userMessagesSinceLastPeriodicEval = 0;
         _isExtractingFacts =
             false; // explicit secondary fact flag + counter zero in startNew non-ext/group/0-session path (both branches + now complete for fact flag/counter; fact_extraction)
+        _isEvolvingCharacter = false;
+        _evolutionStatus = '';
+        _evolutionError =
+            ''; // explicit evo flag/status/error zero in startNew non-ext/group/0-session path (both branches + now complete for evo flag; evolution_service (stateless or prompt-only; no reset calls needed))
       }
     }
 
+    // Explicit flag zero for evolution (in addition to per-branch) to keep "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + both startNew explicit; evolution_service (stateless or prompt-only; no reset calls needed).
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError = '';
+
     // Clear the in-memory evolution cache so the new session starts with
     // the original (unevolved) personality/scenario. The previous session's
-    // evolved data was still live in this map.
+    // evolved data was still live in this map. (Flags zeroed explicitly in branches + here for hygiene; see preceding comment.)
     _evolvedPersonalities.clear();
     _evolvedScenarios.clear();
     _groupEvolutionCounts.clear();
@@ -6782,6 +6962,10 @@ class ChatService extends ChangeNotifier {
       _userMessagesSinceLastPeriodicEval = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadActiveObjectives empty (0-session hygiene; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero in _loadActiveObjectives empty (0-session hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
       return;
     }
     final charId = _getCharacterIdFromCard(_activeCharacter!);
@@ -7095,13 +7279,15 @@ class ChatService extends ChangeNotifier {
 
   int _userMessagesSinceLastPeriodicEval = 0;
   bool _isExtractingFacts =
-      false; // secondary runtime flag (transient guard for fact extraction leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + fact_extraction (stateless or prompt-only; no reset calls needed)). The counter must likewise be zeroed on those paths (prevents stale/early trigger after context switch).
+      false; // secondary runtime flag (transient guard for fact extraction leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). The counter must likewise be zeroed on those paths (prevents stale/early trigger after context switch).
 
   /// Unified periodic evaluation: runs fact extraction + character evolution
   /// sequentially on the same cadence (every N user messages).
   // Thin delegation / coord (cadence count + guards + auto*Enabled/Interval/llmProvider
   // here; full _extractFactsInBackground + quality/consolidate + prompt/LLM/stream/JSON/gate
-  // in fact_extraction step 13; "thin delegation here; full fact extraction in step 13").
+  // in fact_extraction step 13 ("thin delegation here; full fact extraction in step 13");
+  // evolution trigger in evolution_service step 14 ("thin delegation here; full character
+  // evolution in step 14")).
   void _maybeRunPeriodicEvals() {
     final autoPersona = _storageService.autoPersonaEnabled;
     final autoEvolution = _storageService.characterEvolutionEnabled;
@@ -7130,7 +7316,9 @@ class ChatService extends ChangeNotifier {
   /// Run fact extraction first, then character evolution, sequentially.
   // Thin delegation / coord (if autoPersonaEnabled guard + debug + await _extract call here;
   // full extract + consolidate + gate in fact_extraction step 13; "thin delegation here;
-  // full fact extraction in step 13"). Evolution step stays in god for now.
+  // full fact extraction in step 13"). Evolution: if enabled guard + debug + _trigger thin here;
+  // full trigger/extract/LLM/persist/layering in evolution_service step 14 ("thin delegation here;
+  // full character evolution in step 14").
   Future<void> _runPeriodicEvalsInSequence() async {
     // Step 1: Extract user facts
     if (_storageService.autoPersonaEnabled) {
@@ -7147,45 +7335,32 @@ class ChatService extends ChangeNotifier {
   // Fact extraction + consolidate + _isValidFact + static patterns + quality gate moved to
   // fact_extraction.dart (step 13 leaf); thin delegate + late final above; full excision
   // as part of task (deletion part of). See _factExtraction + _extractFactsInBackground thin.
+  // Character evolution moved to evolution_service.dart (step 14 leaf); thins + late final
+  // above; full excision of block + related as part of task (deletion part of).
 
-  // ── Character Evolution ─────────────────────────────────────────────────
+  // ── Character Evolution (moved to evolution_service.dart step 14 leaf) ──
+  // Full trigger/extract/LLM/prompt/parse/persist/effective layering/group per-char
+  // owned in leaf; thins + late final above (after fact); "thin delegation here;
+  // full character evolution in step 14". State (flags/maps/counts/status/error)
+  // + loadGroupEvolvedFields + session load/save + reset/update (user edit) + public
+  // surface coordination stay in god.
+  // (Evolution counter unified with fact in _userMessagesSinceLastPeriodicEval)
 
-  // (Evolution counter removed — now unified with fact extraction in _userMessagesSinceLastPeriodicEval)
-  bool _isEvolvingCharacter = false;
+  bool _isEvolvingCharacter =
+      false; // secondary runtime flag (transient guard for evolution_service leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + evolution_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). The _evolutionStatus / _evolutionError must likewise be zeroed on those paths (prevents stale UI status/error bleed after context switch).
+  // Explicit zero sites for evolution flag/status/error (12+ documented; part of "all ~15+" hygiene with briefing lists at 17+ / 31 phrase matches):
+  // - startNewChat both branches (fresh + load path)
+  // - setActiveCharacter main + empty session
+  // - setActiveGroup
+  // - _loadLastSession empty + loaded
+  // - _loadActiveObjectives empty (0-session)
+  // - _loadObjectivesForCurrentSpeaker no-speaker (group)
+  // - deleteSession / fork paths
+  // - decl init + common reset blocks
+  // - _maybeRunPeriodicEvals early guard
+  // Cross-refs e.g. setActiveCharacter ~1572 (precedent; lines may shift post edits -- verified live at doc time).
   String _evolutionStatus = '';
   String _evolutionError = '';
-
-  /// Get the effective personality for a character.
-  /// When evolution exists, returns a layered block: original as foundation,
-  /// evolved traits as additive growth. This prevents contradictions.
-  String _getEffectivePersonality(CharacterCard card) {
-    // Combine description (physical traits, background) with personality
-    final base = [
-      if (card.description.isNotEmpty) card.description,
-      if (card.personality.isNotEmpty) card.personality,
-    ].join('\n');
-    if (!_storageService.characterEvolutionEnabled) return base;
-    final evolved = _evolvedPersonalities[_getCharacterIdFromCard(card)];
-    if (evolved == null || evolved.isEmpty) return base;
-    // Layered: original is ground truth, evolved is additive growth
-    return '$base\n\n'
-        '[Character Growth — the following reflects how ${card.name} has changed through interactions. '
-        'These traits build on the original personality above. If there is a contradiction, '
-        'the growth represents genuine character development, not a replacement of core identity.]\n'
-        '$evolved';
-  }
-
-  /// Get the effective scenario for a character.
-  /// When evolution exists, returns both original scenario and evolved situation.
-  String _getEffectiveScenario(CharacterCard card) {
-    if (!_storageService.characterEvolutionEnabled) return card.scenario;
-    final evolved = _evolvedScenarios[_getCharacterIdFromCard(card)];
-    if (evolved == null || evolved.isEmpty) return card.scenario;
-    // Layered: original scenario + evolved current situation
-    return '${card.scenario}\n\n'
-        '[Current Situation — the scenario has evolved through interactions:]\n'
-        '$evolved';
-  }
 
   /// Cached evolved fields (loaded from DB on character load)
   final Map<String, String> _evolvedPersonalities = {};
@@ -7193,8 +7368,11 @@ class ChatService extends ChangeNotifier {
   int _characterEvolutionCount = 0;
   int get characterEvolutionCount => _characterEvolutionCount;
 
-  /// Public getter: evolved personality for the active character (null if none)
+  /// Public getter: raw evolved personality delta for the active character (null if none).
+  /// This bypasses the enabled flag and [Character Growth] layering (returns the stored growth text only).
   /// In group mode, returns null — use getEvolvedPersonalityFor(card) instead.
+  /// Injection paths use the _getEffectivePersonality thin (delegates to leaf for full base + layered block when enabled).
+  /// Legacy/compat name retained for public surface (see god coord note in step 14 plan).
   String? get getEffectivePersonality {
     if (_activeCharacter == null) return null;
     final charId = _getCharacterIdFromCard(_activeCharacter!);
@@ -7202,8 +7380,10 @@ class ChatService extends ChangeNotifier {
     return (evolved != null && evolved.isNotEmpty) ? evolved : null;
   }
 
-  /// Public getter: evolved scenario for the active character (null if none)
+  /// Public getter: raw evolved scenario delta for the active character (null if none).
+  /// This bypasses the enabled flag and [Current Situation] layering.
   /// In group mode, returns null — use getEvolvedScenarioFor(card) instead.
+  /// See note on getEffectivePersonality (raw vs layered via thins/leaf).
   String? get getEffectiveScenario {
     if (_activeCharacter == null) return null;
     final charId = _getCharacterIdFromCard(_activeCharacter!);
@@ -7263,390 +7443,13 @@ class ChatService extends ChangeNotifier {
   /// Error message from the last evolution attempt (empty if no error).
   String get evolutionError => _evolutionError;
 
-  /// Manually trigger character evolution now (for imported/existing chats).
-  /// In group mode, pass a target character. Returns true if evolution was triggered.
-  Future<bool> triggerEvolutionNow({CharacterCard? target}) async {
-    if (_llmProvider == null) return false;
-    if (_isEvolvingCharacter) return false;
-    if (_messages.length < 4) return false; // need some history
+  // Duplicate old triggerEvolutionNow body excised (thin delegate to leaf is earlier near late final; deletion part of task).
 
-    // Determine target character
-    final card = target ?? _activeCharacter;
-    if (card == null || card.dbId == null) return false;
-
-    debugPrint('[Evolution] ▶ Manual evolution triggered for ${card.name}');
-    await _extractCharacterEvolution(targetCharacter: card);
-    return true;
-  }
-
-  /// Trigger evolution check after each generation.
-  /// Trigger character evolution directly (called from unified periodic eval).
-  void _triggerCharacterEvolution() {
-    if (_isEvolvingCharacter) return;
-
-    // Evolution intentionally runs for BOTH regular group chats AND Director Mode.
-    // In Director/observer sessions the "last non-user speaker" is still the character
-    // whose actions the director just steered, so their personality/scenario can still
-    // evolve from the events the user directed. This is a deliberate design choice.
-    //
-    // In regular (non-director) groups the same last-speaker heuristic applies.
-    // The per-character evolved state is stored in the existing
-    // groupEvolvedPersonalities / groupEvolvedScenarios JSON columns.
-
-    // In group mode, evolve the character who just spoke
-    CharacterCard? target;
-    if (_activeGroup != null) {
-      if (_messages.isNotEmpty && !_messages.last.isUser) {
-        final lastSender = _messages.last.sender;
-        target = _groupCharacters
-            .where((c) => c.name == lastSender)
-            .firstOrNull;
-      }
-      if (target == null) return;
-    } else {
-      target = _activeCharacter;
-      if (target == null) return;
-    }
-
-    debugPrint(
-      '[Evolution] ▶ Triggering character evolution for ${target.name}',
-    );
-    _extractCharacterEvolution(targetCharacter: target);
-  }
-
-  /// Extract evolved personality + scenario from conversation memories.
-  /// Accepts an optional [targetCharacter] for group mode support.
-  Future<void> _extractCharacterEvolution({
-    CharacterCard? targetCharacter,
-  }) async {
-    if (_isEvolvingCharacter) {
-      debugPrint('[Evolution] ⚠ Already evolving, skipping');
-      return;
-    }
-    _isEvolvingCharacter = true;
-    _evolutionStatus = 'Preparing evolution...';
-    _evolutionError = '';
-    notifyListeners();
-
-    try {
-      final llmService = _llmProvider!.activeService;
-      debugPrint(
-        '[Evolution] ▶ Backend: ${llmService.backendName}, isReady: ${llmService.isReady}',
-      );
-      if (!llmService.isReady) {
-        debugPrint(
-          '[Evolution] ✗ LLM not ready — backend=${llmService.backendName}',
-        );
-        _evolutionError =
-            'LLM backend is not ready. Please check your connection.';
-        return;
-      }
-
-      final card = targetCharacter ?? _activeCharacter;
-      if (card == null || card.dbId == null) {
-        debugPrint(
-          '[Evolution] ✗ No character — card=$card, dbId=${card?.dbId}',
-        );
-        _evolutionError = 'No active character found.';
-        return;
-      }
-
-      final charName = card.name;
-      final userName = _userPersonaService.persona.name;
-      final originalPersonality = card.personality;
-      final originalScenario = card.scenario;
-      final charId = _getCharacterIdFromCard(card);
-
-      debugPrint(
-        '[Evolution] Character: $charName (charId=$charId, dbId=${card.dbId})',
-      );
-      debugPrint(
-        '[Evolution] Personality length: ${originalPersonality.length}, Scenario length: ${originalScenario.length}',
-      );
-
-      // Get current evolved versions (or originals if first time)
-      final currentPersonality =
-          _evolvedPersonalities[charId]?.isNotEmpty == true
-          ? _evolvedPersonalities[charId]!
-          : originalPersonality;
-      final currentScenario = _evolvedScenarios[charId]?.isNotEmpty == true
-          ? _evolvedScenarios[charId]!
-          : originalScenario;
-
-      // Gather context: RAG memories + summary + recent messages
-      String memoryContext = '';
-      if (_memoryService != null &&
-          _memoryService!.isOperational &&
-          !_isNewChat) {
-        _evolutionStatus = 'Gathering memories...';
-        notifyListeners();
-        try {
-          final sourceIds = await _getMemorySourceIds();
-          final chunks = await _memoryService!.getAllContentForCharacters(
-            sourceIds,
-          );
-          debugPrint(
-            '[Evolution] RAG: ${chunks.length} memory chunks retrieved',
-          );
-          if (chunks.isNotEmpty) {
-            // Take last 10 chunks to keep prompt reasonable
-            final recent = chunks.length > 10
-                ? chunks.sublist(chunks.length - 10)
-                : chunks;
-            memoryContext =
-                'Conversation memories:\n${recent.join('\n---\n')}\n\n';
-          }
-        } catch (e) {
-          debugPrint('[Evolution] RAG retrieval failed (non-fatal): $e');
-        }
-      } else {
-        debugPrint(
-          '[Evolution] RAG not available (memoryService=${_memoryService != null}, operational=${_memoryService?.isOperational})',
-        );
-      }
-
-      String summaryContext = '';
-      if (_summary.isNotEmpty) {
-        summaryContext = 'Chat summary: $_summary\n\n';
-        debugPrint('[Evolution] Summary context: ${_summary.length} chars');
-      }
-
-      // Recent messages for immediate context
-      final recentMsgs = _messages.length > 10
-          ? _messages.sublist(_messages.length - 10)
-          : _messages;
-      final recentContext = recentMsgs
-          .map((m) => '${m.sender}: ${m.displayText}')
-          .join('\n');
-
-      debugPrint(
-        '[Evolution] Messages: ${_messages.length} total, using ${recentMsgs.length} recent',
-      );
-
-      final prompt =
-          'You are analyzing how a roleplay character has evolved through their interactions. '
-          'Based on the conversation history and memories below, rewrite the character\'s personality '
-          'and scenario to reflect how they have grown, changed, or been affected by events.\n\n'
-          'IMPORTANT RULES:\n'
-          '- Preserve the character\'s core identity — don\'t change who they fundamentally are\n'
-          '- Add or modify traits based on what actually happened in conversations\n'
-          '- Update the scenario to reflect the current state of the story/relationship\n'
-          '- Keep the same level of detail as the originals\n'
-          '- Use {{char}} for the character name and {{user}} for the user name\n'
-          '- Return ONLY a JSON object, no other text\n\n'
-          'Character name: $charName\n'
-          'User name: $userName\n\n'
-          'Original personality:\n$originalPersonality\n\n'
-          'Current personality:\n$currentPersonality\n\n'
-          'Original scenario:\n$originalScenario\n\n'
-          'Current scenario:\n$currentScenario\n\n'
-          '$memoryContext'
-          '$summaryContext'
-          'Recent conversation:\n$recentContext\n\n'
-          'Return a JSON object with exactly two keys: "personality" and "scenario". '
-          'Each value should be the full rewritten text for that field.\n'
-          'Response:';
-
-      debugPrint('[Evolution] Prompt built: ${prompt.length} chars');
-
-      _evolutionStatus = 'Analyzing conversation with LLM...';
-      notifyListeners();
-
-      // Dynamic maxLength: the model must reproduce personality + scenario in
-      // full, and think blocks can double the output.  Use a generous multiplier
-      // with a 4096-token floor so short descriptions still get plenty of room.
-      // Rough heuristic: 1 token ≈ 4 chars, so chars/4 ≈ tokens needed.
-      final estimatedOutputTokens =
-          ((currentPersonality.length + currentScenario.length) / 4 * 3).ceil();
-      final maxLen = estimatedOutputTokens.clamp(4096, 16384);
-
-      final params = GenerationParams(
-        prompt: prompt,
-        maxLength: maxLen,
-        temperature: 0.4,
-        stopSequences: [],
-        reasoningEnabled: false,
-      );
-
-      debugPrint('[Evolution] Sending to LLM (maxLength=$maxLen, temp=0.4)...');
-
-      String responseText = '';
-      int chunkCount = 0;
-      await for (final chunk in llmService.generateStream(params)) {
-        responseText += chunk;
-        chunkCount++;
-      }
-
-      debugPrint(
-        '[Evolution] LLM responded: $chunkCount chunks, ${responseText.length} chars total',
-      );
-
-      // Strip think blocks
-      final preStripLength = responseText.length;
-      responseText = responseText
-          .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
-          .trim();
-      if (responseText.length != preStripLength) {
-        debugPrint(
-          '[Evolution] Stripped think blocks: ${preStripLength - responseText.length} chars removed',
-        );
-      }
-
-      if (responseText.isEmpty) {
-        debugPrint('[Evolution] ✗ LLM returned empty response after stripping');
-        _evolutionError =
-            'The LLM returned an empty response. Try again or check your backend.';
-        return;
-      }
-
-      // Log the full response for debugging (truncate for very long responses)
-      debugPrint('[Evolution] ── Response start ──');
-      if (responseText.length <= 500) {
-        debugPrint(responseText);
-      } else {
-        debugPrint(responseText.substring(0, 250));
-        debugPrint('[...${responseText.length - 500} chars omitted...]');
-        debugPrint(responseText.substring(responseText.length - 250));
-      }
-      debugPrint('[Evolution] ── Response end ──');
-
-      _evolutionStatus = 'Parsing evolved traits...';
-      notifyListeners();
-
-      // Parse JSON from response — try multiple strategies
-      String? newPersonality;
-      String? newScenario;
-
-      // Strategy 1: Extract from markdown code block
-      var jsonStr = responseText;
-      if (jsonStr.contains('```')) {
-        final match = RegExp(
-          r'```(?:json)?\s*\n?(.*?)\n?```',
-          dotAll: true,
-        ).firstMatch(jsonStr);
-        if (match != null) {
-          jsonStr = match.group(1)!.trim();
-          debugPrint(
-            '[Evolution] Extracted JSON from code block (${jsonStr.length} chars)',
-          );
-        }
-      }
-
-      // Strategy 2: Find JSON object with greedy match
-      final objMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(jsonStr);
-      if (objMatch != null) {
-        final jsonCandidate = objMatch.group(0)!;
-        debugPrint(
-          '[Evolution] Found JSON candidate (${jsonCandidate.length} chars)',
-        );
-        try {
-          final parsed = jsonDecode(jsonCandidate) as Map<String, dynamic>;
-          newPersonality = parsed['personality'] as String?;
-          newScenario = parsed['scenario'] as String?;
-          debugPrint(
-            '[Evolution] JSON parsed OK — personality=${newPersonality?.length ?? 0} chars, scenario=${newScenario?.length ?? 0} chars',
-          );
-        } catch (e) {
-          debugPrint('[Evolution] JSON parse attempt failed: $e');
-          // Strategy 3: Try to fix truncated JSON — the model may have hit max tokens
-          // Look for the last complete string value
-          debugPrint('[Evolution] Attempting truncated JSON recovery...');
-          try {
-            // Try adding a closing brace to incomplete JSON
-            final fixedJson = '$jsonCandidate"}';
-            final parsed = jsonDecode(fixedJson) as Map<String, dynamic>;
-            newPersonality = parsed['personality'] as String?;
-            newScenario = parsed['scenario'] as String?;
-            debugPrint('[Evolution] Truncated JSON recovery succeeded');
-          } catch (_) {
-            debugPrint('[Evolution] Truncated JSON recovery failed');
-          }
-        }
-      } else {
-        debugPrint('[Evolution] ✗ No JSON object ({...}) found in response');
-      }
-
-      if (newPersonality == null ||
-          newPersonality.isEmpty ||
-          newScenario == null ||
-          newScenario.isEmpty) {
-        debugPrint(
-          '[Evolution] ✗ Missing fields — personality=${newPersonality != null ? "${newPersonality.length} chars" : "null"}, scenario=${newScenario != null ? "${newScenario.length} chars" : "null"}',
-        );
-        _evolutionError = newPersonality == null && newScenario == null
-            ? 'Could not parse the LLM response as JSON. Check the terminal for the raw response.'
-            : 'The LLM response was missing ${newPersonality == null || newPersonality.isEmpty ? "personality" : "scenario"} field.';
-        return;
-      }
-
-      // Store in DB — write to the session, not the character row.
-      final oldCount =
-          _groupEvolutionCounts[charId] ?? _characterEvolutionCount;
-      final newCount = oldCount + 1;
-      debugPrint(
-        '[Evolution] Saving to session (sessionId=$_currentSessionId, charId=$charId, count $oldCount → $newCount)',
-      );
-
-      if (_currentSessionId != null) {
-        if (_activeGroup != null) {
-          // Group mode: update JSON maps on the session row
-          final session = await _db.getSessionById(_currentSessionId!);
-          if (session != null) {
-            final personalities = _tryParseJsonMap(
-              session.groupEvolvedPersonalities,
-            );
-            final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-            personalities[charId] = newPersonality;
-            scenarios[charId] = newScenario;
-            await _db.patchSession(
-              SessionsCompanion(
-                id: drift.Value(_currentSessionId!),
-                groupEvolvedPersonalities: drift.Value(
-                  jsonEncode(personalities),
-                ),
-                groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
-              ),
-            );
-          }
-        } else {
-          // 1:1 mode: write plain columns
-          await _db.patchSession(
-            SessionsCompanion(
-              id: drift.Value(_currentSessionId!),
-              evolvedPersonality: drift.Value(newPersonality),
-              evolvedScenario: drift.Value(newScenario),
-              evolutionCount: drift.Value(newCount),
-            ),
-          );
-        }
-      }
-
-      // Update in-memory cache
-      _evolvedPersonalities[charId] = newPersonality;
-      _evolvedScenarios[charId] = newScenario;
-      _groupEvolutionCounts[charId] = newCount;
-      if (_activeCharacter != null) _characterEvolutionCount = newCount;
-
-      debugPrint(
-        '[Evolution] ✅ $charName evolved successfully (count: $newCount)',
-      );
-      debugPrint(
-        '[Evolution] Personality preview: ${newPersonality.substring(0, newPersonality.length.clamp(0, 100))}...',
-      );
-      debugPrint(
-        '[Evolution] Scenario preview: ${newScenario.substring(0, newScenario.length.clamp(0, 100))}...',
-      );
-      notifyListeners();
-    } catch (e, stack) {
-      debugPrint('[Evolution] ✗ Evolution failed with exception: $e');
-      debugPrint('[Evolution] Stack trace: $stack');
-      _evolutionError = 'Evolution failed: $e';
-    } finally {
-      _isEvolvingCharacter = false;
-      _evolutionStatus = '';
-      notifyListeners();
-    }
-  }
+  // Old _triggerCharacterEvolution + _extractCharacterEvolution bodies excised
+  // (full logic now in evolution_service leaf step 14; god thins call leaf;
+  // target selection / LLM / parse / persist now in leaf via cbs; deletion part of task).
+  // (The god thin _triggerCharacterEvolution and triggerEvolutionNow are defined
+  // earlier near the late final.)
 
   /// Reset evolved fields back to original for a character.
   /// In 1:1 mode, targets the active character. In group mode, pass an explicit target.
@@ -8401,6 +8204,10 @@ class ChatService extends ChangeNotifier {
       _userMessagesSinceLastPeriodicEval = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
       notifyListeners();
       return;
     }
