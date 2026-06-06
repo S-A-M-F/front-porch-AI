@@ -571,7 +571,7 @@ class UserPersonaService extends ChangeNotifier {
     await _loadPersonas();
   }
 
-  /// Parse a JSON string of facts into a List<String>, handling errors.
+  /// Parse a JSON string of facts into a `List<String>`, handling errors.
   static List<String> _parseFactsList(String json) {
     try {
       if (json.isEmpty || json == '[]') return [];

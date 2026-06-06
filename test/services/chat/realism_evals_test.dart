@@ -83,30 +83,30 @@ RealismEvals createTestRealismEvals({
         getMessageCount: () => 0,
         getIsGroupRealismActive: () => false,
         getGroupAffectionScore: (id, {defaultValue = 0}) => defaultValue,
-        setGroupAffectionScore: (_, __) {},
+        setGroupAffectionScore: (_, _) {},
         getGroupLongTermScore: (id, {defaultValue = 0}) => defaultValue,
-        setGroupLongTermScore: (_, __) {},
+        setGroupLongTermScore: (_, _) {},
         getGroupTrustLevel: (id, {defaultValue = 0}) => defaultValue,
-        setGroupTrustLevel: (_, __) {},
+        setGroupTrustLevel: (_, _) {},
         getGroupFixation: (id, {defaultValue = ''}) => defaultValue,
-        setGroupFixation: (_, __) {},
+        setGroupFixation: (_, _) {},
         getGroupFixationLifespan: (id, {defaultValue = 0}) => defaultValue,
-        setGroupFixationLifespan: (_, __) {},
+        setGroupFixationLifespan: (_, _) {},
         getGroupRelationshipTier: (id, {defaultValue = 0}) => defaultValue,
-        setGroupRelationshipTier: (_, __) {},
+        setGroupRelationshipTier: (_, _) {},
         getGroupLongTermTier: (id, {defaultValue = 0}) => defaultValue,
-        setGroupLongTermTier: (_, __) {},
+        setGroupLongTermTier: (_, _) {},
         getGroupSpatialStance: (id, {defaultValue = ''}) => defaultValue,
-        setGroupSpatialStance: (_, __) {},
+        setGroupSpatialStance: (_, _) {},
         getGroupInterCharacterRelationships: (_) => <String, int>{},
-        setGroupInterCharacterRelationships: (_, __) {},
+        setGroupInterCharacterRelationships: (_, _) {},
       );
   final nsfw_ =
       nsfw ??
       NsfwService(
-        getGroupInt: (_, __) => 0,
-        getGroupValue: (_, __) => null,
-        setGroupValue: (_, __, ___) {},
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
       );
   final time_ =
       time ??
@@ -201,9 +201,9 @@ void main() {
       'emotional call fires + parses + sets emotion/intensity (and arousal if nsfw)',
       () async {
         final nsfw = NsfwService(
-          getGroupInt: (_, __) => 0,
-          getGroupValue: (_, __) => null,
-          setGroupValue: (_, __, ___) {},
+          getGroupInt: (_, _) => 0,
+          getGroupValue: (_, _) => null,
+          setGroupValue: (_, _, _) {},
         );
         String emotion = '';
         String intensity = '';
@@ -389,9 +389,9 @@ void main() {
 
     test('arousal only when nsfwCooldownEnabled (in rel/emotion)', () async {
       final nsfw = NsfwService(
-        getGroupInt: (_, __) => 0,
-        getGroupValue: (_, __) => null,
-        setGroupValue: (_, __, ___) {},
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
       );
       final svc = createTestRealismEvals(nsfw: nsfw);
       await svc.evaluateRelationshipCall();

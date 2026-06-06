@@ -3924,3 +3924,39 @@ Next human step: interactive manual smoke on 1:1 + group (exercising remaining g
 
 Step 1+..+14 + this (step 15) + fix round 1 (0 open after round 1 from 6 reviewers (effort 5) + all addressed in fix round incl 7742 vestigial + /tmp claim qualify via fresh gates + dupe nit + _check* out-of-scope note + coverage suggestions) complete. Interactive manual smoke required by human pre-landing (1:1+group exercising remaining god paths + all thins + no parity regression + resets + periodic + post-gen + group dance + build* + generation + swipe + TTS drain etc.).
 
+## docs(refactor): record literal commit+push output + fresh gate results for step 15 (f9fbc96)
+
+Commit: `git commit -F /tmp/step15-commit-msg.txt 2>&1 | cat ; echo "COMMIT_EXIT=$?" ; git rev-parse HEAD | cat ; git log -1 --oneline | cat`
+→
+---COMMIT_DONE---
+---PUSH_DONE---
+---EXPLICIT_PUSH_DONE---
+
+Push (explicit to origin):
+→
+To https://github.com/linux4life1/front-porch-AI.git
+   35bda11..f9fbc96  refactor/god-file-modularization -> refactor/god-file-modularization
+PUSH_ORIGIN_EXIT=0
+f9fbc96 refactor(chat): Stage 3 god-file modularization step 15 — Refactor remaining \`ChatService\` (audit + pure cleanup; 0 new privs, exactly 15 void _ stayed live, 3 vestigial phrases cleaned, full record/MD/CLAUDE/guide/changelog + fix round)
+
+Post-commit verification (fresh gates on committed tree):
+
+```
+f9fbc96 refactor(chat): Stage 3 god-file modularization step 15 — Refactor remaining `ChatService` (audit + pure cleanup; 0 new privs, exactly 15 void _ stayed live, 3 vestigial phrases cleaned, full record/MD/CLAUDE/guide/changelog + fix round)
+```
+
+Live priv count (post-commit):
+15
+
+Analyze (god surface):
+2 packages are discontinued.
+54 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing chat_service.dart...                                  
+No issues found! (ran in 0.6s)
+
+Re-read performed at end (abs path, post commit/push): read /Users/linux4life/dev/front-porch-stage1-experiment/docs/refactor-god-file-modularization.md (Step 15 end + this record section); god (abs `/Users/linux4life/dev/front-porch-stage1-experiment/lib/services/chat_service.dart`): marker + 3 phrases cleaned present; main (git -C /Users/linux4life/dev/front-porch-AI) only pre-existing; worktree clean on the branch post-push.
+
+All per step 14 precedent for commit record hygiene (long verbatim, full raw, re-runs, re-reads of abs + /tmp, claims exact post match, main pristine).
+
+(End of step 15 commit/push record; interactive manual smoke still required by human pre-landing.)

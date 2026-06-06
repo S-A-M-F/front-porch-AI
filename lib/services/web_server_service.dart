@@ -865,8 +865,8 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/characters/<id>/avatar — Upload a new avatar image.
-  /// Body: { "data": "<base64 PNG>" }
+  /// POST `/api/characters/<id>/avatar` — Upload a new avatar image.
+  /// Body: `{ "data": "<base64 PNG>" }`
   Future<shelf.Response> _handleUploadAvatar(
     shelf.Request request,
     String id,
@@ -963,7 +963,7 @@ class WebServerService extends ChangeNotifier {
   // Data Bank API
   // ─────────────────────────────────────────────────────────────────────
 
-  /// GET /api/characters/<id>/databank — List all Data Bank entries.
+  /// GET `/api/characters/<id>/databank` — List all Data Bank entries.
   Future<shelf.Response> _handleGetDataBank(
     shelf.Request request,
     String id,
@@ -992,7 +992,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/characters/<id>/databank — Create a new entry.
+  /// POST `/api/characters/<id>/databank` — Create a new entry.
   Future<shelf.Response> _handleCreateDataBankEntry(
     shelf.Request request,
     String id,
@@ -1023,7 +1023,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/characters/<id>/databank/<entryId>/update — Update an entry.
+  /// POST `/api/characters/<id>/databank/<entryId>/update` — Update an entry.
   Future<shelf.Response> _handleUpdateDataBankEntry(
     shelf.Request request,
     String id,
@@ -1050,7 +1050,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/characters/<id>/databank/<entryId>/delete — Delete an entry.
+  /// POST `/api/characters/<id>/databank/<entryId>/delete` — Delete an entry.
   Future<shelf.Response> _handleDeleteDataBankEntry(
     shelf.Request request,
     String id,
@@ -3490,8 +3490,8 @@ class WebServerService extends ChangeNotifier {
     );
   }
 
-  /// GET /api/image-cache/check?url=<encoded_url>
-  /// Returns { cached: bool } — checks if URL is already in local image cache.
+  /// GET `/api/image-cache/check?url=<encoded_url>`
+  /// Returns `{ cached: bool }` — checks if URL is already in local image cache.
   Future<shelf.Response> _handleImageCacheCheck(shelf.Request request) async {
     final url = request.url.queryParameters['url'];
     if (url == null || url.isEmpty) {
@@ -3510,7 +3510,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// GET /api/image-cache/serve?url=<encoded_url>
+  /// GET `/api/image-cache/serve?url=<encoded_url>`
   /// Serves image from cache, downloading and caching first if needed.
   Future<shelf.Response> _handleImageCacheServe(shelf.Request request) async {
     final url = request.url.queryParameters['url'];
@@ -5590,7 +5590,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// GET /api/stories/<id> — Get a full story project.
+  /// GET `/api/stories/<id>` — Get a full story project.
   Future<shelf.Response> _handleGetStory(
     shelf.Request request,
     String id,
@@ -5611,7 +5611,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// GET /api/stories/<id>/pipeline/stream — SSE stream for pipeline progress.
+  /// GET `/api/stories/<id>/pipeline/stream` — SSE stream for pipeline progress.
   Future<shelf.Response> _handlePipelineStream(
     shelf.Request request,
     String id,
@@ -5638,7 +5638,7 @@ class WebServerService extends ChangeNotifier {
     );
   }
 
-  /// GET /api/stories/<id>/pipeline/status — Polling fallback for pipeline state.
+  /// GET `/api/stories/<id>/pipeline/status` — Polling fallback for pipeline state.
   Future<shelf.Response> _handlePipelineStatus(
     shelf.Request request,
     String id,
@@ -5654,7 +5654,7 @@ class WebServerService extends ChangeNotifier {
     );
   }
 
-  /// POST /api/stories/<id>/pipeline/run — Start an async pipeline stage.
+  /// POST `/api/stories/<id>/pipeline/run` — Start an async pipeline stage.
   Future<shelf.Response> _handleRunPipelineStage(
     shelf.Request request,
     String id,
@@ -5767,7 +5767,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/stories/<id>/prose/edit — Save hand-edited prose for a beat.
+  /// POST `/api/stories/<id>/prose/edit` — Save hand-edited prose for a beat.
   Future<shelf.Response> _handleProseEdit(
     shelf.Request request,
     String id,
@@ -5804,7 +5804,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/stories/<id>/distill — Run the chat history distiller.
+  /// POST `/api/stories/<id>/distill` — Run the chat history distiller.
   Future<shelf.Response> _handleDistillChatHistory(
     shelf.Request request,
     String id,

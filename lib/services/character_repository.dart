@@ -547,7 +547,7 @@ class CharacterRepository extends ChangeNotifier {
 
   /// Bulk import multiple character PNG files.
   /// [onProgress] is called after each file with (current, total, cardName, error).
-  /// Returns a summary map: {imported: int, failed: int, errors: List<String>}.
+  /// Returns a summary map: `{imported: int, failed: int, errors: List<String>}`.
   Future<Map<String, dynamic>> importCharacters(
     List<File> files, {
     WorldRepository? worldRepo,

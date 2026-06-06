@@ -37,87 +37,159 @@ void main() {
 
   group('Lorebook Injection (now via real LorebookScanner)', () {
     test('constant entries always match', () {
-      final entry = LorebookEntry(key: 'dragon', content: 'Dragons are ancient and powerful.', name: 'Dragon Lore', constant: true);
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: 'dragon',
+        content: 'Dragons are ancient and powerful.',
+        name: 'Dragon Lore',
+        constant: true,
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('I see a dragon');
       expect(entry.isTriggered, isTrue);
       expect(entry.remainingDepth, 1);
     });
 
-    test('keyword-triggered entries match on keywords + sticky + decr (adapted to real scanner)', () {
-      final entry = LorebookEntry(key: 'dragon, wyrm', content: 'Dragons breathe fire.', stickyDepth: 2);
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
-      final svc = createTestLorebookScannerForIntegration(characters: [ch]);
-      svc.scanLorebook('I see a dragon');
-      expect(entry.isTriggered, isTrue);
-      expect(entry.remainingDepth, 2);
+    test(
+      'keyword-triggered entries match on keywords + sticky + decr (adapted to real scanner)',
+      () {
+        final entry = LorebookEntry(
+          key: 'dragon, wyrm',
+          content: 'Dragons breathe fire.',
+          stickyDepth: 2,
+        );
+        final ch = CharacterCard(
+          name: 'C',
+          lorebook: Lorebook(entries: [entry]),
+        );
+        final svc = createTestLorebookScannerForIntegration(characters: [ch]);
+        svc.scanLorebook('I see a dragon');
+        expect(entry.isTriggered, isTrue);
+        expect(entry.remainingDepth, 2);
 
-      final pre = {entry};
-      svc.decrementLoreDepthForEntries(pre);
-      expect(entry.remainingDepth, 1);
-      expect(entry.isTriggered, isTrue);
+        final pre = {entry};
+        svc.decrementLoreDepthForEntries(pre);
+        expect(entry.remainingDepth, 1);
+        expect(entry.isTriggered, isTrue);
 
-      svc.decrementLoreDepthForEntries(pre);
-      expect(entry.remainingDepth, 0);
-      expect(entry.isTriggered, isFalse);
-    });
+        svc.decrementLoreDepthForEntries(pre);
+        expect(entry.remainingDepth, 0);
+        expect(entry.isTriggered, isFalse);
+      },
+    );
 
     test('entries do not match on unrelated keywords', () {
-      final entry = LorebookEntry(key: 'dragon', content: 'Dragons are fire-breathing reptiles.');
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: 'dragon',
+        content: 'Dragons are fire-breathing reptiles.',
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('I see a horse');
       expect(entry.isTriggered, isFalse);
     });
 
     test('multiple keywords in one entry — any match triggers', () {
-      final entry = LorebookEntry(key: 'elf, elven, highborn', content: 'Elves are long-lived beings.');
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: 'elf, elven, highborn',
+        content: 'Elves are long-lived beings.',
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('The elven ranger approaches');
       expect(entry.isTriggered, isTrue);
 
-      final entry2 = LorebookEntry(key: 'elf, elven, highborn', content: 'Elves are long-lived beings.');
-      final ch2 = CharacterCard(name: 'C2', lorebook: Lorebook(entries: [entry2]));
+      final entry2 = LorebookEntry(
+        key: 'elf, elven, highborn',
+        content: 'Elves are long-lived beings.',
+      );
+      final ch2 = CharacterCard(
+        name: 'C2',
+        lorebook: Lorebook(entries: [entry2]),
+      );
       final svc2 = createTestLorebookScannerForIntegration(characters: [ch2]);
       svc2.scanLorebook('A highborn noble enters');
       expect(entry2.isTriggered, isTrue);
 
-      final entry3 = LorebookEntry(key: 'elf, elven, highborn', content: 'Elves are long-lived beings.');
-      final ch3 = CharacterCard(name: 'C3', lorebook: Lorebook(entries: [entry3]));
+      final entry3 = LorebookEntry(
+        key: 'elf, elven, highborn',
+        content: 'Elves are long-lived beings.',
+      );
+      final ch3 = CharacterCard(
+        name: 'C3',
+        lorebook: Lorebook(entries: [entry3]),
+      );
       final svc3 = createTestLorebookScannerForIntegration(characters: [ch3]);
       svc3.scanLorebook('Nothing here');
       expect(entry3.isTriggered, isFalse);
     });
 
     test('disabled entries do not match', () {
-      final entry = LorebookEntry(key: 'dragon', content: 'Dragons are dangerous.', enabled: false);
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: 'dragon',
+        content: 'Dragons are dangerous.',
+        enabled: false,
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('I see a dragon');
       expect(entry.isTriggered, isFalse);
     });
 
     test('case-insensitive keyword matching', () {
-      final entry = LorebookEntry(key: 'Dragon', content: 'Dragons breathe fire.');
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: 'Dragon',
+        content: 'Dragons breathe fire.',
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('i saw a DRAGON in the sky');
       expect(entry.isTriggered, isTrue);
     });
 
-    test('keyword matching uses word boundaries (not arbitrary substring; fire does not match fireball) — conflicting substring test body deleted', () {
-      final entry = LorebookEntry(key: 'fire', content: 'Fire is dangerous.');
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
-      final svc = createTestLorebookScannerForIntegration(characters: [ch]);
-      svc.scanLorebook('The dragon breathes fireballs');
-      expect(entry.isTriggered, isFalse, reason: 'boundary semantics from real scanner');
-    });
+    test(
+      'keyword matching uses word boundaries (not arbitrary substring; fire does not match fireball) — conflicting substring test body deleted',
+      () {
+        final entry = LorebookEntry(key: 'fire', content: 'Fire is dangerous.');
+        final ch = CharacterCard(
+          name: 'C',
+          lorebook: Lorebook(entries: [entry]),
+        );
+        final svc = createTestLorebookScannerForIntegration(characters: [ch]);
+        svc.scanLorebook('The dragon breathes fireballs');
+        expect(
+          entry.isTriggered,
+          isFalse,
+          reason: 'boundary semantics from real scanner',
+        );
+      },
+    );
 
     test('sticky depth extends on each match (adapted)', () {
-      final entry = LorebookEntry(key: 'dragon', content: 'Dragons are ancient.', stickyDepth: 2);
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: 'dragon',
+        content: 'Dragons are ancient.',
+        stickyDepth: 2,
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('I see a dragon');
       expect(entry.remainingDepth, 2);
@@ -130,17 +202,35 @@ void main() {
     });
 
     test('multiple entries can be active simultaneously (adapted)', () {
-      final e1 = LorebookEntry(key: 'dragon', content: 'Dragons breathe fire.', stickyDepth: 3);
-      final e2 = LorebookEntry(key: 'elf', content: 'Elves are graceful.', stickyDepth: 2);
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [e1, e2]));
+      final e1 = LorebookEntry(
+        key: 'dragon',
+        content: 'Dragons breathe fire.',
+        stickyDepth: 3,
+      );
+      final e2 = LorebookEntry(
+        key: 'elf',
+        content: 'Elves are graceful.',
+        stickyDepth: 2,
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [e1, e2]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('An elf fights a dragon');
       expect(e1.isTriggered && e2.isTriggered, isTrue);
     });
 
     test('constant entries stay active regardless of depth (adapted)', () {
-      final entry = LorebookEntry(key: 'magic', content: 'Magic is rare in this world.', constant: true);
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: 'magic',
+        content: 'Magic is rare in this world.',
+        constant: true,
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('I see magic');
       expect(entry.isTriggered, isTrue);
@@ -149,12 +239,23 @@ void main() {
         svc.decrementLoreDepthForEntries({entry});
       }
 
-      expect(entry.isTriggered, isTrue, reason: 'constant entries never expire');
+      expect(
+        entry.isTriggered,
+        isTrue,
+        reason: 'constant entries never expire',
+      );
     });
 
     test('re-scanning after expiry re-triggers the entry (adapted)', () {
-      final entry = LorebookEntry(key: 'dragon', content: 'Dragons are fierce.', stickyDepth: 1);
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: 'dragon',
+        content: 'Dragons are fierce.',
+        stickyDepth: 1,
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('A dragon appears');
       expect(entry.isTriggered, isTrue);
@@ -168,15 +269,24 @@ void main() {
 
     test('empty key does not match', () {
       final entry = LorebookEntry(key: '', content: 'This should never match.');
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('anything at all');
       expect(entry.isTriggered, isFalse);
     });
 
     test('whitespace in keys is trimmed', () {
-      final entry = LorebookEntry(key: ' dragon , wyrm ', content: 'Dragons are powerful.');
-      final ch = CharacterCard(name: 'C', lorebook: Lorebook(entries: [entry]));
+      final entry = LorebookEntry(
+        key: ' dragon , wyrm ',
+        content: 'Dragons are powerful.',
+      );
+      final ch = CharacterCard(
+        name: 'C',
+        lorebook: Lorebook(entries: [entry]),
+      );
       final svc = createTestLorebookScannerForIntegration(characters: [ch]);
       svc.scanLorebook('I see a dragon');
       expect(entry.isTriggered, isTrue);

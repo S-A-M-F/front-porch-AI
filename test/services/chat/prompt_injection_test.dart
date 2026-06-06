@@ -69,7 +69,7 @@ Map<String, dynamic> _mkGroupState(
     'emotion': emotion,
     'emotionIntensity': 'mild',
     'arousalLevel': arousal,
-    if (needs != null) 'needs': needs,
+    'needs': ?needs,
   };
 }
 
@@ -221,22 +221,22 @@ BehavioralInjection createTestBehavioral({
         getIsGroupRealismActive: () => false,
         getGroupAffectionScore: (_, {defaultValue = 0}) => defaultValue,
         getGroupRelationshipTier: (_, {defaultValue = 0}) => defaultValue,
-        setGroupRelationshipTier: (_, __) {},
+        setGroupRelationshipTier: (_, _) {},
         getGroupLongTermTier: (_, {defaultValue = 0}) => defaultValue,
-        setGroupLongTermTier: (_, __) {},
+        setGroupLongTermTier: (_, _) {},
         getGroupSpatialStance: (_, {defaultValue = ''}) => defaultValue,
-        setGroupSpatialStance: (_, __) {},
+        setGroupSpatialStance: (_, _) {},
         getGroupInterCharacterRelationships: (_) => {},
-        setGroupInterCharacterRelationships: (_, __) {},
+        setGroupInterCharacterRelationships: (_, _) {},
         getGroupLongTermScore: (_, {defaultValue = 0}) => defaultValue,
-        setGroupLongTermScore: (_, __) {},
+        setGroupLongTermScore: (_, _) {},
         getGroupTrustLevel: (_, {defaultValue = 0}) => defaultValue,
-        setGroupTrustLevel: (_, __) {},
+        setGroupTrustLevel: (_, _) {},
         getGroupFixation: (_, {defaultValue = ''}) => defaultValue,
-        setGroupFixation: (_, __) {},
+        setGroupFixation: (_, _) {},
         getGroupFixationLifespan: (_, {defaultValue = 0}) => defaultValue,
-        setGroupFixationLifespan: (_, __) {},
-        setGroupAffectionScore: (_, __) {},
+        setGroupFixationLifespan: (_, _) {},
+        setGroupAffectionScore: (_, _) {},
       );
   return BehavioralInjection(
     relationshipService: svc,
@@ -274,8 +274,8 @@ class _StubTimeService extends TimeService {
        super(
          onNotify: () {},
          onSaveChat: () async {},
-         onSetPendingRealismMetadata: (_, __) {},
-         onNudgePatchLastMessageRealismState: (_, __) {},
+         onSetPendingRealismMetadata: (_, _) {},
+         onNudgePatchLastMessageRealismState: (_, _) {},
        );
   @override
   String get timeOfDay => _tod;
@@ -298,9 +298,9 @@ NsfwInjection createTestNsfw({
   final n =
       nsfwSvc ??
       NsfwService(
-        getGroupInt: (_, __) => 0,
-        getGroupValue: (_, __) => null,
-        setGroupValue: (_, __, ___) {},
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
       );
   final ne =
       needsSvc ??
@@ -316,7 +316,7 @@ NsfwInjection createTestNsfw({
         getCurrentSpeakerIdForRealism: () => '',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
-        setGroupNeeds: (_, __) {},
+        setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
         setArousalLevel: (_) {},
@@ -339,22 +339,22 @@ NsfwInjection createTestNsfw({
         getIsGroupRealismActive: () => false,
         getGroupAffectionScore: (_, {defaultValue = 0}) => defaultValue,
         getGroupRelationshipTier: (_, {defaultValue = 0}) => defaultValue,
-        setGroupRelationshipTier: (_, __) {},
+        setGroupRelationshipTier: (_, _) {},
         getGroupLongTermTier: (_, {defaultValue = 0}) => defaultValue,
-        setGroupLongTermTier: (_, __) {},
+        setGroupLongTermTier: (_, _) {},
         getGroupSpatialStance: (_, {defaultValue = ''}) => defaultValue,
-        setGroupSpatialStance: (_, __) {},
+        setGroupSpatialStance: (_, _) {},
         getGroupInterCharacterRelationships: (_) => {},
-        setGroupInterCharacterRelationships: (_, __) {},
+        setGroupInterCharacterRelationships: (_, _) {},
         getGroupLongTermScore: (_, {defaultValue = 0}) => defaultValue,
-        setGroupLongTermScore: (_, __) {},
+        setGroupLongTermScore: (_, _) {},
         getGroupTrustLevel: (_, {defaultValue = 0}) => defaultValue,
-        setGroupTrustLevel: (_, __) {},
+        setGroupTrustLevel: (_, _) {},
         getGroupFixation: (_, {defaultValue = ''}) => defaultValue,
-        setGroupFixation: (_, __) {},
+        setGroupFixation: (_, _) {},
         getGroupFixationLifespan: (_, {defaultValue = 0}) => defaultValue,
-        setGroupFixationLifespan: (_, __) {},
-        setGroupAffectionScore: (_, __) {},
+        setGroupFixationLifespan: (_, _) {},
+        setGroupAffectionScore: (_, _) {},
       );
   return NsfwInjection(
     nsfwService: n,
@@ -378,7 +378,7 @@ ChaosInjection createTestChaos({
       ChaosModeService(
         onNotify: () {},
         onSaveChat: () async {},
-        onSetPendingRealismMetadata: (_, __) {},
+        onSetPendingRealismMetadata: (_, _) {},
       );
   return ChaosInjection(
     chaosModeService: c,
@@ -412,7 +412,7 @@ NeedsInjection createTestNeeds({
         getCurrentSpeakerIdForRealism: () => '',
         getIsGroupNonObserverMode: () => isGroupNonObs,
         getGroupNeeds: (id) => groupNeeds?[id] ?? {},
-        setGroupNeeds: (_, __) {},
+        setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => enjoys,
         getNeedsSimEnabled: () => needsEnabled,
         setArousalLevel: (_) {},
@@ -420,9 +420,9 @@ NeedsInjection createTestNeeds({
   final n =
       nsfwSvc ??
       NsfwService(
-        getGroupInt: (_, __) => 0,
-        getGroupValue: (_, __) => null,
-        setGroupValue: (_, __, ___) {},
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
       );
   return NeedsInjection(
     needsSimulation: ne,
@@ -517,9 +517,9 @@ void main() {
 
     test('nsfw: cooldown phases + protective window + arousal desc', () {
       final n = NsfwService(
-        getGroupInt: (_, __) => 0,
-        getGroupValue: (_, __) => null,
-        setGroupValue: (_, __, ___) {},
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
       );
       n.setNsfwCooldownEnabled(true);
       n.setCooldownTurnsRemaining(5);
@@ -536,7 +536,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => '',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
-        setGroupNeeds: (_, __) {},
+        setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
         setArousalLevel: (_) {},
@@ -556,7 +556,7 @@ void main() {
       final c = ChaosModeService(
         onNotify: () {},
         onSaveChat: () async {},
-        onSetPendingRealismMetadata: (_, __) {},
+        onSetPendingRealismMetadata: (_, _) {},
       );
       c.setPendingChaosInjection('A bird lands on the windowsill.');
       final b = createTestChaos(
@@ -591,15 +591,15 @@ void main() {
           getCurrentSpeakerIdForRealism: () => 'g1',
           getIsGroupNonObserverMode: () => true,
           getGroupNeeds: (id) => gneeds[id] ?? {},
-          setGroupNeeds: (_, __) {},
+          setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
         );
         final n = NsfwService(
-          getGroupInt: (_, __) => 0,
-          getGroupValue: (_, __) => null,
-          setGroupValue: (_, __, ___) {},
+          getGroupInt: (_, _) => 0,
+          getGroupValue: (_, _) => null,
+          setGroupValue: (_, _, _) {},
         );
         final b = createTestNeeds(
           needsSvc: ne,
@@ -624,7 +624,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => '',
           getIsGroupNonObserverMode: () => false,
           getGroupNeeds: (_) => {},
-          setGroupNeeds: (_, __) {},
+          setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
@@ -643,9 +643,9 @@ void main() {
 
         // 1:1 erotic bladder special + suppression dampen coverage (per review)
         final nSpecial = NsfwService(
-          getGroupInt: (_, __) => 0,
-          getGroupValue: (_, __) => null,
-          setGroupValue: (_, __, ___) {},
+          getGroupInt: (_, _) => 0,
+          getGroupValue: (_, _) => null,
+          setGroupValue: (_, _, _) {},
         );
         nSpecial.setNsfwCooldownEnabled(true);
         nSpecial.setCooldownTurnsRemaining(2);
@@ -663,7 +663,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => '',
           getIsGroupNonObserverMode: () => false,
           getGroupNeeds: (_) => {},
-          setGroupNeeds: (_, __) {},
+          setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
@@ -684,9 +684,9 @@ void main() {
 
         // suppression dampen path (high arousal + cooldown remaining >0 , step 1-3)
         final nSupp = NsfwService(
-          getGroupInt: (_, __) => 0,
-          getGroupValue: (_, __) => null,
-          setGroupValue: (_, __, ___) {},
+          getGroupInt: (_, _) => 0,
+          getGroupValue: (_, _) => null,
+          setGroupValue: (_, _, _) {},
         );
         nSupp.setNsfwCooldownEnabled(true);
         nSupp.setCooldownTurnsRemaining(1);
@@ -703,7 +703,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => '',
           getIsGroupNonObserverMode: () => false,
           getGroupNeeds: (_) => {},
-          setGroupNeeds: (_, __) {},
+          setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
@@ -778,7 +778,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => 'c1',
           getIsGroupNonObserverMode: () => false,
           getGroupNeeds: (_) => {},
-          setGroupNeeds: (_, __) {},
+          setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
@@ -792,9 +792,9 @@ void main() {
           ),
         );
         final ns = NsfwService(
-          getGroupInt: (_, __) => 0,
-          getGroupValue: (_, __) => null,
-          setGroupValue: (_, __, ___) {},
+          getGroupInt: (_, _) => 0,
+          getGroupValue: (_, _) => null,
+          setGroupValue: (_, _, _) {},
         );
         final inj = createTestNeeds(
           needsSvc: rawSim,

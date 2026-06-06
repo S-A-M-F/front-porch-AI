@@ -81,9 +81,9 @@ NeedsImpactEvaluator createTestEvaluator({
   final nsfw_ =
       nsfw ??
       NsfwService(
-        getGroupInt: (_, __) => 0,
-        getGroupValue: (_, __) => null,
-        setGroupValue: (_, __, ___) {},
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
       );
   final rel_ =
       rel ??
@@ -110,15 +110,15 @@ NeedsImpactEvaluator createTestEvaluator({
         getGroupLongTermTier: (_, {defaultValue = 0}) => defaultValue,
         getGroupSpatialStance: (_, {defaultValue = ''}) => defaultValue,
         getGroupInterCharacterRelationships: (_) => {},
-        setGroupAffectionScore: (_, __) {},
-        setGroupRelationshipTier: (_, __) {},
-        setGroupLongTermScore: (_, __) {},
-        setGroupTrustLevel: (_, __) {},
-        setGroupFixation: (_, __) {},
-        setGroupFixationLifespan: (_, __) {},
-        setGroupLongTermTier: (_, __) {},
-        setGroupSpatialStance: (_, __) {},
-        setGroupInterCharacterRelationships: (_, __) {},
+        setGroupAffectionScore: (_, _) {},
+        setGroupRelationshipTier: (_, _) {},
+        setGroupLongTermScore: (_, _) {},
+        setGroupTrustLevel: (_, _) {},
+        setGroupFixation: (_, _) {},
+        setGroupFixationLifespan: (_, _) {},
+        setGroupLongTermTier: (_, _) {},
+        setGroupSpatialStance: (_, _) {},
+        setGroupInterCharacterRelationships: (_, _) {},
       );
 
   return NeedsImpactEvaluator(
@@ -262,7 +262,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
-        setGroupNeeds: (_, __) {},
+        setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
         setArousalLevel: (_) {},
@@ -295,7 +295,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
-        setGroupNeeds: (_, __) {},
+        setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
         setArousalLevel: (_) {},
@@ -328,7 +328,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
-        setGroupNeeds: (_, __) {},
+        setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
         setArousalLevel: (_) {},
@@ -406,7 +406,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
-        setGroupNeeds: (_, __) {},
+        setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
         setArousalLevel: (_) {},
