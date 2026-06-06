@@ -181,7 +181,7 @@ Extract **leaf dependencies first** (no references to other extracted code), the
 | 12 | `summary_service.dart` | llm_eval_engine |
 | 13 | `fact_extraction.dart` | llm_eval_engine |
 | 14 | `evolution_service.dart` | llm_eval_engine |
-| 15 | Refactor remaining `ChatService` | all of the above |
+| 15 | Refactor remaining `ChatService` | all of the above | (completed: audit + pure cleanup of god orchestration/_groupRealism/core flows (no new leaf/extraction to preserve exactly 15 void _ thins+coord surface per plan/CLAUDE); dead/obsolete comment removal; thin consistency; full Step 15 record + gates in docs/refactor-god-file-modularization.md) |
 
 ### Extraction pattern (per commit)
 

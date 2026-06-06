@@ -372,7 +372,7 @@ class ChatService extends ChangeNotifier {
   // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). All scalars, tier getters,
   // cooldown mutations, arousal, and helpers now owned by the service; god thins to delegation
   // + 5 @Deprecated shims. 0 new private methods added in god for nsfw.
-  // climax/sexual/daily LLM checks + _runPostGen + nsfw injection stay thin in god (step 8 for full builders). (cross-ref setActiveCharacter:1572 etc)
+  // _runPostGenNeedsChecks (climax/sexual/daily/fulfillment via consolidated impact) thin to needs_impact_evaluator; nsfw injection thin to step-8 builder. (cross-ref setActiveCharacter:1572 etc)
 
   // ── Chaos Mode / Chance Time (core state extracted) ──────────────────────
   // _chaosModeEnabled / _chaosNsfwEnabled / _chaosPressure / _pendingChaosInjection / _chaosEventDelivered
@@ -426,8 +426,7 @@ class ChatService extends ChangeNotifier {
   // needs closes over the getArousal/getNsfw/getCooldown/setArousal cbs.)
   // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) comments)
   // without god privates. 0 new private methods in god.
-  // climax/sexual/daily checks stay in god (step 8 for full nsfw injection).
-  // 3 group cbs only (onNotify/onSaveChat removed as dead/unused; god owns save/notify for post-gen climax/sexual fidelity per plan boundaries). (cross-ref setActiveCharacter:1572 etc)
+  // _runPostGenNeedsChecks thin (consolidated to needs_impact_evaluator); 3 group cbs only (onNotify/onSaveChat removed as dead; god owns save/notify for post-gen fidelity per plan). (cross-ref setActiveCharacter:1572 etc)
   late final _nsfwService = NsfwService(
     getGroupInt: _getGroupInt,
     getGroupValue: (charId, key) => _groupRealism[charId]?[key],
@@ -495,7 +494,6 @@ class ChatService extends ChangeNotifier {
   // onClimaxDetected: live closure for nsfw refractory + pre-climax meta save (so _checkClimax nsfw path parity preserved while detection unified).
   // 0 @Deprecated. 0 new god private _ methods (thins + late final + comment syncs only; void _ count stays 15; thins/calls/late final only per plan).
   // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync" comments (full prior+current list + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + cross-refs e.g. setActiveCharacter:1572); both startNew branches explicit.
-  // (stateless or prompt-only; no reset calls needed) + cross-refs e.g. setActiveCharacter:1572); both startNewChat branches explicit.
   // 1:1 vs group + oneShot/normal dispatch/parity preserved exactly (cbs + god's impersonation dance + load/saveScalarsIntoGroupRealism before post checks).
   // aug exercising only passive/qualified (no needs-eval-specific aug file edits; full in dedicated needs_impact_evaluator_test + manual;
   // exercised via god thins _runPostGenNeedsChecks + _check* ; qualified notes only in dedicated header + god + MD per precedent).
@@ -1201,6 +1199,26 @@ class ChatService extends ChangeNotifier {
   String _getEffectiveScenario(CharacterCard card) =>
       _evolutionService.getEffectiveScenario(card);
 
+  // Step 15 (refactor remaining `ChatService`): complete. God is now thin
+  // coordinator/orchestrator + minimal god-owned state that per-plan stayed
+  // (_groupRealism + _loadGroup*IntoScalars / _saveScalarsIntoGroupRealism /
+  // _setGroup* / _loadGroupRealismStateFromSession / _sync... / _restore... ;
+  // core sendMessage pre/post + _generateResponse (pick/eval dance/impersonation/
+  // build* stayed / post-gen finalization) ; _buildChatHistoryWithBudget ;
+  // _loadLastSession / _saveChat / _doSaveChat ; _pickNextGroupCharacter ;
+  // _evaluateRealismForUpcomingGroupSpeaker ; _waitForTtsThenContinue + drain
+  // buffer / _flush / _startDrainTimer ; _applyMoodDecay ; _maybeEmbedMessages ;
+  // _maybeRunPeriodicEvals / _run... seq thins ; _runPostGenNeedsChecks thin ;
+  // observerMode / autoPlay / callMode / build persona/author/history blocks
+  // that stayed ; all reset keep-sync + "now complete" + both startNew + full
+  // list of 14 leaves + god-owned). 0 new god private _ methods (live grep
+  // `^\s*void _[a-zA-Z]` stayed exactly 15 after every edit + final; thins +
+  // god coord entrypoints only). Pure cleanup + dead/obsolete comment removal
+  // (3 vestigial phrases cleaned: 2 briefing + 1 per-thin at _getNsfwCooldownInjection:7742) + thin consistency as part of
+  // task (no heroic new splits; smallest change; no bloat/parallel paths).
+  // 1:1 vs group parity preserved for all surfaces (dispatch via cbs + god
+  // impersonation dance). aug tests: only qualified passive (no step-15 edits).
+  // See docs/refactor-god-file-modularization.md Step 15 + CLAUDE Path Map.
   Completer<void>?
   _chanceTimeCompleter; // pauses sendMessage while wheel is active (UI coordination, stays in god)
 
@@ -7720,7 +7738,7 @@ class ChatService extends ChangeNotifier {
   /// per character (1-8 turns based on personality), so the prompt uses the
   /// ratio of remaining/total to determine the phase.
   String _getNsfwCooldownInjection() {
-    // Thin delegation (full in NsfwInjection per step 8; climax/sexual/daily checks stay in god).
+    // Thin delegation (full in NsfwInjection per step 8).
     return _nsfwInjection.buildNsfwCooldownInjection();
   }
 
