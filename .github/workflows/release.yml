@@ -150,35 +150,17 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Cache ML Engines (Kokoro TTS, Piper TTS, Whisper STT, etc.)
-        id: ml-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ml-engines-cache
-          key: ml-engines-${{ matrix.platform }}-${{ hashFiles('kokoro_tts.py', 'piper_entry.py', 'whisper_stt.py', 'sentiment_classifier.py', 'tools/embed_server/Cargo.toml', 'tools/dt-grpc-python/**') }}
-          restore-keys: |
-            ml-engines-${{ matrix.platform }}-
-
       - name: Build Application
         run: flutter build ${{ matrix.platform }} --release
 
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
         run: |
-          CACHE_HIT="${{ steps.ml-cache.outputs.cache-hit }}"
-          CACHE_DIR="ml-engines-cache/${{ matrix.platform }}"
+          echo "Building ML engines from source"
+          DEST="${{ matrix.build_path }}/piper"
+          mkdir -p "$DEST"
 
-          if [ "$CACHE_HIT" == "true" ] && [ -d "$CACHE_DIR" ]; then
-            echo "ML engines cache hit — skipping PyInstaller builds"
-            mkdir -p "${{ matrix.build_path }}"
-            cp -r "$CACHE_DIR/"* "${{ matrix.build_path }}/" || true
-          else
-            echo "ML engines cache miss — building from source"
-            DEST="${{ matrix.build_path }}/piper"
-            mkdir -p "$DEST"
-
-            # Install TTS dependencies + PyInstaller
+          # Install TTS dependencies + PyInstaller
             pip install --upgrade pip
             pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
 
@@ -345,15 +327,6 @@ jobs:
               --exclude-module torchaudio \
               --noconfirm
             echo "Draw Things gRPC client built at: $STT_DEST/dt_grpc_client/"
-
-            # Save built engines to cache directory for next time
-            mkdir -p "$CACHE_DIR"
-            cp -r "${{ matrix.build_path }}/piper" "$CACHE_DIR/" 2>/dev/null || true
-            cp -r "$STT_DEST/whisper_stt" "$CACHE_DIR/" 2>/dev/null || true
-            cp -r "$STT_DEST/embed_server" "$CACHE_DIR/" 2>/dev/null || true
-            cp -r "$STT_DEST/sentiment_classifier" "$CACHE_DIR/" 2>/dev/null || true
-            cp -r "$STT_DEST/dt_grpc_client" "$CACHE_DIR/" 2>/dev/null || true
-          fi
 
           # For macOS, copy into the app bundle Resources (always runs)
           if [ "${{ matrix.platform }}" = "macos" ]; then
