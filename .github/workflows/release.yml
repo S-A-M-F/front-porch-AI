@@ -576,35 +576,6 @@ jobs:
         shell: pwsh
 
 
-      # Notarize the .app BEFORE packaging it into the PKG so Apple issues a ticket for its CDHash
-      - name: Notarize and Staple .app (pre-PKG)
-        if: matrix.platform == 'macos'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app | head -1)
-          APP_ZIP="${APP_NAME%.app}.zip"
-
-          echo "Creating ZIP of signed .app for notarization submission..."
-          ditto -c -k --keepParent "$APP_NAME" "$APP_ZIP"
-
-          echo "Submitting .app to Apple notary service (this may take 1–5 minutes)..."
-          xcrun notarytool submit "$APP_ZIP" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_ID_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait || { echo "ERROR: .app notarization failed"; exit 1; }
-
-          rm -f "$APP_ZIP"
-          echo "✓ .app is notarized. CDHash is now known to Apple."
-
-          echo "Stapling .app..."
-          xcrun stapler staple "$APP_NAME"
-          xcrun stapler validate "$APP_NAME" || { echo "ERROR: .app staple validation failed"; exit 1; }
-          echo "✓ .app is stapled."
-
       - name: Build macOS PKG
         if: matrix.platform == 'macos'
         env:
@@ -671,6 +642,9 @@ jobs:
           xcrun stapler validate "$PKG_NAME" \
             && echo "✓ PKG staple verified" \
             || { echo "⚠ PKG staple validation failed"; exit 1; }
+          
+          # Move PKG to workspace root for upload-artifact step
+          mv "$PKG_NAME" ../../../../../
           
           echo "✓ Build complete: PKG and inner .app are fully notarized and stapled!"
 
