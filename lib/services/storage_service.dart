@@ -17,15 +17,28 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/app_version.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import '../models/character_card.dart';
+
+// Stage 7: storage decomposition (directories + domain settings; shims preserve public API)
+import 'storage/directories.dart';
+import 'storage/settings/generation_settings.dart';
+import 'storage/settings/backend_settings.dart';
+import 'storage/settings/ui_settings.dart';
+import 'storage/settings/tts_settings.dart';
+import 'storage/settings/stt_settings.dart';
+import 'storage/settings/image_gen_settings.dart';
+import 'storage/settings/expression_settings.dart';
+import 'storage/settings/web_server_settings.dart';
+import 'storage/settings/cloud_sync_settings.dart';
+import 'storage/settings/realism_settings.dart';
+import 'storage/settings/memory_settings.dart';
+import 'storage/settings/preset_settings.dart';
 
 class StorageService extends ChangeNotifier {
   final Completer<void> _initCompleter = Completer<void>();
@@ -36,440 +49,669 @@ class StorageService extends ChangeNotifier {
   String? _customModelsPath;
   Directory? _binDir;
 
+  // Stage 7: domain settings (plain classes + base mixin; single Storage ChangeNotifier surface)
+  late final GenerationSettings _generationSettings = GenerationSettings();
+  late final BackendSettings _backendSettings = BackendSettings();
+  late final UiSettings _uiSettings = UiSettings();
+  late final TtsSettings _ttsSettings = TtsSettings();
+  late final SttSettings _sttSettings = SttSettings();
+  late final ImageGenSettings _imageGenSettings = ImageGenSettings();
+  late final ExpressionSettings _expressionSettings = ExpressionSettings();
+  late final WebServerSettings _webServerSettings = WebServerSettings();
+  late final CloudSyncSettings _cloudSyncSettings = CloudSyncSettings();
+  late final RealismSettings _realismSettings = RealismSettings();
+  late final MemorySettings _memorySettings = MemorySettings();
+  late final PresetSettings _presetSettings = PresetSettings();
+
+  // Directories lifted to directories.dart (Stage 7); thin god owns root state for setRootPath.
+  // Getter ensures live values after setRootPath / setCustomModelsPath.
+  AppDirectories get directories =>
+      AppDirectories(rootPath: _rootPath, customModelsPath: _customModelsPath);
+
   String? get rootPath => _rootPath;
   String? get customModelsPath => _customModelsPath;
   Directory get binDir => _binDir ?? Directory(_rootPath ?? '');
-  Directory get modelsDir =>
-      _customModelsPath != null && _customModelsPath!.isNotEmpty
-      ? Directory(_customModelsPath!)
-      : Directory(path.join(_rootPath ?? '', 'models'));
-  Directory get chatsDir => Directory(path.join(_rootPath ?? '', 'chats'));
-  Directory get worldsDir => Directory(path.join(_rootPath ?? '', 'worlds'));
+  Directory get modelsDir => directories.modelsDir;
+  Directory get chatsDir => directories.chatsDir;
+  Directory get worldsDir => directories.worldsDir;
 
-  Directory get charactersDir =>
-      Directory(path.join(_rootPath ?? '', 'KoboldManager', 'Characters'));
+  Directory get charactersDir => directories.charactersDir;
 
   /// Directory for all group-private data (decoupled from singular library characters).
   /// Each group gets its own subdirectory (by group id) under here to store its
   /// member avatar PNGs (primary only; no multi-avatar or expressions per spec).
   /// Group data is NEVER written to or resolved from the global charactersDir or library.
   /// The only bridge to library is the user's explicit "Separate to my library" action.
-  Directory get groupsDir => Directory(path.join(_rootPath ?? '', 'groups'));
+  Directory get groupsDir => directories.groupsDir;
 
-  /// Resolve a character [imagePath] (stored in the DB) to a [File].
-  ///
-  /// The DB may contain either:
-  ///   • A **basename** only — e.g. `"Maggie_1234567890.png"` (written by the
-  ///     manual avatar picker and older AI-generated entries).
-  ///   • A **full absolute path** — e.g. `/Users/.../Maggie_1234567890.png`
-  ///     (written by newer AI-generated entries before this fix).
-  ///   • A **relative path with subdirectory** — e.g. `"Aerin/avatars/avatar_1.png"`
-  ///     (multi-avatar format with per-character subdirectories).
-  ///
-  /// In all cases this returns the correct [File].  Pass the result to
-  /// [FileImage] or [Image.file] instead of [File(imagePath)] directly so
-  /// that the code remains valid when the app data directory moves or the
-  /// character card is used on a different machine.
-  File resolveCharacterImage(String imagePath) {
-    if (path.isAbsolute(imagePath)) return File(imagePath);
-    final resolved = File(path.join(charactersDir.path, imagePath));
-    return resolved;
-  }
+  File resolveCharacterImage(String imagePath) =>
+      directories.resolveCharacterImage(imagePath);
 
-  /// Return the avatars subdirectory for a character by name.
-  /// Creates the directory if it doesn't exist.
-  Directory characterAvatarDir(String characterName) {
-    final safeName = characterName
-        .replaceAll(RegExp(r'[^\w\s\-]'), '')
-        .replaceAll(' ', '_');
-    return Directory(path.join(charactersDir.path, safeName, 'avatars'));
-  }
+  Directory characterAvatarDir(String characterName) =>
+      directories.characterAvatarDir(characterName);
 
-  // Settings
+  Directory get customBackgroundDir => directories.customBackgroundDir;
+
+  // === Stage 7 backward-compat shims (exact public API preserved; callers need no changes) ===
+  // All delegate to the extracted *Settings (or directories). @Deprecated per plan.
+  // Once callers migrate (future), thin drops to ~dir mgmt + init + _k/root helpers.
+
+  // Directories (already delegated above; root/custom exposed for setRootPath consumers)
+
+  // Generation
+  @Deprecated('Use generationSettings.systemPrompt (Stage 7)')
+  String get systemPrompt => _generationSettings.systemPrompt;
   static const String defaultSystemPrompt =
-      "You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns. You may also roleplay as any side characters introduced.\n\nEngage with {{user}} by depicting {{char}}'s actions, emotions, and dialogue. Develop the plot slowly and organically while driving the scenario forward. Never write {{user}}'s speech, actions, or decisions — allow them full control of their character.\n\nWrite in a vivid, creative, varied, and descriptive style. Use rich sensory detail for the environment, people, and events. Make each reply unique and end with an action or dialogue to keep momentum.\n\nMaintain consistency with established details — clothing, time of day, location, and prior events. Stay in character at all times.";
-  String _systemPrompt = defaultSystemPrompt;
-  double _minP = 0.1;
-  double _temperature = 0.7;
-  double _bubbleOpacity = 1.0;
+      GenerationSettings.defaultSystemPrompt;
 
-  // Global chat color defaults
-  Color _globalUserBubbleColor = const Color(0xFF3B82F6);
-  Color _globalUserTextColor = Colors.white;
-  Color _globalAiBubbleColor = const Color(0xFF374151);
-  Color _globalAiTextColor = Colors.white;
-  Color _globalDialogueColor = Colors.amberAccent;
-  Color _globalActionColor = const Color(0xFF90CAF9);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setSystemPrompt(String value) =>
+      _generationSettings.setSystemPrompt(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setMinP(double value) => _generationSettings.setMinP(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setTemperature(double value) =>
+      _generationSettings.setTemperature(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setRepeatPenalty(double value) =>
+      _generationSettings.setRepeatPenalty(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setRepeatPenaltyTokens(int value) =>
+      _generationSettings.setRepeatPenaltyTokens(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setDynamicTempEnabled(bool value) =>
+      _generationSettings.setDynamicTempEnabled(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setDynamicTempRange(double value) =>
+      _generationSettings.setDynamicTempRange(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setXtcThreshold(double value) =>
+      _generationSettings.setXtcThreshold(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setXtcProbability(double value) =>
+      _generationSettings.setXtcProbability(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setMaxLength(int value) =>
+      _generationSettings.setMaxLength(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setMinLength(int value) =>
+      _generationSettings.setMinLength(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> setStopSequences(List<String> value) =>
+      _generationSettings.setStopSequences(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> addStopSequence(String value) =>
+      _generationSettings.addStopSequence(value);
+  @Deprecated('Use generationSettings (Stage 7)')
+  Future<void> removeStopSequence(String value) =>
+      _generationSettings.removeStopSequence(value);
 
-  // Global chat font family
-  String _globalChatFontFamily = '';
+  double get minP => _generationSettings.minP;
+  double get temperature => _generationSettings.temperature;
+  double get repeatPenalty => _generationSettings.repeatPenalty;
+  int get repeatPenaltyTokens => _generationSettings.repeatPenaltyTokens;
+  bool get dynamicTempEnabled => _generationSettings.dynamicTempEnabled;
+  double get dynamicTempRange => _generationSettings.dynamicTempRange;
+  double get xtcThreshold => _generationSettings.xtcThreshold;
+  double get xtcProbability => _generationSettings.xtcProbability;
+  int get maxLength => _generationSettings.maxLength;
+  int get minLength => _generationSettings.minLength;
+  List<String> get stopSequences => _generationSettings.stopSequences;
 
-  // Theme mode (persisted; drives which set of the 5 chat colors is active)
-  bool _isDark = true;
+  // Backend (remote, reasoning, launch flags, kcpps, gpu/context)
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setBackendType(String value) =>
+      _backendSettings.setBackendType(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setRemoteApiKey(String value) =>
+      _backendSettings.setRemoteApiKey(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setRemoteApiUrl(String value) =>
+      _backendSettings.setRemoteApiUrl(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setRemoteModelName(String value) =>
+      _backendSettings.setRemoteModelName(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setReasoningEnabled(bool value) =>
+      _backendSettings.setReasoningEnabled(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setReasoningEffort(String value) =>
+      _backendSettings.setReasoningEffort(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setKoboldThinkingModel(bool value) =>
+      _backendSettings.setKoboldThinkingModel(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setAutostartBackend(bool value) =>
+      _backendSettings.setAutostartBackend(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setAutostartPseudoRemote(bool value) =>
+      _backendSettings.setAutostartPseudoRemote(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setLastUsedModelPath(String? value) =>
+      _backendSettings.setLastUsedModelPath(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setActiveKcppsPath(String? value) =>
+      _backendSettings.setActiveKcppsPath(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setUseCublas(bool value) => _backendSettings.setUseCublas(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setUseVulkan(bool value) => _backendSettings.setUseVulkan(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setUseMetal(bool value) => _backendSettings.setUseMetal(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setUseRocm(bool value) => _backendSettings.setUseRocm(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setFlashAttentionEnabled(bool value) =>
+      _backendSettings.setFlashAttentionEnabled(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setMlockEnabled(bool value) =>
+      _backendSettings.setMlockEnabled(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setBlasBatchSize(int value) =>
+      _backendSettings.setBlasBatchSize(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setGpuId(int value) => _backendSettings.setGpuId(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setGpuLayers(int value) => _backendSettings.setGpuLayers(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setContextSize(int value) =>
+      _backendSettings.setContextSize(value);
+  @Deprecated('Use backendSettings (Stage 7)')
+  Future<void> setModelPreset(String modelPath, String? kcppsPath) =>
+      _presetSettings.setModelPreset(modelPath, kcppsPath);
 
-  // Light-mode chat color defaults (populated from AppColors on first load if no prefs)
-  Color _lightUserBubbleColor = AppColors.userBubbleLight;
-  Color _lightUserTextColor = AppColors.userTextLight;
-  Color _lightAiBubbleColor = AppColors.aiBubbleLight;
-  Color _lightAiTextColor = AppColors.aiTextLight;
-  Color _lightDialogueColor = AppColors.dialogueLight;
-  Color _lightActionColor = AppColors.actionLight;
+  String get backendType => _backendSettings.backendType;
+  String get remoteApiKey => _backendSettings.remoteApiKey;
+  String get remoteApiUrl => _backendSettings.remoteApiUrl;
+  String get remoteModelName => _backendSettings.remoteModelName;
+  bool get reasoningEnabled => _backendSettings.reasoningEnabled;
+  String get reasoningEffort => _backendSettings.reasoningEffort;
+  bool get koboldThinkingModel => _backendSettings.koboldThinkingModel;
+  bool get autostartBackend => _backendSettings.autostartBackend;
+  bool get autostartPseudoRemote => _backendSettings.autostartPseudoRemote;
+  String? get lastUsedModelPath => _backendSettings.lastUsedModelPath;
+  String? get activeKcppsPath => _backendSettings.activeKcppsPath;
+  bool get kcppsHasModel => _backendSettings.kcppsHasModel;
+  bool get kcppsModelFileExists => _backendSettings.kcppsModelFileExists;
+  bool? get useCublas => _backendSettings.useCublas;
+  bool? get useVulkan => _backendSettings.useVulkan;
+  bool? get useMetal => _backendSettings.useMetal;
+  bool? get useRocm => _backendSettings.useRocm;
+  bool get flashAttentionEnabled => _backendSettings.flashAttentionEnabled;
+  bool get mlockEnabled => _backendSettings.mlockEnabled;
+  int get blasBatchSize => _backendSettings.blasBatchSize;
+  int get gpuId => _backendSettings.gpuId;
+  int get gpuLayers => _backendSettings.gpuLayers;
+  int get contextSize => _backendSettings.contextSize;
+  Map<String, String> get modelPresetMap => _presetSettings.modelPresetMap;
 
-  double _repeatPenalty = 1.1;
-  int _repeatPenaltyTokens = 64;
-  bool _dynamicTempEnabled = false;
-  double _dynamicTempRange = 0.7;
-  double _xtcThreshold = 0.1;
-  double _xtcProbability = 0.5;
-  bool? _useCublas;
-  bool? _useVulkan;
-  bool? _useMetal;
-  bool? _useRocm;
+  // UI (colors, fonts, bg, buffer, sort, effective helpers)
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setBubbleOpacity(double value) =>
+      _uiSettings.setBubbleOpacity(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setGlobalUserBubbleColor(Color value) =>
+      _uiSettings.setGlobalUserBubbleColor(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setGlobalUserTextColor(Color value) =>
+      _uiSettings.setGlobalUserTextColor(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setGlobalAiBubbleColor(Color value) =>
+      _uiSettings.setGlobalAiBubbleColor(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setGlobalAiTextColor(Color value) =>
+      _uiSettings.setGlobalAiTextColor(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setGlobalDialogueColor(Color value) =>
+      _uiSettings.setGlobalDialogueColor(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setGlobalActionColor(Color value) =>
+      _uiSettings.setGlobalActionColor(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setGlobalChatFontFamily(String value) =>
+      _uiSettings.setGlobalChatFontFamily(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setIsDark(bool value) => _uiSettings.setIsDark(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setTextScale(double value) => _uiSettings.setTextScale(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setChatBackground(String value) =>
+      _uiSettings.setChatBackground(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> addCustomBackground(String id, String name, String filePath) =>
+      _uiSettings.addCustomBackground(id, name, filePath);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> removeCustomBackground(String id) =>
+      _uiSettings.removeCustomBackground(id);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setDisplayBufferEnabled(bool value) =>
+      _uiSettings.setDisplayBufferEnabled(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setTargetDisplayTps(double value) =>
+      _uiSettings.setTargetDisplayTps(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setBufferDurationSeconds(double value) =>
+      _uiSettings.setBufferDurationSeconds(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setSortMode(String value) => _uiSettings.setSortMode(value);
+  @Deprecated('Use uiSettings (Stage 7)')
+  Future<void> setGridScale(double value) => _uiSettings.setGridScale(value);
 
-  // ── Advanced KoboldCPP launch flags ──────────────────────────────────────
-  // Defaults are chosen to match KoboldCPP's own Quick Launch GUI behaviour
-  // and to give best out-of-box speed.
-  bool _flashAttentionEnabled =
-      true; // ~30% speed boost on RTX/Metal; off for ROCm
-  bool _mlockEnabled =
-      !Platform.isLinux; // prevent VRAM paging (needs root on Linux)
-  int _blasBatchSize = 512; // tokens processed in parallel during prefill
-  int _gpuId = 0; // explicit GPU index — prevents iGPU routing on multi-GPU
-  int _maxLength = 1024;
-  int _minLength = 0;
-  bool _autostartBackend = false;
-  bool _autostartPseudoRemote = false;
-  String? _lastUsedModelPath;
-  String? _activeKcppsPath;
+  double get bubbleOpacity => _uiSettings.bubbleOpacity;
+  Color get globalUserBubbleColor => _uiSettings.globalUserBubbleColor;
+  Color get globalUserTextColor => _uiSettings.globalUserTextColor;
+  Color get globalAiBubbleColor => _uiSettings.globalAiBubbleColor;
+  Color get globalAiTextColor => _uiSettings.globalAiTextColor;
+  Color get globalDialogueColor => _uiSettings.globalDialogueColor;
+  Color get globalActionColor => _uiSettings.globalActionColor;
+  bool get isDark => _uiSettings.isDark;
+  String get globalChatFontFamily => _uiSettings.globalChatFontFamily;
+  double get textScale => _uiSettings.textScale;
+  String get chatBackground => _uiSettings.chatBackground;
+  List<Map<String, String>> get customBackgrounds =>
+      _uiSettings.customBackgrounds;
+  bool get displayBufferEnabled => _uiSettings.displayBufferEnabled;
+  double get targetDisplayTps => _uiSettings.targetDisplayTps;
+  double get bufferDurationSeconds => _uiSettings.bufferDurationSeconds;
+  String get sortMode => _uiSettings.sortMode;
+  double get gridScale => _uiSettings.gridScale;
 
-  /// True when the active .kcpps file contains a non-empty "model" key.
-  /// KoboldCPP will load that model automatically, so the Flutter model picker
-  /// should be disabled. False when no preset is active OR the preset has no
-  /// model (user must select one via the Flutter picker).
-  bool _kcppsHasModel = false;
-  Map<String, String> _modelPresetMap = {};
-  int _gpuLayers = 0;
-  int _contextSize = 8192;
-  List<String> _stopSequences = [
-    "\nUser:",
-    "\n###",
-    "\nScenario:",
-    "<END>",
-    "</END>",
-    "[END]",
-    "<|end|>",
-    "<START>",
-    "\nSystem:",
-    "\n(Note:",
-    "\n[Note:",
-    "\n{Note:",
-  ];
-  double _textScale = 1.0;
-  String _chatBackground = 'none';
-  List<Map<String, String>> _customBackgrounds = [];
-  List<Map<String, String>> _savedPrompts = [];
-  bool _displayBufferEnabled = false;
-  double _targetDisplayTps = 6.0; // ~250 WPM average human reading speed
-  double _bufferDurationSeconds =
-      3.0; // How many seconds of tokens to buffer before draining
+  bool hasCustomBackgroundWithName(String name) =>
+      _uiSettings.hasCustomBackgroundWithName(name);
 
-  // External API settings
-  String _backendType = 'kobold'; // 'kobold' or 'openRouter'
-  String _remoteApiKey = '';
-  String _remoteApiUrl = 'https://openrouter.ai/api/v1';
-  String _remoteModelName = '';
+  // Effective color/font (per-char override support preserved)
+  Color getUserBubbleColor(CharacterCard? character) =>
+      _uiSettings.getUserBubbleColor(character);
+  Color getUserTextColor(CharacterCard? character) =>
+      _uiSettings.getUserTextColor(character);
+  Color getAiBubbleColor(CharacterCard? character) =>
+      _uiSettings.getAiBubbleColor(character);
+  Color getAiTextColor(CharacterCard? character) =>
+      _uiSettings.getAiTextColor(character);
+  Color getDialogueColor(CharacterCard? character) =>
+      _uiSettings.getDialogueColor(character);
+  Color getActionColor(CharacterCard? character) =>
+      _uiSettings.getActionColor(character);
+  String getChatFontFamily(CharacterCard? character) =>
+      _uiSettings.getChatFontFamily(character);
 
-  // Reasoning settings (remote API)
-  bool _reasoningEnabled = false;
-  String _reasoningEffort = 'medium'; // 'low', 'medium', 'high'
-  // Local KoboldCPP thinking model flag (separate from remote reasoning toggle)
-  bool _koboldThinkingModel = false;
+  // TTS
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsEnabled(bool value) => _ttsSettings.setTtsEnabled(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsEngine(String value) => _ttsSettings.setTtsEngine(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsVoiceModel(String value) =>
+      _ttsSettings.setTtsVoiceModel(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsSpeechRate(double value) =>
+      _ttsSettings.setTtsSpeechRate(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsAutoPlay(bool value) => _ttsSettings.setTtsAutoPlay(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setOpenaiTtsApiKey(String value) =>
+      _ttsSettings.setOpenaiTtsApiKey(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setOpenaiTtsModel(String value) =>
+      _ttsSettings.setOpenaiTtsModel(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setOpenaiTtsBaseUrl(String value) =>
+      _ttsSettings.setOpenaiTtsBaseUrl(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setElevenlabsApiKey(String value) =>
+      _ttsSettings.setElevenlabsApiKey(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setElevenlabsModel(String value) =>
+      _ttsSettings.setElevenlabsModel(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setElevenlabsStability(double value) =>
+      _ttsSettings.setElevenlabsStability(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setElevenlabsSimilarity(double value) =>
+      _ttsSettings.setElevenlabsSimilarity(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setElevenlabsStyle(double value) =>
+      _ttsSettings.setElevenlabsStyle(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsNarrateQuotedOnly(bool value) =>
+      _ttsSettings.setTtsNarrateQuotedOnly(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsIgnoreAsterisks(bool value) =>
+      _ttsSettings.setTtsIgnoreAsterisks(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsConcurrency(int value) =>
+      _ttsSettings.setTtsConcurrency(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setTtsAudioLookahead(int value) =>
+      _ttsSettings.setTtsAudioLookahead(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setKvQuantizationLevel(int value) =>
+      _ttsSettings.setKvQuantizationLevel(value);
+  @Deprecated('Use ttsSettings (Stage 7)')
+  Future<void> setDirectorDelay(double value) =>
+      _ttsSettings.setDirectorDelay(value);
 
-  // TTS settings
-  bool _ttsEnabled = false;
-  String _ttsEngine = 'kokoro'; // 'kokoro', 'openai', 'elevenlabs', 'piper'
-  String _ttsVoiceModel =
-      ''; // voice key, e.g. 'af_heart' or 'en_US-lessac-medium'
-  double _ttsSpeechRate = 1.0;
-  bool _ttsAutoPlay = false;
-  String _openaiTtsApiKey = '';
-  String _openaiTtsModel = 'tts-1'; // 'tts-1' or 'tts-1-hd'
-  String _openaiTtsBaseUrl =
-      'https://api.openai.com/v1'; // customizable endpoint for OpenAI-compatible TTS
-  String _elevenlabsApiKey = '';
-  String _elevenlabsModel = 'eleven_flash_v2_5';
-  double _elevenlabsStability = 0.5;
-  double _elevenlabsSimilarity = 0.75;
-  double _elevenlabsStyle = 0.0;
-  bool _ttsNarrateQuotedOnly = false;
-  bool _ttsIgnoreAsterisks = false;
-  int _ttsConcurrency = Platform.numberOfProcessors.clamp(1, 8);
-  int _ttsAudioLookahead =
-      6; // How many future chunks the OrderedAudioCollector will buffer
-  double _directorDelay =
-      15.0; // seconds between auto-chat responses in Director Mode
+  bool get ttsEnabled => _ttsSettings.ttsEnabled;
+  String get ttsEngine => _ttsSettings.ttsEngine;
+  String get ttsVoiceModel => _ttsSettings.ttsVoiceModel;
+  double get ttsSpeechRate => _ttsSettings.ttsSpeechRate;
+  bool get ttsAutoPlay => _ttsSettings.ttsAutoPlay;
+  String get openaiTtsApiKey => _ttsSettings.openaiTtsApiKey;
+  String get openaiTtsModel => _ttsSettings.openaiTtsModel;
+  String get openaiTtsBaseUrl => _ttsSettings.openaiTtsBaseUrl;
+  String get elevenlabsApiKey => _ttsSettings.elevenlabsApiKey;
+  String get elevenlabsModel => _ttsSettings.elevenlabsModel;
+  double get elevenlabsStability => _ttsSettings.elevenlabsStability;
+  double get elevenlabsSimilarity => _ttsSettings.elevenlabsSimilarity;
+  double get elevenlabsStyle => _ttsSettings.elevenlabsStyle;
+  bool get ttsNarrateQuotedOnly => _ttsSettings.ttsNarrateQuotedOnly;
+  bool get ttsIgnoreAsterisks => _ttsSettings.ttsIgnoreAsterisks;
+  int get ttsConcurrency => _ttsSettings.ttsConcurrency;
+  int get ttsAudioLookahead => _ttsSettings.ttsAudioLookahead;
+  double get directorDelay => _ttsSettings.directorDelay;
+  int get kvQuantizationLevel => _ttsSettings.kvQuantizationLevel;
 
-  // STT (Speech-to-Text) settings
-  bool _sttEnabled = false;
-  String _whisperModel = 'base.en'; // 'tiny.en', 'base.en', 'small.en'
-  bool _autoSendTranscription = false;
-  String? _selectedMicId;
-  String _callModelName = ''; // separate LLM model for voice call mode
-  int _callBufferSentences = 3; // how many sentences to buffer before playback
-  String _callSystemPrompt =
-      'You are on a live voice call. Respond naturally as if speaking on the phone. '
-      'ALWAYS write in first person — never narrate in third person. '
-      'Keep responses concise: 1-3 sentences max. '
-      'No actions, no narration, no stage directions — just speak directly.';
+  // STT
+  @Deprecated('Use sttSettings (Stage 7)')
+  Future<void> setSttEnabled(bool value) => _sttSettings.setSttEnabled(value);
+  @Deprecated('Use sttSettings (Stage 7)')
+  Future<void> setWhisperModel(String value) =>
+      _sttSettings.setWhisperModel(value);
+  @Deprecated('Use sttSettings (Stage 7)')
+  Future<void> setAutoSendTranscription(bool value) =>
+      _sttSettings.setAutoSendTranscription(value);
+  @Deprecated('Use sttSettings (Stage 7)')
+  Future<void> setSelectedMicId(String? value) =>
+      _sttSettings.setSelectedMicId(value);
+  @Deprecated('Use sttSettings (Stage 7)')
+  Future<void> setCallModelName(String value) =>
+      _sttSettings.setCallModelName(value);
+  @Deprecated('Use sttSettings (Stage 7)')
+  Future<void> setCallBufferSentences(int value) =>
+      _sttSettings.setCallBufferSentences(value);
+  @Deprecated('Use sttSettings (Stage 7)')
+  Future<void> setCallSystemPrompt(String value) =>
+      _sttSettings.setCallSystemPrompt(value);
 
-  // Sort preference
-  String _sortMode = 'name'; // 'name', 'recent', 'importDate'
+  bool get sttEnabled => _sttSettings.sttEnabled;
+  String get whisperModel => _sttSettings.whisperModel;
+  bool get autoSendTranscription => _sttSettings.autoSendTranscription;
+  String? get selectedMicId => _sttSettings.selectedMicId;
+  String get callModelName => _sttSettings.callModelName;
+  int get callBufferSentences => _sttSettings.callBufferSentences;
+  String get callSystemPrompt => _sttSettings.callSystemPrompt;
 
-  // Grid scale preference
-  double _gridScale = 300.0; // maxCrossAxisExtent in pixels (150-450)
+  // Image gen
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenEnabled(bool value) =>
+      _imageGenSettings.setImageGenEnabled(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenBackend(String value) =>
+      _imageGenSettings.setImageGenBackend(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setLocalImageGenUrl(String value) =>
+      _imageGenSettings.setLocalImageGenUrl(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenModel(String value) =>
+      _imageGenSettings.setImageGenModel(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenSize(String value) =>
+      _imageGenSettings.setImageGenSize(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenNegativePrompt(String value) =>
+      _imageGenSettings.setImageGenNegativePrompt(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenStyle(String value) =>
+      _imageGenSettings.setImageGenStyle(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenPromptParadigm(String value) =>
+      _imageGenSettings.setImageGenPromptParadigm(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenLora(String value) =>
+      _imageGenSettings.setImageGenLora(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenLoraWeight(double value) =>
+      _imageGenSettings.setImageGenLoraWeight(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenSteps(int value) =>
+      _imageGenSettings.setImageGenSteps(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenCfgScale(double value) =>
+      _imageGenSettings.setImageGenCfgScale(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenSampler(String value) =>
+      _imageGenSettings.setImageGenSampler(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setImageGenSeed(int value) =>
+      _imageGenSettings.setImageGenSeed(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setDrawThingsGrpcHost(String value) =>
+      _imageGenSettings.setDrawThingsGrpcHost(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setDrawThingsGrpcPort(int value) =>
+      _imageGenSettings.setDrawThingsGrpcPort(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setDrawThingsSampler(int value) =>
+      _imageGenSettings.setDrawThingsSampler(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setDrawThingsShift(double value) =>
+      _imageGenSettings.setDrawThingsShift(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setDrawThingsStrength(double value) =>
+      _imageGenSettings.setDrawThingsStrength(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setDrawThingsSeedMode(int value) =>
+      _imageGenSettings.setDrawThingsSeedMode(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setDrawThingsTeaCache(bool value) =>
+      _imageGenSettings.setDrawThingsTeaCache(value);
+  @Deprecated('Use imageGenSettings (Stage 7)')
+  Future<void> setDrawThingsCfgZeroStar(bool value) =>
+      _imageGenSettings.setDrawThingsCfgZeroStar(value);
 
-  // Cloud sync settings
-  bool _cloudSyncEnabled = false;
-  String _cloudSyncProvider = 'none'; // 'none', 'webdav', 'gdrive'
-  String _cloudSyncUrl = '';
-  String _cloudSyncUsername = '';
-  String _cloudSyncPassword = '';
-  String _cloudSyncLastTime = '';
+  bool get imageGenEnabled => _imageGenSettings.imageGenEnabled;
+  String get imageGenBackend => _imageGenSettings.imageGenBackend;
+  String get localImageGenUrl => _imageGenSettings.localImageGenUrl;
+  String get imageGenModel => _imageGenSettings.imageGenModel;
+  String get imageGenSize => _imageGenSettings.imageGenSize;
+  String get imageGenNegativePrompt => _imageGenSettings.imageGenNegativePrompt;
+  String get imageGenStyle => _imageGenSettings.imageGenStyle;
+  String get imageGenPromptParadigm => _imageGenSettings.imageGenPromptParadigm;
+  String get imageGenLora => _imageGenSettings.imageGenLora;
+  double get imageGenLoraWeight => _imageGenSettings.imageGenLoraWeight;
+  int get imageGenSteps => _imageGenSettings.imageGenSteps;
+  double get imageGenCfgScale => _imageGenSettings.imageGenCfgScale;
+  String get imageGenSampler => _imageGenSettings.imageGenSampler;
+  int get imageGenSeed => _imageGenSettings.imageGenSeed;
+  String get drawThingsGrpcHost => _imageGenSettings.drawThingsGrpcHost;
+  int get drawThingsGrpcPort => _imageGenSettings.drawThingsGrpcPort;
+  int get drawThingsSampler => _imageGenSettings.drawThingsSampler;
+  double get drawThingsShift => _imageGenSettings.drawThingsShift;
+  double get drawThingsStrength => _imageGenSettings.drawThingsStrength;
+  int get drawThingsSeedMode => _imageGenSettings.drawThingsSeedMode;
+  bool get drawThingsTeaCache => _imageGenSettings.drawThingsTeaCache;
+  bool get drawThingsCfgZeroStar => _imageGenSettings.drawThingsCfgZeroStar;
 
-  // Image generation settings
-  bool _imageGenEnabled = false;
-  String _imageGenBackend = 'remote'; // 'remote', 'a1111', 'drawthings'
-  String _localImageGenUrl = 'http://127.0.0.1:7860';
-  String _imageGenModel = '';
-  String _imageGenSize = '1024x1024';
-  String _imageGenNegativePrompt = 'blurry, low quality, watermark, text';
-  String _imageGenStyle = 'photorealistic';
-  String _imageGenPromptParadigm = 'natural'; // 'natural', 'tags'
-  String _imageGenLora = ''; // selected LoRA filename (A1111/Forge/SDNext only)
-  double _imageGenLoraWeight = 0.8; // LoRA strength 0.0–1.0
-  int _imageGenSteps = 20; // sampling steps (5-50)
-  double _imageGenCfgScale = 7.0; // CFG scale (1.0-20.0)
-  String _imageGenSampler = 'Euler a'; // sampler name
-  int _imageGenSeed = -1; // -1 = random
+  // Expression
+  @Deprecated('Use expressionSettings (Stage 7)')
+  Future<void> setExpressionEnabled(bool value) =>
+      _expressionSettings.setExpressionEnabled(value);
+  @Deprecated('Use expressionSettings (Stage 7)')
+  Future<void> setExpressionClassificationMode(String value) =>
+      _expressionSettings.setExpressionClassificationMode(value);
+  @Deprecated('Use expressionSettings (Stage 7)')
+  Future<void> setExpressionDisplayMode(String value) =>
+      _expressionSettings.setExpressionDisplayMode(value);
+  @Deprecated('Use expressionSettings (Stage 7)')
+  Future<void> setExpressionRerollSame(bool value) =>
+      _expressionSettings.setExpressionRerollSame(value);
+  @Deprecated('Use expressionSettings (Stage 7)')
+  Future<void> setExpressionFallback(String value) =>
+      _expressionSettings.setExpressionFallback(value);
 
-  // Draw Things gRPC-specific persisted settings (separate from A1111 HTTP url + shared samplers)
-  String _drawThingsGrpcHost = '127.0.0.1';
-  int _drawThingsGrpcPort = 7859;
-  int _drawThingsSampler = 16; // Sampler.DDIM_TRAILING (see client.py)
-  double _drawThingsShift = 3.0;
-  double _drawThingsStrength = 1.0;
-  int _drawThingsSeedMode = 2; // SeedMode.SCALE_ALIKE
-  bool _drawThingsTeaCache = false;
-  bool _drawThingsCfgZeroStar = false;
+  bool get expressionEnabled => _expressionSettings.expressionEnabled;
+  String get expressionClassificationMode =>
+      _expressionSettings.expressionClassificationMode;
+  String get expressionDisplayMode => _expressionSettings.expressionDisplayMode;
+  bool get expressionRerollSame => _expressionSettings.expressionRerollSame;
+  String get expressionFallback => _expressionSettings.expressionFallback;
 
-  // Web server settings
-  bool _webServerEnabled = false;
-  int _webServerPort = 8085;
-  String _webServerPin = '';
+  // Web server (persisted only; runtime in WebServerService post Stage 6)
+  @Deprecated('Use webServerSettings (Stage 7)')
+  Future<void> setWebServerEnabled(bool value) =>
+      _webServerSettings.setWebServerEnabled(value);
+  @Deprecated('Use webServerSettings (Stage 7)')
+  Future<void> setWebServerPort(int value) =>
+      _webServerSettings.setWebServerPort(value);
+  @Deprecated('Use webServerSettings (Stage 7)')
+  Future<void> setWebServerPin(String value) =>
+      _webServerSettings.setWebServerPin(value);
 
-  // Summary settings
-  bool _summaryEnabled = false;
-  int _summaryInterval = 10; // generate/update summary every N user messages
-  int _summaryMaxWords = 200; // target max words for the summary
-  static const String defaultSummaryPrompt =
-      'Provide a concise summary of the conversation so far in {{words}} words or fewer. '
-      'Focus on: key plot points, character developments, important decisions, emotional shifts, '
-      'and any established facts. Preserve character names, locations, and relationships. '
-      'If a previous summary exists, update it with new events rather than starting fresh.';
-  String _summaryPrompt = defaultSummaryPrompt;
+  bool get webServerEnabled => _webServerSettings.webServerEnabled;
+  int get webServerPort => _webServerSettings.webServerPort;
+  String get webServerPin => _webServerSettings.webServerPin;
 
-  // Banned phrases (anti-slop)
-  List<String> _bannedPhrases = [];
+  // Cloud
+  @Deprecated('Use cloudSyncSettings (Stage 7)')
+  Future<void> setCloudSyncEnabled(bool value) =>
+      _cloudSyncSettings.setCloudSyncEnabled(value);
+  @Deprecated('Use cloudSyncSettings (Stage 7)')
+  Future<void> setCloudSyncProvider(String value) =>
+      _cloudSyncSettings.setCloudSyncProvider(value);
+  @Deprecated('Use cloudSyncSettings (Stage 7)')
+  Future<void> setCloudSyncUrl(String value) =>
+      _cloudSyncSettings.setCloudSyncUrl(value);
+  @Deprecated('Use cloudSyncSettings (Stage 7)')
+  Future<void> setCloudSyncUsername(String value) =>
+      _cloudSyncSettings.setCloudSyncUsername(value);
+  @Deprecated('Use cloudSyncSettings (Stage 7)')
+  Future<void> setCloudSyncPassword(String value) =>
+      _cloudSyncSettings.setCloudSyncPassword(value);
+  @Deprecated('Use cloudSyncSettings (Stage 7)')
+  Future<void> setCloudSyncLastTime(String value) =>
+      _cloudSyncSettings.setCloudSyncLastTime(value);
 
-  // RAG memory settings
-  bool _ragEnabled = false;
-  int _ragRetrievalCount = 10;
-  int _ragWindowSize = 5;
-  String _ragEmbeddingSource = 'auto'; // 'auto', 'onnx', 'kobold', 'api'
-  String _ragEmbeddingModel = 'text-embedding-3-small';
+  bool get cloudSyncEnabled => _cloudSyncSettings.cloudSyncEnabled;
+  String get cloudSyncProvider => _cloudSyncSettings.cloudSyncProvider;
+  String get cloudSyncUrl => _cloudSyncSettings.cloudSyncUrl;
+  String get cloudSyncUsername => _cloudSyncSettings.cloudSyncUsername;
+  String get cloudSyncPassword => _cloudSyncSettings.cloudSyncPassword;
+  String get cloudSyncLastTime => _cloudSyncSettings.cloudSyncLastTime;
 
-  // Auto-persona settings
-  bool _autoPersonaEnabled = false;
-  int _autoPersonaInterval = 10; // every N user messages
+  // Realism
+  @Deprecated('Use realismSettings (Stage 7)')
+  Future<void> setRealismOneShotEval(bool value) =>
+      _realismSettings.setRealismOneShotEval(value);
+  @Deprecated('Use realismSettings (Stage 7)')
+  Future<void> setRealismDefault(bool value) =>
+      _realismSettings.setRealismDefault(value);
+  @Deprecated('Use realismSettings (Stage 7)')
+  Future<void> setNsfwCooldownDefault(bool value) =>
+      _realismSettings.setNsfwCooldownDefault(value);
+  @Deprecated('Use realismSettings (Stage 7)')
+  Future<void> setPassageOfTimeDefault(bool value) =>
+      _realismSettings.setPassageOfTimeDefault(value);
+  @Deprecated('Use realismSettings (Stage 7)')
+  Future<void> setBannedPhrases(List<String> value) =>
+      _realismSettings.setBannedPhrases(value);
 
-  // Character evolution settings
-  bool _characterEvolutionEnabled = false;
-  int _evolutionInterval =
-      10; // unified with fact extraction (every N user messages)
+  bool get realismDefault => _realismSettings.realismDefault;
+  bool get nsfwCooldownDefault => _realismSettings.nsfwCooldownDefault;
+  bool get passageOfTimeDefault => _realismSettings.passageOfTimeDefault;
+  bool get realismOneShotEval => _realismSettings.realismOneShotEval;
+  List<String> get bannedPhrases => _realismSettings.bannedPhrases;
 
-  // Realism Engine global defaults (applied to new sessions / characters without extensions)
-  bool _realismDefault = false; // Default to off for global realism control
-  bool _nsfwCooldownDefault = false;
-  bool _passageOfTimeDefault = true;
+  // Memory (RAG, summary, auto-persona, evolution)
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setSummaryEnabled(bool value) =>
+      _memorySettings.setSummaryEnabled(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setSummaryInterval(int value) =>
+      _memorySettings.setSummaryInterval(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setSummaryMaxWords(int value) =>
+      _memorySettings.setSummaryMaxWords(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setSummaryPrompt(String value) =>
+      _memorySettings.setSummaryPrompt(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setRagEnabled(bool value) =>
+      _memorySettings.setRagEnabled(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setRagRetrievalCount(int value) =>
+      _memorySettings.setRagRetrievalCount(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setRagWindowSize(int value) =>
+      _memorySettings.setRagWindowSize(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setRagEmbeddingSource(String value) =>
+      _memorySettings.setRagEmbeddingSource(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setRagEmbeddingModel(String value) =>
+      _memorySettings.setRagEmbeddingModel(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setAutoPersonaEnabled(bool value) =>
+      _memorySettings.setAutoPersonaEnabled(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setAutoPersonaInterval(int value) =>
+      _memorySettings.setAutoPersonaInterval(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setCharacterEvolutionEnabled(bool value) =>
+      _memorySettings.setCharacterEvolutionEnabled(value);
+  @Deprecated('Use memorySettings (Stage 7)')
+  Future<void> setEvolutionInterval(int value) =>
+      _memorySettings.setEvolutionInterval(value);
 
-  // Realism Engine performance settings
-  bool _realismOneShotEval =
-      false; // fuse relationship + scene eval into one LLM call
+  bool get summaryEnabled => _memorySettings.summaryEnabled;
+  int get summaryInterval => _memorySettings.summaryInterval;
+  int get summaryMaxWords => _memorySettings.summaryMaxWords;
+  String get summaryPrompt => _memorySettings.summaryPrompt;
+  bool get ragEnabled => _memorySettings.ragEnabled;
+  int get ragRetrievalCount => _memorySettings.ragRetrievalCount;
+  int get ragWindowSize => _memorySettings.ragWindowSize;
+  String get ragEmbeddingSource => _memorySettings.ragEmbeddingSource;
+  String get ragEmbeddingModel => _memorySettings.ragEmbeddingModel;
+  bool get autoPersonaEnabled => _memorySettings.autoPersonaEnabled;
+  int get autoPersonaInterval => _memorySettings.autoPersonaInterval;
+  bool get characterEvolutionEnabled =>
+      _memorySettings.characterEvolutionEnabled;
+  int get evolutionInterval => _memorySettings.evolutionInterval;
 
-  Directory get customBackgroundDir =>
-      Directory(path.join(_rootPath ?? '', 'custom_backgrounds'));
-
-  // Getters
-  String get systemPrompt => _systemPrompt;
-  double get minP => _minP;
-  double get temperature => _temperature;
-  double get bubbleOpacity => _bubbleOpacity;
-  Color get globalUserBubbleColor =>
-      _isDark ? _globalUserBubbleColor : _lightUserBubbleColor;
-  Color get globalUserTextColor =>
-      _isDark ? _globalUserTextColor : _lightUserTextColor;
-  Color get globalAiBubbleColor =>
-      _isDark ? _globalAiBubbleColor : _lightAiBubbleColor;
-  Color get globalAiTextColor =>
-      _isDark ? _globalAiTextColor : _lightAiTextColor;
-  Color get globalDialogueColor =>
-      _isDark ? _globalDialogueColor : _lightDialogueColor;
-  Color get globalActionColor =>
-      _isDark ? _globalActionColor : _lightActionColor;
-  bool get isDark => _isDark;
-  String get globalChatFontFamily => _globalChatFontFamily;
-  double get repeatPenalty => _repeatPenalty;
-  int get repeatPenaltyTokens => _repeatPenaltyTokens;
-  bool get dynamicTempEnabled => _dynamicTempEnabled;
-  double get dynamicTempRange => _dynamicTempRange;
-  double get xtcThreshold => _xtcThreshold;
-  double get xtcProbability => _xtcProbability;
-  bool? get useCublas => _useCublas;
-  bool? get useVulkan => _useVulkan;
-  bool? get useMetal => _useMetal;
-  bool? get useRocm => _useRocm;
-  bool get flashAttentionEnabled => _flashAttentionEnabled;
-  bool get mlockEnabled => _mlockEnabled;
-  int get blasBatchSize => _blasBatchSize;
-  int get gpuId => _gpuId;
-  int get maxLength => _maxLength;
-  int get minLength => _minLength;
-  bool get autostartBackend => _autostartBackend;
-  bool get autostartPseudoRemote => _autostartPseudoRemote;
-  String? get lastUsedModelPath => _lastUsedModelPath;
-  String? get activeKcppsPath => _activeKcppsPath;
-
-  /// Whether the active .kcpps preset specifies its own model path.
-  /// When true the Flutter model picker should be greyed out.
-  bool get kcppsHasModel => _kcppsHasModel;
-
-  /// Whether the model file referenced in the active .kcpps preset exists on disk.
-  bool get kcppsModelFileExists {
-    final parsed = _parseKcppsFile(_activeKcppsPath);
-    if (parsed == null) return false;
-    final modelPath =
-        parsed['model_param'] is String &&
-            (parsed['model_param'] as String).trim().isNotEmpty
-        ? (parsed['model_param'] as String).trim()
-        : parsed['model'] is String
-        ? (parsed['model'] as String).trim()
-        : null;
-    if (modelPath == null) return false;
-    return File(modelPath).existsSync();
+  // Presets / saved prompts
+  @Deprecated('Use presetSettings (Stage 7)')
+  Future<void> savePrompt(String name, String content) =>
+      _presetSettings.savePrompt(name, content);
+  @Deprecated('Use presetSettings (Stage 7)')
+  Future<void> deleteSavedPrompt(String name) =>
+      _presetSettings.deleteSavedPrompt(name);
+  @Deprecated('Use presetSettings (Stage 7)')
+  void loadSavedPrompt(String name) {
+    // Note: original called setSystemPrompt inside; shim preserves by using current generation
+    _presetSettings.loadSavedPrompt(name, setSystemPrompt);
   }
 
-  Map<String, String> get modelPresetMap => Map.unmodifiable(_modelPresetMap);
-  int get gpuLayers => _gpuLayers;
-  int get contextSize => _contextSize;
-  List<String> get stopSequences => List.unmodifiable(_stopSequences);
-  double get textScale => _textScale;
-  String get chatBackground => _chatBackground;
-  List<Map<String, String>> get customBackgrounds =>
-      List.unmodifiable(_customBackgrounds);
-  List<Map<String, String>> get savedPrompts =>
-      List.unmodifiable(_savedPrompts);
-  bool get displayBufferEnabled => _displayBufferEnabled;
-  double get targetDisplayTps => _targetDisplayTps;
-  double get bufferDurationSeconds => _bufferDurationSeconds;
-  String get backendType => _backendType;
-  String get remoteApiKey => _remoteApiKey;
-  String get remoteApiUrl => _remoteApiUrl;
-  String get remoteModelName => _remoteModelName;
-  bool get reasoningEnabled => _reasoningEnabled;
-  String get reasoningEffort => _reasoningEffort;
-  bool get koboldThinkingModel => _koboldThinkingModel;
-  bool get ttsEnabled => _ttsEnabled;
-  String get ttsEngine => _ttsEngine;
-  String get ttsVoiceModel => _ttsVoiceModel;
-  double get ttsSpeechRate => _ttsSpeechRate;
-  bool get ttsAutoPlay => _ttsAutoPlay;
-  String get openaiTtsApiKey => _openaiTtsApiKey;
-  String get openaiTtsModel => _openaiTtsModel;
-  String get openaiTtsBaseUrl => _openaiTtsBaseUrl;
-  String get elevenlabsApiKey => _elevenlabsApiKey;
-  String get elevenlabsModel => _elevenlabsModel;
-  double get elevenlabsStability => _elevenlabsStability;
-  double get elevenlabsSimilarity => _elevenlabsSimilarity;
-  double get elevenlabsStyle => _elevenlabsStyle;
-  bool get ttsNarrateQuotedOnly => _ttsNarrateQuotedOnly;
-  bool get ttsIgnoreAsterisks => _ttsIgnoreAsterisks;
-  int get ttsConcurrency => _ttsConcurrency.clamp(1, 8);
-  int get ttsAudioLookahead => _ttsAudioLookahead;
-  double get directorDelay => _directorDelay;
-  bool get sttEnabled => _sttEnabled;
-  String get whisperModel => _whisperModel;
-  bool get autoSendTranscription => _autoSendTranscription;
-  String? get selectedMicId => _selectedMicId;
-  String get callModelName => _callModelName;
-  int get callBufferSentences => _callBufferSentences;
-  String get callSystemPrompt => _callSystemPrompt;
-  String get sortMode => _sortMode;
-  double get gridScale => _gridScale;
-  bool get cloudSyncEnabled => _cloudSyncEnabled;
-  String get cloudSyncProvider => _cloudSyncProvider;
-  String get cloudSyncUrl => _cloudSyncUrl;
-  String get cloudSyncUsername => _cloudSyncUsername;
-  String get cloudSyncPassword => _cloudSyncPassword;
-  String get cloudSyncLastTime => _cloudSyncLastTime;
-  bool get imageGenEnabled => _imageGenEnabled;
-  String get imageGenBackend => _imageGenBackend;
-  String get localImageGenUrl => _localImageGenUrl;
-  String get imageGenModel => _imageGenModel;
-  String get imageGenSize => _imageGenSize;
-  String get imageGenNegativePrompt => _imageGenNegativePrompt;
-  String get imageGenStyle => _imageGenStyle;
-  String get imageGenPromptParadigm => _imageGenPromptParadigm;
-  String get imageGenLora => _imageGenLora;
-  double get imageGenLoraWeight => _imageGenLoraWeight;
-  int get imageGenSteps => _imageGenSteps;
-  double get imageGenCfgScale => _imageGenCfgScale;
-  String get imageGenSampler => _imageGenSampler;
-  int get imageGenSeed => _imageGenSeed;
+  List<Map<String, String>> get savedPrompts => _presetSettings.savedPrompts;
 
-  // Draw Things gRPC getters
-  String get drawThingsGrpcHost => _drawThingsGrpcHost;
-  int get drawThingsGrpcPort => _drawThingsGrpcPort;
-  int get drawThingsSampler => _drawThingsSampler;
-  double get drawThingsShift => _drawThingsShift;
-  double get drawThingsStrength => _drawThingsStrength;
-  int get drawThingsSeedMode => _drawThingsSeedMode;
-  bool get drawThingsTeaCache => _drawThingsTeaCache;
-  bool get drawThingsCfgZeroStar => _drawThingsCfgZeroStar;
+  // setCustomModelsPath (dir related, stays close to root)
+  @Deprecated('Use directories / set on storage (Stage 7)')
+  Future<void> setCustomModelsPath(String? value) async {
+    _customModelsPath = value;
+    if (value != null && value.isNotEmpty) {
+      await _prefs?.setString(_k('custom_models_path'), value);
+      await modelsDir.create(
+        recursive: true,
+      ); // re-ensure at new custom models path (smallest for original contract + init parity)
+    } else {
+      await _prefs?.remove(_k('custom_models_path'));
+    }
+    notifyListeners();
+  }
 
-  bool get webServerEnabled => _webServerEnabled;
-  int get webServerPort => _webServerPort;
-  String get webServerPin => _webServerPin;
-  bool get summaryEnabled => _summaryEnabled;
-  int get summaryInterval => _summaryInterval;
-  int get summaryMaxWords => _summaryMaxWords;
-  String get summaryPrompt => _summaryPrompt;
-  List<String> get bannedPhrases => List.unmodifiable(_bannedPhrases);
+  // (End of Stage 7 shims)
 
-  int get kvQuantizationLevel => _kvQuantizationLevel;
-  int _kvQuantizationLevel = 0;
-  bool get ragEnabled => _ragEnabled;
-  int get ragRetrievalCount => _ragRetrievalCount;
-  int get ragWindowSize => _ragWindowSize;
-  String get ragEmbeddingSource => _ragEmbeddingSource;
-  String get ragEmbeddingModel => _ragEmbeddingModel;
-  bool get autoPersonaEnabled => _autoPersonaEnabled;
-  int get autoPersonaInterval => _autoPersonaInterval;
-  bool get characterEvolutionEnabled => _characterEvolutionEnabled;
-  int get evolutionInterval => _evolutionInterval;
-  bool get realismDefault => _realismDefault;
-  bool get nsfwCooldownDefault => _nsfwCooldownDefault;
-  bool get passageOfTimeDefault => _passageOfTimeDefault;
-  bool get realismOneShotEval => _realismOneShotEval;
+  // Settings (DELETED Stage 7 — all fields/loads/setters lifted; see shims + *Settings classes)
+  // Original bodies excised (deletion part of task; grep post for old symbols in exec code must be 0).
+  // (fields + classic getters excised here; shims above provide the surface)
 
   StorageService() {
     _init();
@@ -523,327 +765,47 @@ class StorageService extends ChangeNotifier {
     await groupsDir.create(recursive: true);
     await customBackgroundDir.create(recursive: true);
 
-    // Load settings
-    _systemPrompt = _prefs?.getString(_k('system_prompt')) ?? _systemPrompt;
-    _minP = _prefs?.getDouble(_k('min_p')) ?? _minP;
-    _temperature = _prefs?.getDouble(_k('temperature')) ?? _temperature;
-    _bubbleOpacity = _prefs?.getDouble(_k('bubble_opacity')) ?? _bubbleOpacity;
-    _globalUserBubbleColor = Color(
-      _prefs?.getInt(_k('global_user_bubble_color')) ??
-          _globalUserBubbleColor.toARGB32(),
-    );
-    _globalUserTextColor = Color(
-      _prefs?.getInt(_k('global_user_text_color')) ??
-          _globalUserTextColor.toARGB32(),
-    );
-    _globalAiBubbleColor = Color(
-      _prefs?.getInt(_k('global_ai_bubble_color')) ??
-          _globalAiBubbleColor.toARGB32(),
-    );
-    _globalAiTextColor = Color(
-      _prefs?.getInt(_k('global_ai_text_color')) ??
-          _globalAiTextColor.toARGB32(),
-    );
-    _globalDialogueColor = Color(
-      _prefs?.getInt(_k('global_dialogue_color')) ??
-          _globalDialogueColor.toARGB32(),
-    );
-    _globalActionColor = Color(
-      _prefs?.getInt(_k('global_action_color')) ??
-          _globalActionColor.toARGB32(),
-    );
-    _globalChatFontFamily =
-        _prefs?.getString(_k('global_chat_font_family')) ??
-        _globalChatFontFamily;
+    // Stage 7: initialize domain settings (plain classes) + load (moved from god)
+    // Single notify surface preserved (see plan "Why not multiple ChangeNotifiers").
+    _generationSettings.initializeBase(_prefs, notifyListeners);
+    _backendSettings.initializeBase(_prefs, notifyListeners);
+    _uiSettings.initializeBase(_prefs, notifyListeners);
+    _ttsSettings.initializeBase(_prefs, notifyListeners);
+    _sttSettings.initializeBase(_prefs, notifyListeners);
+    _imageGenSettings.initializeBase(_prefs, notifyListeners);
+    _expressionSettings.initializeBase(_prefs, notifyListeners);
+    _webServerSettings.initializeBase(_prefs, notifyListeners);
+    _cloudSyncSettings.initializeBase(_prefs, notifyListeners);
+    _realismSettings.initializeBase(_prefs, notifyListeners);
+    _memorySettings.initializeBase(_prefs, notifyListeners);
+    _presetSettings.initializeBase(_prefs, notifyListeners);
 
-    // Theme + light-mode color set (fall back to AppColors light defaults if never saved)
-    _isDark = _prefs?.getBool(_k('dark_mode')) ?? true;
-    _lightUserBubbleColor = Color(
-      _prefs?.getInt(_k('light_user_bubble_color')) ??
-          AppColors.userBubbleLight.toARGB32(),
-    );
-    _lightUserTextColor = Color(
-      _prefs?.getInt(_k('light_user_text_color')) ??
-          AppColors.userTextLight.toARGB32(),
-    );
-    _lightAiBubbleColor = Color(
-      _prefs?.getInt(_k('light_ai_bubble_color')) ??
-          AppColors.aiBubbleLight.toARGB32(),
-    );
-    _lightAiTextColor = Color(
-      _prefs?.getInt(_k('light_ai_text_color')) ??
-          AppColors.aiTextLight.toARGB32(),
-    );
-    _lightDialogueColor = Color(
-      _prefs?.getInt(_k('light_dialogue_color')) ??
-          AppColors.dialogueLight.toARGB32(),
-    );
-    _lightActionColor = Color(
-      _prefs?.getInt(_k('light_action_color')) ??
-          AppColors.actionLight.toARGB32(),
-    );
-    _repeatPenalty = _prefs?.getDouble(_k('repeat_penalty')) ?? _repeatPenalty;
-    _repeatPenaltyTokens =
-        _prefs?.getInt(_k('repeat_penalty_tokens')) ?? _repeatPenaltyTokens;
-    _dynamicTempEnabled =
-        _prefs?.getBool(_k('dynamic_temp_enabled')) ?? _dynamicTempEnabled;
-    _dynamicTempRange =
-        _prefs?.getDouble(_k('dynamic_temp_range')) ?? _dynamicTempRange;
-    _xtcThreshold = _prefs?.getDouble(_k('xtc_threshold')) ?? _xtcThreshold;
-    _xtcProbability =
-        _prefs?.getDouble(_k('xtc_probability')) ?? _xtcProbability;
-    _useCublas = _prefs?.getBool(_k('use_cublas'));
-    _useVulkan = _prefs?.getBool(_k('use_vulkan'));
-    _useMetal = _prefs?.getBool(_k('use_metal'));
-    _useRocm = _prefs?.getBool(_k('use_rocm'));
-    _flashAttentionEnabled =
-        _prefs?.getBool(_k('flash_attention_enabled')) ??
-        _flashAttentionEnabled;
-    _mlockEnabled = _prefs?.getBool(_k('mlock_enabled')) ?? _mlockEnabled;
-    // Cleanup orphaned prefs
-    await _prefs?.remove(_k('context_shift_enabled'));
-    _blasBatchSize = _prefs?.getInt(_k('blas_batch_size')) ?? _blasBatchSize;
-    _gpuId = _prefs?.getInt(_k('gpu_id')) ?? _gpuId;
-    _maxLength = _prefs?.getInt(_k('max_length')) ?? _maxLength;
-    _minLength = _prefs?.getInt(_k('min_length')) ?? _minLength;
-    _autostartBackend =
-        _prefs?.getBool(_k('autostart_backend')) ?? _autostartBackend;
-    _autostartPseudoRemote =
-        _prefs?.getBool(_k('autostart_pseudo_remote')) ??
-        _autostartPseudoRemote;
-    _lastUsedModelPath = _prefs?.getString(_k('last_used_model_path'));
-    _activeKcppsPath = _prefs?.getString(_k('active_kcpps_path'));
-    // Restore the kcppsHasModel flag and context size from the persisted preset path so the UI
-    // is correct immediately after a hot restart or app relaunch.
-    final parsed = _parseKcppsFile(_activeKcppsPath);
-    _kcppsHasModel =
-        parsed != null &&
-        parsed['model'] is String &&
-        (parsed['model'] as String).trim().isNotEmpty;
-    if (parsed != null && parsed['contextsize'] is int) {
-      _contextSize = parsed['contextsize'] as int;
+    _generationSettings.load();
+    _backendSettings.load();
+    _uiSettings.load();
+    _ttsSettings.load();
+    _sttSettings.load();
+    _imageGenSettings.load();
+    _expressionSettings.load();
+    _webServerSettings.load();
+    _cloudSyncSettings.load();
+    _realismSettings.load();
+    _memorySettings.load();
+    _presetSettings.load();
+
+    // Ensure default immersive prompt (was in god init; now on preset)
+    if (!_presetSettings.savedPrompts.any(
+      (p) => p['name'] == 'Immersive Roleplay',
+    )) {
+      await _presetSettings.savePrompt(
+        'Immersive Roleplay',
+        PresetSettings.defaultSystemPrompt,
+      );
     }
-    final presetMapJson = _prefs?.getString(_k('model_preset_map'));
-    if (presetMapJson != null) {
-      try {
-        _modelPresetMap = Map<String, String>.from(
-          jsonDecode(presetMapJson) as Map,
-        );
-      } catch (_) {
-        _modelPresetMap = {};
-      }
-    }
-    _gpuLayers = _prefs?.getInt(_k('gpu_layers')) ?? _gpuLayers;
-    _contextSize = _prefs?.getInt(_k('context_size')) ?? _contextSize;
-    _stopSequences =
-        _prefs?.getStringList(_k('stop_sequences')) ?? _stopSequences;
-    // Ensure essential stop sequences are always present (migration for existing users)
-    const essentialStops = ['</END>', '[END]', '<|end|>', '<START>'];
-    bool added = false;
-    for (final s in essentialStops) {
-      if (!_stopSequences.contains(s)) {
-        _stopSequences.add(s);
-        added = true;
-      }
-    }
-    if (added) {
-      _prefs?.setStringList(_k('stop_sequences'), _stopSequences);
-    }
-    _textScale = _prefs?.getDouble(_k('text_scale')) ?? 1.0;
-    _chatBackground = _prefs?.getString(_k('chat_background')) ?? 'none';
-    final customBgJson = _prefs?.getString(_k('custom_backgrounds'));
-    if (customBgJson != null) {
-      try {
-        _customBackgrounds = (jsonDecode(customBgJson) as List)
-            .map((e) => Map<String, String>.from(e as Map))
-            .toList();
-      } catch (_) {
-        _customBackgrounds = [];
-      }
-    }
-    // Force token throttle OFF for all users (existing preference deleted)
-    _prefs?.remove(_k('display_buffer_enabled'));
-    _displayBufferEnabled = false;
-    _targetDisplayTps = _prefs?.getDouble(_k('target_display_tps')) ?? 30.0;
-    _bufferDurationSeconds =
-        _prefs?.getDouble(_k('buffer_duration_seconds')) ?? 3.0;
 
-    // External API settings
-    _backendType = _prefs?.getString(_k('backend_type')) ?? 'kobold';
-    _remoteApiKey = _prefs?.getString(_k('remote_api_key')) ?? '';
-    _remoteApiUrl =
-        _prefs?.getString(_k('remote_api_url')) ??
-        'https://openrouter.ai/api/v1';
-    _remoteModelName = _prefs?.getString(_k('remote_model_name')) ?? '';
-    _reasoningEnabled = _prefs?.getBool(_k('reasoning_enabled')) ?? false;
-    _reasoningEffort = _prefs?.getString(_k('reasoning_effort')) ?? 'medium';
-    _koboldThinkingModel =
-        _prefs?.getBool(_k('kobold_thinking_model')) ?? false;
-
-    // TTS settings
-    _ttsEnabled = _prefs?.getBool(_k('tts_enabled')) ?? false;
-    _ttsEngine = _prefs?.getString(_k('tts_engine')) ?? 'kokoro';
-    _ttsVoiceModel = _prefs?.getString(_k('tts_voice_model')) ?? '';
-    _ttsSpeechRate = _prefs?.getDouble(_k('tts_speech_rate')) ?? 1.0;
-    _ttsAutoPlay = _prefs?.getBool(_k('tts_auto_play')) ?? false;
-    _openaiTtsApiKey = _prefs?.getString(_k('openai_tts_api_key')) ?? '';
-    _ttsConcurrency =
-        (_prefs?.getInt(_k('tts_concurrency')) ?? Platform.numberOfProcessors)
-            .clamp(1, 8);
-    _ttsAudioLookahead = _prefs?.getInt(_k('tts_audio_lookahead')) ?? 6;
-    _kvQuantizationLevel = _prefs?.getInt(_k('kv_quantization_level')) ?? 0;
-    _openaiTtsModel = _prefs?.getString(_k('openai_tts_model')) ?? 'tts-1';
-    _openaiTtsBaseUrl =
-        _prefs?.getString(_k('openai_tts_base_url')) ??
-        'https://api.openai.com/v1';
-    _elevenlabsApiKey = _prefs?.getString(_k('elevenlabs_api_key')) ?? '';
-    _elevenlabsModel =
-        _prefs?.getString(_k('elevenlabs_model')) ?? 'eleven_flash_v2_5';
-    _elevenlabsStability = _prefs?.getDouble(_k('elevenlabs_stability')) ?? 0.5;
-    _elevenlabsSimilarity =
-        _prefs?.getDouble(_k('elevenlabs_similarity')) ?? 0.75;
-    _elevenlabsStyle = _prefs?.getDouble(_k('elevenlabs_style')) ?? 0.0;
-    _ttsNarrateQuotedOnly =
-        _prefs?.getBool(_k('tts_narrate_quoted_only')) ?? false;
-    _ttsIgnoreAsterisks = _prefs?.getBool(_k('tts_ignore_asterisks')) ?? false;
-    _directorDelay = _prefs?.getDouble(_k('director_delay')) ?? 15.0;
-
-    // STT settings
-    _sttEnabled = _prefs?.getBool(_k('stt_enabled')) ?? false;
-    _whisperModel = _prefs?.getString(_k('whisper_model')) ?? 'base.en';
-    _autoSendTranscription =
-        _prefs?.getBool(_k('auto_send_transcription')) ?? false;
-    _selectedMicId = _prefs?.getString(_k('selected_mic_id'));
-    _callModelName = _prefs?.getString(_k('call_model_name')) ?? '';
-    _callBufferSentences = _prefs?.getInt(_k('call_buffer_sentences')) ?? 3;
-    final savedCallPrompt = _prefs?.getString(_k('call_system_prompt'));
-    if (savedCallPrompt != null) _callSystemPrompt = savedCallPrompt;
-
-    _sortMode = _prefs?.getString(_k('sort_mode')) ?? 'name';
-    _gridScale = _prefs?.getDouble(_k('grid_scale')) ?? 300.0;
-
-    // Cloud sync settings
-    _cloudSyncEnabled = _prefs?.getBool(_k('cloud_sync_enabled')) ?? false;
-    _cloudSyncProvider = _prefs?.getString(_k('cloud_sync_provider')) ?? 'none';
-    _cloudSyncUrl = _prefs?.getString(_k('cloud_sync_url')) ?? '';
-    _cloudSyncUsername = _prefs?.getString(_k('cloud_sync_username')) ?? '';
-    _cloudSyncPassword = _prefs?.getString(_k('cloud_sync_password')) ?? '';
-    _cloudSyncLastTime = _prefs?.getString(_k('cloud_sync_last_time')) ?? '';
-
-    // Image generation settings
-    _imageGenEnabled = _prefs?.getBool(_k('image_gen_enabled')) ?? false;
-    _imageGenBackend = _prefs?.getString(_k('image_gen_backend')) ?? 'remote';
-    _localImageGenUrl =
-        _prefs?.getString(_k('local_image_gen_url')) ?? 'http://127.0.0.1:7860';
-    _imageGenModel = _prefs?.getString(_k('image_gen_model')) ?? '';
-    _imageGenSize = _prefs?.getString(_k('image_gen_size')) ?? '1024x1024';
-    _imageGenNegativePrompt =
-        _prefs?.getString(_k('image_gen_negative_prompt')) ??
-        'blurry, low quality, watermark, text';
-    _imageGenStyle =
-        _prefs?.getString(_k('image_gen_style')) ?? 'photorealistic';
-    _imageGenPromptParadigm =
-        _prefs?.getString(_k('image_gen_prompt_paradigm')) ?? 'natural';
-    _imageGenLora = _prefs?.getString(_k('image_gen_lora')) ?? '';
-    _imageGenLoraWeight = _prefs?.getDouble(_k('image_gen_lora_weight')) ?? 0.8;
-    _imageGenSteps = _prefs?.getInt(_k('image_gen_steps')) ?? 20;
-    _imageGenCfgScale = _prefs?.getDouble(_k('image_gen_cfg_scale')) ?? 7.0;
-    _imageGenSampler = _prefs?.getString(_k('image_gen_sampler')) ?? 'Euler a';
-    _imageGenSeed = _prefs?.getInt(_k('image_gen_seed')) ?? -1;
-
-    // Draw Things gRPC persisted values
-    _drawThingsGrpcHost =
-        _prefs?.getString(_k('draw_things_grpc_host')) ?? '127.0.0.1';
-    _drawThingsGrpcPort = _prefs?.getInt(_k('draw_things_grpc_port')) ?? 7859;
-    _drawThingsSampler = _prefs?.getInt(_k('draw_things_sampler')) ?? 16;
-    _drawThingsShift = _prefs?.getDouble(_k('draw_things_shift')) ?? 3.0;
-    _drawThingsStrength = _prefs?.getDouble(_k('draw_things_strength')) ?? 1.0;
-    _drawThingsSeedMode = _prefs?.getInt(_k('draw_things_seed_mode')) ?? 2;
-    _drawThingsTeaCache = _prefs?.getBool(_k('draw_things_tea_cache')) ?? false;
-    _drawThingsCfgZeroStar =
-        _prefs?.getBool(_k('draw_things_cfg_zero_star')) ?? false;
-
-    // Web server settings
-    _webServerEnabled = _prefs?.getBool(_k('web_server_enabled')) ?? false;
-    _webServerPort = _prefs?.getInt(_k('web_server_port')) ?? 8085;
-    _webServerPin = _prefs?.getString(_k('web_server_pin')) ?? '';
-
-    // Custom models path
+    // Load settings (DELETED in Stage 7 — bodies lifted to the *Settings.load(); see above + shims)
+    // Original load code excised (deletion part of task).
     _customModelsPath = _prefs?.getString(_k('custom_models_path'));
-
-    // Summary settings
-    _summaryEnabled = _prefs?.getBool(_k('summary_enabled')) ?? false;
-    _summaryInterval = _prefs?.getInt(_k('summary_interval')) ?? 10;
-    _summaryMaxWords = _prefs?.getInt(_k('summary_max_words')) ?? 200;
-    _summaryPrompt =
-        _prefs?.getString(_k('summary_prompt')) ?? defaultSummaryPrompt;
-
-    // Banned phrases
-    final bannedJson = _prefs?.getString(_k('banned_phrases'));
-    if (bannedJson != null) {
-      try {
-        _bannedPhrases = List<String>.from(jsonDecode(bannedJson) as List);
-      } catch (_) {
-        _bannedPhrases = [];
-      }
-    }
-
-    // RAG memory settings
-    _ragEnabled = _prefs?.getBool(_k('rag_enabled')) ?? false;
-    _ragRetrievalCount = _prefs?.getInt(_k('rag_retrieval_count')) ?? 5;
-    _ragWindowSize = _prefs?.getInt(_k('rag_window_size')) ?? 5;
-    _ragEmbeddingSource =
-        _prefs?.getString(_k('rag_embedding_source')) ?? 'auto';
-    _ragEmbeddingModel =
-        _prefs?.getString(_k('rag_embedding_model')) ??
-        'text-embedding-3-small';
-
-    // Auto-persona settings
-    _autoPersonaEnabled = _prefs?.getBool(_k('auto_persona_enabled')) ?? false;
-    _autoPersonaInterval = _prefs?.getInt(_k('auto_persona_interval')) ?? 10;
-
-    // Character evolution settings
-    _characterEvolutionEnabled =
-        _prefs?.getBool(_k('character_evolution_enabled')) ?? false;
-    _evolutionInterval = _prefs?.getInt(_k('evolution_interval')) ?? 10;
-
-    // Realism Engine global defaults
-    _realismDefault = _prefs?.getBool(_k('realism_default')) ?? false;
-    _nsfwCooldownDefault =
-        _prefs?.getBool(_k('nsfw_cooldown_default')) ?? false;
-    _passageOfTimeDefault =
-        _prefs?.getBool(_k('passage_of_time_default')) ?? true;
-
-    // Realism Engine performance settings
-    _realismOneShotEval = _prefs?.getBool(_k('realism_one_shot_eval')) ?? false;
-
-    // Expression Images settings
-    _expressionEnabled = _prefs?.getBool(_k('expression_enabled')) ?? false;
-    _expressionClassificationMode =
-        _prefs?.getString(_k('expression_classification_mode')) ?? 'llm';
-    _expressionDisplayMode =
-        _prefs?.getString(_k('expression_display_mode')) ?? 'sidebar';
-    _expressionRerollSame =
-        _prefs?.getBool(_k('expression_reroll_same')) ?? false;
-    _expressionFallback =
-        _prefs?.getString(_k('expression_fallback')) ?? 'neutral';
-
-    // Load saved prompts
-    final promptsJson = _prefs?.getString(_k('saved_prompts'));
-    if (promptsJson != null) {
-      final decoded = jsonDecode(promptsJson) as List;
-      _savedPrompts = decoded
-          .map((e) => Map<String, String>.from(e as Map))
-          .toList();
-    }
-    // Always ensure the built-in default preset exists
-    if (!_savedPrompts.any((p) => p['name'] == 'Immersive Roleplay')) {
-      _savedPrompts.insert(0, {
-        'name': 'Immersive Roleplay',
-        'content': defaultSystemPrompt,
-      });
-      await _persistPrompts();
-    }
 
     if (!_initCompleter.isCompleted) _initCompleter.complete();
     notifyListeners();
@@ -917,1007 +879,7 @@ class StorageService extends ChangeNotifier {
     }
   }
 
-  Future<void> setSystemPrompt(String value) async {
-    _systemPrompt = value;
-    await _prefs?.setString(_k('system_prompt'), value);
-    notifyListeners();
-  }
-
-  Future<void> savePrompt(String name, String content) async {
-    // Remove existing with same name to overwrite
-    _savedPrompts.removeWhere((p) => p['name'] == name);
-    _savedPrompts.add({'name': name, 'content': content});
-    await _persistPrompts();
-    notifyListeners();
-  }
-
-  Future<void> deleteSavedPrompt(String name) async {
-    _savedPrompts.removeWhere((p) => p['name'] == name);
-    await _persistPrompts();
-    notifyListeners();
-  }
-
-  void loadSavedPrompt(String name) {
-    final prompt = _savedPrompts.firstWhere(
-      (p) => p['name'] == name,
-      orElse: () => {},
-    );
-    if (prompt.containsKey('content')) {
-      setSystemPrompt(prompt['content']!);
-    }
-  }
-
-  Future<void> _persistPrompts() async {
-    await _prefs?.setString(_k('saved_prompts'), jsonEncode(_savedPrompts));
-  }
-
-  Future<void> setMinP(double value) async {
-    _minP = value;
-    await _prefs?.setDouble(_k('min_p'), value);
-    notifyListeners();
-  }
-
-  Future<void> setTemperature(double value) async {
-    _temperature = value;
-    await _prefs?.setDouble(_k('temperature'), value);
-    notifyListeners();
-  }
-
-  Future<void> setBubbleOpacity(double value) async {
-    _bubbleOpacity = value;
-    await _prefs?.setDouble(_k('bubble_opacity'), value);
-    notifyListeners();
-  }
-
-  Future<void> setRepeatPenalty(double value) async {
-    _repeatPenalty = value;
-    await _prefs?.setDouble(_k('repeat_penalty'), value);
-    notifyListeners();
-  }
-
-  Future<void> setRepeatPenaltyTokens(int value) async {
-    _repeatPenaltyTokens = value;
-    await _prefs?.setInt(_k('repeat_penalty_tokens'), value);
-    notifyListeners();
-  }
-
-  Future<void> setXtcThreshold(double value) async {
-    _xtcThreshold = value;
-    await _prefs?.setDouble(_k('xtc_threshold'), value);
-    notifyListeners();
-  }
-
-  Future<void> setXtcProbability(double value) async {
-    _xtcProbability = value;
-    await _prefs?.setDouble(_k('xtc_probability'), value);
-    notifyListeners();
-  }
-
-  Future<void> setDynamicTempEnabled(bool value) async {
-    _dynamicTempEnabled = value;
-    await _prefs?.setBool(_k('dynamic_temp_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setDynamicTempRange(double value) async {
-    _dynamicTempRange = value;
-    await _prefs?.setDouble(_k('dynamic_temp_range'), value);
-    notifyListeners();
-  }
-
-  Future<void> setUseCublas(bool value) async {
-    _useCublas = value;
-    await _prefs?.setBool(_k('use_cublas'), value);
-    notifyListeners();
-  }
-
-  Future<void> setUseVulkan(bool value) async {
-    _useVulkan = value;
-    await _prefs?.setBool(_k('use_vulkan'), value);
-    notifyListeners();
-  }
-
-  Future<void> setUseMetal(bool value) async {
-    _useMetal = value;
-    await _prefs?.setBool(_k('use_metal'), value);
-    notifyListeners();
-  }
-
-  Future<void> setUseRocm(bool value) async {
-    _useRocm = value;
-    await _prefs?.setBool(_k('use_rocm'), value);
-    notifyListeners();
-  }
-
-  Future<void> setFlashAttentionEnabled(bool value) async {
-    _flashAttentionEnabled = value;
-    await _prefs?.setBool(_k('flash_attention_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setMlockEnabled(bool value) async {
-    _mlockEnabled = value;
-    await _prefs?.setBool(_k('mlock_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setBlasBatchSize(int value) async {
-    _blasBatchSize = value;
-    await _prefs?.setInt(_k('blas_batch_size'), value);
-    notifyListeners();
-  }
-
-  Future<void> setGpuId(int value) async {
-    _gpuId = value;
-    await _prefs?.setInt(_k('gpu_id'), value);
-    notifyListeners();
-  }
-
-  Future<void> setMaxLength(int value) async {
-    _maxLength = value;
-    await _prefs?.setInt(_k('max_length'), value);
-    notifyListeners();
-  }
-
-  Future<void> setMinLength(int value) async {
-    _minLength = value;
-    await _prefs?.setInt(_k('min_length'), value);
-    notifyListeners();
-  }
-
-  Future<void> setAutostartBackend(bool value) async {
-    _autostartBackend = value;
-    await _prefs?.setBool(_k('autostart_backend'), value);
-    notifyListeners();
-  }
-
-  Future<void> setAutostartPseudoRemote(bool value) async {
-    _autostartPseudoRemote = value;
-    await _prefs?.setBool(_k('autostart_pseudo_remote'), value);
-    notifyListeners();
-  }
-
-  Future<void> setLastUsedModelPath(String? value) async {
-    _lastUsedModelPath = value;
-    if (value != null) {
-      await _prefs?.setString(_k('last_used_model_path'), value);
-    } else {
-      await _prefs?.remove(_k('last_used_model_path'));
-    }
-    notifyListeners();
-  }
-
-  Future<void> setActiveKcppsPath(String? value) async {
-    _activeKcppsPath = value;
-    // Parse synchronously so _kcppsHasModel and _contextSize are accurate in the same notifyListeners call.
-    final parsed = _parseKcppsFile(value);
-    _kcppsHasModel =
-        parsed != null &&
-        ((parsed['model_param'] is String &&
-                (parsed['model_param'] as String).trim().isNotEmpty) ||
-            (parsed['model'] is String &&
-                (parsed['model'] as String).trim().isNotEmpty));
-    // Update context size from preset if present
-    if (parsed != null && parsed['contextsize'] is int) {
-      _contextSize = parsed['contextsize'] as int;
-      await _prefs?.setInt(_k('context_size'), _contextSize);
-    }
-    if (value != null) {
-      await _prefs?.setString(_k('active_kcpps_path'), value);
-    } else {
-      await _prefs?.remove(_k('active_kcpps_path'));
-    }
-    notifyListeners();
-  }
-
-  /// Parse a .kcpps JSON file and return the parsed map.
-  /// Returns null if the path is invalid or parsing fails.
-  static Map<String, dynamic>? _parseKcppsFile(String? kcppsPath) {
-    if (kcppsPath == null || kcppsPath.isEmpty) return null;
-    try {
-      final file = File(kcppsPath);
-      if (!file.existsSync()) return null;
-      return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> setModelPreset(String modelPath, String? kcppsPath) async {
-    if (kcppsPath != null) {
-      _modelPresetMap[modelPath] = kcppsPath;
-    } else {
-      _modelPresetMap.remove(modelPath);
-    }
-    await _prefs?.setString(
-      _k('model_preset_map'),
-      jsonEncode(_modelPresetMap),
-    );
-    notifyListeners();
-  }
-
-  Future<void> setGpuLayers(int value) async {
-    _gpuLayers = value;
-    await _prefs?.setInt(_k('gpu_layers'), value);
-    notifyListeners();
-  }
-
-  Future<void> setContextSize(int value) async {
-    _contextSize = value;
-    await _prefs?.setInt(_k('context_size'), value);
-    notifyListeners();
-  }
-
-  Future<void> setStopSequences(List<String> value) async {
-    _stopSequences = value;
-    await _prefs?.setStringList(_k('stop_sequences'), value);
-    notifyListeners();
-  }
-
-  Future<void> addStopSequence(String value) async {
-    if (!_stopSequences.contains(value)) {
-      _stopSequences.add(value);
-      await _prefs?.setStringList(_k('stop_sequences'), _stopSequences);
-      notifyListeners();
-    }
-  }
-
-  Future<void> removeStopSequence(String value) async {
-    if (_stopSequences.remove(value)) {
-      await _prefs?.setStringList(_k('stop_sequences'), _stopSequences);
-      notifyListeners();
-    }
-  }
-
-  Future<void> setTextScale(double value) async {
-    _textScale = value;
-    await _prefs?.setDouble(_k('text_scale'), value);
-    notifyListeners();
-  }
-
-  Future<void> setChatBackground(String value) async {
-    _chatBackground = value;
-    await _prefs?.setString(_k('chat_background'), value);
-    notifyListeners();
-  }
-
-  Future<void> addCustomBackground(
-    String id,
-    String name,
-    String filePath,
-  ) async {
-    _customBackgrounds.add({'id': id, 'name': name, 'filePath': filePath});
-    await _persistCustomBackgrounds();
-    notifyListeners();
-  }
-
-  Future<void> removeCustomBackground(String id) async {
-    _customBackgrounds.removeWhere((bg) => bg['id'] == id);
-    await _persistCustomBackgrounds();
-    notifyListeners();
-  }
-
-  bool hasCustomBackgroundWithName(String name) {
-    return _customBackgrounds.any((bg) => bg['name'] == name);
-  }
-
-  Future<void> _persistCustomBackgrounds() async {
-    await _prefs?.setString(
-      _k('custom_backgrounds'),
-      jsonEncode(_customBackgrounds),
-    );
-  }
-
-  Future<void> setDisplayBufferEnabled(bool value) async {
-    _displayBufferEnabled = value;
-    await _prefs?.setBool(_k('display_buffer_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setTargetDisplayTps(double value) async {
-    _targetDisplayTps = value;
-    await _prefs?.setDouble(_k('target_display_tps'), value);
-    notifyListeners();
-  }
-
-  Future<void> setBufferDurationSeconds(double value) async {
-    _bufferDurationSeconds = value;
-    await _prefs?.setDouble(_k('buffer_duration_seconds'), value);
-    notifyListeners();
-  }
-
-  // External API setters
-  Future<void> setBackendType(String value) async {
-    _backendType = value;
-    await _prefs?.setString(_k('backend_type'), value);
-    notifyListeners();
-  }
-
-  Future<void> setRemoteApiKey(String value) async {
-    _remoteApiKey = value;
-    await _prefs?.setString(_k('remote_api_key'), value);
-    notifyListeners();
-  }
-
-  Future<void> setCallModelName(String value) async {
-    _callModelName = value;
-    await _prefs?.setString(_k('call_model_name'), value);
-    notifyListeners();
-  }
-
-  Future<void> setCallBufferSentences(int value) async {
-    _callBufferSentences = value.clamp(1, 10);
-    await _prefs?.setInt(_k('call_buffer_sentences'), _callBufferSentences);
-    notifyListeners();
-  }
-
-  Future<void> setCallSystemPrompt(String value) async {
-    _callSystemPrompt = value;
-    await _prefs?.setString(_k('call_system_prompt'), value);
-    notifyListeners();
-  }
-
-  Future<void> setRemoteApiUrl(String value) async {
-    _remoteApiUrl = value;
-    await _prefs?.setString(_k('remote_api_url'), value);
-    notifyListeners();
-  }
-
-  Future<void> setRemoteModelName(String value) async {
-    _remoteModelName = value;
-    await _prefs?.setString(_k('remote_model_name'), value);
-    notifyListeners();
-  }
-
-  // Reasoning setters
-  Future<void> setReasoningEnabled(bool value) async {
-    _reasoningEnabled = value;
-    await _prefs?.setBool(_k('reasoning_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setReasoningEffort(String value) async {
-    _reasoningEffort = value;
-    await _prefs?.setString(_k('reasoning_effort'), value);
-    notifyListeners();
-  }
-
-  Future<void> setKoboldThinkingModel(bool value) async {
-    _koboldThinkingModel = value;
-    await _prefs?.setBool(_k('kobold_thinking_model'), value);
-    notifyListeners();
-  }
-
-  // TTS setters
-  Future<void> setTtsEnabled(bool value) async {
-    _ttsEnabled = value;
-    await _prefs?.setBool(_k('tts_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setTtsEngine(String value) async {
-    _ttsEngine = value;
-    await _prefs?.setString(_k('tts_engine'), value);
-    notifyListeners();
-  }
-
-  Future<void> setTtsVoiceModel(String value) async {
-    _ttsVoiceModel = value;
-    await _prefs?.setString(_k('tts_voice_model'), value);
-    notifyListeners();
-  }
-
-  Future<void> setTtsSpeechRate(double value) async {
-    _ttsSpeechRate = value;
-    await _prefs?.setDouble(_k('tts_speech_rate'), value);
-    notifyListeners();
-  }
-
-  Future<void> setTtsAutoPlay(bool value) async {
-    _ttsAutoPlay = value;
-    await _prefs?.setBool(_k('tts_auto_play'), value);
-    notifyListeners();
-  }
-
-  Future<void> setOpenaiTtsApiKey(String value) async {
-    _openaiTtsApiKey = value;
-    await _prefs?.setString(_k('openai_tts_api_key'), value);
-    notifyListeners();
-  }
-
-  Future<void> setOpenaiTtsModel(String value) async {
-    _openaiTtsModel = value;
-    await _prefs?.setString(_k('openai_tts_model'), value);
-    notifyListeners();
-  }
-
-  Future<void> setOpenaiTtsBaseUrl(String value) async {
-    _openaiTtsBaseUrl = value;
-    await _prefs?.setString(_k('openai_tts_base_url'), value);
-    notifyListeners();
-  }
-
-  Future<void> setElevenlabsApiKey(String value) async {
-    _elevenlabsApiKey = value;
-    await _prefs?.setString(_k('elevenlabs_api_key'), value);
-    notifyListeners();
-  }
-
-  Future<void> setElevenlabsModel(String value) async {
-    _elevenlabsModel = value;
-    await _prefs?.setString(_k('elevenlabs_model'), value);
-    notifyListeners();
-  }
-
-  Future<void> setElevenlabsStability(double value) async {
-    _elevenlabsStability = value.clamp(0.0, 1.0);
-    await _prefs?.setDouble(_k('elevenlabs_stability'), _elevenlabsStability);
-    notifyListeners();
-  }
-
-  Future<void> setElevenlabsSimilarity(double value) async {
-    _elevenlabsSimilarity = value.clamp(0.0, 1.0);
-    await _prefs?.setDouble(_k('elevenlabs_similarity'), _elevenlabsSimilarity);
-    notifyListeners();
-  }
-
-  Future<void> setElevenlabsStyle(double value) async {
-    _elevenlabsStyle = value.clamp(0.0, 1.0);
-    await _prefs?.setDouble(_k('elevenlabs_style'), _elevenlabsStyle);
-    notifyListeners();
-  }
-
-  Future<void> setTtsNarrateQuotedOnly(bool value) async {
-    _ttsNarrateQuotedOnly = value;
-    await _prefs?.setBool(_k('tts_narrate_quoted_only'), value);
-    notifyListeners();
-  }
-
-  Future<void> setTtsIgnoreAsterisks(bool value) async {
-    _ttsIgnoreAsterisks = value;
-    await _prefs?.setBool(_k('tts_ignore_asterisks'), value);
-    notifyListeners();
-  }
-
-  Future<void> setTtsConcurrency(int value) async {
-    _ttsConcurrency = value.clamp(1, 8);
-    await _prefs?.setInt(_k('tts_concurrency'), _ttsConcurrency);
-    notifyListeners();
-  }
-
-  Future<void> setTtsAudioLookahead(int value) async {
-    _ttsAudioLookahead = value.clamp(1, 32);
-    await _prefs?.setInt(_k('tts_audio_lookahead'), _ttsAudioLookahead);
-    notifyListeners();
-  }
-
-  Future<void> setKvQuantizationLevel(int value) async {
-    _kvQuantizationLevel = value;
-    await _prefs?.setInt(_k('kv_quantization_level'), value);
-    notifyListeners();
-  }
-
-  // STT setters
-  Future<void> setSttEnabled(bool value) async {
-    _sttEnabled = value;
-    await _prefs?.setBool(_k('stt_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setWhisperModel(String value) async {
-    _whisperModel = value;
-    await _prefs?.setString(_k('whisper_model'), value);
-    notifyListeners();
-  }
-
-  Future<void> setAutoSendTranscription(bool value) async {
-    _autoSendTranscription = value;
-    await _prefs?.setBool(_k('auto_send_transcription'), value);
-    notifyListeners();
-  }
-
-  Future<void> setSelectedMicId(String? value) async {
-    _selectedMicId = value;
-    if (value != null) {
-      await _prefs?.setString(_k('selected_mic_id'), value);
-    } else {
-      await _prefs?.remove(_k('selected_mic_id'));
-    }
-    notifyListeners();
-  }
-
-  Future<void> setDirectorDelay(double value) async {
-    _directorDelay = value.clamp(0.5, 60.0);
-    await _prefs?.setDouble(_k('director_delay'), _directorDelay);
-    notifyListeners();
-  }
-
-  Future<void> setSortMode(String value) async {
-    _sortMode = value;
-    await _prefs?.setString(_k('sort_mode'), value);
-    notifyListeners();
-  }
-
-  Future<void> setGridScale(double value) async {
-    _gridScale = value.clamp(150.0, 450.0);
-    await _prefs?.setDouble(_k('grid_scale'), _gridScale);
-    notifyListeners();
-  }
-
-  Future<void> setCloudSyncEnabled(bool value) async {
-    _cloudSyncEnabled = value;
-    await _prefs?.setBool(_k('cloud_sync_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setCloudSyncProvider(String value) async {
-    _cloudSyncProvider = value;
-    await _prefs?.setString(_k('cloud_sync_provider'), value);
-    notifyListeners();
-  }
-
-  Future<void> setCloudSyncUrl(String value) async {
-    _cloudSyncUrl = value;
-    await _prefs?.setString(_k('cloud_sync_url'), value);
-    notifyListeners();
-  }
-
-  Future<void> setCloudSyncUsername(String value) async {
-    _cloudSyncUsername = value;
-    await _prefs?.setString(_k('cloud_sync_username'), value);
-    notifyListeners();
-  }
-
-  Future<void> setCloudSyncPassword(String value) async {
-    _cloudSyncPassword = value;
-    await _prefs?.setString(_k('cloud_sync_password'), value);
-    notifyListeners();
-  }
-
-  Future<void> setCloudSyncLastTime(String value) async {
-    _cloudSyncLastTime = value;
-    await _prefs?.setString(_k('cloud_sync_last_time'), value);
-    notifyListeners();
-  }
-
-  Future<void> setCustomModelsPath(String? value) async {
-    _customModelsPath = value;
-    if (value != null && value.isNotEmpty) {
-      await _prefs?.setString(_k('custom_models_path'), value);
-    } else {
-      await _prefs?.remove(_k('custom_models_path'));
-    }
-    notifyListeners();
-  }
-
-  // Image generation setters
-  Future<void> setImageGenEnabled(bool value) async {
-    _imageGenEnabled = value;
-    await _prefs?.setBool(_k('image_gen_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenBackend(String value) async {
-    _imageGenBackend = value;
-    await _prefs?.setString(_k('image_gen_backend'), value);
-    notifyListeners();
-  }
-
-  Future<void> setLocalImageGenUrl(String value) async {
-    _localImageGenUrl = value;
-    await _prefs?.setString(_k('local_image_gen_url'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenModel(String value) async {
-    _imageGenModel = value;
-    await _prefs?.setString(_k('image_gen_model'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenSize(String value) async {
-    _imageGenSize = value;
-    await _prefs?.setString(_k('image_gen_size'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenNegativePrompt(String value) async {
-    _imageGenNegativePrompt = value;
-    await _prefs?.setString(_k('image_gen_negative_prompt'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenStyle(String value) async {
-    _imageGenStyle = value;
-    await _prefs?.setString(_k('image_gen_style'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenPromptParadigm(String value) async {
-    _imageGenPromptParadigm = value;
-    await _prefs?.setString(_k('image_gen_prompt_paradigm'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenLora(String value) async {
-    _imageGenLora = value;
-    await _prefs?.setString(_k('image_gen_lora'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenLoraWeight(double value) async {
-    _imageGenLoraWeight = value.clamp(0.0, 1.0);
-    await _prefs?.setDouble(_k('image_gen_lora_weight'), _imageGenLoraWeight);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenSteps(int value) async {
-    _imageGenSteps = value.clamp(5, 50);
-    await _prefs?.setInt(_k('image_gen_steps'), _imageGenSteps);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenCfgScale(double value) async {
-    _imageGenCfgScale = value.clamp(1.0, 20.0);
-    await _prefs?.setDouble(_k('image_gen_cfg_scale'), _imageGenCfgScale);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenSampler(String value) async {
-    _imageGenSampler = value;
-    await _prefs?.setString(_k('image_gen_sampler'), value);
-    notifyListeners();
-  }
-
-  Future<void> setImageGenSeed(int value) async {
-    _imageGenSeed = value;
-    await _prefs?.setInt(_k('image_gen_seed'), value);
-    notifyListeners();
-  }
-
-  // Draw Things gRPC setters (follow exact same _k + notify pattern)
-  Future<void> setDrawThingsGrpcHost(String value) async {
-    _drawThingsGrpcHost = value.trim();
-    await _prefs?.setString(_k('draw_things_grpc_host'), _drawThingsGrpcHost);
-    notifyListeners();
-  }
-
-  Future<void> setDrawThingsGrpcPort(int value) async {
-    _drawThingsGrpcPort = value;
-    await _prefs?.setInt(_k('draw_things_grpc_port'), value);
-    notifyListeners();
-  }
-
-  Future<void> setDrawThingsSampler(int value) async {
-    _drawThingsSampler = value;
-    await _prefs?.setInt(_k('draw_things_sampler'), value);
-    notifyListeners();
-  }
-
-  Future<void> setDrawThingsShift(double value) async {
-    _drawThingsShift = value;
-    await _prefs?.setDouble(_k('draw_things_shift'), value);
-    notifyListeners();
-  }
-
-  Future<void> setDrawThingsStrength(double value) async {
-    _drawThingsStrength = value.clamp(0.0, 1.0);
-    await _prefs?.setDouble(_k('draw_things_strength'), _drawThingsStrength);
-    notifyListeners();
-  }
-
-  Future<void> setDrawThingsSeedMode(int value) async {
-    _drawThingsSeedMode = value;
-    await _prefs?.setInt(_k('draw_things_seed_mode'), value);
-    notifyListeners();
-  }
-
-  Future<void> setDrawThingsTeaCache(bool value) async {
-    _drawThingsTeaCache = value;
-    await _prefs?.setBool(_k('draw_things_tea_cache'), value);
-    notifyListeners();
-  }
-
-  Future<void> setDrawThingsCfgZeroStar(bool value) async {
-    _drawThingsCfgZeroStar = value;
-    await _prefs?.setBool(_k('draw_things_cfg_zero_star'), value);
-    notifyListeners();
-  }
-
-  // Web server setters
-  Future<void> setWebServerEnabled(bool value) async {
-    _webServerEnabled = value;
-    await _prefs?.setBool(_k('web_server_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setWebServerPort(int value) async {
-    _webServerPort = value;
-    await _prefs?.setInt(_k('web_server_port'), value);
-    notifyListeners();
-  }
-
-  Future<void> setWebServerPin(String value) async {
-    _webServerPin = value;
-    await _prefs?.setString(_k('web_server_pin'), value);
-    notifyListeners();
-  }
-
-  // Summary setters
-  Future<void> setSummaryEnabled(bool value) async {
-    _summaryEnabled = value;
-    await _prefs?.setBool(_k('summary_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setSummaryInterval(int value) async {
-    _summaryInterval = value.clamp(3, 50);
-    await _prefs?.setInt(_k('summary_interval'), _summaryInterval);
-    notifyListeners();
-  }
-
-  Future<void> setSummaryMaxWords(int value) async {
-    _summaryMaxWords = value.clamp(50, 1000);
-    await _prefs?.setInt(_k('summary_max_words'), _summaryMaxWords);
-    notifyListeners();
-  }
-
-  Future<void> setSummaryPrompt(String value) async {
-    _summaryPrompt = value;
-    await _prefs?.setString(_k('summary_prompt'), value);
-    notifyListeners();
-  }
-
-  // Banned phrases setters
-  Future<void> setBannedPhrases(List<String> value) async {
-    _bannedPhrases = value.where((s) => s.isNotEmpty).toList();
-    await _prefs?.setString(_k('banned_phrases'), jsonEncode(_bannedPhrases));
-    notifyListeners();
-  }
-
-  // RAG memory setters
-  Future<void> setRagEnabled(bool value) async {
-    _ragEnabled = value;
-    await _prefs?.setBool(_k('rag_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setRagRetrievalCount(int value) async {
-    _ragRetrievalCount = value.clamp(0, 50);
-    await _prefs?.setInt(_k('rag_retrieval_count'), _ragRetrievalCount);
-    notifyListeners();
-  }
-
-  Future<void> setRagWindowSize(int value) async {
-    _ragWindowSize = value.clamp(2, 15);
-    await _prefs?.setInt(_k('rag_window_size'), _ragWindowSize);
-    notifyListeners();
-  }
-
-  Future<void> setRagEmbeddingSource(String value) async {
-    _ragEmbeddingSource = value;
-    await _prefs?.setString(_k('rag_embedding_source'), value);
-    notifyListeners();
-  }
-
-  Future<void> setRagEmbeddingModel(String value) async {
-    _ragEmbeddingModel = value;
-    await _prefs?.setString(_k('rag_embedding_model'), value);
-    notifyListeners();
-  }
-
-  // Auto-persona setters
-  Future<void> setAutoPersonaEnabled(bool value) async {
-    _autoPersonaEnabled = value;
-    await _prefs?.setBool(_k('auto_persona_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setAutoPersonaInterval(int value) async {
-    _autoPersonaInterval = value.clamp(5, 50);
-    await _prefs?.setInt(_k('auto_persona_interval'), _autoPersonaInterval);
-    notifyListeners();
-  }
-
-  // Character evolution setters
-  Future<void> setCharacterEvolutionEnabled(bool value) async {
-    _characterEvolutionEnabled = value;
-    await _prefs?.setBool(_k('character_evolution_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setEvolutionInterval(int value) async {
-    _evolutionInterval = value.clamp(10, 50);
-    await _prefs?.setInt(_k('evolution_interval'), _evolutionInterval);
-    notifyListeners();
-  }
-
-  Future<void> setRealismOneShotEval(bool value) async {
-    _realismOneShotEval = value;
-    await _prefs?.setBool(_k('realism_one_shot_eval'), value);
-    notifyListeners();
-  }
-
-  Future<void> setRealismDefault(bool value) async {
-    _realismDefault = value;
-    await _prefs?.setBool(_k('realism_default'), value);
-    notifyListeners();
-  }
-
-  Future<void> setNsfwCooldownDefault(bool value) async {
-    _nsfwCooldownDefault = value;
-    await _prefs?.setBool(_k('nsfw_cooldown_default'), value);
-    notifyListeners();
-  }
-
-  Future<void> setPassageOfTimeDefault(bool value) async {
-    _passageOfTimeDefault = value;
-    await _prefs?.setBool(_k('passage_of_time_default'), value);
-    notifyListeners();
-  }
-
-  // Global chat color and font setters
-  Future<void> setGlobalUserBubbleColor(Color value) async {
-    if (_isDark) {
-      _globalUserBubbleColor = value;
-      await _prefs?.setInt(_k('global_user_bubble_color'), value.toARGB32());
-    } else {
-      _lightUserBubbleColor = value;
-      await _prefs?.setInt(_k('light_user_bubble_color'), value.toARGB32());
-    }
-    notifyListeners();
-  }
-
-  Future<void> setGlobalUserTextColor(Color value) async {
-    if (_isDark) {
-      _globalUserTextColor = value;
-      await _prefs?.setInt(_k('global_user_text_color'), value.toARGB32());
-    } else {
-      _lightUserTextColor = value;
-      await _prefs?.setInt(_k('light_user_text_color'), value.toARGB32());
-    }
-    notifyListeners();
-  }
-
-  Future<void> setGlobalAiBubbleColor(Color value) async {
-    if (_isDark) {
-      _globalAiBubbleColor = value;
-      await _prefs?.setInt(_k('global_ai_bubble_color'), value.toARGB32());
-    } else {
-      _lightAiBubbleColor = value;
-      await _prefs?.setInt(_k('light_ai_bubble_color'), value.toARGB32());
-    }
-    notifyListeners();
-  }
-
-  Future<void> setGlobalAiTextColor(Color value) async {
-    if (_isDark) {
-      _globalAiTextColor = value;
-      await _prefs?.setInt(_k('global_ai_text_color'), value.toARGB32());
-    } else {
-      _lightAiTextColor = value;
-      await _prefs?.setInt(_k('light_ai_text_color'), value.toARGB32());
-    }
-    notifyListeners();
-  }
-
-  Future<void> setGlobalDialogueColor(Color value) async {
-    if (_isDark) {
-      _globalDialogueColor = value;
-      await _prefs?.setInt(_k('global_dialogue_color'), value.toARGB32());
-    } else {
-      _lightDialogueColor = value;
-      await _prefs?.setInt(_k('light_dialogue_color'), value.toARGB32());
-    }
-    notifyListeners();
-  }
-
-  Future<void> setGlobalActionColor(Color value) async {
-    if (_isDark) {
-      _globalActionColor = value;
-      await _prefs?.setInt(_k('global_action_color'), value.toARGB32());
-    } else {
-      _lightActionColor = value;
-      await _prefs?.setInt(_k('light_action_color'), value.toARGB32());
-    }
-    notifyListeners();
-  }
-
-  Future<void> setGlobalChatFontFamily(String value) async {
-    _globalChatFontFamily = value;
-    await _prefs?.setString(_k('global_chat_font_family'), value);
-    notifyListeners();
-  }
-
-  Future<void> setIsDark(bool value) async {
-    if (_isDark == value) return;
-    _isDark = value;
-    await _prefs?.setBool(_k('dark_mode'), value);
-    notifyListeners();
-  }
-
-  /// Get effective user bubble color (per-character overrides global)
-  Color getUserBubbleColor(CharacterCard? character) {
-    final fallback = _isDark ? _globalUserBubbleColor : _lightUserBubbleColor;
-    return character?.frontPorchExtensions?.userBubbleColor ?? fallback;
-  }
-
-  /// Get effective user text color (per-character overrides global)
-  Color getUserTextColor(CharacterCard? character) {
-    final fallback = _isDark ? _globalUserTextColor : _lightUserTextColor;
-    return character?.frontPorchExtensions?.userTextColor ?? fallback;
-  }
-
-  /// Get effective AI bubble color (per-character overrides global)
-  Color getAiBubbleColor(CharacterCard? character) {
-    final fallback = _isDark ? _globalAiBubbleColor : _lightAiBubbleColor;
-    return character?.frontPorchExtensions?.aiBubbleColor ?? fallback;
-  }
-
-  /// Get effective AI text color (per-character overrides global)
-  Color getAiTextColor(CharacterCard? character) {
-    final fallback = _isDark ? _globalAiTextColor : _lightAiTextColor;
-    return character?.frontPorchExtensions?.aiTextColor ?? fallback;
-  }
-
-  /// Get effective dialogue color (per-character overrides global)
-  Color getDialogueColor(CharacterCard? character) {
-    final fallback = _isDark ? _globalDialogueColor : _lightDialogueColor;
-    return character?.frontPorchExtensions?.dialogueColor ?? fallback;
-  }
-
-  /// Get effective action color (per-character overrides global)
-  Color getActionColor(CharacterCard? character) {
-    final fallback = _isDark ? _globalActionColor : _lightActionColor;
-    return character?.frontPorchExtensions?.actionColor ?? fallback;
-  }
-
-  /// Get effective chat font family (per-character overrides global)
-  String getChatFontFamily(CharacterCard? character) {
-    return character?.frontPorchExtensions?.chatFontFamily ??
-        _globalChatFontFamily;
-  }
-
-  // Expression Images settings
-  bool _expressionEnabled = false;
-  String _expressionClassificationMode = 'llm'; // 'llm', 'onnx', 'manual'
-  String _expressionDisplayMode = 'sidebar'; // 'sidebar', 'background', 'both'
-  bool _expressionRerollSame = false;
-  String _expressionFallback = 'neutral'; // 'neutral', 'prime', 'none', 'emoji'
-
-  bool get expressionEnabled => _expressionEnabled;
-  String get expressionClassificationMode => _expressionClassificationMode;
-  String get expressionDisplayMode => _expressionDisplayMode;
-  bool get expressionRerollSame => _expressionRerollSame;
-  String get expressionFallback => _expressionFallback;
-
-  Future<void> setExpressionEnabled(bool value) async {
-    _expressionEnabled = value;
-    await _prefs?.setBool(_k('expression_enabled'), value);
-    notifyListeners();
-  }
-
-  Future<void> setExpressionClassificationMode(String value) async {
-    _expressionClassificationMode = value;
-    await _prefs?.setString(_k('expression_classification_mode'), value);
-    notifyListeners();
-  }
-
-  Future<void> setExpressionDisplayMode(String value) async {
-    _expressionDisplayMode = value;
-    await _prefs?.setString(_k('expression_display_mode'), value);
-    notifyListeners();
-  }
-
-  Future<void> setExpressionRerollSame(bool value) async {
-    _expressionRerollSame = value;
-    await _prefs?.setBool(_k('expression_reroll_same'), value);
-    notifyListeners();
-  }
-
-  Future<void> setExpressionFallback(String value) async {
-    _expressionFallback = value;
-    await _prefs?.setString(_k('expression_fallback'), value);
-    notifyListeners();
-  }
+  // (All old set* / persist / _parseKcppsFile / old expression fields DELETED in Stage 7;
+  // lifted to settings/* + directories; shims above + dir mgmt below provide surface.
+  // Deletion part of task; post-edit grep for excised symbols (setTemperature, _expressionEnabled etc) in executable code = 0.)
 }
