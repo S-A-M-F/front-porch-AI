@@ -83,33 +83,37 @@ class ChatGenerationSettings {
   // ── Resolved getters ────────────────────────────────────────────────────
   // Each returns the per-session override if set, otherwise the global value.
 
-  double resolveTemperature(StorageService s) => temperature ?? s.temperature;
-  double resolveMinP(StorageService s) => minP ?? s.minP;
+  double resolveTemperature(StorageService s) =>
+      temperature ?? s.generationSettings.temperature;
+  double resolveMinP(StorageService s) => minP ?? s.generationSettings.minP;
   double resolveRepeatPenalty(StorageService s) =>
-      repeatPenalty ?? s.repeatPenalty;
+      repeatPenalty ?? s.generationSettings.repeatPenalty;
   int resolveRepeatPenaltyTokens(StorageService s) =>
-      repeatPenaltyTokens ?? s.repeatPenaltyTokens;
+      repeatPenaltyTokens ?? s.generationSettings.repeatPenaltyTokens;
   double resolveXtcThreshold(StorageService s) =>
-      xtcThreshold ?? s.xtcThreshold;
+      xtcThreshold ?? s.generationSettings.xtcThreshold;
   double resolveXtcProbability(StorageService s) =>
-      xtcProbability ?? s.xtcProbability;
+      xtcProbability ?? s.generationSettings.xtcProbability;
   bool resolveDynamicTempEnabled(StorageService s) =>
-      dynamicTempEnabled ?? s.dynamicTempEnabled;
+      dynamicTempEnabled ?? s.generationSettings.dynamicTempEnabled;
   double resolveDynamicTempRange(StorageService s) =>
-      dynamicTempRange ?? s.dynamicTempRange;
-  int resolveMaxLength(StorageService s) => maxLength ?? s.maxLength;
-  int resolveMinLength(StorageService s) => minLength ?? s.minLength;
-  int resolveContextSize(StorageService s) => contextSize ?? s.contextSize;
+      dynamicTempRange ?? s.generationSettings.dynamicTempRange;
+  int resolveMaxLength(StorageService s) =>
+      maxLength ?? s.generationSettings.maxLength;
+  int resolveMinLength(StorageService s) =>
+      minLength ?? s.generationSettings.minLength;
+  int resolveContextSize(StorageService s) =>
+      contextSize ?? s.backendSettings.contextSize;
   List<String> resolveStopSequences(StorageService s) =>
-      stopSequences ?? s.stopSequences.toList();
+      stopSequences ?? s.generationSettings.stopSequences.toList();
   List<String> resolveBannedPhrases(StorageService s) =>
-      bannedPhrases ?? s.bannedPhrases.toList();
+      bannedPhrases ?? s.realismSettings.bannedPhrases.toList();
   bool resolveReasoningEnabled(StorageService s) =>
-      reasoningEnabled ?? s.reasoningEnabled;
+      reasoningEnabled ?? s.backendSettings.reasoningEnabled;
   String resolveReasoningEffort(StorageService s) =>
-      reasoningEffort ?? s.reasoningEffort;
+      reasoningEffort ?? s.backendSettings.reasoningEffort;
   String resolveRemoteModelName(StorageService s) =>
-      remoteModelName ?? s.remoteModelName;
+      remoteModelName ?? s.backendSettings.remoteModelName;
 
   // ── JSON serialisation ──────────────────────────────────────────────────
 

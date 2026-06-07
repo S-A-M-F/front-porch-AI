@@ -367,15 +367,19 @@ class RealismSectionState extends State<RealismSection> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(3),
                         child: LinearProgressIndicator(
-                          value: chat.trustProgressPercent,
+                          value: chat.relationshipService.trustProgressPercent,
                           minHeight: 5,
                           backgroundColor: AppColors.borderOf(
                             context,
                           ).withValues(alpha: 0.2),
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            chat.relationshipService.trustLevel < 0
-                                ? Colors.redAccent
-                                : Colors.amber,
+                            AppColors.resolve(
+                              context,
+                              const Color(
+                                0xFFEF5350,
+                              ), // negative trust (red accent; custom state, no dedicated AppColors light variant)
+                              const Color(0xFFFFB300), // positive/amber
+                            ),
                           ),
                         ),
                       ),

@@ -52,6 +52,7 @@ class BackendSettings with SettingsBase {
   int _gpuId = 0;
   int _gpuLayers = 0;
   int _contextSize = 8192;
+  int _kvQuantizationLevel = 0;
 
   String get backendType => _backendType;
   String get remoteApiKey => _remoteApiKey;
@@ -93,6 +94,7 @@ class BackendSettings with SettingsBase {
   int get gpuId => _gpuId;
   int get gpuLayers => _gpuLayers;
   int get contextSize => _contextSize;
+  int get kvQuantizationLevel => _kvQuantizationLevel;
 
   void load() {
     _backendType = prefs?.getString(k('backend_type')) ?? 'kobold';
@@ -134,6 +136,8 @@ class BackendSettings with SettingsBase {
     _gpuId = prefs?.getInt(k('gpu_id')) ?? _gpuId;
     _gpuLayers = prefs?.getInt(k('gpu_layers')) ?? _gpuLayers;
     _contextSize = prefs?.getInt(k('context_size')) ?? _contextSize;
+    _kvQuantizationLevel =
+        prefs?.getInt(k('kv_quantization_level')) ?? _kvQuantizationLevel;
   }
 
   Future<void> setBackendType(String value) async {
@@ -222,27 +226,43 @@ class BackendSettings with SettingsBase {
     notify();
   }
 
-  Future<void> setUseCublas(bool value) async {
+  Future<void> setUseCublas(bool? value) async {
     _useCublas = value;
-    await prefs?.setBool(k('use_cublas'), value);
+    if (value != null) {
+      await prefs?.setBool(k('use_cublas'), value);
+    } else {
+      await prefs?.remove(k('use_cublas'));
+    }
     notify();
   }
 
-  Future<void> setUseVulkan(bool value) async {
+  Future<void> setUseVulkan(bool? value) async {
     _useVulkan = value;
-    await prefs?.setBool(k('use_vulkan'), value);
+    if (value != null) {
+      await prefs?.setBool(k('use_vulkan'), value);
+    } else {
+      await prefs?.remove(k('use_vulkan'));
+    }
     notify();
   }
 
-  Future<void> setUseMetal(bool value) async {
+  Future<void> setUseMetal(bool? value) async {
     _useMetal = value;
-    await prefs?.setBool(k('use_metal'), value);
+    if (value != null) {
+      await prefs?.setBool(k('use_metal'), value);
+    } else {
+      await prefs?.remove(k('use_metal'));
+    }
     notify();
   }
 
-  Future<void> setUseRocm(bool value) async {
+  Future<void> setUseRocm(bool? value) async {
     _useRocm = value;
-    await prefs?.setBool(k('use_rocm'), value);
+    if (value != null) {
+      await prefs?.setBool(k('use_rocm'), value);
+    } else {
+      await prefs?.remove(k('use_rocm'));
+    }
     notify();
   }
 
@@ -279,6 +299,12 @@ class BackendSettings with SettingsBase {
   Future<void> setContextSize(int value) async {
     _contextSize = value;
     await prefs?.setInt(k('context_size'), value);
+    notify();
+  }
+
+  Future<void> setKvQuantizationLevel(int value) async {
+    _kvQuantizationLevel = value;
+    await prefs?.setInt(k('kv_quantization_level'), value);
     notify();
   }
 }

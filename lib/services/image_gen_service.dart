@@ -149,7 +149,7 @@ class ImageGenService extends ChangeNotifier {
 
   DrawThingsGrpcService get _ensureDrawThingsGrpc {
     final h = _storage.imageGenSettings.drawThingsGrpcHost;
-    final p = _storage.drawThingsGrpcPort;
+    final p = _storage.imageGenSettings.drawThingsGrpcPort;
     // Recreate if host/port changed since last use (cheap; keeps things in sync with settings)
     if (_drawThingsGrpc == null ||
         _drawThingsGrpc!.host != h ||
@@ -216,13 +216,13 @@ class ImageGenService extends ChangeNotifier {
             final imageSize = size ?? _storage.imageGenSettings.imageGenSize;
             final (width, height) = _parseSize(imageSize);
             final steps = _storage.imageGenSettings.imageGenSteps;
-            final cfgScale = _storage.imageGenCfgScale;
-            final seed = _storage.imageGenSeed;
+            final cfgScale = _storage.imageGenSettings.imageGenCfgScale;
+            final seed = _storage.imageGenSettings.imageGenSeed;
 
             // DT-native advanced knobs (shared sliders still used for steps/cfg/seed/size)
-            final sampler = _storage.drawThingsSampler;
-            final shift = _storage.drawThingsShift;
-            final strength = _storage.drawThingsStrength;
+            final sampler = _storage.imageGenSettings.drawThingsSampler;
+            final shift = _storage.imageGenSettings.drawThingsShift;
+            final strength = _storage.imageGenSettings.drawThingsStrength;
             final seedMode = _storage.drawThingsSeedMode;
             final teaCache = _storage.drawThingsTeaCache;
             final cfgZeroStar = _storage.drawThingsCfgZeroStar;
@@ -276,12 +276,12 @@ class ImageGenService extends ChangeNotifier {
             size: imageSize,
             modelCheckpoint: modelCheckpoint,
             switchModelFirst: modelCheckpoint.isNotEmpty,
-            loraName: _storage.imageGenLora,
-            loraWeight: _storage.imageGenLoraWeight,
+            loraName: _storage.imageGenSettings.imageGenLora,
+            loraWeight: _storage.imageGenSettings.imageGenLoraWeight,
             steps: _storage.imageGenSettings.imageGenSteps,
-            cfgScale: _storage.imageGenCfgScale,
-            samplerName: _storage.imageGenSampler,
-            seed: _storage.imageGenSeed,
+            cfgScale: _storage.imageGenSettings.imageGenCfgScale,
+            samplerName: _storage.imageGenSettings.imageGenSampler,
+            seed: _storage.imageGenSettings.imageGenSeed,
           );
         }
       } else {
@@ -658,7 +658,8 @@ class ImageGenService extends ChangeNotifier {
     String? personaText,
     List<String>? recentMessages,
   }) async {
-    final paradigm = _storage.imageGenPromptParadigm; // 'natural' or 'tags'
+    final paradigm =
+        _storage.imageGenSettings.imageGenPromptParadigm; // 'natural' or 'tags'
     final modifiers = paradigm == 'tags'
         ? legacyStyleModifiers
         : styleModifiers;

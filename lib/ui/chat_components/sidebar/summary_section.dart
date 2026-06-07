@@ -70,8 +70,10 @@ class SummarySectionState extends State<SummarySection> {
                   size: 14,
                   color: AppColors.resolve(
                     context,
-                    Colors.tealAccent,
-                    Colors.teal.shade700,
+                    const Color(
+                      0xFF26A69A,
+                    ), // teal accent for summary active (via resolve for light/dark)
+                    Color(0xFF00796B),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -94,8 +96,8 @@ class SummarySectionState extends State<SummarySection> {
                         strokeWidth: 2,
                         color: AppColors.resolve(
                           context,
-                          Colors.tealAccent,
-                          Colors.teal.shade700,
+                          Color(0xFF26A69A),
+                          Color(0xFF00796B),
                         ),
                       ),
                     ),
@@ -111,8 +113,8 @@ class SummarySectionState extends State<SummarySection> {
                       },
                       activeTrackColor: AppColors.resolve(
                         context,
-                        Colors.tealAccent,
-                        Colors.teal.shade700,
+                        Color(0xFF26A69A),
+                        Color(0xFF00796B),
                       ),
                     ),
                   ),
@@ -170,8 +172,8 @@ class SummarySectionState extends State<SummarySection> {
                     borderSide: BorderSide(
                       color: AppColors.resolve(
                         context,
-                        Colors.tealAccent,
-                        Colors.teal.shade700,
+                        Color(0xFF26A69A),
+                        Color(0xFF00796B),
                       ),
                     ),
                   ),
@@ -249,7 +251,7 @@ class SummarySectionState extends State<SummarySection> {
                         Icons.tune,
                         size: 14,
                         color: _showSettings
-                            ? Colors.tealAccent
+                            ? Color(0xFF26A69A)
                             : Colors.white38,
                       ),
                     ),
@@ -274,7 +276,7 @@ class SummarySectionState extends State<SummarySection> {
                             size: 14,
                             color: widget.chatService.isSummaryGenerating
                                 ? Colors.white12
-                                : Colors.tealAccent,
+                                : Color(0xFF26A69A),
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -283,7 +285,7 @@ class SummarySectionState extends State<SummarySection> {
                               fontSize: 10,
                               color: widget.chatService.isSummaryGenerating
                                   ? Colors.white12
-                                  : Colors.tealAccent,
+                                  : Color(0xFF26A69A),
                             ),
                           ),
                         ],
@@ -332,7 +334,7 @@ class SummarySectionState extends State<SummarySection> {
                             '${(_dragSummaryInterval ?? storage.summaryInterval.toDouble()).round()} messages',
                             style: const TextStyle(
                               fontSize: 11,
-                              color: Colors.tealAccent,
+                              color: Color(0xFF26A69A),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -352,7 +354,7 @@ class SummarySectionState extends State<SummarySection> {
                           min: 3,
                           max: 50,
                           divisions: 47,
-                          activeColor: Colors.tealAccent,
+                          activeColor: Color(0xFF26A69A),
                           inactiveColor: Colors.white12,
                           onChanged: (val) =>
                               setState(() => _dragSummaryInterval = val),
@@ -377,7 +379,7 @@ class SummarySectionState extends State<SummarySection> {
                             '${(_dragSummaryMaxWords ?? storage.summaryMaxWords.toDouble()).round()}',
                             style: const TextStyle(
                               fontSize: 11,
-                              color: Colors.tealAccent,
+                              color: Color(0xFF26A69A),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -397,7 +399,7 @@ class SummarySectionState extends State<SummarySection> {
                           min: 50,
                           max: 1000,
                           divisions: 19,
-                          activeColor: Colors.tealAccent,
+                          activeColor: Color(0xFF26A69A),
                           inactiveColor: Colors.white12,
                           onChanged: (val) =>
                               setState(() => _dragSummaryMaxWords = val),
@@ -422,7 +424,7 @@ class SummarySectionState extends State<SummarySection> {
                           GestureDetector(
                             onTap: () {
                               storage.setSummaryPrompt(
-                                StorageService.defaultSummaryPrompt,
+                                storage.defaultSummaryPrompt,
                               );
                               setState(() {});
                             },
@@ -430,7 +432,7 @@ class SummarySectionState extends State<SummarySection> {
                               'Reset',
                               style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.tealAccent,
+                                color: Color(0xFF26A69A),
                               ),
                             ),
                           ),
@@ -465,7 +467,7 @@ class SummarySectionState extends State<SummarySection> {
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(6),
                             borderSide: const BorderSide(
-                              color: Colors.tealAccent,
+                              color: Color(0xFF26A69A),
                             ),
                           ),
                           contentPadding: const EdgeInsets.all(8),

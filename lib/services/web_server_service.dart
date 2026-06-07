@@ -1975,6 +1975,12 @@ class WebServerService extends ChangeNotifier {
       }
 
       // Image Gen
+      // Security: validate/sanitize to mitigate SSRF (arbitrary http targets from web API body) + resource exhaustion/DoS on sidecars (kobold launch, drawthings gRPC, image gen).
+      // - Local image urls/hosts: require loopback/localhost variants only (no arbitrary LAN/internet).
+      // - Ports: clamp 1024-65535.
+      // - Launch numerics (context/gpu/kv/ports/samplers/seedMode etc): strict safe clamps (context 512-32k, gpuLayers 0-99, kv 0-8, draw ports/samplers reasonable, seed -1 or 0-2^31-1 etc).
+      // Other samplers/tts/remote urls have similar surface but primary per review was image + kobold launch params (now live via thins).
+      // Errors: skip bad value (log); no 4xx here as this is internal control path, but prevents bad side effects.
       if (body.containsKey('imageGenEnabled')) {
         await s.setImageGenEnabled(body['imageGenEnabled'] as bool);
       }
@@ -1985,33 +1991,52 @@ class WebServerService extends ChangeNotifier {
         await s.setImageGenBackend(body['imageGenBackend'].toString());
       }
       if (body.containsKey('localImageGenUrl')) {
-        await s.setLocalImageGenUrl(body['localImageGenUrl'].toString());
+        final u = body['localImageGenUrl'].toString().trim();
+        if (u.startsWith('http://127.0.0.1') ||
+            u.startsWith('http://localhost') ||
+            u.startsWith('http://[::1]')) {
+          await s.setLocalImageGenUrl(u);
+        } else {
+          debugPrint(
+            '[WebServer] rejected non-loopback localImageGenUrl for SSRF mitigation',
+          );
+        }
       }
       if (body.containsKey('drawThingsGrpcHost')) {
-        await s.setDrawThingsGrpcHost(body['drawThingsGrpcHost'].toString());
+        final h = body['drawThingsGrpcHost'].toString().trim();
+        if (h == '127.0.0.1' ||
+            h == 'localhost' ||
+            h == '[::1]' ||
+            h == '0.0.0.0') {
+          await s.setDrawThingsGrpcHost(h);
+        } else {
+          debugPrint('[WebServer] rejected non-local drawThingsGrpcHost');
+        }
       }
       if (body.containsKey('drawThingsGrpcPort')) {
-        await s.setDrawThingsGrpcPort(
-          (body['drawThingsGrpcPort'] as num).toInt(),
+        final p = (body['drawThingsGrpcPort'] as num).toInt().clamp(
+          1024,
+          65535,
         );
+        await s.setDrawThingsGrpcPort(p);
       }
       if (body.containsKey('drawThingsSampler')) {
-        await s.setDrawThingsSampler(
-          (body['drawThingsSampler'] as num).toInt(),
-        );
+        final smp = (body['drawThingsSampler'] as num).toInt().clamp(0, 30);
+        await s.setDrawThingsSampler(smp);
       }
       if (body.containsKey('drawThingsShift')) {
         await s.setDrawThingsShift((body['drawThingsShift'] as num).toDouble());
       }
       if (body.containsKey('drawThingsStrength')) {
-        await s.setDrawThingsStrength(
-          (body['drawThingsStrength'] as num).toDouble(),
+        final str = (body['drawThingsStrength'] as num).toDouble().clamp(
+          0.0,
+          1.0,
         );
+        await s.setDrawThingsStrength(str);
       }
       if (body.containsKey('drawThingsSeedMode')) {
-        await s.setDrawThingsSeedMode(
-          (body['drawThingsSeedMode'] as num).toInt(),
-        );
+        final sm = (body['drawThingsSeedMode'] as num).toInt().clamp(0, 3);
+        await s.setDrawThingsSeedMode(sm);
       }
       if (body.containsKey('drawThingsTeaCache')) {
         await s.setDrawThingsTeaCache(body['drawThingsTeaCache'] as bool);
@@ -2061,9 +2086,25 @@ class WebServerService extends ChangeNotifier {
         await s.setXtcProbability((body['xtcProbability'] as num).toDouble());
       }
       if (body.containsKey('contextSize')) {
-        await s.backendSettings.setContextSize(
-          (body['contextSize'] as num).toInt(),
-        );
+        final ctx = (body['contextSize'] as num).toInt().clamp(512, 32768);
+        await s.backendSettings.setContextSize(ctx);
+      }
+      // Extend clamps for remaining launch numerics (gpuLayers 0-99, kv 0-8, blas 1-4096, gpuId 0-8) per re-review security.
+      if (body.containsKey('gpuLayers')) {
+        final gl = (body['gpuLayers'] as num).toInt().clamp(0, 99);
+        await s.backendSettings.setGpuLayers(gl);
+      }
+      if (body.containsKey('kvQuantizationLevel')) {
+        final kv = (body['kvQuantizationLevel'] as num).toInt().clamp(0, 8);
+        await s.backendSettings.setKvQuantizationLevel(kv);
+      }
+      if (body.containsKey('blasBatchSize')) {
+        final bs = (body['blasBatchSize'] as num).toInt().clamp(1, 4096);
+        await s.backendSettings.setBlasBatchSize(bs);
+      }
+      if (body.containsKey('gpuId')) {
+        final gid = (body['gpuId'] as num).toInt().clamp(0, 8);
+        await s.backendSettings.setGpuId(gid);
       }
       if (body.containsKey('dynamicTempEnabled')) {
         await s.setDynamicTempEnabled(body['dynamicTempEnabled'] as bool);
@@ -5077,6 +5118,15 @@ class WebServerService extends ChangeNotifier {
           jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final url = body['url']?.toString() ?? '';
       if (url.isEmpty) return _errorResponse(400, 'url is required');
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint(
+          '[WebServer] rejected non-local url in _handleImgenTestConnection',
+        );
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
       final ok = await _imageGenService!.testLocalConnection(url);
       return shelf.Response.ok(
         jsonEncode({'ok': ok}),
@@ -5097,6 +5147,15 @@ class WebServerService extends ChangeNotifier {
       final backend = request.url.queryParameters['backend'] ?? '';
       if (url.isEmpty) {
         return _errorResponse(400, 'url query param is required');
+      }
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint(
+          '[WebServer] rejected non-local url in _handleImgenLocalModels',
+        );
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
       }
 
       final List<String> models;
@@ -5124,6 +5183,13 @@ class WebServerService extends ChangeNotifier {
       if (url.isEmpty) {
         return _errorResponse(400, 'url query param is required');
       }
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint('[WebServer] rejected non-local url in _handleImgenLoras');
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
       final loras = await _imageGenService!.fetchA1111Loras(url);
       return shelf.Response.ok(
         jsonEncode({'loras': loras}),
@@ -5144,6 +5210,15 @@ class WebServerService extends ChangeNotifier {
           jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final url = body['url']?.toString() ?? '';
       if (url.isEmpty) return _errorResponse(400, 'url is required');
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint(
+          '[WebServer] rejected non-local url in _handleImgenUnloadModel',
+        );
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
       final ok = await _imageGenService!.unloadLocalModel(url);
       return shelf.Response.ok(
         jsonEncode({
@@ -5169,6 +5244,15 @@ class WebServerService extends ChangeNotifier {
       final model = body['model']?.toString() ?? '';
       if (url.isEmpty) return _errorResponse(400, 'url is required');
       if (model.isEmpty) return _errorResponse(400, 'model is required');
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint(
+          '[WebServer] rejected non-local url in _handleImgenSwitchModel',
+        );
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
       final ok = await _imageGenService!.switchLocalModel(url, model);
       return shelf.Response.ok(
         jsonEncode({

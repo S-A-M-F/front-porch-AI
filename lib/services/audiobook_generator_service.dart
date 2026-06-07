@@ -64,7 +64,7 @@ class AudiobookGeneratorService extends ChangeNotifier {
   /// Builds the full novel into a downloadable `.wav` audio file.
   /// Uses pure Dart WAV concatenation — no ffmpeg or external tools required.
   Future<FormattedAudiobook?> generateAudiobook(StoryProject project) async {
-    if (_isGenerating || !_storageService.ttsEnabled) return null;
+    if (_isGenerating || !_storageService.ttsSettings.ttsEnabled) return null;
 
     _isGenerating = true;
     _progress = 0.0;

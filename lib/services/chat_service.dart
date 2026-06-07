@@ -1722,6 +1722,24 @@ class ChatService extends ChangeNotifier {
   ChaosModeService get chaosModeService => _chaosModeService;
   NeedsSimulation get needsSimulation => _needsSimulation;
 
+  // Thin public surface for flat members still read/written by UI/pages/dialogs
+  // (chat.chaosPressure, chat.activeFixation, chat.pendingTrustRepair, chat.currentExpressionLabel,
+  // chat.resolveExpressionAvatar, per "thin delegation here; full XXX in the leaf" + 0 new god _ privates).
+  // Full impl in the respective *Service (chaos_mode_service, relationship_service, expression_classifier in chat/).
+  // 1:1 vs group parity via the services' cbs + god impersonation dance (unchanged).
+  int get chaosPressure => _chaosModeService.chaosPressure;
+  String get activeFixation => _relationshipService.activeFixation;
+  bool get pendingTrustRepair => _relationshipService.pendingTrustRepair;
+  String? get currentExpressionLabel =>
+      _expressionService.currentExpressionLabel;
+  AvatarImage? resolveExpressionAvatar(
+    CharacterCard character, {
+    bool rerollIfSame = false,
+  }) => _expressionService.resolveExpressionAvatar(
+    character,
+    rerollIfSame: rerollIfSame,
+  );
+
   bool get realismEnabled => _realismEnabled;
 
   /// True when the Realism Engine (and Needs) should actually run for the
@@ -6684,8 +6702,9 @@ class ChatService extends ChangeNotifier {
   /// Called after each generation completes. Only embeds new windows that
   /// haven't been embedded yet.
   void _maybeEmbedMessages() {
-    if (_memoryService == null || !_storageService.memorySettings.ragEnabled)
+    if (_memoryService == null || !_storageService.memorySettings.ragEnabled) {
       return;
+    }
     if (_currentSessionId == null) return;
     if (_messages.length < _storageService.memorySettings.ragWindowSize) return;
 

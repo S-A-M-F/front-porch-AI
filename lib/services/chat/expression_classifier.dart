@@ -164,7 +164,8 @@ class ExpressionService {
         : '';
 
     // ONNX mode: trigger classification if needed and return cached result
-    if (getStorageService().expressionClassificationMode == 'onnx') {
+    if (getStorageService().expressionSettings.expressionClassificationMode ==
+        'onnx') {
       // ── STABILITY: Keep previous expression while generating ───────────────
       // As requested, we don't want "live" updates. We keep the current
       // face until the message is complete.

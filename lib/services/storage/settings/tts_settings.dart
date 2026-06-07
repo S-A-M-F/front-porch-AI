@@ -42,7 +42,6 @@ class TtsSettings with SettingsBase {
   int _ttsConcurrency = Platform.numberOfProcessors.clamp(1, 8);
   int _ttsAudioLookahead = 6;
   double _directorDelay = 15.0;
-  int _kvQuantizationLevel = 0;
 
   bool get ttsEnabled => _ttsEnabled;
   String get ttsEngine => _ttsEngine;
@@ -62,7 +61,6 @@ class TtsSettings with SettingsBase {
   int get ttsConcurrency => _ttsConcurrency.clamp(1, 8);
   int get ttsAudioLookahead => _ttsAudioLookahead;
   double get directorDelay => _directorDelay;
-  int get kvQuantizationLevel => _kvQuantizationLevel;
 
   void load() {
     _ttsEnabled = prefs?.getBool(k('tts_enabled')) ?? false;
@@ -75,7 +73,6 @@ class TtsSettings with SettingsBase {
         (prefs?.getInt(k('tts_concurrency')) ?? Platform.numberOfProcessors)
             .clamp(1, 8);
     _ttsAudioLookahead = prefs?.getInt(k('tts_audio_lookahead')) ?? 6;
-    _kvQuantizationLevel = prefs?.getInt(k('kv_quantization_level')) ?? 0;
     _openaiTtsModel = prefs?.getString(k('openai_tts_model')) ?? 'tts-1';
     _openaiTtsBaseUrl =
         prefs?.getString(k('openai_tts_base_url')) ??
@@ -192,12 +189,6 @@ class TtsSettings with SettingsBase {
   Future<void> setTtsAudioLookahead(int value) async {
     _ttsAudioLookahead = value.clamp(1, 32);
     await prefs?.setInt(k('tts_audio_lookahead'), _ttsAudioLookahead);
-    notify();
-  }
-
-  Future<void> setKvQuantizationLevel(int value) async {
-    _kvQuantizationLevel = value;
-    await prefs?.setInt(k('kv_quantization_level'), value);
     notify();
   }
 
