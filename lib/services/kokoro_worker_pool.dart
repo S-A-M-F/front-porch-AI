@@ -190,7 +190,7 @@ class KokoroWorkerPool {
   KokoroWorkerPool(this._storage, this._spawnWorker);
 
   /// Current desired max workers (comes from the user slider, now capped at 8).
-  int get _maxWorkers => _storage.ttsConcurrency.clamp(1, 8);
+  int get _maxWorkers => _storage.ttsSettings.ttsConcurrency.clamp(1, 8);
 
   /// Main entry point. Takes raw text, chunks it safely, and submits to the pool.
   Future<File?> generateAudio({
@@ -210,7 +210,8 @@ class KokoroWorkerPool {
     );
 
     final bool readEverythingMode =
-        !_storage.ttsIgnoreAsterisks && !_storage.ttsNarrateQuotedOnly;
+        !_storage.ttsSettings.ttsIgnoreAsterisks &&
+        !_storage.ttsSettings.ttsNarrateQuotedOnly;
 
     final List<KokoroChunk> chunks;
 

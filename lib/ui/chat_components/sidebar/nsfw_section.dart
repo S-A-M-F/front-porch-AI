@@ -68,8 +68,8 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (widget.chat.nsfwCooldownEnabled &&
-                    widget.chat.cooldownTurnsRemaining > 0) ...[
+                if (widget.chat.nsfwService.nsfwCooldownEnabled &&
+                    widget.chat.nsfwService.cooldownTurnsRemaining > 0) ...[
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -85,7 +85,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      '⏳ ${widget.chat.cooldownTurnsRemaining}t',
+                      '⏳ ${widget.chat.nsfwService.cooldownTurnsRemaining}t',
                       style: const TextStyle(
                         fontSize: 10,
                         color: Color(0xFFEA580C),
@@ -98,7 +98,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                 SizedBox(
                   height: 20,
                   child: Switch(
-                    value: widget.chat.nsfwCooldownEnabled,
+                    value: widget.chat.nsfwService.nsfwCooldownEnabled,
                     activeThumbColor: AppColors.resolve(
                       context,
                       const Color(0xFFEA580C),
@@ -107,7 +107,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                     onChanged: widget.chat.isGenerating
                         ? null
                         : (val) {
-                            widget.chat.setNsfwCooldownEnabled(val);
+                            widget.chat.nsfwService.setNsfwCooldownEnabled(val);
                             if (val) setState(() => _expanded = true);
                           },
                   ),
@@ -140,23 +140,23 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
             child: Column(
               children: [
                 // ── Lust ──
-                if (widget.chat.nsfwCooldownEnabled) ...[
+                if (widget.chat.nsfwService.nsfwCooldownEnabled) ...[
                   Row(
                     children: [
                       Icon(
-                        widget.chat.arousalTier >= 6
+                        widget.chat.nsfwService.arousalTier >= 6
                             ? Icons.local_fire_department
-                            : widget.chat.arousalTier <= -1
+                            : widget.chat.nsfwService.arousalTier <= -1
                             ? Icons.ac_unit
                             : Icons.favorite_border,
                         size: 13,
-                        color: widget.chat.arousalTier >= 6
+                        color: widget.chat.nsfwService.arousalTier >= 6
                             ? AppColors.resolve(
                                 context,
                                 const Color(0xFFC2410C),
                                 const Color(0xFF9A3412),
                               )
-                            : widget.chat.arousalTier <= -1
+                            : widget.chat.nsfwService.arousalTier <= -1
                             ? AppColors.resolve(
                                 context,
                                 const Color(0xFF38BDF8),
@@ -167,16 +167,16 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
-                          'Lust: ${widget.chat.arousalTierName}',
+                          'Lust: ${widget.chat.nsfwService.arousalTierName}',
                           style: TextStyle(
                             fontSize: 12,
-                            color: widget.chat.arousalTier >= 6
+                            color: widget.chat.nsfwService.arousalTier >= 6
                                 ? AppColors.resolve(
                                     context,
                                     const Color(0xFFC2410C),
                                     const Color(0xFF9A3412),
                                   )
-                                : widget.chat.arousalTier <= -1
+                                : widget.chat.nsfwService.arousalTier <= -1
                                 ? AppColors.resolve(
                                     context,
                                     const Color(0xFF38BDF8),
@@ -189,7 +189,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${widget.chat.arousalLevel.clamp(-100, 100)}/100',
+                        '${widget.chat.nsfwService.arousalLevel.clamp(-100, 100)}/100',
                         style: TextStyle(
                           fontSize: 10,
                           color: AppColors.textTertiary(context),
@@ -201,16 +201,14 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(3),
                     child: LinearProgressIndicator(
-                      value: (widget.chat.arousalLevel.abs() / 100).clamp(
-                        0.0,
-                        1.0,
-                      ),
+                      value: (widget.chat.nsfwService.arousalLevel.abs() / 100)
+                          .clamp(0.0, 1.0),
                       minHeight: 4,
                       backgroundColor: AppColors.borderOf(
                         context,
                       ).withValues(alpha: 0.25),
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        widget.chat.arousalTier >= 6
+                        widget.chat.nsfwService.arousalTier >= 6
                             ? AppColors.resolve(
                                 context,
                                 const Color(0xFFC2410C),
@@ -227,8 +225,8 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                   const SizedBox(height: 12),
                 ],
 
-                if (widget.chat.nsfwCooldownEnabled &&
-                    widget.chat.cooldownTurnsRemaining > 0) ...[
+                if (widget.chat.nsfwService.nsfwCooldownEnabled &&
+                    widget.chat.nsfwService.cooldownTurnsRemaining > 0) ...[
                   const SizedBox(height: 6),
                   Row(
                     children: [
@@ -240,7 +238,7 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          'Refractory: ${widget.chat.cooldownTurnsRemaining} turn${widget.chat.cooldownTurnsRemaining == 1 ? '' : 's'} remaining',
+                          'Refractory: ${widget.chat.nsfwService.cooldownTurnsRemaining} turn${widget.chat.nsfwService.cooldownTurnsRemaining == 1 ? '' : 's'} remaining',
                           style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xFFEA580C),

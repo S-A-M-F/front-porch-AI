@@ -91,11 +91,11 @@ class _SettingsPageState extends State<SettingsPage> {
     _remoteApiUrlController.text = Provider.of<StorageService>(
       context,
       listen: false,
-    ).remoteApiUrl;
+    ).backendSettings.remoteApiUrl;
     _remoteApiKeyController.text = Provider.of<StorageService>(
       context,
       listen: false,
-    ).remoteApiKey;
+    ).backendSettings.remoteApiKey;
 
     // Sync local state with storage
     final storage = Provider.of<StorageService>(context, listen: false);
@@ -279,7 +279,8 @@ class _SettingsPageState extends State<SettingsPage> {
     } else if (_selectedModelPath != null) {
       // Respect previously saved settings — just load them into the UI
       _gpuLayersController.text = storage.gpuLayers.toString();
-      _contextSizeController.text = storage.contextSize.toString();
+      _contextSizeController.text = storage.backendSettings.contextSize
+          .toString();
     }
   }
 
@@ -3961,7 +3962,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 8),
           _buildSlider(
             'Temperature',
-            storage.temperature,
+            storage.generationSettings.temperature,
             0.0,
             2.0,
             (val) => storage.setTemperature(val),
@@ -3972,7 +3973,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           _buildSlider(
             'Min-P',
-            storage.minP,
+            storage.generationSettings.minP,
             0.0,
             1.0,
             (val) => storage.setMinP(val),
@@ -3983,7 +3984,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           _buildSlider(
             'Repeat Penalty',
-            storage.repeatPenalty,
+            storage.generationSettings.repeatPenalty,
             1.0,
             3.0,
             (val) => storage.setRepeatPenalty(val),

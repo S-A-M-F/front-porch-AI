@@ -133,8 +133,12 @@ class RealismSectionState extends State<RealismSection> {
           return AppColors.textPrimary(context);
         }
 
-        final shortTermColor = getTierColor(chat.relationshipTier);
-        final longTermColor = getTierColor(chat.longTermTier);
+        final shortTermColor = getTierColor(
+          chat.relationshipService.relationshipTier,
+        );
+        final longTermColor = getTierColor(
+          chat.relationshipService.longTermTier,
+        );
 
         return Container(
           decoration: BoxDecoration(
@@ -220,7 +224,7 @@ class RealismSectionState extends State<RealismSection> {
                         child: Row(
                           children: [
                             Icon(
-                              chat.relationshipTier < 0
+                              chat.relationshipService.relationshipTier < 0
                                   ? Icons.heart_broken
                                   : Icons.favorite,
                               size: 13,
@@ -229,7 +233,7 @@ class RealismSectionState extends State<RealismSection> {
                             const SizedBox(width: 5),
                             Expanded(
                               child: Text(
-                                'Short-Term Bond: ${chat.shortTermTierName}',
+                                'Short-Term Bond: ${chat.relationshipService.shortTermTierName}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -240,7 +244,7 @@ class RealismSectionState extends State<RealismSection> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '${chat.affectionScore.abs()}/${chat.shortTermProgressTarget}',
+                              '${chat.relationshipService.affectionScore.abs()}/${chat.relationshipService.shortTermProgressTarget}',
                               style: TextStyle(
                                 fontSize: 10,
                                 color: AppColors.textSecondary(context),
@@ -253,7 +257,8 @@ class RealismSectionState extends State<RealismSection> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(3),
                         child: LinearProgressIndicator(
-                          value: chat.shortTermProgressPercent,
+                          value:
+                              chat.relationshipService.shortTermProgressPercent,
                           minHeight: 5,
                           backgroundColor: AppColors.borderOf(
                             context,
@@ -272,7 +277,7 @@ class RealismSectionState extends State<RealismSection> {
                         child: Row(
                           children: [
                             Icon(
-                              chat.longTermTier < 0
+                              chat.relationshipService.longTermTier < 0
                                   ? Icons.heart_broken_sharp
                                   : Icons.monitor_heart,
                               size: 13,
@@ -281,7 +286,7 @@ class RealismSectionState extends State<RealismSection> {
                             const SizedBox(width: 5),
                             Expanded(
                               child: Text(
-                                'Long-Term Bond: ${chat.longTermTierName}',
+                                'Long-Term Bond: ${chat.relationshipService.longTermTierName}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -292,7 +297,7 @@ class RealismSectionState extends State<RealismSection> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '${chat.longTermScore.abs()}/${chat.longTermProgressTarget}',
+                              '${chat.relationshipService.longTermScore.abs()}/${chat.relationshipService.longTermProgressTarget}',
                               style: TextStyle(
                                 fontSize: 10,
                                 color: AppColors.textSecondary(context),
@@ -305,7 +310,8 @@ class RealismSectionState extends State<RealismSection> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(3),
                         child: LinearProgressIndicator(
-                          value: chat.longTermProgressPercent,
+                          value:
+                              chat.relationshipService.longTermProgressPercent,
                           minHeight: 5,
                           backgroundColor: AppColors.borderOf(
                             context,
@@ -324,22 +330,22 @@ class RealismSectionState extends State<RealismSection> {
                         child: Row(
                           children: [
                             Icon(
-                              chat.trustLevel < 0
+                              chat.relationshipService.trustLevel < 0
                                   ? Icons.vpn_key_off
                                   : Icons.vpn_key,
                               size: 13,
-                              color: chat.trustLevel < 0
+                              color: chat.relationshipService.trustLevel < 0
                                   ? Colors.redAccent
                                   : Colors.amber,
                             ),
                             const SizedBox(width: 5),
                             Expanded(
                               child: Text(
-                                'Trust: ${chat.trustTierName}',
+                                'Trust: ${chat.relationshipService.trustTierName}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
-                                  color: chat.trustLevel < 0
+                                  color: chat.relationshipService.trustLevel < 0
                                       ? Colors.redAccent
                                       : Colors.amber,
                                 ),
@@ -348,7 +354,7 @@ class RealismSectionState extends State<RealismSection> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '${chat.trustLevel.abs()}/${chat.trustProgressTarget}',
+                              '${chat.relationshipService.trustLevel.abs()}/${chat.relationshipService.trustProgressTarget}',
                               style: TextStyle(
                                 fontSize: 10,
                                 color: AppColors.textSecondary(context),
@@ -367,7 +373,7 @@ class RealismSectionState extends State<RealismSection> {
                             context,
                           ).withValues(alpha: 0.2),
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            chat.trustLevel < 0
+                            chat.relationshipService.trustLevel < 0
                                 ? Colors.redAccent
                                 : Colors.amber,
                           ),
@@ -403,12 +409,12 @@ class RealismSectionState extends State<RealismSection> {
                       Row(
                         children: [
                           Text(
-                            _timeEmoji(chat.timeOfDay),
+                            _timeEmoji(chat.timeService.timeOfDay),
                             style: const TextStyle(fontSize: 13),
                           ),
                           const SizedBox(width: 5),
                           Text(
-                            _timeLabel(chat.timeOfDay),
+                            _timeLabel(chat.timeService.timeOfDay),
                             style: TextStyle(
                               fontSize: 12,
                               color: AppColors.textSecondary(context),
@@ -431,7 +437,7 @@ class RealismSectionState extends State<RealismSection> {
                               ),
                             ),
                           Text(
-                            '${chat.narrativeWeekday.substring(0, 3)} · Day ${chat.dayCount}',
+                            '${chat.timeService.narrativeWeekday.substring(0, 3)} · Day ${chat.timeService.dayCount}',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -475,7 +481,7 @@ class RealismSectionState extends State<RealismSection> {
                                   height: 7,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: chat.timeOfDay == period
+                                    color: chat.timeService.timeOfDay == period
                                         ? AppColors.resolve(
                                             context,
                                             Colors.amber,
@@ -491,7 +497,7 @@ class RealismSectionState extends State<RealismSection> {
                                   _timeDotLabel(period),
                                   style: TextStyle(
                                     fontSize: 8,
-                                    color: chat.timeOfDay == period
+                                    color: chat.timeService.timeOfDay == period
                                         ? AppColors.resolve(
                                             context,
                                             Colors.amber,
@@ -530,7 +536,7 @@ class RealismSectionState extends State<RealismSection> {
                           SizedBox(
                             height: 24,
                             child: Switch(
-                              value: chat.passageOfTimeEnabled,
+                              value: chat.timeService.passageOfTimeEnabled,
                               activeThumbColor: AppColors.resolve(
                                 context,
                                 Colors.blueAccent,
@@ -538,7 +544,8 @@ class RealismSectionState extends State<RealismSection> {
                               ),
                               onChanged: chat.isGenerating
                                   ? null
-                                  : (val) => chat.setPassageOfTimeEnabled(val),
+                                  : (val) => chat.timeService
+                                        .setPassageOfTimeEnabled(val),
                             ),
                           ),
                         ],
@@ -597,9 +604,9 @@ class RealismSectionState extends State<RealismSection> {
                         ),
                       ),
                       if (chat.needsSimEnabled &&
-                          chat.needsVector.isNotEmpty) ...[
+                          chat.needsSimulation.vector.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        for (final entry in chat.needsVector.entries)
+                        for (final entry in chat.needsSimulation.vector.entries)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 3),
                             child: Row(

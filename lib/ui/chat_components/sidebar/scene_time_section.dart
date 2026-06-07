@@ -29,9 +29,9 @@ class SceneTimeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final time = chat.timeOfDay;
-    final day = chat.dayCount;
-    final weekday = chat.narrativeWeekday;
+    final time = chat.timeService.timeOfDay;
+    final day = chat.timeService.dayCount;
+    final weekday = chat.timeService.narrativeWeekday;
     final canNudge = chat.realismEnabled && !chat.isGenerating;
 
     return Padding(

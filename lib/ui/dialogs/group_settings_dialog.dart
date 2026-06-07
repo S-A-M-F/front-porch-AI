@@ -1142,9 +1142,9 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
     _realismEnabled = cs.realismEnabled;
     _needsSimEnabled = cs.needsSimEnabled;
-    _passageOfTimeEnabled = cs.passageOfTimeEnabled;
-    _chaosModeEnabled = cs.chaosModeEnabled;
-    _chaosNsfwEnabled = cs.chaosNsfwEnabled;
+    _passageOfTimeEnabled = cs.timeService.passageOfTimeEnabled;
+    _chaosModeEnabled = cs.chaosModeService.chaosModeEnabled;
+    _chaosNsfwEnabled = cs.chaosModeService.chaosNsfwEnabled;
 
     // Load immutable creation baseline seeds (only the allowed fields)
     _baselineSeeds.clear();
@@ -1222,21 +1222,21 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     setState(() {
       _passageOfTimeEnabled = value;
     });
-    widget.chatService.setPassageOfTimeEnabled(value);
+    widget.chatService.timeService.setPassageOfTimeEnabled(value);
   }
 
   void _updateChaosMode(bool value) {
     setState(() {
       _chaosModeEnabled = value;
     });
-    widget.chatService.setChaosModeEnabled(value);
+    widget.chatService.chaosModeService.setModeEnabled(value);
   }
 
   void _updateChaosNsfw(bool value) {
     setState(() {
       _chaosNsfwEnabled = value;
     });
-    widget.chatService.setChaosNsfwEnabled(value);
+    widget.chatService.chaosModeService.setNsfwEnabled(value);
   }
 
   void _resetAllRealismStates() {
@@ -1535,14 +1535,18 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                         Icon(
                           Icons.casino_rounded,
                           size: 14,
-                          color: _pressureColorFor(cs.chaosPressure),
+                          color: _pressureColorFor(
+                            cs.chaosModeService.chaosPressure,
+                          ),
                         ),
                         const SizedBox(width: 6),
                         Text(
                           'Pressure: ${cs.chaosPressure}%',
                           style: TextStyle(
                             fontSize: 11,
-                            color: _pressureColorFor(cs.chaosPressure),
+                            color: _pressureColorFor(
+                              cs.chaosModeService.chaosPressure,
+                            ),
                             fontWeight: FontWeight.w600,
                           ),
                         ),

@@ -262,10 +262,10 @@ void main() {
           expect(chat.realismEnabled, isTrue);
           // V2.5 seed path: shortTermBond 55 (<=150) migrates *2 via seedFromV2OrExt -> 110.
           // (Trust 11 unaffected by bond migrate; longTerm would also *2 if present.)
-          expect(chat.affectionScore, 110);
-          expect(chat.trustLevel, 11);
+          expect(chat.relationshipService.affectionScore, 110);
+          expect(chat.relationshipService.trustLevel, 11);
           if (chat.needsSimEnabled) {
-            expect(chat.needsVector, isNotEmpty);
+            expect(chat.needsSimulation.vector, isNotEmpty);
           }
 
           // The production seam is live in this test (first committed, compiling
@@ -366,8 +366,8 @@ void main() {
         await chat.setActiveCharacter(char);
         await chat.startNewChat();
 
-        final startBond = chat.affectionScore;
-        final startTrust = chat.trustLevel;
+        final startBond = chat.relationshipService.affectionScore;
+        final startTrust = chat.relationshipService.trustLevel;
 
         // Force a specific positive relationship response from the fake
         fakeLlm.nextResponse =
@@ -376,8 +376,8 @@ void main() {
 
         await chat.sendMessage('Thank you for being there for me.');
 
-        expect(chat.affectionScore, greaterThan(startBond));
-        expect(chat.trustLevel, greaterThan(startTrust));
+        expect(chat.relationshipService.affectionScore, greaterThan(startBond));
+        expect(chat.relationshipService.trustLevel, greaterThan(startTrust));
         expect(fakeLlm.seenPrompts, isNotEmpty);
 
         // Contract test for the fake: the real production relationship prompt builder
@@ -428,14 +428,14 @@ void main() {
       await chat.setActiveCharacter(char);
       await chat.startNewChat();
 
-      final startBond = chat.affectionScore;
+      final startBond = chat.relationshipService.affectionScore;
 
       // One send under one-shot mode should hit _evaluateOneShotCall and apply deltas.
       await chat.sendMessage('This is meaningful to me.');
 
       // Deltas should have been applied via the one-shot path (relationship service exercised).
       expect(
-        chat.affectionScore,
+        chat.relationshipService.affectionScore,
         anyOf(greaterThanOrEqualTo(startBond), greaterThan(startBond - 20)),
       );
       // Contract: the one-shot prompt was used. (Prompt builder kept in god per plan step 8;
@@ -450,7 +450,7 @@ void main() {
                   p.contains('bond_delta') ||
                   p.contains('relationship_delta'),
             ) ||
-            chat.affectionScore != startBond,
+            chat.relationshipService.affectionScore != startBond,
         isTrue,
       );
     });
@@ -478,10 +478,10 @@ void main() {
           await chat.sendMessage('Time passes slowly and hunger grows...');
         }
 
-        final hungerBefore = chat.needsVector['hunger'] ?? 100;
+        final hungerBefore = chat.needsSimulation.vector['hunger'] ?? 100;
 
         // Buffers/pending should be clean (no sexual yet in this decay-only sequence).
-        expect(chat.pendingNeedsCatastrophe, isNull);
+        expect(chat.needsSimulation.pendingCatastrophe, isNull);
         expect(chat.needsArousalSuppressionTurnsRemaining, 0);
         expect(chat.needsPostClimaxCrashTurnsRemaining, 0);
 
@@ -489,7 +489,7 @@ void main() {
         // Fake returns hunger_fulfilled: true for that exact prompt.
         await chat.sendMessage('Anything new?');
 
-        final hungerAfter = chat.needsVector['hunger'] ?? 0;
+        final hungerAfter = chat.needsSimulation.vector['hunger'] ?? 0;
 
         // With 10 decay turns + verified fulfillment JSON, we expect concrete restoration.
         expect(
@@ -678,7 +678,9 @@ void main() {
         expect(state, anyOf(isNull, isA<Map<String, dynamic>>()));
 
         // <=4 cap: RelationshipService.ensureInterCharacterRelationshipsSeeded + pruning ran for the speaker (fake JSON proves eval happened).
-        final rels = chat.getInterCharacterRelationships(ava.stableGroupId);
+        final rels = chat.relationshipService.getInterCharacterRelationships(
+          ava.stableGroupId,
+        );
         expect(rels, isA<Map<String, int>>());
         // Seeding populates neutral 0s for the other members (or deltas if any).
         expect(rels.length, greaterThanOrEqualTo(0));
@@ -793,7 +795,9 @@ void main() {
         // (no seeding happened inside the eval for any member).
         for (final m in members) {
           final card = CharacterCard(name: m);
-          final rels = chat.getInterCharacterRelationships(card.stableGroupId);
+          final rels = chat.relationshipService.getInterCharacterRelationships(
+            card.stableGroupId,
+          );
           expect(
             rels,
             isEmpty,

@@ -21,9 +21,9 @@ import 'settings_base.dart';
 /// Generation / sampling settings (system prompt, temperature, penalties,
 /// stop sequences, context/max length, etc.).
 ///
-/// Lifted mechanically from StorageService (Stage 7). Public API preserved
-/// via @Deprecated shims on StorageService. All sets persist with beta_
-/// prefix and call notify() on owner.
+/// Lifted mechanically from StorageService (Stage 7). Direct use via
+/// StorageService.generationSettings after final shim migration cleanup.
+/// All sets persist with beta_ prefix and call notify() on owner.
 class GenerationSettings with SettingsBase {
   static const String defaultSystemPrompt =
       "You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns. You may also roleplay as any side characters introduced.\n\nEngage with {{user}} by depicting {{char}}'s actions, emotions, and dialogue. Develop the plot slowly and organically while driving the scenario forward. Never write {{user}}'s speech, actions, or decisions — allow them full control of their character.\n\nWrite in a vivid, creative, varied, and descriptive style. Use rich sensory detail for the environment, people, and events. Make each reply unique and end with an action or dialogue to keep momentum.\n\nMaintain consistency with established details — clothing, time of day, location, and prior events. Stay in character at all times.";

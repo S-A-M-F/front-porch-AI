@@ -43,9 +43,9 @@ void showSavePromptDialog(BuildContext context, StorageService storageService) {
         ),
         onSubmitted: (value) {
           if (value.trim().isNotEmpty) {
-            storageService.savePrompt(
+            storageService.presetSettings.savePrompt(
               value.trim(),
-              storageService.systemPrompt,
+              storageService.generationSettings.systemPrompt,
             );
             Navigator.pop(ctx);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -69,9 +69,9 @@ void showSavePromptDialog(BuildContext context, StorageService storageService) {
           ),
           onPressed: () {
             if (controller.text.trim().isNotEmpty) {
-              storageService.savePrompt(
+              storageService.presetSettings.savePrompt(
                 controller.text.trim(),
-                storageService.systemPrompt,
+                storageService.generationSettings.systemPrompt,
               );
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(

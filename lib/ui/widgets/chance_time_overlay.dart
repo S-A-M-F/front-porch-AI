@@ -666,7 +666,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
   Widget _buildPressureRow() {
     return Consumer<ChatService>(
       builder: (_, svc, _) {
-        final pressure = svc.chaosPressure;
+        final pressure = svc.chaosModeService.chaosPressure;
         final color = Color.lerp(
           const Color(0xFF2EC4B6),
           const Color(0xFFE63946),

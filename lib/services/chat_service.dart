@@ -672,10 +672,10 @@ class ChatService extends ChangeNotifier {
       // consistent with pre-extraction).
       final llmP = _llmProvider;
       if (llmP != null && llmP.isLocal) {
-        return _storageService.koboldThinkingModel;
+        return _storageService.backendSettings.koboldThinkingModel;
       }
       if (llmP != null) {
-        return _storageService.reasoningEnabled;
+        return _storageService.backendSettings.reasoningEnabled;
       }
       return false;
     },
@@ -725,14 +725,15 @@ class ChatService extends ChangeNotifier {
     getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
     getGroupCharacters: () => _groupCharacters,
     getActiveCharacter: () => _activeCharacter,
-    getShortTermTierName: () => shortTermTierName,
-    getLongTermTierName: () => longTermTierName,
+    getShortTermTierName: () => _relationshipService.shortTermTierName,
+    getLongTermTierName: () => _relationshipService.longTermTierName,
     getMoodLabel: () => moodLabel,
     getShouldTrackInterCharacterRelationships: () =>
         _shouldTrackInterCharacterRelationships,
     getGroupInt: _getGroupInt,
     getCharacterIdFromCard: _getCharacterIdFromCard,
-    getInterCharacterRelationships: getInterCharacterRelationships,
+    getInterCharacterRelationships:
+        _relationshipService.getInterCharacterRelationships,
   );
 
   late final _emotionInjection = EmotionInjection(
@@ -879,7 +880,8 @@ class ChatService extends ChangeNotifier {
     relationshipService: _relationshipService,
     nsfwService: _nsfwService,
     timeService: _timeService,
-    getExpressionEnabled: () => _storageService.expressionEnabled,
+    getExpressionEnabled: () =>
+        _storageService.expressionSettings.expressionEnabled,
     getPrimaryObjective: () => primaryObjective,
     getActiveObjectives: () => _activeObjectives,
     setObjective: (text, {isPrimary = false, autoGenerateTasks = false}) =>
@@ -979,10 +981,10 @@ class ChatService extends ChangeNotifier {
   late final _summaryService = SummaryService(
     getLlmService: () =>
         testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
-    getSummaryEnabled: () => _storageService.summaryEnabled,
-    getSummaryInterval: () => _storageService.summaryInterval,
-    getSummaryPrompt: () => _storageService.summaryPrompt,
-    getSummaryMaxWords: () => _storageService.summaryMaxWords,
+    getSummaryEnabled: () => _storageService.memorySettings.summaryEnabled,
+    getSummaryInterval: () => _storageService.memorySettings.summaryInterval,
+    getSummaryPrompt: () => _storageService.memorySettings.summaryPrompt,
+    getSummaryMaxWords: () => _storageService.memorySettings.summaryMaxWords,
     getActiveCharacter: () => _activeCharacter,
     getActiveGroup: () => _activeGroup,
     getUserName: () => _userPersonaService.persona.name,
@@ -1035,8 +1037,9 @@ class ChatService extends ChangeNotifier {
     getIsLocal: () => testLlmServiceOverride != null
         ? testIsLocalOverride
         : (_llmProvider?.isLocal ?? false),
-    getKoboldThinkingModel: () => _storageService.koboldThinkingModel,
-    getReasoningEnabled: () => _storageService.reasoningEnabled,
+    getKoboldThinkingModel: () =>
+        _storageService.backendSettings.koboldThinkingModel,
+    getReasoningEnabled: () => _storageService.backendSettings.reasoningEnabled,
     getUserName: () => _userPersonaService.persona.name,
     getLearnedFacts: () => _userPersonaService.persona.learnedFacts,
     addLearnedFacts: (facts, {embedService}) =>
@@ -1123,7 +1126,7 @@ class ChatService extends ChangeNotifier {
       return <String>[];
     },
     getCharacterEvolutionEnabled: () =>
-        _storageService.characterEvolutionEnabled,
+        _storageService.memorySettings.characterEvolutionEnabled,
     getEvolvedPersonality: (charId) => _evolvedPersonalities[charId],
     setEvolvedPersonality: (charId, v) => _evolvedPersonalities[charId] = v,
     getEvolvedScenario: (charId) => _evolvedScenarios[charId],
@@ -1543,22 +1546,7 @@ class ChatService extends ChangeNotifier {
   ///
   /// Backward-compat: If an old checkpoint is missing the 'relationships' key for
   /// a character, we naturally return empty (no migration needed).
-  @Deprecated('Access via RelationshipService directly')
-  Map<String, int> getInterCharacterRelationships(String charId) =>
-      _relationshipService.getInterCharacterRelationships(charId);
-
-  /// Applies a delta to the hidden relationship from one group character toward another.
-  /// Delegates to RelationshipService (verbatim logic preserved).
-  @Deprecated('Access via RelationshipService directly')
-  void updateInterCharacterRelationship(
-    String fromCharId,
-    String toCharId,
-    int delta,
-  ) => _relationshipService.updateInterCharacterRelationship(
-    fromCharId,
-    toCharId,
-    delta,
-  );
+  // (inter-char relationship shims excised in final cleanup; use relationshipService directly)
 
   /// Clears the per-character realism state (emotion, bond/affection, trust,
   /// arousal, fixation, needs vector, and any hidden inter-character relationships)
@@ -1717,14 +1705,23 @@ class ChatService extends ChangeNotifier {
   bool get summaryPaused => _summaryPaused;
   int get summaryLastIndex => _summaryLastIndex;
   bool get isSummaryGenerating => _isSummaryGenerating;
-  @Deprecated('Access via RelationshipService directly')
-  int get affectionScore => _relationshipService.affectionScore;
-  @Deprecated('Access via RelationshipService directly')
-  int get relationshipTier => _relationshipService.relationshipTier;
-  @Deprecated('Access via RelationshipService directly')
-  int get longTermScore => _relationshipService.longTermScore;
-  @Deprecated('Access via RelationshipService directly')
-  int get longTermTier => _relationshipService.longTermTier;
+  // Public access to extracted domain services (final shim migration + cleanup).
+  // Callers (UI sidebars, tests, chance overlay, group settings, etc.) now use direct:
+  //   chat.relationshipService.affectionScore / .trustLevel / shortTermTierName etc.
+  //   chat.timeService.timeOfDay / .dayCount / .setPassageOfTimeEnabled(...)
+  //   chat.nsfwService.nsfwCooldownEnabled / .arousalLevel / .setNsfwCooldownEnabled
+  //   chat.chaosModeService.chaosModeEnabled / .chaosPressure / .hasPendingChaosEvent
+  //   chat.needsSimulation.vector / .pendingCatastrophe
+  //   chat.expressionService.currentExpressionLabel / .resolveExpressionAvatar / .setManualExpression
+  // God owns the late finals (for 1:1+group dispatch, _groupRealism load/save, cbs, notify, reset hygiene).
+  // Barrel not updated (internal; <3 public cross locations precedent).
+  RelationshipService get relationshipService => _relationshipService;
+  ExpressionService get expressionService => _expressionService;
+  TimeService get timeService => _timeService;
+  NsfwService get nsfwService => _nsfwService;
+  ChaosModeService get chaosModeService => _chaosModeService;
+  NeedsSimulation get needsSimulation => _needsSimulation;
+
   bool get realismEnabled => _realismEnabled;
 
   /// True when the Realism Engine (and Needs) should actually run for the
@@ -1746,29 +1743,7 @@ class ChatService extends ChangeNotifier {
 
   String getCurrentEmotion() => _characterEmotion;
 
-  @Deprecated('Access via ExpressionService directly')
-  Future<String> reclassifyEmotion(String unknownEmotion) async =>
-      _expressionService.reclassifyEmotion(unknownEmotion); // fire-and-forget + immediate 'neutral' contract (side effects async)
-
   String get emotionIntensity => _emotionIntensity;
-  // Deprecated shims for expression surfaces (callers in chat_page + tests + wiring).
-  // Delegate to extracted ExpressionService.
-  @Deprecated('Access via ExpressionService directly')
-  String? get manualExpressionLabel => _expressionService.manualExpressionLabel;
-
-  // Deprecated shims for time surfaces (callers in chat_page sidebar, regen, OOC, loads, tests, debug).
-  // Delegate to extracted TimeService. Exactly 5 as specified.
-  @Deprecated('Access via TimeService directly')
-  String get timeOfDay => _timeService.timeOfDay;
-  @Deprecated('Access via TimeService directly')
-  int get dayCount => _timeService.dayCount;
-  @Deprecated('Access via TimeService directly')
-  bool get passageOfTimeEnabled => _timeService.passageOfTimeEnabled;
-
-  /// The current narrative day of the week (e.g. 'Monday'), computed from
-  /// the session's anchor weekday plus elapsed in-story days.
-  @Deprecated('Access via TimeService directly')
-  String get narrativeWeekday => _timeService.narrativeWeekday;
 
   /// True if the realism engine has already captured a meaningful baseline
   /// (emotion or bond score). Used to avoid redundant retroactive scans.
@@ -1777,15 +1752,6 @@ class ChatService extends ChangeNotifier {
       _relationshipService.affectionScore != 0 ||
       _nsfwService.arousalLevel != 0 ||
       _relationshipService.activeFixation.isNotEmpty;
-
-  @Deprecated('Access via NsfwService directly')
-  bool get nsfwCooldownEnabled => _nsfwService.nsfwCooldownEnabled;
-  @Deprecated('Access via NsfwService directly')
-  int get cooldownTurnsRemaining => _nsfwService.cooldownTurnsRemaining;
-
-  // Chaos Mode (shims delegate to extracted service; UI coordination flags stay here)
-  @Deprecated('Access via ChaosModeService directly')
-  bool get chaosModeEnabled => _chaosModeService.chaosModeEnabled;
 
   /// Whether the per-session Needs (Sims-style) simulation is active.
   /// When true and `enjoysLowHygiene` is also true, low hygiene becomes desirable.
@@ -1817,20 +1783,7 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  /// Current need levels (e.g. {'hunger': 65, 'energy': 40, ...}) as an
-  /// unmodifiable map. Empty when [needsSimEnabled] is false.
-  ///
-  /// Exposed primarily for UI (the header bars) and internal prompt building.
-  /// Consumers should check [needsSimEnabled] before using the contents.
-  @Deprecated(
-    'Access via NeedsSimulation directly (or use the high-level needs* APIs)',
-  )
-  Map<String, int> get needsVector => _needsSimulation.vector;
-
   bool get chaosNsfwEnabled => _chaosModeService.chaosNsfwEnabled;
-
-  @Deprecated('Access via ChaosModeService directly')
-  int get chaosPressure => _chaosModeService.chaosPressure;
 
   /// Non-null for exactly one notification cycle. UI reads then calls clearChanceTimeEvent().
   String? get pendingChanceTimeEvent => _pendingChanceTimeEvent;
@@ -1839,13 +1792,7 @@ class ChatService extends ChangeNotifier {
   bool get chanceTimePendingTrigger => _chanceTimePendingTrigger;
 
   /// True when a chaos event is queued for the next response (blocks manual spin + auto-trigger).
-  @Deprecated('Access via ChaosModeService directly')
   bool get hasPendingChaosEvent => _chaosModeService.hasPendingChaosEvent;
-
-  /// Non-null when a needs catastrophe (e.g. accident, collapse) was just triggered by hitting 0.
-  /// The string is the mandatory narrative the AI must roleplay on the next turn.
-  @Deprecated('Access via NeedsSimulation directly')
-  String? get pendingNeedsCatastrophe => _needsSimulation.pendingCatastrophe;
 
   /// Whether arousal-driven needs suppression ("lust haze") is currently active.
   /// Other needs will read as less urgent (or be omitted) in the OOC prompt injection.
@@ -1865,61 +1812,7 @@ class ChatService extends ChangeNotifier {
   /// Called by the overlay once it has opened. Clears the auto-trigger flag.
   void consumeChanceTimeTrigger() => _chanceTimePendingTrigger = false;
 
-  @Deprecated('Access via NsfwService directly')
-  int get arousalLevel => _nsfwService.arousalLevel;
-  @Deprecated('Access via NsfwService directly')
-  int get arousalTier => _nsfwService.arousalTier;
-  @Deprecated('Access via NsfwService directly')
-  String get arousalTierName => _nsfwService.arousalTierName;
-
-  @Deprecated('Access via RelationshipService directly')
-  String get activeFixation => _relationshipService.activeFixation;
-
-  @Deprecated('Access via RelationshipService directly')
-  int get shortTermProgressTarget =>
-      _relationshipService.shortTermProgressTarget;
-
-  @Deprecated('Access via RelationshipService directly')
-  int get shortTermProgressBase => _relationshipService.shortTermProgressBase;
-
-  @Deprecated('Access via RelationshipService directly')
-  double get shortTermProgressPercent =>
-      _relationshipService.shortTermProgressPercent;
-
-  @Deprecated('Access via RelationshipService directly')
-  int get longTermProgressTarget => _relationshipService.longTermProgressTarget;
-
-  @Deprecated('Access via RelationshipService directly')
-  int get longTermProgressBase => _relationshipService.longTermProgressBase;
-
-  @Deprecated('Access via RelationshipService directly')
-  double get longTermProgressPercent =>
-      _relationshipService.longTermProgressPercent;
-
-  @Deprecated('Access via RelationshipService directly')
-  String get shortTermTierName => _relationshipService.shortTermTierName;
-
-  @Deprecated('Access via RelationshipService directly')
-  String get longTermTierName => _relationshipService.longTermTierName;
-
-  @Deprecated('Access via RelationshipService directly')
-  int get trustLevel => _relationshipService.trustLevel;
-  @Deprecated('Access via RelationshipService directly')
-  int get trustTier => _relationshipService.trustTier;
-  @Deprecated('Access via RelationshipService directly')
-  bool get pendingTrustRepair => _relationshipService.pendingTrustRepair;
-
-  @Deprecated('Access via RelationshipService directly')
-  String get trustTierName => _relationshipService.trustTierName;
-
-  @Deprecated('Access via RelationshipService directly')
-  int get trustProgressBase => _relationshipService.trustProgressBase;
-
-  @Deprecated('Access via RelationshipService directly')
-  int get trustProgressTarget => _relationshipService.trustProgressTarget;
-
-  @Deprecated('Access via RelationshipService directly')
-  double get trustProgressPercent => _relationshipService.trustProgressPercent;
+  // (nsfw/relationship long list of @Dep shims excised in final cleanup; use nsfwService / relationshipService)
 
   /// Human-readable mood label containing exact emotion string and valence direction.
   String get moodLabel {
@@ -1939,36 +1832,7 @@ class ChatService extends ChangeNotifier {
   /// When classification mode is 'onnx', uses the ONNX classifier result.
   /// Otherwise maps the nuanced emotion to a standard label
   /// using [EmotionLabels.nuancedToStandard].
-  @Deprecated('Access via ExpressionService directly')
-  String? get currentExpressionLabel =>
-      _expressionService.currentExpressionLabel;
-
-  // _reclassifyEmotionAsync fully moved to ExpressionService (internal to currentExpressionLabel ONNX/LLM paths).
-
-  // init + _classifyWithOnnxAsync fully moved to ExpressionService (called internally via currentExpressionLabel ONNX path).
-  // set kept as thin delegate for external wiring (main.dart) — see the declaration later in class.
-
-  /// Resolves the best matching expression avatar for the given character.
-  ///
-  /// Returns the [AvatarImage] to display, or null if no expression images
-  /// are available. Uses [currentExpressionLabel] for matching.
-  ///
-  /// If [rerollIfSame] is true and multiple avatars share the same label,
-  /// a random one is picked (avoiding the previously shown avatar).
-  @Deprecated('Access via ExpressionService directly')
-  AvatarImage? resolveExpressionAvatar(
-    CharacterCard character, {
-    bool rerollIfSame = false,
-  }) => _expressionService.resolveExpressionAvatar(
-    character,
-    rerollIfSame: rerollIfSame,
-  );
-
-  /// Manually set an expression label (e.g., from /expression-set command).
-  /// Pass null to clear the manual override and resume auto-detection.
-  @Deprecated('Access via ExpressionService directly')
-  void setManualExpression(String? label) =>
-      _expressionService.setManualExpression(label);
+  // (currentExpressionLabel / resolveExpressionAvatar / setManualExpression @Dep shims excised; use expressionService; main wiring note: update main if using the removed setExpressionClassifierService shim)
 
   void setAuthorNote(String note, {int? strength}) {
     _authorNote = note;
@@ -2067,7 +1931,6 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Set the ExpressionClassifierService after construction (for ONNX emotion classification).
-  @Deprecated('Access via ExpressionService directly')
   void setExpressionClassifierService(ExpressionClassifierService service) =>
       _expressionService.setExpressionClassifierService(service);
 
@@ -2250,7 +2113,7 @@ class ChatService extends ChangeNotifier {
             timeOfDay: ext.timeOfDay,
             passageOfTimeEnabled:
                 ext.passageOfTimeEnabled &&
-                _storageService.passageOfTimeDefault,
+                _storageService.realismSettings.passageOfTimeDefault,
           );
           _characterEmotion = ext.characterEmotion;
           _emotionIntensity = ext.emotionIntensity;
@@ -3200,7 +3063,7 @@ class ChatService extends ChangeNotifier {
       startDayOfWeek: lastSession.startDayOfWeek,
       passageOfTimeEnabled:
           lastSession.passageOfTimeEnabled &&
-          _storageService.passageOfTimeDefault,
+          _storageService.realismSettings.passageOfTimeDefault,
     );
     _nsfwService.loadNsfwScalars(
       nsfwCooldownEnabled: lastSession.nsfwCooldownEnabled,
@@ -3528,7 +3391,7 @@ class ChatService extends ChangeNotifier {
         startDayOfWeek: session.startDayOfWeek,
         passageOfTimeEnabled:
             session.passageOfTimeEnabled &&
-            _storageService.passageOfTimeDefault,
+            _storageService.realismSettings.passageOfTimeDefault,
       );
       _nsfwService.loadNsfwScalars(
         nsfwCooldownEnabled: session.nsfwCooldownEnabled,
@@ -3918,7 +3781,7 @@ class ChatService extends ChangeNotifier {
         timeOfDay: extSeed.timeOfDay,
         passageOfTimeEnabled:
             extSeed.passageOfTimeEnabled &&
-            _storageService.passageOfTimeDefault,
+            _storageService.realismSettings.passageOfTimeDefault,
       );
       _characterEmotion = extSeed.characterEmotion;
       _emotionIntensity = extSeed.emotionIntensity;
@@ -4168,7 +4031,7 @@ class ChatService extends ChangeNotifier {
     _isProcessingGreeting = true; // reuse the greeting overlay
     notifyListeners();
     try {
-      if (_storageService.realismOneShotEval) {
+      if (_storageService.realismSettings.realismOneShotEval) {
         await _evaluateOneShotCall(); // step 10 thin (full in realism_evals)
 
         // Check for cancellation after one-shot eval
@@ -4279,14 +4142,14 @@ class ChatService extends ChangeNotifier {
         case 'expression':
           if (args.isNotEmpty) {
             final label = args.toLowerCase();
-            setManualExpression(label);
+            _expressionService.setManualExpression(label);
           } else {
-            setManualExpression(null);
+            _expressionService.setManualExpression(null);
           }
           return;
 
         case 'expression-clear':
-          setManualExpression(null);
+          _expressionService.setManualExpression(null);
           return;
 
         default:
@@ -4440,7 +4303,7 @@ class ChatService extends ChangeNotifier {
         }
       } else {
         // Fire all evals concurrently.
-        if (_storageService.realismOneShotEval) {
+        if (_storageService.realismSettings.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           await Future.wait([
@@ -4781,7 +4644,7 @@ class ChatService extends ChangeNotifier {
               Map<String, int>.from(_needsSimulation.vector);
         }
 
-        if (_storageService.realismOneShotEval) {
+        if (_storageService.realismSettings.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           await Future.wait([
@@ -4986,8 +4849,8 @@ class ChatService extends ChangeNotifier {
             : defaultGroupSystemPrompt;
       } else if (speakingCharacter.systemPrompt.isNotEmpty) {
         systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.systemPrompt.isNotEmpty) {
-        systemPrompt = _storageService.systemPrompt;
+      } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
+        systemPrompt = _storageService.generationSettings.systemPrompt;
       } else {
         final isApi = _llmProvider != null && !_llmProvider!.isLocal;
         systemPrompt = isApi
@@ -5417,8 +5280,8 @@ class ChatService extends ChangeNotifier {
             : defaultGroupSystemPrompt;
       } else if (speakingCharacter.systemPrompt.isNotEmpty) {
         systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.systemPrompt.isNotEmpty) {
-        systemPrompt = _storageService.systemPrompt;
+      } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
+        systemPrompt = _storageService.generationSettings.systemPrompt;
       } else {
         final isApi = _llmProvider != null && !_llmProvider!.isLocal;
         systemPrompt = isApi
@@ -5443,9 +5306,10 @@ class ChatService extends ChangeNotifier {
       }
 
       // In call mode, inject voice-specific instructions for natural conversation
-      if (_callMode && _storageService.callSystemPrompt.isNotEmpty) {
+      if (_callMode &&
+          _storageService.sttSettings.callSystemPrompt.isNotEmpty) {
         systemPrompt +=
-            '\n\n[Voice Call Mode] ${_storageService.callSystemPrompt}';
+            '\n\n[Voice Call Mode] ${_storageService.sttSettings.callSystemPrompt}';
       }
 
       // Build Lorebook content (group + per-character, respecting inherit + group worlds)
@@ -5743,7 +5607,7 @@ class ChatService extends ChangeNotifier {
 
       final effectiveRagEnabled = _activeGroup != null
           ? groupRagEnabled
-          : _storageService.ragEnabled;
+          : _storageService.memorySettings.ragEnabled;
 
       if (_isNewChat) {
         debugPrint(
@@ -5781,7 +5645,7 @@ class ChatService extends ChangeNotifier {
             // supplements with specific details the summary missed. Too much
             // RAG (2500+ tokens) overwhelms the model and causes it to
             // reference stale events as if they're current ("going back in time").
-            final contextSize = _storageService.contextSize;
+            final contextSize = _storageService.backendSettings.contextSize;
             final budgetFraction = _activeGroup != null
                 ? (groupMemoryBudgetPercent / 100.0)
                 : 0.10;
@@ -5813,7 +5677,8 @@ class ChatService extends ChangeNotifier {
         } catch (e) {
           debugPrint('[RAG:Chat] ✗ RAG retrieval failed: $e');
         }
-      } else if (droppedMessages > 0 && _storageService.ragEnabled) {
+      } else if (droppedMessages > 0 &&
+          _storageService.memorySettings.ragEnabled) {
         debugPrint(
           '[RAG:Chat] ⚠ $droppedMessages messages dropped but RAG not operational (service=${_memoryService != null}, operational=${_memoryService?.isOperational ?? false})',
         );
@@ -5911,12 +5776,12 @@ class ChatService extends ChangeNotifier {
 
       // For call mode with a dedicated call model, temporarily swap the model
       if (_callMode &&
-          _storageService.callModelName.isNotEmpty &&
+          _storageService.sttSettings.callModelName.isNotEmpty &&
           _llmProvider != null &&
           !_llmProvider!.isLocal) {
         _originalModelName = _llmProvider!.openRouterService.modelName;
         _llmProvider!.openRouterService.configure(
-          modelName: _storageService.callModelName,
+          modelName: _storageService.sttSettings.callModelName,
         );
       }
 
@@ -6058,8 +5923,8 @@ class ChatService extends ChangeNotifier {
       final isRemoteBackend = _llmProvider != null && !_llmProvider!.isLocal;
       final bufferEnabled = isRemoteBackend
           ? false
-          : _storageService.displayBufferEnabled;
-      final targetTps = _storageService.targetDisplayTps;
+          : _storageService.uiSettings.displayBufferEnabled;
+      final targetTps = _storageService.uiSettings.targetDisplayTps;
 
       // Drain timer: displays tokens at the user-configured constant rate
       void _startDrainTimer() {
@@ -6237,7 +6102,8 @@ class ChatService extends ChangeNotifier {
           if (_drainTimer == null && _tokensGenerated >= 10) {
             // Not yet draining — calculate when to start
             // Buffer target = how many tokens fill the configured duration
-            final bufferDuration = _storageService.bufferDurationSeconds;
+            final bufferDuration =
+                _storageService.uiSettings.bufferDurationSeconds;
             int bufferTarget;
             if (currentTps > 0) {
               bufferTarget = (currentTps * bufferDuration).round().clamp(
@@ -6460,8 +6326,8 @@ class ChatService extends ChangeNotifier {
 
         // TTS auto-play: speak the new character message automatically
         if (_ttsService != null &&
-            _storageService.ttsEnabled &&
-            _storageService.ttsAutoPlay &&
+            _storageService.ttsSettings.ttsEnabled &&
+            _storageService.ttsSettings.ttsAutoPlay &&
             _messages.isNotEmpty &&
             !_messages.last.isUser) {
           final lastMsg = _messages.last;
@@ -6796,7 +6662,7 @@ class ChatService extends ChangeNotifier {
   // Thin delegation / coord (cadence count + guards here; full _generate + prompt/RAG/strip
   // in summary_service step 12; "thin delegation here; full summary in step 12").
   void _maybeUpdateSummary() {
-    if (!_storageService.summaryEnabled) return;
+    if (!_storageService.memorySettings.summaryEnabled) return;
     if (_summaryPaused) return;
     if (_isSummaryGenerating) return;
     if (_llmProvider == null) return;
@@ -6807,7 +6673,8 @@ class ChatService extends ChangeNotifier {
       if (_messages[i].isUser) userMessagesSinceSummary++;
     }
 
-    if (userMessagesSinceSummary >= _storageService.summaryInterval) {
+    if (userMessagesSinceSummary >=
+        _storageService.memorySettings.summaryInterval) {
       // Fire and forget — don't await
       _generateSummaryInBackground();
     }
@@ -6817,9 +6684,10 @@ class ChatService extends ChangeNotifier {
   /// Called after each generation completes. Only embeds new windows that
   /// haven't been embedded yet.
   void _maybeEmbedMessages() {
-    if (_memoryService == null || !_storageService.ragEnabled) return;
+    if (_memoryService == null || !_storageService.memorySettings.ragEnabled)
+      return;
     if (_currentSessionId == null) return;
-    if (_messages.length < _storageService.ragWindowSize) return;
+    if (_messages.length < _storageService.memorySettings.ragWindowSize) return;
 
     final characterId = _getCharacterId();
 
@@ -7307,8 +7175,9 @@ class ChatService extends ChangeNotifier {
   // evolution trigger in evolution_service step 14 ("thin delegation here; full character
   // evolution in step 14")).
   void _maybeRunPeriodicEvals() {
-    final autoPersona = _storageService.autoPersonaEnabled;
-    final autoEvolution = _storageService.characterEvolutionEnabled;
+    final autoPersona = _storageService.memorySettings.autoPersonaEnabled;
+    final autoEvolution =
+        _storageService.memorySettings.characterEvolutionEnabled;
     if (!autoPersona && !autoEvolution) return;
     if (_llmProvider == null) return;
     if (_isExtractingFacts || _isEvolvingCharacter) return;
@@ -7320,13 +7189,13 @@ class ChatService extends ChangeNotifier {
 
     _userMessagesSinceLastPeriodicEval++;
     if (_userMessagesSinceLastPeriodicEval <
-        _storageService.autoPersonaInterval) {
+        _storageService.memorySettings.autoPersonaInterval) {
       return;
     }
     _userMessagesSinceLastPeriodicEval = 0;
 
     debugPrint(
-      '[Periodic] ▶ Triggering periodic evals (every ${_storageService.autoPersonaInterval} user messages)',
+      '[Periodic] ▶ Triggering periodic evals (every ${_storageService.memorySettings.autoPersonaInterval} user messages)',
     );
     _runPeriodicEvalsInSequence();
   }
@@ -7339,12 +7208,12 @@ class ChatService extends ChangeNotifier {
   // full character evolution in step 14").
   Future<void> _runPeriodicEvalsInSequence() async {
     // Step 1: Extract user facts
-    if (_storageService.autoPersonaEnabled) {
+    if (_storageService.memorySettings.autoPersonaEnabled) {
       debugPrint('[Periodic] Step 1/2: Extracting user facts...');
       await _extractFactsInBackground();
     }
     // Step 2: Evolve character
-    if (_storageService.characterEvolutionEnabled) {
+    if (_storageService.memorySettings.characterEvolutionEnabled) {
       debugPrint('[Periodic] Step 2/2: Evolving character...');
       _triggerCharacterEvolution();
     }
@@ -8008,7 +7877,7 @@ class ChatService extends ChangeNotifier {
         return;
       }
 
-      if (_storageService.realismOneShotEval) {
+      if (_storageService.realismSettings.realismOneShotEval) {
         await _evaluateOneShotCall(onChunk: handleChunk);
       } else {
         await Future.wait([
@@ -8447,7 +8316,6 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  @Deprecated('Access via TimeService directly')
   Future<void> setPassageOfTimeEnabled(bool enabled) async {
     _timeService.setPassageOfTimeEnabled(enabled);
     await _saveChat();

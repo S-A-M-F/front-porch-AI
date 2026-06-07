@@ -25,12 +25,12 @@ class ChaosModeSection extends StatelessWidget {
   Color get _pressureColor => Color.lerp(
     const Color(0xFF2EC4B6),
     const Color(0xFFE63946),
-    (chat.chaosPressure / 100).clamp(0.0, 1.0),
+    (chat.chaosModeService.chaosPressure / 100).clamp(0.0, 1.0),
   )!;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = chat.chaosModeEnabled
+    final borderColor = chat.chaosModeService.chaosModeEnabled
         ? _pressureColor.withValues(alpha: 0.5)
         : AppColors.borderOf(context).withValues(alpha: 0.3);
 
@@ -44,13 +44,13 @@ class ChaosModeSection extends StatelessWidget {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          initiallyExpanded: chat.chaosModeEnabled,
+          initiallyExpanded: chat.chaosModeService.chaosModeEnabled,
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
           leading: Text(
             '🎰',
             style: TextStyle(
               fontSize: 16,
-              shadows: chat.chaosModeEnabled
+              shadows: chat.chaosModeService.chaosModeEnabled
                   ? [Shadow(color: _pressureColor, blurRadius: 10)]
                   : null,
             ),
@@ -67,8 +67,8 @@ class ChaosModeSection extends StatelessWidget {
               ),
               const Spacer(),
               Switch(
-                value: chat.chaosModeEnabled,
-                onChanged: (v) => chat.setChaosModeEnabled(v),
+                value: chat.chaosModeService.chaosModeEnabled,
+                onChanged: (v) => chat.chaosModeService.setModeEnabled(v),
                 activeThumbColor: AppColors.resolve(
                   context,
                   const Color(0xFFFFD166),
@@ -94,7 +94,7 @@ class ChaosModeSection extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Pressure: ${chat.chaosPressure}%',
+                        'Pressure: ${chat.chaosModeService.chaosPressure}%',
                         style: TextStyle(
                           fontSize: 11,
                           color: _pressureColor,
@@ -107,7 +107,10 @@ class ChaosModeSection extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(3),
                     child: LinearProgressIndicator(
-                      value: (chat.chaosPressure / 100).clamp(0.0, 1.0),
+                      value: (chat.chaosModeService.chaosPressure / 100).clamp(
+                        0.0,
+                        1.0,
+                      ),
                       minHeight: 5,
                       backgroundColor: AppColors.borderOf(
                         context,
@@ -135,7 +138,8 @@ class ChaosModeSection extends StatelessWidget {
                         height: 24,
                         child: Switch(
                           value: chat.chaosNsfwEnabled,
-                          onChanged: (v) => chat.setChaosNsfwEnabled(v),
+                          onChanged: (v) =>
+                              chat.chaosModeService.setNsfwEnabled(v),
                           activeThumbColor: AppColors.resolve(
                             context,
                             const Color(0xFFFF6B9D),
@@ -149,15 +153,19 @@ class ChaosModeSection extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   GestureDetector(
-                    onTap: chat.hasPendingChaosEvent ? null : onSpinRequested,
+                    onTap: chat.chaosModeService.hasPendingChaosEvent
+                        ? null
+                        : onSpinRequested,
                     child: Opacity(
-                      opacity: chat.hasPendingChaosEvent ? 0.4 : 1.0,
+                      opacity: chat.chaosModeService.hasPendingChaosEvent
+                          ? 0.4
+                          : 1.0,
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 9),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: chat.hasPendingChaosEvent
+                            colors: chat.chaosModeService.hasPendingChaosEvent
                                 ? [
                                     AppColors.surfaceContainerOf(context),
                                     AppColors.cardOf(context),
@@ -168,14 +176,14 @@ class ChaosModeSection extends StatelessWidget {
                                   ],
                           ),
                           borderRadius: BorderRadius.circular(8),
-                          border: chat.hasPendingChaosEvent
+                          border: chat.chaosModeService.hasPendingChaosEvent
                               ? Border.all(
                                   color: AppColors.borderOf(
                                     context,
                                   ).withValues(alpha: 0.3),
                                 )
                               : null,
-                          boxShadow: chat.hasPendingChaosEvent
+                          boxShadow: chat.chaosModeService.hasPendingChaosEvent
                               ? []
                               : [
                                   BoxShadow(
@@ -190,18 +198,21 @@ class ChaosModeSection extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              chat.hasPendingChaosEvent ? '⏳' : '🎰',
+                              chat.chaosModeService.hasPendingChaosEvent
+                                  ? '⏳'
+                                  : '🎰',
                               style: const TextStyle(fontSize: 14),
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              chat.hasPendingChaosEvent
+                              chat.chaosModeService.hasPendingChaosEvent
                                   ? 'EVENT PENDING'
                                   : 'SPIN NOW',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w900,
-                                color: chat.hasPendingChaosEvent
+                                color:
+                                    chat.chaosModeService.hasPendingChaosEvent
                                     ? AppColors.textTertiary(context)
                                     : const Color(0xFF1A1200),
                                 letterSpacing: 1.5,

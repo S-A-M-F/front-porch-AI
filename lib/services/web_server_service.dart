@@ -1648,12 +1648,12 @@ class WebServerService extends ChangeNotifier {
       return shelf.Response.ok(
         jsonEncode({
           // General
-          'systemPrompt': s.systemPrompt,
-          'textScale': s.textScale,
+          'systemPrompt': s.generationSettings.systemPrompt,
+          'textScale': s.uiSettings.textScale,
           // TTS
-          'ttsEnabled': s.ttsEnabled,
-          'ttsEngine': s.ttsEngine,
-          'ttsVoice': s.ttsVoiceModel,
+          'ttsEnabled': s.ttsSettings.ttsEnabled,
+          'ttsEngine': s.ttsSettings.ttsEngine,
+          'ttsVoice': s.ttsSettings.ttsVoiceModel,
           'ttsSpeechRate': s.ttsSpeechRate,
           'ttsAutoPlay': s.ttsAutoPlay,
           'ttsConcurrency': s.ttsConcurrency,
@@ -1675,7 +1675,7 @@ class WebServerService extends ChangeNotifier {
                     .toList()
               : [],
           // Image Gen
-          'imageGenEnabled': s.imageGenEnabled,
+          'imageGenEnabled': s.imageGenSettings.imageGenEnabled,
           'imageGenModel': s.imageGenModel,
           'imageGenBackend': s.imageGenBackend,
           'localImageGenUrl': s.localImageGenUrl,
@@ -1692,36 +1692,36 @@ class WebServerService extends ChangeNotifier {
           'drawThingsTeaCache': s.drawThingsTeaCache,
           'drawThingsCfgZeroStar': s.drawThingsCfgZeroStar,
           // Samplers
-          'temperature': s.temperature,
-          'minP': s.minP,
-          'maxTokens': s.maxLength,
-          'minTokens': s.minLength,
-          'repetitionPenalty': s.repeatPenalty,
-          'repeatPenaltyTokens': s.repeatPenaltyTokens,
-          'xtcThreshold': s.xtcThreshold,
-          'xtcProbability': s.xtcProbability,
-          'contextSize': s.contextSize,
-          'dynamicTempEnabled': s.dynamicTempEnabled,
-          'dynamicTempRange': s.dynamicTempRange,
-          'stopSequences': s.stopSequences,
+          'temperature': s.generationSettings.temperature,
+          'minP': s.generationSettings.minP,
+          'maxTokens': s.generationSettings.maxLength,
+          'minTokens': s.generationSettings.minLength,
+          'repetitionPenalty': s.generationSettings.repeatPenalty,
+          'repeatPenaltyTokens': s.generationSettings.repeatPenaltyTokens,
+          'xtcThreshold': s.generationSettings.xtcThreshold,
+          'xtcProbability': s.generationSettings.xtcProbability,
+          'contextSize': s.backendSettings.contextSize,
+          'dynamicTempEnabled': s.generationSettings.dynamicTempEnabled,
+          'dynamicTempRange': s.generationSettings.dynamicTempRange,
+          'stopSequences': s.generationSettings.stopSequences,
           // Backend / API — prefer runtime values from LLMProvider
-          'activeBackend': s.backendType,
-          'apiKey': s.remoteApiKey.isNotEmpty
-              ? '••••${s.remoteApiKey.length > 4 ? s.remoteApiKey.substring(s.remoteApiKey.length - 4) : ''}'
+          'activeBackend': s.backendSettings.backendType,
+          'apiKey': s.backendSettings.remoteApiKey.isNotEmpty
+              ? '••••${s.backendSettings.remoteApiKey.length > 4 ? s.backendSettings.remoteApiKey.substring(s.backendSettings.remoteApiKey.length - 4) : ''}'
               : '',
-          'apiKeySet': s.remoteApiKey.isNotEmpty,
+          'apiKeySet': s.backendSettings.remoteApiKey.isNotEmpty,
           'apiModel':
               _llmProvider?.openRouterService.modelName.isNotEmpty == true
               ? _llmProvider!.openRouterService.modelName
-              : s.remoteModelName,
-          'apiUrl': s.remoteApiUrl,
+              : s.backendSettings.remoteModelName,
+          'apiUrl': s.backendSettings.remoteApiUrl,
           // Reasoning
-          'reasoningEnabled': s.reasoningEnabled,
+          'reasoningEnabled': s.backendSettings.reasoningEnabled,
           'reasoningEffort': s.reasoningEffort,
           // Web server
-          'webServerPort': s.webServerPort,
-          'webServerEnabled': s.webServerEnabled,
-          'webServerPin': s.webServerPin,
+          'webServerPort': s.webServerSettings.webServerPort,
+          'webServerEnabled': s.webServerSettings.webServerEnabled,
+          'webServerPin': s.webServerSettings.webServerPin,
           // Backend runtime state
           'koboldRunning': _llmProvider?.koboldService.isRunning ?? false,
           'koboldReady': _llmProvider?.koboldService.isReady ?? false,
@@ -1861,14 +1861,14 @@ class WebServerService extends ChangeNotifier {
       await kobold.startKobold(
         execPath,
         modelPath,
-        kcppsPath: s.activeKcppsPath,
+        kcppsPath: s.backendSettings.activeKcppsPath,
         port: 5001,
-        gpuLayers: s.gpuLayers,
-        contextSize: s.contextSize,
-        useVulkan: s.useVulkan ?? false,
-        useCublas: s.useCublas ?? false,
-        useMetal: s.useMetal ?? false,
-        useRocm: s.useRocm ?? false,
+        gpuLayers: s.backendSettings.gpuLayers,
+        contextSize: s.backendSettings.contextSize,
+        useVulkan: s.backendSettings.useVulkan ?? false,
+        useCublas: s.backendSettings.useCublas ?? false,
+        useMetal: s.backendSettings.useMetal ?? false,
+        useRocm: s.backendSettings.useRocm ?? false,
       );
 
       // Save as last used model
@@ -1915,7 +1915,9 @@ class WebServerService extends ChangeNotifier {
 
       // General
       if (body.containsKey('systemPrompt')) {
-        await s.setSystemPrompt(body['systemPrompt'].toString());
+        await s.generationSettings.setSystemPrompt(
+          body['systemPrompt'].toString(),
+        );
       }
       if (body.containsKey('textScale')) {
         await s.setTextScale((body['textScale'] as num).toDouble());
@@ -1923,7 +1925,7 @@ class WebServerService extends ChangeNotifier {
 
       // TTS
       if (body.containsKey('ttsEnabled')) {
-        await s.setTtsEnabled(body['ttsEnabled'] as bool);
+        await s.ttsSettings.setTtsEnabled(body['ttsEnabled'] as bool);
       }
       if (body.containsKey('ttsEngine')) {
         await s.setTtsEngine(body['ttsEngine'].toString());
@@ -2031,10 +2033,12 @@ class WebServerService extends ChangeNotifier {
 
       // Samplers
       if (body.containsKey('temperature')) {
-        await s.setTemperature((body['temperature'] as num).toDouble());
+        await s.generationSettings.setTemperature(
+          (body['temperature'] as num).toDouble(),
+        );
       }
       if (body.containsKey('minP')) {
-        await s.setMinP((body['minP'] as num).toDouble());
+        await s.generationSettings.setMinP((body['minP'] as num).toDouble());
       }
       if (body.containsKey('maxTokens')) {
         await s.setMaxLength((body['maxTokens'] as num).toInt());
@@ -2057,7 +2061,9 @@ class WebServerService extends ChangeNotifier {
         await s.setXtcProbability((body['xtcProbability'] as num).toDouble());
       }
       if (body.containsKey('contextSize')) {
-        await s.setContextSize((body['contextSize'] as num).toInt());
+        await s.backendSettings.setContextSize(
+          (body['contextSize'] as num).toInt(),
+        );
       }
       if (body.containsKey('dynamicTempEnabled')) {
         await s.setDynamicTempEnabled(body['dynamicTempEnabled'] as bool);
