@@ -1,14 +1,49 @@
 # God File Refactoring Guide
 
+> **Important (2026-06)**: Structural refactoring is done **first**. Full Riverpod migration happens **after** the god files have been broken apart. This separation significantly reduces risk. See the "Riverpod Migration After Refactoring" section at the bottom of this document.
+
+## Safe Experimentation & Escape Hatches (Critical)
+
+**Never do this work directly on your main `Rawhide` checkout.**
+
+Recommended safe workflow:
+
+```bash
+# From the root of the repo
+git worktree add ../front-porch-riverpod-refactor -b riverpod-refactor-experiment
+
+cd ../front-porch-riverpod-refactor
+# All dangerous refactoring + Riverpod conversion happens here
+
+# When you want to throw it away completely:
+cd ..
+rm -rf front-porch-riverpod-refactor
+git worktree prune
+```
+
+**Benefits of this approach:**
+- Completely isolated working directory and IDE instance.
+- You can run `flutter run -d macos`, full test suites, and `flutter analyze` without affecting your daily driver Rawhide branch.
+- If things go sideways, you can nuke the entire experiment in seconds with zero risk to your main work.
+- You can still push the experiment branch (`git push -u origin riverpod-refactor-experiment`) for review or CI runs without polluting Rawhide.
+
+Alternative lighter options (if you don't want worktrees):
+- Create a normal branch: `git checkout -b riverpod-refactor-experiment`
+- Commit very frequently with clear messages.
+- Use `git stash` aggressively before pulling latest Rawhide.
+
+**Rule**: If a day of work on the experiment branch feels like it's making things worse, delete the worktree/branch and start fresh with smaller scope. There is no sunk cost.
+
 ## Guiding Principles
 
 1. **Never refactor and add features simultaneously** — each PR does one thing.
-2. **Extract, don't rewrite** — pure mechanical moves, no behavioural changes.
-3. **Each stage is independently mergeable** — no half-broken main.
+2. **Extract, don't rewrite** — pure mechanical moves with no behavioral changes during the structural phase.
+3. **Each stage is independently mergeable and testable** — no half-broken main.
 4. **Keep imports compiling at every commit** — remove old file only after all references are updated.
-5. **One god file per stage** — never split two files in the same PR.
-6. **No Riverpod migration during extraction** — keep `ChangeNotifier`/`Provider` pattern. Refactor structure first, migrate state management later.
-7. **No file stem collides with a folder name** — e.g. no `chat_service.dart` sitting next to a `chat/` directory. New folders use distinct names where needed.
+5. **One god file per major stage** — keep scope manageable.
+6. **Structure first, Riverpod later** — Complete the god file refactoring using the existing `ChangeNotifier` / `Provider` patterns. Full Riverpod migration is a separate effort that begins only after the major extractions are done (see final section).
+7. **No file stem collides with a folder name**.
+8. **Tests are mandatory and first-class** — Every extraction PR must include or significantly expand automated tests. The goal is to reach a point where the vast majority of user-facing behavior is covered by tests so manual verification is minimized or eliminated.
 
 ## Name Conflict Map
 
@@ -22,6 +57,63 @@ Before creating any new directory, verify there is no existing file (minus exten
 | `lib/ui/settings/` | `settings_page.dart` — different stem | Yes |
 | `lib/services/web_server/` | `web_server_service.dart` — different stem | Yes |
 | `lib/services/storage/` | `storage_service.dart` — different stem | Yes |
+
+## Testing Requirements (Mandatory for Every Stage)
+
+The explicit goal of the testing strategy in this plan is to reach a point where **most user-facing features do not require manual verification** after each refactoring PR.
+
+Every PR that touches god file logic **must** add or meaningfully expand automated tests. Pure mechanical extractions with zero new test coverage are not acceptable.
+
+### Core Testing Philosophy
+
+- **Behavior preservation is the #1 priority.** Extracted code must behave identically to the original.
+- **Focus test effort on high-value, high-risk areas first**: Realism Engine, Needs simulation, Chaos Mode, Group chat behavior, Character Creator flows, and Settings persistence.
+- **Use existing test infrastructure** where it exists (especially the realism engine test suite).
+- **Layered testing**: Unit tests for new services + integration tests that exercise the public surface of `ChatService` / `ChatPage`.
+
+### Minimum Test Deliverables per Stage
+
+**Stage 1 (Models)**
+- Unit tests for `ChatMessage` serialization/deserialization and any helper methods moved with it.
+
+**Stage 2 (UI Widgets from chat_page.dart)**
+- Widget tests for every extracted major component (sidebar sections, message bubbles, overlays, etc.).
+- At least some golden tests or screenshot-style verification for complex visual components (especially sidebar sections and realism-related UI).
+- Tests that verify the widgets still receive the correct data when used inside the real `ChatPage`.
+
+**Stage 3 (Domain Services from chat_service.dart) — Highest Test Priority**
+- Each extracted service must have its own test file.
+- **Critical areas that must have strong test coverage**:
+  - Needs decay, stepping, catastrophe, and post-climax logic
+  - Chaos Mode / Chance Time triggering and event selection
+  - Realism evaluation paths (bond, trust, emotion, fixation, one-shot)
+  - Time progression and day-of-week logic
+  - Lorebook injection / keyword matching
+  - Objective system
+  - Summary and fact extraction
+- Use the existing `chat_service_realism_engine_test.dart` pattern as a model. Extend it rather than duplicating.
+- After each major service extraction, run the full realism + group chat test suites.
+
+**Stage 4 (Character Creator)**
+- End-to-end tests for all three creation modes (Quick, Guided, Automated).
+- Tests covering realism baseline seeding during creation.
+- Tests for the review step (especially avatar and card editing).
+
+**Stage 5 (Settings)**
+- Tests for settings persistence (read on load, write on change, survive restart).
+- Per-tab behavior tests where the tab contains non-trivial logic.
+
+**Stages 6 & 7**
+- Appropriate unit tests for the extracted handlers and settings objects.
+
+### General Rules
+
+- New services should be easy to instantiate in tests (avoid hard global dependencies).
+- Prefer constructor injection or small factory functions over `Provider.of` inside the extracted classes during the structural phase.
+- Every PR description must include a "Testing" section that lists what new or updated tests were added.
+- If a PR cannot include good tests for a piece of logic (rare), it must be explicitly justified and a follow-up test PR created.
+
+**Target State**: After all seven stages, a developer should be able to make structural changes to these areas with high confidence that automated tests will catch behavioral regressions in chat, realism, needs, group chat, and creator flows. Manual testing should be limited to visual polish and brand-new features.
 
 ## Deprecation Shim Pattern
 
@@ -37,17 +129,17 @@ This makes extraction a **pure additive change** — nothing breaks, nothing mov
 
 ## Extraction Priority Order (file-by-file)
 
-The order below maximises early wins (reducing the largest files first) while keeping risk low:
+The order below maximises early wins (reducing the largest files first) while keeping risk low. All stages use the existing `ChangeNotifier` / `Provider` architecture. Riverpod conversion is deliberately deferred (see final section).
 
-| Stage | God file | Lines | New location | Strategy |
-|---|---|---|---|---|
-| 1 | `chat_service.dart` — enums + model | 11.3K | `lib/models/chat_message.dart` | Lift top-level declarations only |
-| 2 | `chat_page.dart` — sidebar sections | 11.1K | `lib/ui/chat_components/` | One widget per file, public rename |
-| 3 | `chat_service.dart` — domain services | 11.3K | `lib/services/chat/` | Plain class extraction, not ChangeNotifier |
-| 4 | `character_creator_page.dart` — steps | 7.8K | `lib/ui/character_creator/` | State object + step widgets |
-| 5 | `settings_page.dart` — tabs | 5.9K | `lib/ui/settings/` | Tab files + dialog files |
-| 6 | `web_server_service.dart` — route handlers | 5.3K | `lib/services/web_server/` | Handler classes per route group |
-| 7 | `storage_service.dart` — domain settings | 1.9K | `lib/services/storage/` | Plain settings classes |
+| Stage | God file | ~Lines | New location | Strategy | Test Requirements |
+|-------|----------|--------|--------------|----------|-------------------|
+| 1 | `chat_service.dart` — enums + model | 12.6K | `lib/models/chat_message.dart` | Lift top-level declarations only | Unit tests for any serialization / logic |
+| 2 | `chat_page.dart` — sidebar sections | 12K | `lib/ui/chat_components/` | One widget per file | Widget tests for extracted components (focus on sidebar sections, overlays, bubbles) |
+| 3 | `chat_service.dart` — domain services | 12.6K | `lib/services/chat/` | Plain class extraction (still ChangeNotifier-based) | **High priority**: Unit + integration tests, especially realism, needs, chaos, objectives |
+| 4 | `character_creator_page.dart` — steps | 8K | `lib/ui/character_creator/` | State object + step widgets | Full creator flow tests (all paths: Quick/Guided/Auto) |
+| 5 | `settings_page.dart` — tabs | 6K | `lib/ui/settings/` | Tab files + dialog files | Settings persistence + tab-specific behavior tests |
+| 6 | `web_server_service.dart` — route handlers | 5.8K | `lib/services/web_server/` | Handler classes per route group | Route handler unit tests |
+| 7 | `storage_service.dart` — domain settings | 1.9K | `lib/services/storage/` | Plain settings classes | Settings read/write roundtrip tests |
 
 ---
 
@@ -127,9 +219,17 @@ After all widgets are extracted:
 
 ---
 
-## Stage 3: Split `chat_service.dart` into domain services
+## Stage 3: Split `chat_service.dart` into domain services (Highest Risk Structural Stage)
 
-**Critical rule:** Each extracted service is a **plain Dart class**, not a `ChangeNotifier`. `ChatService` continues to own instances of them via private fields and delegates to them. This avoids provider tree churn and stale-snapshot bugs.
+This is the most consequential structural stage. We are breaking apart the largest god class in the app while preserving all existing behavior.
+
+**Important**: All work in this stage must stay within the current `ChangeNotifier` / `Provider` architecture. Riverpod conversion of these services happens **after** Stage 7 is complete (see the Riverpod section at the end of this document).
+
+**Do not attempt this as a single PR.** Break it into multiple focused PRs.
+
+### Critical Rule for Stage 3
+
+Each extracted service must be a **plain Dart class** (or small set of classes). `ChatService` continues to own instances of them via private fields and delegates to them. This keeps the provider tree stable during the risky extraction phase.
 
 ### Directory layout
 
@@ -160,9 +260,9 @@ lib/services/chat/
 └── evolution_service.dart     ← trigger, extract, reset character evolution
 ```
 
-### Extraction order
+### Recommended Sub-Stage Order + Testing Focus
 
-Extract **leaf dependencies first** (no references to other extracted code), then work upward:
+Extract **leaf dependencies first** (services with the fewest internal dependencies).
 
 | Order | File | Depends on |
 |---|---|---|
@@ -182,6 +282,17 @@ Extract **leaf dependencies first** (no references to other extracted code), the
 | 13 | `fact_extraction.dart` | llm_eval_engine |
 | 14 | `evolution_service.dart` | llm_eval_engine |
 | 15 | Refactor remaining `ChatService` | all of the above | (completed: audit + pure cleanup of god orchestration/_groupRealism/core flows (no new leaf/extraction to preserve exactly 15 void _ thins+coord surface per plan/CLAUDE); dead/obsolete comment removal; thin consistency; full Step 15 record + gates in docs/refactor-god-file-modularization.md) |
+
+For each extracted service in this stage:
+
+1. Create the new plain class(es).
+2. Add comprehensive unit + integration tests (especially for realism, needs, and chaos logic).
+3. Wire the new class into `ChatService` (usually via constructor or late final).
+4. Add `@Deprecated` forwarding shims on `ChatService` for any public API that moved.
+5. Run the full realism engine test suite + manual smoke test of 1:1 and group chats.
+6. Only then move to the next service.
+
+**Strong recommendation**: After extracting Needs + Chaos + Relationships (the first three), pause for a serious round of integration testing and manual verification of realism and group chat behavior before continuing. Stage 3 is where most behavioral risk lives.
 
 ### Extraction pattern (per commit)
 
@@ -366,8 +477,9 @@ If a PR introduces regressions:
 ## Verification Checklist (every PR)
 
 - [ ] `flutter analyze` — zero warnings (new or existing).
-- [ ] `flutter test` — all existing tests pass.
-- [ ] Manual smoke test of the affected page (e.g. after sidebar section extraction, verify chat page opens, sidebar toggles, all sections render).
+- [ ] `flutter test` — all existing tests pass (especially realism engine and group chat tests).
+- [ ] New or expanded tests were added for the extracted logic.
+- [ ] Manual smoke test of the affected flows (chat, realism, needs, group chat, creator).
 - [ ] No new files added to `lib/services/services.dart` barrel unless they are used from 3+ locations.
 - [ ] No state-management pattern change (still `ChangeNotifier`, not Riverpod).
 - [ ] Old API preserved via `@Deprecated` shim where callers exist outside the extracted file.
@@ -382,3 +494,34 @@ During the god-file refactoring on `stage1-experiment`, a dedicated cleanup elim
 - use_null_aware_elements and Radio deprecations left as wontfix (non-straightforward or would alter structure/prompt fidelity).
 
 Result: 138 → 85 issues (0 warnings). All changes followed "0 new private methods", barrel/AppColors rules, and were verified with analyze + model tests after each batch. This work is recorded here because it occurred inside the isolated stage1 worktree. See /tmp/grok-impl-summary-47207bb1.md for full details.
+
+---
+
+## Riverpod Migration After Refactoring (Post-Stage 7)
+
+**Do not begin significant Riverpod work until the structural refactoring above is largely complete.**
+
+### Why Separate the Efforts?
+
+- Structural extraction is already high-risk.
+- Riverpod migration on top of a still-fractured god class dramatically increases the chance of subtle bugs in realism, needs, group chat behavior, and time progression.
+- It is much easier to migrate clean, focused services than it is to migrate a 12k-line `ChatService`.
+
+### Recommended Sequence (After Stage 7)
+
+1. **Stabilize** — Finish all seven stages + cleanup PRs. Ensure test coverage is strong.
+2. **Add Riverpod to the project** — Add `flutter_riverpod` + `riverpod_annotation` (and generator if desired) without converting anything yet.
+3. **Migrate leaf services first** (the ones extracted in Stage 3):
+   - Convert `NeedsSimulation`, `ChaosModeService`, `RelationshipService`, etc. one at a time into `Notifier` / `AsyncNotifier`.
+   - Keep `ChatService` as a `ChangeNotifier` bridge for as long as necessary.
+4. **Migrate UI pieces** (widgets from Stages 2, 4, 5) to `ConsumerWidget` / `ConsumerStatefulWidget`.
+5. **Migrate `ChatService` itself** (this will likely be one of the last and most complex steps).
+6. **Finally**, remove the old `Provider` / `ChangeNotifierProvider` wiring from `main.dart`.
+
+### Testing During Riverpod Migration Phase
+
+- For every service converted to Riverpod, write tests that prove the new provider produces **identical observable behavior** to the previous implementation (using the existing realism test suite as the gold standard).
+- Use `ProviderContainer` + `listen` to capture state changes and compare before/after.
+- Do not remove the old `ChangeNotifier` implementation until the Riverpod version has equivalent or better test coverage.
+
+This separation gives us the best chance of a successful, low-drama modernization of the app's architecture.

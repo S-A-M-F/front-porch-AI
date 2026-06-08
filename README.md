@@ -1,12 +1,11 @@
-# Front Porch AI — God File Refactor (Development Branch)
+# Front Porch AI
 
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)
 ![Flutter](https://img.shields.io/badge/Made%20with-Flutter-02569B?logo=flutter)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![Branch](https://img.shields.io/badge/Branch-refactor%2Fgod--file--modularization-blue)
-![Status](https://img.shields.io/badge/Status-Active%20Refactor-orange)
+![Branch](https://img.shields.io/badge/Branch-Rawhide-orange)
 
-**This is the active long-lived branch for the major God File Modularization refactoring effort.** All structural refactoring and related cleanup work happens here. This branch is not (currently) the primary nightly release channel.
+**Rawhide is the primary rolling development branch.** All new features, experiments, refactors, and the majority of ongoing work land here. Nightly / cutting-edge builds are produced from Rawhide. Stable releases are tagged on `main`. Beta stabilization branches (e.g. `0.9.x-Beta`) are cut from Rawhide when preparing a release.
 
 **A privacy-first AI companion for Windows, Linux, and macOS.** Runs fully offline with local LLMs (KoboldCpp, etc.) by default, but also supports remote APIs like OpenRouter, Nano-GPT, and OpenAI with no lock-in when you want them.
 
@@ -29,33 +28,39 @@ If you use it, a star would mean a lot to the developer.
 
 ---
 
-<p align="center">
-  <strong>🛠️ God File Refactor Branch</strong><br><br>
-  <a href="https://github.com/linux4life1/front-porch-ai/tree/refactor/god-file-modularization"><strong>View Branch on GitHub</strong></a><br>
-  <sub>Long-lived development branch for the major structural refactoring • See the plan in <code>docs/refactoring-guide.md</code></sub>
-</p>
+## 🆕 What's New on Rawhide (vs main)
 
-> **Warning**: This is an active refactoring branch. The codebase is in flux as large god files are being broken apart. Use at your own risk for testing the refactor. Stable releases remain on `main`. Nightly builds may continue from other branches.
+These are the user-facing changes and improvements that have landed on the Rawhide branch since it diverged from `main`. Many originated on the dedicated refactor workstream and were promoted here; others are targeted fixes and polish.
 
----
+- 🏗️ **God File Modularization (Stages 1–7 complete)** — The largest god files (`chat_service.dart`, `storage_service.dart`, key UI pages like settings/character creator/chat, and supporting services) have been decomposed into focused, single-responsibility, testable modules. Full behavioral parity for 1:1 chats, group chats, Realism Engine (bond/trust/emotion/arousal/fixation), Needs simulation, objectives, character evolution, fact extraction, summaries, prompt injection, RAG, creators, and everything else. The entire test suite is now reliably green with a strong new baseline (+1126 tests). This is a major internal restructuring that makes future features and fixes faster and safer — you should see no functional differences, just a more solid app.
 
-## 🛠️ Current Focus on This Branch
+- 🎯 **Autonomous character objectives now reliably generate subtasks** — When the Realism Engine proposes a personal goal for a character ("proposed_objective"), the system now consistently auto-generates 3 concrete sequential tasks the character can pursue. This was previously unreliable (especially under group impersonation and per-speaker evaluation paths). User-created objectives (typed in the UI) correctly do *not* auto-generate tasks; you remain in full control and can still press Generate Tasks manually when you want them.
 
-This is the long-lived development branch for the **God File Modularization** refactoring effort (see the detailed plan in `docs/refactoring-guide.md`).
+- 🧠 **Thinking / reasoning models get proper breathing room for objectives & tasks** — Subtask generation and objective/task completion checks raised from 600/1024 tokens to 2000. `<think>...</think>` stripping (using the central robust helper that also handles unclosed tags) now runs after the full stream. Models that reason for hundreds of tokens before emitting the final numbered list or YES/NO now work reliably. Autonomous proposals already had generous limits; the subtask paths now match.
 
-**Primary goal**: Break apart the largest god files (`chat_service.dart`, `chat_page.dart`, etc.) into focused, testable modules while maintaining full behavioral parity — especially for the Realism Engine, Needs simulation, and group chat experience.
+- 🔏 **macOS nightly build quality** — Switched CI to .pkg packaging (with deep PyInstaller code signing for frameworks inside sidecars), proper notarize-before-DMG / notarize-and-staple flows, and removal of problematic --deep signing. Rawhide nightlies now pass Apple's notary service cleanly and produce better-behaved macOS installs with fewer Gatekeeper / "damaged or incomplete" issues.
 
-Recent and ongoing work on this branch includes:
-- Stage 1: Extraction of core `ChatMessage` model and enums (`GenerationMode`, `GenerationPhase`) with dedicated tests.
-- Comprehensive lint hygiene pass (elimination of all real warnings, significant dead code removal).
-- Fixes to Group Settings persistence for custom system prompts, per-character prompts, and author's notes.
-- Continued maturation of group chat features and Realism/Needs parity.
+- 🐛 **Realism Engine, Needs, Group chat & state reliability fixes** (multiple rounds):
+  - Sidebar bond/trust (short + long form) now correctly reflect eval results and stay in sync with chips.
+  - Group chats: per-speaker needs vectors, scene impact rewards (fun/social/hygiene etc. from activities), decay, and sidebar/cards now persist and display correctly. Pre-turn snapshots, post-gen save of scalars into group state, and impersonation dance for checks are all hardened.
+  - Zero-delta needs chips are now skipped (no more clutter rows of "X 0").
+  - Climax / sexual / daily post-gen checks no longer risk double-firing for the same response.
+  - Fixed duplicate user/character messages appearing on session load (racy delete+insert in save path).
+  - Fresh starts, forks, new chats, and imported characters no longer bleed needs/fixation/relationship/parent-session state from previous contexts.
+  - Fixation and baseline bleed prevention on new chats and character imports.
+  - Various other polish to needs delta computation, chip reasons, group member cards, and "keep blocks in sync" reset hygiene across 1:1 vs group paths.
 
-This branch is **not** currently the primary source for public Nightly builds. Use it for testing the refactoring work itself.
+- ✨ **Home screen & import UX** — Added a refresh button next to the multi-select controls so you can re-scan for external character imports without leaving the page.
 
-> **Note for contributors & AI agents**: Branch-specific notes and progress live in `docs/<branch-name>.md` (following the established per-branch convention). When landing user-visible changes, update the appropriate notes file.
+- 🛠️ **Database Cleanup Tool** (infrastructure landed; UI currently gated behind verification) — New utility to detect and optionally purge orphaned records (data left behind by deleted characters, stray group sessions, etc.). The core + dialog landed via community PR and was integrated during the refactor window.
 
-> **CI note**: Changes to release/nightly workflows still generally need to land on `main` for scheduled jobs to pick them up.
+- 📦 **Build / CI / packaging polish for nightlies** — Distinct Rawhide app naming on Windows/macOS so nightlies don't collide with stable installs, ML cache cleanup in workflows, improved artifact handling, and many small reliability wins in the release/nightly pipelines.
+
+- 🔧 **Lint & test hygiene** — Literal zero remaining info-level lints on the active ruleset. Full test suite stabilized post-refactor as the new baseline.
+
+See `docs/Rawhide.md` for the concise version that feeds the in-app update dialog, and `docs/refactoring-guide.md` + `docs/refactor-god-file-modularization.md` for the technical record of the modularization work.
+
+> **Note for contributors & AI agents**: Per-branch user-facing notes live in `docs/<BranchName>.md` (e.g. `docs/Rawhide.md`). Update it for any user-visible work, just like appending to internal changelogs. Never mix notes across branches.
 
 ---
 
@@ -312,7 +317,7 @@ Starting with **v0.9.0**, this project is licensed under **AGPL-3.0** — meanin
 
 Pull requests are welcome! If you're a dev reading this far down, here's what you need to know:
 
-- **Branch workflow:** All PRs target the **`dev`** branch — never `main`. The `main` branch is for stable releases only.
+- **Branch workflow:** All new features, experiments, and major work target the **`Rawhide`** branch (the primary rolling development line). Bug fixes for the current stable go to `dev`. Beta stabilization branches (e.g. `0.9.x-Beta`) receive only fixes for that release series. `main` is for final tagged stable releases only. See AGENTS.md for the full current model.
 - **Nightly / scheduled builds & schedule triggers:** Automatic builds are powered by `.github/workflows/nightly.yml`. GitHub **only** reads `on: schedule:` from the default branch (`main`). A current copy of the workflow (especially the version-patching step) must live on `main`, otherwise nightly compiles will fail. The job typically checks out the active development branch for source, but the workflow definition itself always comes from `main`.
 - **Commit conventions:** Follow the guidelines in [AGENTS.md](AGENTS.md) for commit message format, code style, and naming conventions.
 - **Full guide:** See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, testing requirements, and the PR template.

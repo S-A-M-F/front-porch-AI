@@ -12,3 +12,7 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 - 🔏 **Fixed macOS notarization** — nightly builds now pass Apple's notary service correctly. Python.framework bundles inside the AI sidecars are now signed as proper framework units (instead of file-by-file), resolving "signature of binary is invalid" and "not signed with valid Developer ID" errors.
 
+- 🐛 **Realism, Needs & Group reliability** — Sidebar bond/trust values + chips now stay in sync; group per-speaker needs, scene rewards (fun/social/hygiene from activities), decay, and cards persist and display correctly with proper pre/post snapshots. Zero-delta chips suppressed, duplicate messages on load fixed, no more needs/fixation/relationship bleed on fresh starts, forks, or imports, and better 1:1 vs group parity for all post-gen effects.
+
+- ✨ **Home screen & daily polish** — Refresh button next to multi-select for re-scanning external character imports. Broader packaging/CI wins for distinct Rawhide nightlies (no name collisions with stable) and many small stability/hygiene improvements.
+
