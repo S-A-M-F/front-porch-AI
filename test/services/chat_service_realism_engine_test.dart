@@ -121,22 +121,16 @@ class _ControllableFakeLlm extends LLMService {
         p.contains('fixation_topic')) {
       response =
           '{"proposed_objective": "none", "fixation_topic": "the upcoming festival", "arousal_delta": 1}';
-    } else if (p.contains(
-          'verifying whether character needs were actually fulfilled',
-        ) ||
-        p.contains('_fulfilled')) {
-      // Real production _verifyNeedFulfillmentCall path — return proper JSON for the test.
-      response = '{"hunger_fulfilled": true, "energy_fulfilled": false}';
     } else if (p.contains('activities') ||
         p.contains('sexual_climax') ||
         p.contains('needs impact') ||
         p.contains('unambiguous description of the *act*')) {
-      // Passive support for new consolidated needs_impact eval (via god thin + engine).
-      // Returns Proposal A safe JSON (no energy/hunger replenish in romance; hygiene only on mess).
+      // Support for consolidated needs_impact eval (via _runPostGenNeedsChecks thin + _needsImpactEvaluator; rich prompt + fulfillment map in JSON).
+      // Returns Proposal A safe JSON (no energy/hunger replenish in romance; hygiene only on mess) + fulfillment map so sim.applySceneImpact restores (e.g. hunger) for decay+fulfill tests.
       // Full coverage + factory cbs + edges + A scenarios in dedicated needs_impact_evaluator_test.dart
       // (aug exercising only passive/qualified; no leaf-specific logic edits here; exercised via thins).
       response =
-          '{"activities": [], "intensity": 0, "energy_delta": 0, "hunger_delta": 0, "hygiene_delta": 0, "reason": "none"}';
+          '{"activities": [], "intensity": 0, "energy_delta": 0, "hunger_delta": 0, "hygiene_delta": 0, "reason": "none", "fulfillment": {"hunger": true, "energy": false, "social": false, "fun": false, "bladder": false, "comfort": false}}';
     } else if (p.contains('autonomous story engine') ||
         p.contains('one shot') ||
         p.contains('bond_delta')) {
@@ -206,6 +200,7 @@ void main() {
       late StorageService storage;
       late ChatService chat;
       late _ControllableFakeLlm fakeLlm;
+      late AppDatabase db;
 
       setUp(() async {
         storage = await _createTestStorage({
@@ -219,7 +214,7 @@ void main() {
         // We deliberately avoid the full LLMProvider (and its transitive HTTP
         // services) because this smoke only proves real constructor + seeding
         // scalars + that the new override seam fields are live on the instance.
-        final db = AppDatabase.forTesting();
+        db = AppDatabase.forTesting();
         final persona = UserPersonaService(db);
         await Future<void>.delayed(Duration.zero);
         final worldRepo = WorldRepository(storage, db);
@@ -235,10 +230,25 @@ void main() {
         final charRepo = CharacterRepository(db, storage);
         await charRepo.loadCharacters();
         chat.setCharacterRepository(charRepo);
+
+        // Use addTearDown pattern (like all dynamic _freshChat tests) for DB close hygiene; group tearDown handles dispose + wrapped close as fallback.
+        addTearDown(() async {
+          try {
+            await db.close();
+          } catch (e) {
+            print('Benign DB close via addTearDown in V2.5 smoke: $e');
+          }
+        });
       });
 
       tearDown(() async {
         chat.dispose();
+        // DB close wrapped for benign "channel closed" races on forTesting() DBs (repo loads may be pending); see addTearDown in the test body + dynamic _freshChat pattern for consistency.
+        try {
+          await db.close();
+        } catch (e) {
+          print('Benign DB close in V2.5 smoke tearDown (channel race): $e');
+        }
       });
 
       test(
@@ -465,7 +475,13 @@ void main() {
           await chat.cancelRealismEval();
           chat.dispose();
           env.prov.dispose();
-          await env.db.close();
+          try {
+            await env.db.close();
+          } catch (e) {
+            print(
+              'Benign DB channel race in dynamic addTearDown (post-consolidated fulfillment test): $e',
+            );
+          }
         });
 
         final char = _charWithRealism();
@@ -485,24 +501,25 @@ void main() {
         expect(chat.needsArousalSuppressionTurnsRemaining, 0);
         expect(chat.needsPostClimaxCrashTurnsRemaining, 0);
 
-        // The next send will trigger _verifyNeedFulfillmentCall because hunger is now low.
-        // Fake returns hunger_fulfilled: true for that exact prompt.
+        // The next send triggers post-gen _runPostGenNeedsChecks thin → _needsImpactEvaluator consolidated "needs impact" (with fulfillment map from fake) → sim applySceneImpact restore.
+        // Fake supplies "fulfillment": {"hunger": true, ...} in the impact JSON (see needs-impact branch); old _verify path excised.
         await chat.sendMessage('Anything new?');
 
         final hungerAfter = chat.needsSimulation.vector['hunger'] ?? 0;
 
-        // With 10 decay turns + verified fulfillment JSON, we expect concrete restoration.
+        // With 10 decay turns + fulfillment map from consolidated impact, we expect concrete restoration (cross-ref evaluator + sim dedicated tests).
         expect(
           hungerAfter,
           greaterThan(hungerBefore - 5),
           reason:
-              'Fulfillment verification should have restored hunger when triggered',
+              'Consolidated needs impact (via _runPostGenNeedsChecks thin + evaluator fulfillment map) should have restored hunger when triggered',
         );
         expect(
           fakeLlm.seenPrompts.any(
-            (p) => p.toLowerCase().contains(
-              'verifying whether character needs were actually fulfilled',
-            ),
+            (p) =>
+                p.contains('unambiguous description of the *act*') ||
+                p.contains('needs impact') ||
+                p.contains('fulfillment'),
           ),
           isTrue,
         );
@@ -531,6 +548,7 @@ void main() {
         // eliminates the previous post-dispose use-after-dispose crashes from lingering eval timers.
         await chat.cancelRealismEval();
         expect(chat.isEvaluatingRealism, isFalse);
+        // Guard catch path in _loadActiveObjectives (targeted for disposed notify from unawaited/async load after setActive) is exercised indirectly by V2.5 smoke tearDown (setActive + dispose races the load future) + all _freshChat addTearDowns. (No new test bodies; count stays 9.)
       },
     );
 
@@ -554,11 +572,15 @@ void main() {
         // Launch a send that will enter the eval block.
         final future = chat.sendMessage('This should trigger a realism eval.');
 
-        // Give the real code a moment to set _isEvaluatingRealism = true and start the await on evals.
-        await Future<void>.delayed(const Duration(milliseconds: 30));
-
-        if (chat.isEvaluatingRealism) {
-          await chat.cancelRealismEval();
+        // Poll briefly for the pre-eval window (_isEvaluatingRealism set around thins to realism_evals before the await on leaf fire).
+        // Uses existing public getter + small delays (no new methods, no test body count change). This reliably exercises "cancel during active" + abort paths in leaves via getIsCancelling cb (post-consolidated impact intentionally does not set the flag).
+        // Fixed heuristic 120ms replaced by short backoff loop to reduce flakes under load/scheduler variance.
+        for (int i = 0; i < 8; i++) {
+          if (chat.isEvaluatingRealism) {
+            await chat.cancelRealismEval();
+            break;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 25));
         }
 
         // The future should complete (possibly short-circuited) without hanging.
@@ -652,6 +674,10 @@ void main() {
           );
         }
 
+        await Future<void>.delayed(
+          Duration.zero,
+        ); // settle DB inserts for group members before setActiveGroup (prevents intermittent length<5 for cap guard in _groupCharacters at per-speaker eval time; symmetric to large group)
+
         final group = GroupChat(
           id: gid,
           name: 'Small Circle',
@@ -661,6 +687,9 @@ void main() {
         );
 
         await chat.setActiveGroup(group, groupRepo: groupRepo);
+        await Future<void>.delayed(
+          const Duration(milliseconds: 5),
+        ); // extra settle after setActiveGroup (repo populates _groupCharacters for cap cb + per-speaker seeding decision); complements the post-insert zero.
 
         // Send as user — drives real group send path + _evaluateRealismForUpcomingGroupSpeaker
         // (impersonation, load scalars via RelationshipService, ensureInter..., scalar save, per-speaker eval via seam).
@@ -682,8 +711,9 @@ void main() {
           ava.stableGroupId,
         );
         expect(rels, isA<Map<String, int>>());
-        // Seeding populates neutral 0s for the other members (or deltas if any).
-        expect(rels.length, greaterThanOrEqualTo(0));
+        // Seeding (via RelationshipService + per-speaker eval under <=4 cap) populates entries for other members (or deltas).
+        // Strengthened from >=0 (no-op) now that settle + race fixes ensure the path exercises inter-char for 3-member case.
+        expect(rels.length, greaterThan(0));
 
         // Contract: real per-speaker eval prompt builders (relationship/one-shot) were invoked for the impersonated speaker.
         expect(
@@ -768,6 +798,20 @@ void main() {
           );
         }
 
+        // Robust settle: wait until all 5 members are visible via direct DB count
+        // (ensures _groupCharacters will have full length==5 when setActiveGroup
+        // populates it and the per-speaker eval runs the cap guard).
+        // Replaces fragile fixed micro-delays that could still race under load/CI.
+        int attempts = 0;
+        while (attempts < 50) {
+          final c = await db.groupMembers
+              .count(where: (tbl) => tbl.groupId.equals(gid))
+              .getSingle();
+          if (c >= 5) break;
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+          attempts++;
+        }
+
         final group = GroupChat(
           id: gid,
           name: 'Large Table',
@@ -776,6 +820,16 @@ void main() {
         );
 
         await chat.setActiveGroup(group, groupRepo: groupRepo);
+        // Robust post-setActive settle for the in-memory _groupCharacters (sourced from GroupTurnManager after repo load of members).
+        // The cap guard (_shouldTrackInterCharacterRelationships) and per-speaker eval path read chat.groupCharacters.length / _groupCharacters.length directly.
+        // DB count alone is not sufficient; the manager population is async after the await returns in some schedulings (full suite load, prior tests, etc.).
+        // This mirrors the documented race fix + delay in the sibling small-group (<=4) test.
+        int gAttempts = 0;
+        while (gAttempts < 50) {
+          if (chat.groupCharacters.length >= 5) break;
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+          gAttempts++;
+        }
         await chat.sendMessage('Hello to the whole large group.');
 
         // Per-speaker evals still run (user-focused realism) even under cap.

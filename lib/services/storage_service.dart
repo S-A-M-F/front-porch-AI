@@ -565,10 +565,11 @@ class StorageService extends ChangeNotifier {
   // God-level (not in a *Settings): custom models path
   // (narrower than setRootPath: no relocation dance needed; early return + beta _k + notify for parity with god pattern)
   Future<void> setCustomModelsPath(String? v) async {
-    if (_customModelsPath == v) return;
-    _customModelsPath = v;
-    if (v != null) {
-      await _prefs?.setString(_k('custom_models_path'), v);
+    final normalized = (v != null && v.isNotEmpty) ? v : null;
+    if (_customModelsPath == normalized) return;
+    _customModelsPath = normalized;
+    if (normalized != null) {
+      await _prefs?.setString(_k('custom_models_path'), normalized);
     } else {
       await _prefs?.remove(_k('custom_models_path'));
     }
@@ -669,7 +670,8 @@ class StorageService extends ChangeNotifier {
 
     // Load settings (DELETED in Stage 7 — bodies lifted to the *Settings.load(); see above + shims)
     // Original load code excised (deletion part of task).
-    _customModelsPath = _prefs?.getString(_k('custom_models_path'));
+    final loadedCustom = _prefs?.getString(_k('custom_models_path'));
+    _customModelsPath = (loadedCustom != null && loadedCustom.isNotEmpty) ? loadedCustom : null;
 
     if (!_initCompleter.isCompleted) _initCompleter.complete();
     notifyListeners();

@@ -20,6 +20,7 @@ import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/services/chat/expression_classifier.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/storage/settings/expression_settings.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 
 /// Test factory (modeled exactly on relationship/chaos/needs).
@@ -86,9 +87,23 @@ class _FakeStorageForExpression implements StorageService {
   @override
   String get expressionClassificationMode => mode;
 
+  @override
+  ExpressionSettings get expressionSettings => _FakeExpressionSettings(mode: mode);
+
   // Unused stubs (satisfy interface for test factory only)
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeExpressionSettings extends ExpressionSettings {
+  final String _mode;
+  _FakeExpressionSettings({required String mode}) : _mode = mode;
+
+  @override
+  String get expressionClassificationMode => _mode;
+
+  // Other getters keep superclass defaults (false / 'sidebar' etc from fields)
+  // load() etc not called in these unit paths.
 }
 
 class _FakeLlmForReclass implements LLMService {
