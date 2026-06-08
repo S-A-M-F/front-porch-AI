@@ -16,3 +16,5 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 - ✨ **Home screen & daily polish** — Refresh button next to multi-select for re-scanning external character imports. Broader packaging/CI wins for distinct Rawhide nightlies (no name collisions with stable) and many small stability/hygiene improvements.
 
+- 🐛 **Fork to Group Chat member population** — Fixed the bug (originally contributed as PR #44 by @MisterLotto) where forking a 1:1 chat into a group would create a GroupChat with zero members in the decoupled `group_members` table. Both the initial fork path and "add character to existing group" now go through shared creation logic for the avatar copy + DB row. This was held during the god-file modularization to avoid divergence and is now landed on current Rawhide.
+

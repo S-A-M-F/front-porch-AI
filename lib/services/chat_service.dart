@@ -2481,6 +2481,15 @@ class ChatService extends ChangeNotifier {
     );
     await groupRepo.save(group);
 
+    // Decoupled model: ensure members exist for the original 1:1 character
+    // and every additional character. Without this, the group loads empty
+    // (setActiveGroup / GroupTurnManager will have no one to speak).
+    // Ported from the fix originally contributed in PR #44 by @MisterLotto.
+    await _createGroupMember(group.id, _activeCharacter!);
+    for (final c in additionalCharacters) {
+      await _createGroupMember(group.id, c);
+    }
+
     // Create a new session for the group and copy all messages
     final newSessionId = DateTime.now().millisecondsSinceEpoch.toString();
     final copiedMessages = <MessagesCompanion>[];
@@ -2544,20 +2553,19 @@ class ChatService extends ChangeNotifier {
     return group;
   }
 
-  /// Add a character to the currently active group chat.
-  Future<bool> addCharacterToGroup(
+  /// Create a group member (decoupled model): copy the character's avatar into
+  /// the group's private storage and insert a group_members row.
+  /// Shared by [addCharacterToGroup] (live add) and [forkToGroupChat] (initial
+  /// membership when forking a 1:1 chat into a group).
+  ///
+  /// This is the core of the fix originally contributed in PR #44 by @MisterLotto.
+  Future<void> _createGroupMember(
+    String groupId,
     CharacterCard character,
-    GroupChatRepository groupRepo,
   ) async {
-    if (_activeGroup == null || _characterRepository == null) return false;
-    if (_isGenerating) return false;
-
-    // Live add for decoupled model (extends this existing addCharacterToGroup).
-    // Generalized duplicate for private avatar + AppDatabase insert for row (UUID).
-    // Reload from members + refresh. No new private methods.
     final mid = const Uuid().v4();
     final avDir = Directory(
-      path.join(_storageService.groupsDir.path, _activeGroup!.id, 'avatars'),
+      path.join(_storageService.groupsDir.path, groupId, 'avatars'),
     );
     await avDir.create(recursive: true);
 
@@ -2572,7 +2580,7 @@ class ChatService extends ChangeNotifier {
     await db.insertGroupMember(
       GroupMembersCompanion(
         id: drift.Value(mid),
-        groupId: drift.Value(_activeGroup!.id),
+        groupId: drift.Value(groupId),
         name: drift.Value(character.name),
         description: drift.Value(character.description),
         personality: drift.Value(character.personality),
@@ -2599,13 +2607,26 @@ class ChatService extends ChangeNotifier {
               : null,
         ),
         rawExtensions: drift.Value(
-          character.rawExtensions != null
-              ? jsonEncode(character.rawExtensions!)
-              : null,
+          character.rawExtensions != null ? jsonEncode(character.rawExtensions!) : null,
         ),
         memberState: drift.Value('{}'),
       ),
     );
+  }
+
+  /// Add a character to the currently active group chat.
+  Future<bool> addCharacterToGroup(
+    CharacterCard character,
+    GroupChatRepository groupRepo,
+  ) async {
+    if (_activeGroup == null || _characterRepository == null) return false;
+    if (_isGenerating) return false;
+
+    // Decoupled model: copy the character's avatar into the group's private
+    // storage and insert a group_members row. Shared with forkToGroupChat
+    // via _createGroupMember (ported from the fix originally contributed in
+    // PR #44 by @MisterLotto).
+    await _createGroupMember(_activeGroup!.id, character);
 
     await groupRepo.save(_activeGroup!);
 

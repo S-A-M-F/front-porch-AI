@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-08 (fix(group): port member creation fix for forkToGroupChat from PR #44, with full author credit)
+
+- Files changed: lib/services/chat_service.dart, docs/Rawhide.md, .claude/changelog.md
+- Reason: PR #44 (by MisterLotto) identified and fixed a real bug introduced by the group_members decoupling: forkToGroupChat created the GroupChat + session but never populated group_members rows (or private avatars), so setActiveGroup would load an empty group. The PR was deliberately held during the god-file modularization (Stages 1-7 / PR #48) to prevent divergence on the chat_service god file. The bug remained unfixed on post-refactor Rawhide. We ported the fix (extracted shared creation helper, wired into both fork and add paths) now that the refactor is complete.
+- What done: Added _createGroupMember helper (modeled directly on the one proposed in the original PR). Wired it from forkToGroupChat (for primary + additionals, right after group save) and refactored addCharacterToGroup to delegate (removes the previous inline duplication + "no new private methods" comment). Preserved all post-refactor reset hygiene and decoupled comments. Updated docs/Rawhide.md with user-facing note. Appended here.
+- Credit: Commit authored as MisterLotto (using the exact name+email from the original PR #44 commit) + explicit Co-authored-by + multiple references in the message body and code comments. This gives the original contributor primary authorship credit in git, GitHub UI, blame, and contributor stats while transparently documenting the port/adaptation.
+- Verification: flutter analyze clean on the file (and full project rules followed for 0 new issues). Logic matches the original intent. No other files needed changes for the core fix (web_server duplication left for potential follow-up as it was pre-existing).
+- Commits: This one (on branch port/pr-44-fork-group-members-credit, to be merged to Rawhide).
+
 ## 2026-06-08 (docs: Rawhide README refresh + per-branch notes sync for current user-facing state)
 
 - Files changed: README.md, docs/Rawhide.md, .claude/changelog.md
