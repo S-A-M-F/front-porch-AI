@@ -195,12 +195,16 @@ class RealismFormSection extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: enabled
                         ? Colors.blueAccent.withValues(alpha: 0.2)
-                        : AppColors.surfaceContainerOf(context).withValues(alpha: 0.6),
+                        : AppColors.surfaceContainerOf(
+                            context,
+                          ).withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     Icons.psychology,
-                    color: enabled ? Colors.blueAccent : AppColors.iconSecondary(context),
+                    color: enabled
+                        ? Colors.blueAccent
+                        : AppColors.iconSecondary(context),
                     size: 24,
                   ),
                 ),
@@ -223,7 +227,9 @@ class RealismFormSection extends StatelessWidget {
                             ? 'Character will start with pre-configured state'
                             : 'Realism Engine will use default values',
                         style: TextStyle(
-                          color: enabled ? Colors.blueAccent : AppColors.textTertiary(context),
+                          color: enabled
+                              ? Colors.blueAccent
+                              : AppColors.textTertiary(context),
                           fontSize: 12,
                         ),
                       ),
@@ -247,105 +253,111 @@ class RealismFormSection extends StatelessWidget {
           if (showTimeAndDay) ...[
             // Time & Day Section
             _sectionHeader(Icons.schedule, 'Time & Day', Colors.amberAccent),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.cardOf(context),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.borderOf(context)),
-            ),
-            child: Row(
-              children: [
-                // Time of Day dropdown
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Time of Day', style: labelStyle),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceContainerOf(context),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.borderOf(context)),
-                        ),
-                        child: DropdownButton<String>(
-                          value: timeOfDay,
-                          isExpanded: true,
-                          dropdownColor: AppColors.surfaceContainerOf(context),
-                          underline: const SizedBox(),
-                          style: TextStyle(
-                            color: AppColors.textPrimary(context),
-                            fontSize: 14,
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.cardOf(context),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.borderOf(context)),
+              ),
+              child: Row(
+                children: [
+                  // Time of Day dropdown
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Time of Day', style: labelStyle),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceContainerOf(context),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppColors.borderOf(context),
+                            ),
                           ),
-                          items: _timeOptions
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t,
-                                  child: Text(_formatTimeLabel(t)),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) {
-                            if (v != null) onTimeOfDayChanged(v);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Day Number
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Day Number', style: labelStyle),
-                      const SizedBox(height: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceContainerOf(context),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.borderOf(context)),
-                        ),
-                        child: TextField(
-                          controller:
-                              TextEditingController(text: dayCount.toString())
-                                ..selection = TextSelection.fromPosition(
-                                  TextPosition(
-                                    offset: dayCount.toString().length,
+                          child: DropdownButton<String>(
+                            value: timeOfDay,
+                            isExpanded: true,
+                            dropdownColor: AppColors.surfaceContainerOf(
+                              context,
+                            ),
+                            underline: const SizedBox(),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                              fontSize: 14,
+                            ),
+                            items: _timeOptions
+                                .map(
+                                  (t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text(_formatTimeLabel(t)),
                                   ),
-                                ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          style: TextStyle(
-                            color: AppColors.textPrimary(context),
-                            fontSize: 14,
+                                )
+                                .toList(),
+                            onChanged: (v) {
+                              if (v != null) onTimeOfDayChanged(v);
+                            },
                           ),
-                          onChanged: (v) {
-                            final n = int.tryParse(v);
-                            if (n != null && n >= 1) onDayCountChanged(n);
-                          },
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Day Number
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Day Number', style: labelStyle),
+                        const SizedBox(height: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceContainerOf(context),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppColors.borderOf(context),
+                            ),
+                          ),
+                          child: TextField(
+                            controller:
+                                TextEditingController(text: dayCount.toString())
+                                  ..selection = TextSelection.fromPosition(
+                                    TextPosition(
+                                      offset: dayCount.toString().length,
+                                    ),
+                                  ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                              fontSize: 14,
+                            ),
+                            onChanged: (v) {
+                              final n = int.tryParse(v);
+                              if (n != null && n >= 1) onDayCountChanged(n);
+                            },
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
           ], // end showTimeAndDay
           const SizedBox(height: 20),
 
@@ -425,7 +437,9 @@ class RealismFormSection extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: AppColors.surfaceContainerOf(context),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.borderOf(context)),
+                          border: Border.all(
+                            color: AppColors.borderOf(context),
+                          ),
                         ),
                         child: TextField(
                           controller: TextEditingController(text: emotion)
@@ -440,7 +454,9 @@ class RealismFormSection extends StatelessWidget {
                           decoration: InputDecoration(
                             hintText: 'e.g. curious, guarded, amused',
                             hintStyle: TextStyle(
-                              color: AppColors.textTertiary(context).withValues(alpha: 0.6),
+                              color: AppColors.textTertiary(
+                                context,
+                              ).withValues(alpha: 0.6),
                               fontSize: 13,
                             ),
                             border: InputBorder.none,
@@ -467,7 +483,9 @@ class RealismFormSection extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: AppColors.surfaceContainerOf(context),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.borderOf(context)),
+                          border: Border.all(
+                            color: AppColors.borderOf(context),
+                          ),
                         ),
                         child: DropdownButton<String>(
                           value: emotionIntensity,
@@ -523,7 +541,10 @@ class RealismFormSection extends StatelessWidget {
                     context: context,
                   ),
                   if (showChaosToggle || showNeedsToggle)
-                    Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4), height: 24),
+                    Divider(
+                      color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                      height: 24,
+                    ),
                 ],
                 if (showChaosToggle) ...[
                   _toggleRow(
@@ -535,7 +556,10 @@ class RealismFormSection extends StatelessWidget {
                     context: context,
                   ),
                   if (showNeedsToggle)
-                    Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4), height: 24),
+                    Divider(
+                      color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                      height: 24,
+                    ),
                 ],
                 if (showNeedsToggle) ...[
                   _toggleRow(
@@ -549,10 +573,13 @@ class RealismFormSection extends StatelessWidget {
                   ),
                 ],
 
-                // Enjoys low hygiene can appear under Optional Features even if we hide the Needs master row
-                // (used in group creator where Needs is a global toggle).
-                if (needsSimEnabled && !showNeedsToggle) ...[
-                  const SizedBox(height: 8),
+                // "Enjoys low hygiene" is a per-character preference that inverts hygiene need behavior.
+                // It appears when Needs Simulation is enabled.
+                // - In normal 1:1 character editors (showNeedsToggle=true): shown right under the Needs toggle.
+                // - In group per-character editors (showNeedsToggle=false): shown standalone under Optional Features
+                //   (because the master Needs toggle is suppressed at the group level).
+                if (needsSimEnabled) ...[
+                  if (showNeedsToggle) const SizedBox(height: 8),
                   _toggleRow(
                     icon: Icons.water_drop_outlined,
                     label: 'Enjoys low hygiene',
@@ -598,7 +625,10 @@ class RealismFormSection extends StatelessWidget {
                       ..selection = TextSelection.fromPosition(
                         TextPosition(offset: currentTask.length),
                       ),
-                    style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 14,
+                    ),
                     maxLines: 3,
                     minLines: 1,
                     onChanged: onCurrentTaskChanged,
@@ -606,7 +636,9 @@ class RealismFormSection extends StatelessWidget {
                       hintText:
                           'e.g. Find the missing artifact, Survive the first day at school',
                       hintStyle: TextStyle(
-                        color: AppColors.textTertiary(context).withValues(alpha: 0.6),
+                        color: AppColors.textTertiary(
+                          context,
+                        ).withValues(alpha: 0.6),
                         fontSize: 13,
                       ),
                       border: InputBorder.none,
@@ -621,7 +653,9 @@ class RealismFormSection extends StatelessWidget {
                 Text(
                   'Sets the initial quest or objective when a new conversation starts.',
                   style: TextStyle(
-                    color: AppColors.textTertiary(context).withValues(alpha: 0.7),
+                    color: AppColors.textTertiary(
+                      context,
+                    ).withValues(alpha: 0.7),
                     fontSize: 11,
                   ),
                 ),
@@ -665,12 +699,15 @@ class RealismFormSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(label, style: TextStyle(
-              color: AppColors.textSecondary(context),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
-            )),
+            Text(
+              label,
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -693,7 +730,9 @@ class RealismFormSection extends StatelessWidget {
         SliderTheme(
           data: SliderThemeData(
             activeTrackColor: color,
-            inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.3),
+            inactiveTrackColor: AppColors.borderOf(
+              context,
+            ).withValues(alpha: 0.3),
             thumbColor: color,
             trackHeight: 3,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
@@ -720,7 +759,11 @@ class RealismFormSection extends StatelessWidget {
   }) {
     return Row(
       children: [
-        Icon(icon, color: value ? Colors.tealAccent : AppColors.iconSecondary(context), size: 20),
+        Icon(
+          icon,
+          color: value ? Colors.tealAccent : AppColors.iconSecondary(context),
+          size: 20,
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -729,14 +772,19 @@ class RealismFormSection extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color: value ? AppColors.textPrimary(context) : AppColors.textSecondary(context),
+                  color: value
+                      ? AppColors.textPrimary(context)
+                      : AppColors.textSecondary(context),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               Text(
                 subtitle,
-                style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 11,
+                ),
               ),
             ],
           ),

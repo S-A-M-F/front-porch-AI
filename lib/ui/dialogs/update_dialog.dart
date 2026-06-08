@@ -65,7 +65,10 @@ class UpdateDialog extends StatelessWidget {
         children: [
           Icon(Icons.system_update, color: Colors.greenAccent, size: 28),
           const SizedBox(width: 12),
-          Text('Update Available', style: TextStyle(color: AppColors.textPrimary(context))),
+          Text(
+            'Update Available',
+            style: TextStyle(color: AppColors.textPrimary(context)),
+          ),
         ],
       ),
       content: Column(
@@ -74,7 +77,10 @@ class UpdateDialog extends StatelessWidget {
         children: [
           RichText(
             text: TextSpan(
-              style: TextStyle(color: AppColors.textSecondary(context), fontSize: 14),
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 14,
+              ),
               children: [
                 const TextSpan(
                   text: 'A new version of Front Porch AI is available.\n\n',
@@ -103,7 +109,10 @@ class UpdateDialog extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             'Would you like to download the update?',
-            style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14),
+            style: TextStyle(
+              color: AppColors.textPrimary(context),
+              fontSize: 14,
+            ),
           ),
           const SizedBox(height: 16),
           Divider(color: AppColors.borderOf(context)),
@@ -119,7 +128,11 @@ class UpdateDialog extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'This project is free, open source, and built with love. If you enjoy this program please consider buying me a coffee. It helps keep development going!',
-            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 13, height: 1.4),
+            style: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 13,
+              height: 1.4,
+            ),
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -141,7 +154,10 @@ class UpdateDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text('Not Now', style: TextStyle(color: AppColors.textTertiary(context))),
+          child: Text(
+            'Not Now',
+            style: TextStyle(color: AppColors.textTertiary(context)),
+          ),
         ),
         ElevatedButton.icon(
           onPressed: () => service.downloadUpdate(),
@@ -169,7 +185,10 @@ class UpdateDialog extends StatelessWidget {
         children: [
           Text(
             'Full release notes are available on GitHub.',
-            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 13,
+            ),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -286,7 +305,10 @@ class UpdateDialog extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             '${(service.downloadProgress * 100).toStringAsFixed(0)}%',
-            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 16),
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 16,
+            ),
           ),
         ],
       ),
@@ -305,7 +327,10 @@ class UpdateDialog extends StatelessWidget {
         children: [
           const Icon(Icons.check_circle, color: Colors.greenAccent, size: 28),
           const SizedBox(width: 12),
-          Text('Ready to Install', style: TextStyle(color: AppColors.textPrimary(context))),
+          Text(
+            'Ready to Install',
+            style: TextStyle(color: AppColors.textPrimary(context)),
+          ),
         ],
       ),
       content: Column(
@@ -314,21 +339,30 @@ class UpdateDialog extends StatelessWidget {
         children: [
           Text(
             'The update has been downloaded. Would you like to install it now?',
-            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 14),
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 14,
+            ),
           ),
           const SizedBox(height: 12),
           Text(
             Platform.isLinux
                 ? 'If you choose "Later", the update will be applied when you close the app.'
                 : 'If you choose "Later", the update will install automatically when you close the app.',
-            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
+            style: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 12,
+            ),
           ),
         ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text('Later', style: TextStyle(color: AppColors.textTertiary(context))),
+          child: Text(
+            'Later',
+            style: TextStyle(color: AppColors.textTertiary(context)),
+          ),
         ),
         ElevatedButton.icon(
           onPressed: () async {

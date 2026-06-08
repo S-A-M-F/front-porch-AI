@@ -91,7 +91,7 @@ class MemoryService extends ChangeNotifier {
   /// context, and large texts are very slow on CPU ONNX. 2000 chars ≈ 500 tokens.
   static const int _maxEmbedChars = 2000;
 
-  /// Strip <think>...</think> blocks and truncate for embedding.
+  /// Strip `<think>...</think>` blocks and truncate for embedding.
   String _cleanForEmbedding(String text) {
     // Remove think blocks (LLM reasoning, not conversation content)
     final cleaned = text

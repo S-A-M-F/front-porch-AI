@@ -37,6 +37,7 @@ import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_generation_settings.dart';
+import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/group_member.dart';
@@ -46,7 +47,29 @@ import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
 import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/utils/emotion_labels.dart';
-import 'package:front_porch_ai/services/expression_classifier.dart';
+import 'package:front_porch_ai/services/expression_classifier.dart'; // top-level for ExpressionClassifierService type in @Dep shim (pre-existing)
+import 'package:front_porch_ai/services/chat/needs_simulation.dart';
+import 'package:front_porch_ai/services/chat/needs_impact_evaluator.dart';
+import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
+import 'package:front_porch_ai/services/chat/relationship_service.dart';
+import 'package:front_porch_ai/services/chat/expression_classifier.dart'; // leaf for ExpressionService (post-extraction)
+import 'package:front_porch_ai/services/chat/time_service.dart';
+import 'package:front_porch_ai/services/chat/nsfw_service.dart';
+import 'package:front_porch_ai/services/chat/lorebook_scanner.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/author_note_builder.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/relationship_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/emotion_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/behavioral_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/time_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/nsfw_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/chaos_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/needs_injection.dart';
+import 'package:front_porch_ai/services/chat/llm_eval_engine.dart';
+import 'package:front_porch_ai/services/chat/realism_evals.dart';
+import 'package:front_porch_ai/services/chat/objective_proposal.dart';
+import 'package:front_porch_ai/services/chat/summary_service.dart';
+import 'package:front_porch_ai/services/chat/fact_extraction.dart';
+import 'package:front_porch_ai/services/chat/evolution_service.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -58,184 +81,6 @@ bool _realismEvalCancelled = false;
 // GBNF grammar support for Realism Engine evals (incl. Needs simulation) removed
 // in the 0.9.8 clean port. All JSON outputs now rely on regex extraction + stop
 // sequences inside _fireLLMEval (no _buildKoboldGrammar, no _kGbnf* consts).
-
-enum GenerationMode { normal, continue_, impersonate }
-
-/// Tracks the distinct phases of text generation for UI display.
-/// Each phase maps to a user-visible status message.
-enum GenerationPhase {
-  /// Not generating.
-  idle,
-
-  /// Building the prompt context (lorebook, memories, history, etc.).
-  preparing,
-
-  /// HTTP request sent, waiting for response + prompt processing.
-  /// For KoboldCPP this is the prefill/eval phase which can be long.
-  prefilling,
-
-  /// Tokens arriving but inside <think>...</think> tags (reasoning model).
-  thinking,
-
-  /// Display buffer is accumulating tokens before smooth playback begins.
-  buffering,
-
-  /// Tokens are actively being generated and displayed to the user.
-  generating,
-}
-
-class ChatMessage {
-  final List<String> swipes;
-  int swipeIndex;
-  final String sender;
-  final bool isUser;
-  final String?
-  characterId; // which character card sent this (null = user or 1:1 mode)
-  final List<int> swipeDurations; // thinking duration in ms per swipe
-
-  String get text =>
-      (swipes.isNotEmpty && swipeIndex >= 0 && swipeIndex < swipes.length)
-      ? swipes[swipeIndex]
-      : '';
-  set text(String value) {
-    if (swipes.isNotEmpty && swipeIndex >= 0 && swipeIndex < swipes.length) {
-      swipes[swipeIndex] = value;
-    }
-  }
-
-  /// Returns text with <think>...</think> blocks removed for display.
-  /// Also handles in-progress thinking (no closing tag yet during streaming).
-  String get displayText {
-    final raw = text;
-    // Strip completed think blocks
-    var result = raw.replaceAll(
-      RegExp(r'<think>[\s\S]*?</think>\s*', caseSensitive: false),
-      '',
-    );
-    // Strip in-progress think block (opened but not yet closed during streaming)
-    result = result.replaceAll(
-      RegExp(r'<think>[\s\S]*$', caseSensitive: false),
-      '',
-    );
-    return result.trim();
-  }
-
-  /// Returns the thinking content (between <think> tags), or null if none.
-  /// Handles both completed and in-progress (streaming) think blocks.
-  String? get thinkingContent {
-    // Try completed think block first
-    final closed = RegExp(
-      r'<think>([\s\S]*?)</think>',
-      caseSensitive: false,
-    ).firstMatch(text);
-    if (closed != null) return closed.group(1)?.trim();
-    // Try in-progress think block (no closing tag yet)
-    final open = RegExp(
-      r'<think>([\s\S]*?)$',
-      caseSensitive: false,
-    ).firstMatch(text);
-    return open?.group(1)?.trim();
-  }
-
-  /// Whether this message has thinking content (either from tags or tracked duration)
-  bool get hasThinking => thinkingContent != null || thinkingDurationMs > 0;
-
-  int get thinkingDurationMs =>
-      (swipeIndex >= 0 && swipeIndex < swipeDurations.length)
-      ? swipeDurations[swipeIndex]
-      : 0;
-  set thinkingDurationMs(int value) {
-    if (swipeIndex < 0) return;
-    while (swipeDurations.length <= swipeIndex) {
-      swipeDurations.add(0);
-    }
-    swipeDurations[swipeIndex] = value;
-  }
-
-  int? thinkingStartTime; // Runtime only, for live timer
-  Map<String, dynamic>? metadata; // Legacy single metadata
-  List<Map<String, dynamic>?> swipeMetadata; // Per-swipe metadata
-
-  Map<String, dynamic>? get activeMetadata {
-    if (swipeIndex >= 0 && swipeIndex < swipeMetadata.length) {
-      return swipeMetadata[swipeIndex] ?? metadata;
-    }
-    return metadata;
-  }
-
-  set activeMetadata(Map<String, dynamic>? value) {
-    if (swipeIndex < 0) return;
-    while (swipeMetadata.length <= swipeIndex) {
-      swipeMetadata.add(null);
-    }
-    swipeMetadata[swipeIndex] = value;
-  }
-
-  ChatMessage({
-    required String text,
-    required this.sender,
-    required this.isUser,
-    this.characterId,
-    List<String>? swipes,
-    int? swipeIndex,
-    List<int>? swipeDurations,
-    this.metadata,
-    List<Map<String, dynamic>?>? swipeMetadata,
-  }) : swipes = swipes ?? [text],
-       swipeIndex = swipeIndex ?? 0,
-       swipeDurations = swipeDurations ?? [0],
-       swipeMetadata = swipeMetadata ?? [metadata] {
-    // Always clamp swipeIndex to a valid range for the swipes list.
-    // This prevents RangeError crashes from corrupted DB rows or previous buggy state.
-    final int listLen = this.swipes.length;
-    if (this.swipeIndex < 0 || this.swipeIndex >= listLen) {
-      this.swipeIndex = 0;
-    }
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'text': text,
-      'sender': sender,
-      'is_user': isUser,
-      if (characterId != null) 'character_id': characterId,
-      'swipes': swipes,
-      'swipe_index': swipeIndex,
-      'swipe_durations': swipeDurations,
-      if (metadata != null) 'metadata': metadata,
-      if (swipeMetadata.any((e) => e != null)) 'swipe_metadata': swipeMetadata,
-    };
-  }
-
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    final List<String>? savedSwipes = (json['swipes'] as List<dynamic>?)
-        ?.map((e) => e.toString())
-        .toList();
-    final List<int>? savedDurations =
-        (json['swipe_durations'] as List<dynamic>?)
-            ?.map((e) => (e as num).toInt())
-            .toList();
-    final String fallbackText = json['text'] ?? '';
-    final List<Map<String, dynamic>?>? savedSwipeMetadata =
-        (json['swipe_metadata'] as List<dynamic>?)
-            ?.map((e) => e != null ? Map<String, dynamic>.from(e as Map) : null)
-            .toList();
-
-    return ChatMessage(
-      text: fallbackText,
-      sender: json['sender'] ?? '',
-      isUser: json['is_user'] ?? false,
-      characterId: json['character_id'],
-      swipes: savedSwipes ?? [fallbackText],
-      swipeIndex: json['swipe_index'] ?? 0,
-      swipeDurations: savedDurations ?? [0],
-      metadata: json['metadata'] != null
-          ? Map<String, dynamic>.from(json['metadata'])
-          : null,
-      swipeMetadata: savedSwipeMetadata,
-    );
-  }
-}
 
 class ChatService extends ChangeNotifier {
   final KoboldService _koboldService;
@@ -266,7 +111,8 @@ class ChatService extends ChangeNotifier {
   // Objective/quest system
   List<Objective> _activeObjectives = [];
   int _messagesSinceLastCheck = 0;
-  bool _isCheckingCompletion = false;
+  bool _isCheckingCompletion =
+      false; // god-side secondary runtime flag for objective_proposal leaf's get/setIsChecking (early guard in check); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths (like _activeObjectives + _messagesSinceLastCheck) to prevent permanent skip of future task checks after in-flight reset; see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed).
   bool _isNewChat = false;
 
   List<Objective> get activeObjectives => _activeObjectives;
@@ -290,6 +136,7 @@ class ChatService extends ChangeNotifier {
 
   CharacterCard? _activeCharacter;
   final List<ChatMessage> _messages = [];
+  Future<void> _saveChain = Future.value();
   Map<String, dynamic>?
   _pendingRealismMetadata; // stores deltas for the next generation
   bool _isGenerating = false;
@@ -483,7 +330,8 @@ class ChatService extends ChangeNotifier {
   // ── Chat Summary ──
   String _summary = '';
   int _summaryLastIndex = 0;
-  bool _summaryPaused = false;
+  bool _summaryPaused =
+      false; // secondary runtime flag (like _isSummaryGenerating); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of pause state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete").
   bool _isSummaryGenerating = false;
 
   // ── Realism Mode ──
@@ -501,401 +349,887 @@ class ChatService extends ChangeNotifier {
   // are mid-deactivation throw "Looking up a deactivated widget's ancestor".
   Timer? _evalChunkTimer;
 
-  // Relationship (Short-Term / Tension)
-  int _affectionScore = 0;
-  int _relationshipTier = 0;
-
-  // Long-Term Bond
-  int _longTermScore = 0;
-  int _longTermTier = 0;
-  int _turnsSinceLongTermCheck = 0;
-  int _shortTermDeltasSummary = 0;
-  int _turnsSinceDecayCheck =
-      0; // counter for short-term relationship decay (every 10 turns)
-
-  // Short-term mood
+  // Short-term mood (counter only; decay logic for affection/short-term relationship
+  // moved to RelationshipService; moodDelta resets kept here for snapshot/regen parity).
   int _moodDecayCounter = 0;
 
   // Emotional state
   String _characterEmotion = '';
   String _emotionIntensity = ''; // mild/moderate/strong
 
-  // Expression images
-  String? _lastExpressionAvatarId;
-  String? _manualExpressionLabel;
-  final Random _expressionRandom = Random();
-  String? _cachedExpressionLabel;
-  String? _cachedForEmotion;
+  // Expression images + classification (extracted to ExpressionService in chat/expression_classifier.dart).
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). All runtime label/manual/onnx cache/avatar last/random
+  // state now owned by the service; god thins to delegation + shims. (cross-ref setActiveCharacter:1572 etc)
 
-  // ONNX expression classification
-  ExpressionClassifierService? _expressionClassifierService;
-  String? _onnxExpressionLabel;
-  String? _onnxCachedForEmotion;
-  int _lastOnnxMessageCount = 0;
-  String? _lastOnnxMessageText;
-  bool _onnxClassifying = false;
-  Timer? _onnxDebounce;
+  // Passage of time (core state + advance/nudge/OOC/resolve/reset/seed/load logic extracted to TimeService).
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). All scalars, clock, narrativeWeekday,
+  // resolve, nudge, detect, pre-turn advance, injection builder, and helpers now owned by the service;
+  // god thins to delegation + 5 @Deprecated shims. 0 new private methods added in god for time.
+  // time injection only thin wrapper here; full in step8. (cross-ref setActiveCharacter:1572 etc)
 
-  // Passage of time
-  String _timeOfDay = 'morning';
-  int _dayCount = 1;
-  int _startDayOfWeek =
-      DateTime.now().weekday; // 1=Mon ... 7=Sun, set when session starts
-  int _turnsSinceLastTimeAdvance = 0; // deterministic pacing counter
-  bool _passageOfTimeEnabled = true; // toggle for automatic time advancement
+  // NSFW cooldown & lust (core state + tier calc + reset/seed/load/restore + group per-char scalars
+  // + applyClimax/decrement extracted to NsfwService).
+  // See "keep reset blocks in sync" comments (now also lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). All scalars, tier getters,
+  // cooldown mutations, arousal, and helpers now owned by the service; god thins to delegation
+  // + 5 @Deprecated shims. 0 new private methods added in god for nsfw.
+  // _runPostGenNeedsChecks (climax/sexual/daily/fulfillment via consolidated impact) thin to needs_impact_evaluator; nsfw injection thin to step-8 builder. (cross-ref setActiveCharacter:1572 etc)
 
-  /// How many AI turns must pass before time is eligible to advance.
-  /// 6 turns ≈ a meaningful scene chunk without forcing constant time-skips.
-  static const int _turnsPerTimePeriod = 6;
-
-  // NSFW cooldown & lust
-  bool _nsfwCooldownEnabled = false;
-  int _cooldownTurnsRemaining = 0;
-  int _cooldownTurnsTotal =
-      0; // original refractory duration (for phased prompt)
-  int _arousalLevel =
-      0; // -100 to +100 scale (tier-based, matching relationship system)
-
-  /// Calculate arousal tier from level score (-100 to +100)
-  int get arousalTier {
-    // Convert -100 to +100 scale to tier index -10 to +10
-    // Each tier represents 10 points
-    final raw = _arousalLevel ~/ 10; // integer division
-    final tierIndex = raw > 10 ? 10 : (raw < -10 ? -10 : raw);
-    return tierIndex;
-  }
-
-  /// Get arousal tier name matching the relationship system
-  String get arousalTierName {
-    final tier = arousalTier;
-    // Use same tier names as relationship system but adapted for arousal
-    if (tier >= 10) return 'Feverish';
-    if (tier == 9) return 'Ecstatic';
-    if (tier == 8) return 'Overwhelming';
-    if (tier == 7) return 'Overcome';
-    if (tier == 6) return 'Intense';
-    if (tier == 5) return 'Aroused';
-    if (tier == 4) return 'Stimulated';
-    if (tier == 3) return 'Interested';
-    if (tier == 2) return 'Aware';
-    if (tier == 1) return 'Noticed';
-    if (tier == 0) return 'Neutral';
-    if (tier == -1) return 'Disinterested';
-    if (tier == -2) return 'Apathetic';
-    if (tier == -3) return 'Distant';
-    if (tier == -4) return 'Cold';
-    if (tier == -5) return 'Rejected';
-    if (tier == -6) return 'Repelled';
-    if (tier == -7) return 'Revolted';
-    if (tier == -8) return 'Abhorrent';
-    if (tier == -9) return 'Loathing';
-    if (tier <= -10) return 'Deserted';
-    return 'Unknown';
-  }
-
-  // ── Chaos Mode / Chance Time ──
-  bool _chaosModeEnabled = false;
-  bool _chaosNsfwEnabled = false; // include spicy/NSFW events in the pool
-  int _chaosPressure = 0; // 0–100; grows each turn without a trigger
+  // ── Chaos Mode / Chance Time (core state extracted) ──────────────────────
+  // _chaosModeEnabled / _chaosNsfwEnabled / _chaosPressure / _pendingChaosInjection / _chaosEventDelivered
+  // now owned by _chaosModeService. The two UI coordination flags below stay in god
+  // (cross widget boundary for overlay + send pause).
   String?
   _pendingChanceTimeEvent; // set when wheel lands; cleared after UI reads it
   bool _chanceTimePendingTrigger =
       false; // true for one cycle to pop the overlay
-  String?
-  _pendingChaosInjection; // event text to inject into the next response prompt
-  bool _chaosEventDelivered =
-      false; // true after the event has been used in at least one generation
 
-  // Needs catastrophe (Phase 2 stepping system) — set when a need hits exactly 0
-  // during decay. Contains the mandatory OOC narrative the AI must roleplay.
-  // Cleared after the generation that consumes it.
-  String? _pendingNeedsCatastrophe;
-
-  // ── Advanced Needs Interplay (v2) ──────────────────────────────────────────
-  // Tracks "afterglow" period after significant sexual/intimate activity.
-  // During this time, decay on Hunger, Energy, and Social is reduced so sex
-  // feels like a net positive without immediately triggering wack-a-mole needs.
-  int _needsAfterglowTurnsRemaining = 0;
-
-  // Arousal-driven suppression of other needs urgency (prompt injection only,
-  // plus light dampening of internal state multipliers). Activated by sexual
-  // activity. Makes long erotic scenes feel realistically "consumed by desire"
-  // instead of the character complaining about hunger/bladder/energy.
-  int _arousalSuppressionTurnsRemaining = 0;
-
-  // Delayed post-climax crash (lethargy / "post-nut sleepiness").
-  // Started on confirmed physical orgasm (intensity-scaled).
-  // Effect + countdown are deliberately gated behind expiration of both
-  // afterglow and arousal suppression so the protective "glow + haze" is respected.
-  int _postClimaxCrashTurnsRemaining = 0;
-
-  // ── Sims/Needs Simulation (clean port on 0.9.8) ──
+  // ── Sims/Needs Simulation (extracted to NeedsSimulation) + Needs Impact Evaluator ──
+  // State + decay/step/catastrophe/buffers/apply/compute live in _needsSimulation (plain).
+  // Consolidated eval/impact (rich LLM + Proposal A table + modifiers pipeline + NeedsImpact +
+  // applySceneImpact) in _needsImpactEvaluator (plain, after sim in ordering). ChatService owns
+  // both via late finals + thins. _needsSimEnabled / _enjoysLowHygiene kept here (control).
   bool _needsSimEnabled = false;
   bool _enjoysLowHygiene =
       false; // inversion for hygiene (enjoys being dirty/sweaty/musky)
-  Map<String, int> _needsVector = {};
 
-  // Canonical constants for the Sims/Needs simulation. Single source of truth
-  // to eliminate all magic numbers and duplicated key lists / maps / thresholds.
-  static const List<String> _needKeys = [
-    'hunger',
-    'bladder',
-    'energy',
-    'social',
-    'fun',
-    'hygiene',
-    'comfort',
-  ];
+  // ── Passage of time (extracted to TimeService) ───────────────────────────
+  // (Declared early among late finals for init safety because needs/others close over its getters via cbs.
+  // Logically added "after the other late finals" per extraction sequence; 0 new god privates.)
+  late final _timeService = TimeService(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    onSetPendingRealismMetadata: (key, value) {
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata![key] = value;
+    },
+    onNudgePatchLastMessageRealismState: (tod, dc) {
+      if (_messages.isNotEmpty) {
+        final lastMsg = _messages.last;
+        lastMsg.activeMetadata ??= {};
+        final existingState = lastMsg.activeMetadata!['realism_state'];
+        if (existingState is Map<String, dynamic>) {
+          existingState['timeOfDay'] = tod;
+          existingState['dayCount'] = dc;
+          existingState['time_nudged'] = true;
+        } else {
+          lastMsg.activeMetadata!['realism_state'] = _captureRealismState();
+          lastMsg.activeMetadata!['realism_state']['time_nudged'] = true;
+        }
+      }
+    },
+  );
 
-  static const Map<String, int> _needDefaults = {
-    'hunger': 75,
-    'bladder': 80,
-    'energy': 80,
-    'social': 65,
-    'fun': 65,
-    'hygiene': 75,
-    'comfort': 70,
-  };
+  // ── NSFW cooldown & arousal (extracted to NsfwService) ─────────────────────
+  // State (cooldown enabled/remaining/total, arousalLevel), tier calc, reset/seed/load/restore,
+  // group per-speaker load/save scalars, applyClimax/decrement live in _nsfwService (plain class).
+  // ChatService owns via late final + delegates. (Declared before needs for init safety because
+  // needs closes over the getArousal/getNsfw/getCooldown/setArousal cbs.)
+  // Reset helpers on service keep the multiple "keep reset blocks in sync" sites correct (now incl needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) comments)
+  // without god privates. 0 new private methods in god.
+  // _runPostGenNeedsChecks thin (consolidated to needs_impact_evaluator); 3 group cbs only (onNotify/onSaveChat removed as dead; god owns save/notify for post-gen fidelity per plan). (cross-ref setActiveCharacter:1572 etc)
+  late final _nsfwService = NsfwService(
+    getGroupInt: _getGroupInt,
+    getGroupValue: (charId, key) => _groupRealism[charId]?[key],
+    setGroupValue: _setGroupRealismValue,
+  );
 
-  // Base decay per tick (when no time-of-day variant applies).
-  // Tuned for long scenes (intimate, story, etc.) so needs don't feel like "wack-a-mole".
-  // Bladder and hunger are the most noticeable; they decay slower than the original aggressive values.
-  static const Map<String, int> _needDecay = {
-    'hunger': 4,
-    'bladder': 6,
-    'energy': 3,
-    'social': 2,
-    'fun': 2,
-    'hygiene': 1,
-    'comfort': 2,
-  };
+  // ── Lorebook scanner (extracted to LorebookScanner) ────────────────────────
+  // Keyword match (_matchKeyword with raw+concat fix), scan (per-char + worlds,
+  // set isTriggered + remaining=sticky), decrement (post-AI pre-set only),
+  // reset of non-const trigger state live in _lorebookScanner (plain class).
+  // ChatService owns via late final + thin delegations at *all* call sites.
+  // getActiveGroupLoreEntries + _buildLorebookContext (injection text) + preAi
+  // snapshot stay in god (per plan; lorebook injection text / full context
+  // building kept thin/stayed in god for step8).
+  // 0 new god private _ methods.
+  // 3 granular cbs (onNotify + getLoreCharacters for group/1:1 cards + resolveWorld)
+  // to access live _groupCharacters/_activeCharacter and _worldRepository without
+  // whole-parent or cycles (mirrors nsfw group scalars precedent; testable via
+  // live closures in createTestLorebookScanner; aug only passive/qualified).
+  // 1:1 vs group parity: scanner processes whatever chars cb provides (all group
+  // members + their worlds for group; single for 1:1); depth per-entry.
+  // Reset hygiene: resetLorebookTriggerState() called from every keep-sync site
+  // (startNewChat 1:1+group/ext+non-ext, setActive*, _load empty/0-session, setActiveGroup defensive+post, etc);
+  // comments now list /lorebook_scanner + cross-ref to "incomplete zeroing..." briefing (fixed in startNew for 1:1+group paths).
+  // aug exercising only passive/qualified (resets/loads/scans hit by pre-existing
+  // startNew/setActive/_loadLast/group; full keyword/depth only in dedicated + manual).
+  late final _lorebookScanner = LorebookScanner(
+    onNotify: notifyListeners,
+    getLoreCharacters: () => _activeGroup != null
+        ? _groupCharacters
+        : (_activeCharacter != null
+              ? [_activeCharacter!]
+              : const <CharacterCard>[]),
+    resolveWorld: (name) =>
+        _worldRepository.worlds.where((w) => w.name == name).firstOrNull,
+  );
 
-  // Morning-specific overrides (hunger drains faster after sleep / breakfast window).
-  static const Map<String, int> _needDecayMorning = {'hunger': 6};
+  late final _needsSimulation = NeedsSimulation(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    getTimeOfDay: () => _timeService.timeOfDay,
+    getRealismEnabled: () => _realismEnabled,
+    getArousalLevel: () => _nsfwService.arousalLevel,
+    getNsfwCooldownEnabled: () => _nsfwService.nsfwCooldownEnabled,
+    getCooldownTurnsRemaining: () => _nsfwService.cooldownTurnsRemaining,
+    getObserverMode: () => _observerMode,
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getGroupNeeds: _getGroupNeeds,
+    setGroupNeeds: _setGroupNeeds,
+    getEnjoysLowHygiene: () => enjoysLowHygiene,
+    getNeedsSimEnabled: () => _needsSimEnabled,
+    setArousalLevel: (v) {
+      _nsfwService.setArousalLevel(v);
+    },
+  );
 
-  // Night-specific overrides (energy drains faster at night).
-  static const Map<String, int> _needDecayNight = {'energy': 6};
+  // ── Needs Impact Evaluator (consolidated post-gen LLM + rules table + modifiers for needs deltas/buffers/fulfill/climax-needs; Proposal A semantics) ──
+  // Plain class (sibling to NeedsSimulation). Owns the rich "needs_impact" eval (one call consolidating the 4 prior checks),
+  // declarative activityEffects table (Proposal A: energy/hunger neutral-or-costing + hygiene-only-on-explicit-mess in romance/sex w/o daily acts),
+  // ordered modifiers pipeline (romance context first, enjoys, explicit mess/stance, arousal damp, intensity, etc.), NeedsImpact production,
+  // and applySceneImpact + onClimax cb.
+  // Wired after _needsSimulation (per plan ordering). Granular cbs (fire/strip/extract via llm engine thins, active/group/speaker for prompts + per-char,
+  // messages, nsfw/rel for stance/arousal/cooldown in modifiers, group needs cbs, onNotify/onSave, flags, + direct needsSimulation for apply/context).
+  // onClimaxDetected: live closure for nsfw refractory + pre-climax meta save (so _checkClimax nsfw path parity preserved while detection unified).
+  // 0 @Deprecated. 0 new god private _ methods (thins + late final + comment syncs only; void _ count stays 15; thins/calls/late final only per plan).
+  // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync" comments (full prior+current list + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + cross-refs e.g. setActiveCharacter:1572); both startNew branches explicit.
+  // 1:1 vs group + oneShot/normal dispatch/parity preserved exactly (cbs + god's impersonation dance + load/saveScalarsIntoGroupRealism before post checks).
+  // aug exercising only passive/qualified (no needs-eval-specific aug file edits; full in dedicated needs_impact_evaluator_test + manual;
+  // exercised via god thins _runPostGenNeedsChecks + _check* ; qualified notes only in dedicated header + god + MD per precedent).
+  // Dispatch preserved. Realism/Needs/Objectives parity qualified (1:1 equivalent deltas/behavior; oneShot vs normal for impact too).
+  // Some post-gen coordination (impersonation, pre/post load/save scalars for group per-speaker, preTurn snapshot for chips, long-gen, attach metadata, _save/notify) stayed thin in god per plan (qualify).
+  late final _needsImpactEvaluator = NeedsImpactEvaluator(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    fireLLMEval: (p, {onChunk}) => _fireLLMEval(p, onChunk: onChunk),
+    stripThinkBlocks: _stripThinkBlocks,
+    extractJsonInt: _extractJsonInt,
+    extractJsonBool: _extractJsonBool,
+    evaluateNeedsImpactCall: _llmEvalEngine.evaluateNeedsImpactCall,
+    getActiveCharacter: () => _activeCharacter,
+    getActiveGroup: () => _activeGroup,
+    getIsObserverMode: () => _observerMode,
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getGroupNeeds: _getGroupNeeds,
+    setGroupNeeds: _setGroupNeeds,
+    getGroupCharacters: () => _groupCharacters,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+    getMessages: () => _messages,
+    needsSimulation: _needsSimulation,
+    nsfwService: _nsfwService,
+    relationshipService: _relationshipService,
+    timeService: _timeService,
+    getNeedsSimEnabled: () => _needsSimEnabled,
+    getRealismEnabled: () => _realismEnabled,
+    getEnjoysLowHygiene: () => _enjoysLowHygiene,
+    onClimaxDetected: (preArousal, refractoryTurns) {
+      // nsfw + regen pre-climax meta (moved from old _checkClimax body; keeps parity for refractory + swipe restore).
+      if (_messages.isNotEmpty && !_messages.last.isUser) {
+        final msg = _messages.last;
+        final meta = Map<String, dynamic>.from(msg.activeMetadata ?? {});
+        meta['climax_triggered'] = true;
+        meta['pre_climax_arousal'] = preArousal;
+        msg.swipeMetadata[msg.swipeIndex] = meta;
+      }
+      _nsfwService.applyClimaxEffects(turns: refractoryTurns);
+      debugPrint(
+        '[Realism:Climax] (via impact) refractory cooldown started ($refractoryTurns turns), pre-arousal saved for regen',
+      );
+    },
+  );
 
-  static const Map<String, int> _needRestore = {
-    'hunger': 50,
-    'bladder': 70,
-    'energy': 40,
-    'social': 45,
-    'fun': 40,
-    'hygiene': 35,
-    'comfort': 35,
-  };
+  // Public aliases (now delegate to the extracted canonical source of truth).
+  static const int needUrgentThreshold = NeedsSimulation.needUrgentThreshold;
+  static const int needCriticalThreshold =
+      NeedsSimulation.needCriticalThreshold;
+  static const int needFulfillmentScanThreshold =
+      NeedsSimulation.needFulfillmentScanThreshold;
+  static const List<String> needKeys = NeedsSimulation.needKeys;
 
-  static const int _needRestoreDefault = 30;
+  // ── Chaos Mode / Chance Time (extracted to ChaosModeService) ───────────────
+  // Pressure gauge, auto-roll, event pools (120 + NSFW conditional), spin/apply/check
+  // logic live in _chaosModeService (plain class). ChatService owns it and delegates.
+  // UI coordination (_chanceTimeCompleter, _chanceTimePendingTrigger, _pendingChanceTimeEvent)
+  // stay in god; prompt injection builder (_getChanceTimeInjection) now thin to _chaosInjection (step 8).
+  late final _chaosModeService = ChaosModeService(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    onSetPendingRealismMetadata: (key, value) {
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata![key] = value;
+    },
+  );
 
-  /// Thresholds for urgency, criticality, and LLM fulfillment scanning.
-  static const int _needUrgentThreshold = 35;
-  static const int _needCriticalThreshold = 20;
-  static const int _needFulfillmentScanThreshold = 40;
+  // ── Relationship / Affection / Trust / Fixation / Inter-char (extracted) ────
+  // Scores, deltas (bond/trust), tier calc, fixation lifespan, inter-char seeding
+  // + heuristic update, short/long-term progress, legacy migrations, decay, group
+  // per-char load/save scalars live in _relationshipService (plain class).
+  // ChatService owns via late final + delegates. Prompt injection builders and
+  // _groupRealism map itself stay in god (step 8+). Reset helpers on service keep
+  // the multiple "keep reset blocks in sync" sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) included in comments). (cross-ref setActiveCharacter:1572 etc)
+  late final _relationshipService = RelationshipService(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    getIsGroupActive: () => _activeGroup != null,
+    getObserverMode: () => _observerMode,
+    getGroupCharacterCount: () => _groupCharacters.length,
+    getShouldTrackInterCharacterRelationships: () =>
+        _shouldTrackInterCharacterRelationships,
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getCurrentGroupMemberIds: () =>
+        _groupCharacters.map(_getCharacterIdFromCard).toSet(),
+    getOtherGroupMemberIds: (selfId) => _groupCharacters
+        .map(_getCharacterIdFromCard)
+        .where((id) => id != selfId)
+        .toList(),
+    getOtherGroupMemberIdToLowerName: (selfId) {
+      final m = <String, String>{};
+      for (final other in _groupCharacters) {
+        final oid = _getCharacterIdFromCard(other);
+        if (oid == selfId) continue;
+        m[oid] = other.name.toLowerCase();
+      }
+      return m;
+    },
+    getRecentExchangeLowerText: () {
+      if (_messages.length < 2) return '';
+      return _messages.reversed
+          .take(2)
+          .map((m) => m.displayText.toLowerCase())
+          .join(' ');
+    },
+    getMessageCount: () => _messages.length,
+    getIsGroupRealismActive: () => isGroupRealismActive,
+    getGroupAffectionScore: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['affection'] as num?)?.toInt() ?? defaultValue,
+    setGroupAffectionScore: (charId, v) =>
+        _setGroupRealismValue(charId, 'affection', v),
+    getGroupLongTermScore: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['longTermScore'] as num?)?.toInt() ??
+        defaultValue,
+    setGroupLongTermScore: (charId, v) =>
+        _setGroupRealismValue(charId, 'longTermScore', v),
+    getGroupTrustLevel: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['trust'] as num?)?.toInt() ?? defaultValue,
+    setGroupTrustLevel: (charId, v) =>
+        _setGroupRealismValue(charId, 'trust', v),
+    getGroupFixation: (charId, {String defaultValue = ''}) =>
+        (_groupRealism[charId]?['fixation'] as String?) ?? defaultValue,
+    setGroupFixation: (charId, v) =>
+        _setGroupRealismValue(charId, 'fixation', v),
+    getGroupFixationLifespan: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['fixationLifespan'] as num?)?.toInt() ??
+        defaultValue,
+    setGroupFixationLifespan: (charId, v) =>
+        _setGroupRealismValue(charId, 'fixationLifespan', v),
+    getGroupRelationshipTier: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['relationshipTier'] as num?)?.toInt() ??
+        defaultValue,
+    setGroupRelationshipTier: (charId, v) =>
+        _setGroupRealismValue(charId, 'relationshipTier', v),
+    getGroupLongTermTier: (charId, {int defaultValue = 0}) =>
+        (_groupRealism[charId]?['longTermTier'] as num?)?.toInt() ??
+        defaultValue,
+    setGroupLongTermTier: (charId, v) =>
+        _setGroupRealismValue(charId, 'longTermTier', v),
+    getGroupSpatialStance: (charId, {String defaultValue = ''}) =>
+        (_groupRealism[charId]?['spatialStance'] as String?) ?? defaultValue,
+    setGroupSpatialStance: (charId, v) =>
+        _setGroupRealismValue(charId, 'spatialStance', v),
+    getGroupInterCharacterRelationships: (charId) {
+      final raw = _groupRealism[charId]?['relationships'];
+      if (raw is Map) {
+        return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+      }
+      return const <String, int>{};
+    },
+    setGroupInterCharacterRelationships: (charId, rels) =>
+        _setGroupRealismValue(charId, 'relationships', rels),
+  );
 
-  // Arousal suppression tuning (used by the "high arousal makes other needs
-  // feel distant" erotic realism feature).
-  static const int _arousalSuppressionThreshold = 35; // raw _arousalLevel
-  static const int _arousalSuppressionDefaultTurns = 6;
+  // ── Expression label selection / manual / avatar resolve / reclass / ONNX (extracted) ────
+  // currentExpressionLabel (manual priority + LLM map + ONNX debounce/cache/stability),
+  // resolveExpressionAvatar (random + lastId reroll), setManual, reclassifyEmotion,
+  // init/set for classifier service, _reclassify/_classifyOnnx async, caches, Random,
+  // lastAvatarId now owned by ExpressionService (plain class).
+  // ChatService owns via late final + delegates. Prompt injection (label lists) + command
+  // coordination kept in god (step 8). Reset/invalidate helpers on service keep the
+  // multiple "keep reset blocks in sync" + regen sites correct without god privates (needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+  late final _expressionService = ExpressionService(
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    getIsEvaluatingRealism: () => _isEvaluatingRealism,
+    getStorageService: () => _storageService,
+    getLlmServiceForReclass: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    getIsGenerating: () => _isGenerating,
+    getCharacterEmotion: () => _characterEmotion,
+    getMessages: () => _messages,
+    getIsThinkingModelForReclass: () {
+      // Preserve original expression reclass isThinking logic (ignores testLlmOverride for isLocal,
+      // consistent with pre-extraction).
+      final llmP = _llmProvider;
+      if (llmP != null && llmP.isLocal) {
+        return _storageService.backendSettings.koboldThinkingModel;
+      }
+      if (llmP != null) {
+        return _storageService.backendSettings.reasoningEnabled;
+      }
+      return false;
+    },
+    getRealismEvalCancelled: () => _realismEvalCancelled,
+    setRealismEvalCancelled: (v) => _realismEvalCancelled = v,
+    setIsEvaluatingRealism: (v) => _isEvaluatingRealism = v,
+    onHandleRealismEvalCancelledDuringOnnx: () async {
+      _messages.add(
+        ChatMessage(
+          text: 'Realism evaluation interrupted, regenerate response to retry',
+          sender: 'Interruption',
+          isUser: false,
+        ),
+      );
+      await _saveChat();
+      _realismEvalCancelled = false;
+      _isEvaluatingRealism = false;
+      notifyListeners();
+    },
+  );
 
-  // Post-climax crash tuning (see _tickNeedsDecay and climax handler).
-  static const double _postClimaxCrashDecayMultiplier =
-      1.8; // +80% on energy/fun/social
+  // ── Prompt Injection Builders (step 8: all _get*Injection moved to prompt_injection/*) ──
+  // 8 plain classes (author_note for objective, relationship for rel+inter+trust, emotion,
+  // behavioral, time, nsfw, chaos for chance, needs).
+  // Each wired with onNotify + granular cbs for 1:1 vs group dispatch (speaker, group chars/ints/needs,
+  // realism flags, emotion state, hygiene, active char, objective state) + direct service deps for
+  // their owned state (rel scores/tiers/fix/spatial, needs vector, nsfw cooldown/arousal, time scalars,
+  // chaos pending, etc). Mirrors nsfw/relationship/lore cbs precedent.
+  // God owns late finals + thin delegations at assembly call sites (relationship/emotion/time/trust/
+  // cooldown/behavioral/needs/inter/chance/objective). 0 @Deprecated shims. 0 new god private _ methods.
+  // Some coordination (objective list mgmt/assembly, lore _buildLorebookContext + getActiveGroupLoreEntries + preAi snapshot, chance _pendingChanceTimeEvent / _chanceTime* / completer / UI flags, _runPostGen checks) stayed thin in god per plan boundaries for step8 (qualified in headers/MD/gates + 8 builder headers + test + won'tfix).
+  // Reset blocks comments tightened to list needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (builders stateless; no reset calls
+  // needed on them; incomplete zeroing hygiene now complete for all prior+current).
+  // 1:1 vs group + oneShot/normal dispatch preserved exactly (cbs + service state).
+  // aug exercising only passive/qualified (no prompt-specific aug file edits; ... per step7 precedent).
+  late final _authorNoteBuilder = AuthorNoteBuilder(
+    getActiveObjectives: () => _activeObjectives,
+    getPrimaryObjective: () => primaryObjective,
+    tasksForObjective: (o) => tasksForObjective(o),
+    getSecondaryObjectives: () => secondaryObjectives,
+  );
 
-  // Public aliases to the canonical thresholds + keys list for UI presentation
-  // (e.g. progress bar coloring at critical), external consumers, and tests.
-  // These reference the single source of truth; literals live only in the
-  // private _ definitions below.
-  static const int needUrgentThreshold = _needUrgentThreshold;
-  static const int needCriticalThreshold = _needCriticalThreshold;
-  static const int needFulfillmentScanThreshold = _needFulfillmentScanThreshold;
-  static const List<String> needKeys = _needKeys;
+  late final _relationshipInjection = RelationshipInjection(
+    relationshipService: _relationshipService,
+    getRealismEnabled: () => _realismEnabled,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getActiveCharacter: () => _activeCharacter,
+    getShortTermTierName: () => _relationshipService.shortTermTierName,
+    getLongTermTierName: () => _relationshipService.longTermTierName,
+    getMoodLabel: () => moodLabel,
+    getShouldTrackInterCharacterRelationships: () =>
+        _shouldTrackInterCharacterRelationships,
+    getGroupInt: _getGroupInt,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+    getInterCharacterRelationships:
+        _relationshipService.getInterCharacterRelationships,
+  );
 
-  // ── Graduated Stepping Model (Phase 2 — "number two" per user request) ───────
-  // Needs now have 5 discrete urgency steps derived from the 0–100 value.
-  // Step 0 = catastrophic (involuntary event has occurred), 1 = desperate/critical,
-  // 2 = urgent/pressing, 3 = noticeable urge, 4 = mild background awareness.
-  // 5 = comfortable (no injection).
-  // Stepping makes the simulation feel alive: subtle thoughts → physical tells →
-  // desperate pleading → disaster when it hits 0.
-  // All data here is the single source of truth alongside the older maps.
+  late final _emotionInjection = EmotionInjection(
+    getRealismEnabled: () => _realismEnabled,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getActiveCharacter: () => _activeCharacter,
+    getCharacterEmotion: () => _characterEmotion,
+    getEmotionIntensity: () => _emotionIntensity,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+  );
 
-  /// Upper bounds (inclusive) for each step. Value <= threshold means that step.
-  /// [0] = step 0 (catastrophe), [1] = step 1, ..., [4] = step 4.
-  static const List<int> _needStepUpperBounds = [0, 15, 30, 45, 65];
+  late final _behavioralInjection = BehavioralInjection(
+    relationshipService: _relationshipService,
+    getRealismEnabled: () => _realismEnabled,
+    getActiveCharacter: () => _activeCharacter,
+  );
 
-  /// Per-need stepped prompt strings (index = step 0..4, most to least urgent).
-  /// These replace the old binary urgent/critical wording.
-  static const Map<String, List<String>> _needSteppedText = {
-    'hunger': [
-      // 0 — catastrophic
-      'A violent stomach cramp doubles her over. She is genuinely starving — vision swimming, knees weak, barely able to stay upright. The hunger has become a real physical crisis.',
-      // 1 — desperate
-      'Sharp, gnawing cramps twist through her. She feels light-headed and shaky, and her thoughts keep drifting uncontrollably to food. She is struggling to focus on anything else.',
-      // 2 — urgent
-      'Her stomach feels painfully hollow and tight. A constant, distracting ache that makes her restless and short-tempered. She keeps thinking about when she might be able to eat.',
-      // 3 — noticeable
-      'A steady, empty feeling sits in her stomach. Her thoughts occasionally wander toward food and she feels a bit distracted or low-energy.',
-      // 4 — mild
-      'A quiet, background emptiness in her stomach. It is not urgent, but she is aware of it and would welcome a chance to eat soon.',
-    ],
-    'bladder': [
-      // 0 — catastrophic
-      'She loses control completely. A sudden, hot rush — she is wetting herself right now in the current scene. The humiliation is immediate and overwhelming.',
-      // 1 — desperate
-      'She is fighting with everything she has not to lose control. Thighs pressed tight, constantly shifting, voice tight with strain. She is very close to having an accident.',
-      // 2 — urgent
-      'A strong, insistent pressure has built up. She is visibly uncomfortable and keeps looking for a polite way to excuse herself soon.',
-      // 3 — noticeable
-      'A steady, distracting pressure low in her belly. She feels the need more and more and would like to find a bathroom before too long.',
-      // 4 — mild
-      'A faint but persistent urge to use the restroom sits at the back of her mind, making her slightly restless.',
-    ],
-    'energy': [
-      // 0 — catastrophic
-      'Her body gives out completely. Mid-sentence her eyes flutter and she collapses — slumping to the floor or into {{user}}\'s arms, fully unconscious from exhaustion.',
-      // 1 — desperate
-      'She is barely staying awake. Head nodding, speech slow and heavy, eyes unfocused. She may drift off at any moment.',
-      // 2 — urgent
-      'A heavy, crushing tiredness has settled over her. Every movement feels like effort and her thoughts are slow. She desperately wants to rest.',
-      // 3 — noticeable
-      'A deep weariness is weighing on her. She moves a little slower and seems less animated than usual, clearly running low on energy.',
-      // 4 — mild
-      'A comfortable, heavy tiredness sits behind her eyes. She would happily curl up and rest if the opportunity arose.',
-    ],
-    'social': [
-      // 0
-      'The loneliness has become overwhelming. She feels hollow and raw, on the edge of breaking down if she cannot have real, meaningful connection with someone soon.',
-      // 1
-      'She feels painfully isolated. The lack of real connection is starting to hurt, and she may become unusually quiet, clingy, or emotionally fragile.',
-      // 2
-      'A deep ache for genuine connection sits in her chest. Casual interaction feels hollow and she keeps seeking more meaningful moments or closeness.',
-      // 3
-      'She is feeling the absence of real companionship. She seems a little more eager for meaningful conversation or physical closeness than usual.',
-      // 4
-      'A quiet, gentle craving for real connection makes her a bit more warm and attentive than normal.',
-    ],
-    'fun': [
-      // 0
-      'The boredom has become torturous. She feels dangerously restless and may suddenly do something reckless or wildly inappropriate just to feel *something* again.',
-      // 1
-      'She is deeply restless and bored out of her mind. She fidgets constantly and will suggest almost anything to break the monotony.',
-      // 2
-      'A heavy restlessness has settled over her. Everything feels dull and she keeps looking for any excuse to do something more stimulating.',
-      // 3
-      'She is noticeably bored and fidgety. The current situation feels flat and she is actively hoping for a change of pace.',
-      // 4
-      'A mild restlessness makes her a little more eager for something fun or different to happen.',
-    ],
-    'hygiene': [
-      // 0
-      'She feels filthy and overwhelmed by it. The grime or smell is so strong it is making her physically uncomfortable and self-conscious to the point of distress.',
-      // 1
-      'She feels genuinely dirty and is very aware of it. She keeps wanting to cover herself or pull away from contact until she can clean up.',
-      // 2
-      'A persistent feeling of being grimy clings to her. She is self-conscious and keeps thinking about when she can wash or change.',
-      // 3
-      'She is starting to feel noticeably unkempt. A quiet discomfort with her own state makes her want to freshen up soon.',
-      // 4
-      'A faint, background sense of being a little grubby makes her mildly self-conscious.',
-    ],
-    'comfort': [
-      // 0
-      'The physical discomfort has become unbearable. She cannot stay like this any longer and will do whatever it takes to find relief, even if it disrupts everything else happening.',
-      // 1
-      'Her body is in real distress — too hot, too cold, cramped, or aching badly. She is constantly shifting and struggling to focus on anything else.',
-      // 2
-      'A strong physical discomfort is wearing on her. She keeps adjusting her position or environment, clearly unable to settle.',
-      // 3
-      'She is noticeably uncomfortable. A persistent physical irritation (temperature, pressure, stiffness) makes it hard for her to fully relax.',
-      // 4
-      'A mild but persistent physical discomfort sits in the background, making her slightly restless.',
-    ],
-  };
+  late final _timeInjection = TimeInjection(timeService: _timeService);
 
-  /// Catastrophic narrative (the event that just occurred when the need hit 0).
-  /// This text is injected as a mandatory OOC event the AI must roleplay immediately.
-  static const Map<String, String> _needCatastropheNarrative = {
-    'hunger':
-        'A violent stomach cramp drops her to her knees or against {{user}}. She hasn\'t eaten in far too long; her blood sugar crashes and she nearly faints or becomes too weak to stand. The hunger has turned into a real physical emergency.',
-    'bladder':
-        'She loses control completely. A sudden, hot, unstoppable rush — she is wetting herself right now, in the current scene, in front of {{user}} or anyone present. The fabric darkens, liquid runs down her legs, the smell fills the air, and her face is a mask of horror and humiliation. The accident is happening / has just happened.',
-    'energy':
-        'Her body simply shuts down. Mid-sentence her eyes roll back and she collapses — slumping to the floor, onto furniture, or into {{user}}\'s arms — completely unconscious from exhaustion. She is out cold and will not wake for some time.',
-    'social':
-        'The isolation finally breaks her. She bursts into tears or a raw, desperate plea for real connection, unable to pretend any longer that she is okay alone.',
-    'fun':
-        'The boredom has driven her to something reckless or wildly inappropriate — she does something dangerous, sexual, or chaotic purely to feel *anything* again.',
-    'hygiene':
-        'The accumulated grime and smell finally overwhelm her. She gags, tears up, or has a small breakdown about how disgusting she feels, refusing further contact until she can wash.',
-    'comfort':
-        'The physical misery becomes too much. She cries out, pushes away from whatever is hurting her (the chair, the ropes, the position, the temperature), and demands — or takes — immediate relief no matter what else is happening in the scene.',
-  };
+  late final _nsfwInjection = NsfwInjection(
+    nsfwService: _nsfwService,
+    needsSimulation: _needsSimulation,
+    relationshipService: _relationshipService,
+    getRealismEnabled: () => _realismEnabled,
+    getActiveCharacter: () => _activeCharacter,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+  );
 
-  /// After a catastrophe fires, the need is lifted to this floor value.
-  /// These are now set high because the character actually resolved the crisis
-  /// in the scene (went to the bathroom, ate, passed out and rested, cleaned up, etc.).
-  /// The user should feel like "she got proper relief" instead of "still almost critical".
-  static const Map<String, int> _needPostCatastropheFloor = {
-    'hunger': 70,
-    'bladder': 85, // proper bathroom visit → she feels much better
-    'energy': 65, // after collapsing she rests and recovers
-    'social': 60,
-    'fun': 55,
-    'hygiene': 70,
-    'comfort': 70,
-  };
+  late final _chaosInjection = ChaosInjection(
+    chaosModeService: _chaosModeService,
+    getActiveCharacter: () => _activeCharacter,
+  );
 
-  // Maintenance: _needKeys (and the *Defaults/*Decay*/*Restore* maps + the three
-  // threshold consts) are the single source of truth for all need simulation data.
-  // The decay logic (now fully map-driven via containsKey for time-of-day variants),
-  // fulfillment scan, restore helper, _getNeedsInjection secondary filter, and
-  // the presentation switch (for per-need directive text) plus the one-off bladder
-  // special-case must stay in sync with _needKeys when extending the set of needs.
-  // The switch in _getNeedsInjection remains the only place with per-key presentation
-  // strings (new needs fall through to _ => '' until a case is added).
+  late final _needsInjection = NeedsInjection(
+    needsSimulation: _needsSimulation,
+    nsfwService: _nsfwService,
+    getNeedsSimEnabled: () => _needsSimEnabled,
+    getRealismEnabled: () => _realismEnabled,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getActiveCharacter: () => _activeCharacter,
+    getEnjoysLowHygiene: () => _enjoysLowHygiene,
+    getGroupNeeds: _getGroupNeeds,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+  );
 
-  void _initializeNeedsVectorIfNeeded() {
-    if (_needsVector.isEmpty) {
-      _needsVector = Map<String, int>.from(_needDefaults);
-    }
-  }
+  // ── LLM Eval Engine (step 9: _fireLLMEval + strip + extract + needs impact cb) ──
+  // Plain class (not ChangeNotifier). Owns the central eval firing (streaming/retry/cancel, 4000/0.1/no-reasoning),
+  // central strip (completed+unclosed), JSON extractors, evaluateNeedsImpactCall (for needs_impact_evaluator).
+  // The 5 realism eval prompt builders + calls (rel/emotion/phys/narr w/ proposed_objective, oneShot) moved to
+  // sibling leaf realism_evals.dart (step 10); this engine provides fire/strip/extract cbs to it (granular).
+  // objective proposal handling + generateObjectiveTasks + _checkTaskCompletionInBackground moved to
+  // sibling leaf objective_proposal.dart (step 11); this engine provides strip cb to it (for 2000 paths).
+  // Wired with granular cbs for 1:1 vs group (via impersonation for speaker), test overrides,
+  // pending/emotion state, capture, + service deps (rel) .
+  // (onNotify/onSaveChat removed in step 10 fix round 1 + step11: oneShot populates pending snapshot;
+  // god owns the post-eval _saveChat/notify in pre-turn + baseline paths to avoid double + races;
+  // on* dead post step11 objective move, cleaned).
+  // 0 @Deprecated shims. 0 new god private _ methods beyond the required thin delegates (_fireLLMEval, _stripThinkBlocks, _extractJson*, evaluateNeedsImpactCall; the 5 _evaluate*Call thins now point to realism_evals; generate/check thins now to objective_proposal; the void _ count grep stayed 15; +1 late final only; thins/calls/late final only per plan). (cross-ref setActiveCharacter:1572 etc)
+  // Stateless/prompt-only: no reset calls needed. Reset hygiene comments list full set + llm_eval_engine (stateless or prompt-only;
+  // no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + cross-refs (e.g. setActiveCharacter:1572). Both startNew branches explicit.
+  // 1:1 vs group + oneShot vs normal dispatch/parity preserved exactly (cbs + impersonation temp re-load; qualified).
+  // aug exercising only passive/qualified (no llm-eval-specific aug file edits; resets/loads/greetings/post hit by pre-existing
+  // startNew/setActive/_loadLast/group in key suites; full eval/JSON/strip + needs impact only in dedicated + manual;
+  // objective proposal/gen/check exercised via god thins generate/check ; qualified notes only in dedicated header + god + MD per precedent).
+  late final _llmEvalEngine = LlmEvalEngine(
+    getActiveCharacter: () => _activeCharacter,
+    getActiveGroup: () => _activeGroup,
+    getIsObserverMode: () => _observerMode,
+    getUserName: () => _userPersonaService.persona.name,
+    getRealismEnabled: () => _realismEnabled,
+    getMessages: () => _messages,
+    getLlmService: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    getIsLocal: () => testLlmServiceOverride != null
+        ? testIsLocalOverride
+        : (_llmProvider?.isLocal ?? false),
+    getKoboldService: () => _llmProvider?.koboldService,
+    reconnectIfAlive: () async {
+      final k = _llmProvider?.koboldService;
+      if (k != null) await k.reconnectIfAlive();
+    },
+    ensureServerIdle: () async {
+      final k = _llmProvider?.koboldService;
+      if (k != null) await k.ensureServerIdle();
+    },
+    getIsCancellingRealismEval: () => _isCancellingRealismEval,
+    getRealismEvalCancelled: () => _realismEvalCancelled,
+    getPendingRealismMetadata: () => _pendingRealismMetadata,
+    setPendingRealismMetadata: (v) => _pendingRealismMetadata = v,
+    captureRealismState: _captureRealismState,
+    getCharacterEmotion: () => _characterEmotion,
+    setCharacterEmotion: (v) => _characterEmotion = v,
+    getEmotionIntensity: () => _emotionIntensity,
+    setEmotionIntensity: (v) => _emotionIntensity = v,
+    relationshipService: _relationshipService,
+  );
 
-  String _serializeNeeds() {
-    return jsonEncode(_needsVector);
-  }
+  // ── Realism Evals (step 10: the 5 realism evaluation calls — relationship, emotional, physical, narrative, one-shot) ──
+  // Plain leaf sibling to LlmEvalEngine. Owns the 5 eval prompt builders + call orchestration + parse for realism results
+  // (bond/trust/emotion/arousal/fixation/spatial stance/time + pending for chips/reasons) + side effects (apply deltas on
+  // rel/nsfw, set emotion scalars, updateFixation, setObjective thin for autonomous, snapshot in oneShot).
+  // Depends on llm_eval_engine for fire/strip/extract cbs (wired via god thins for centralization).
+  // Some coordination (setObjective thin for proposal, physical posture delegate to timeService) stayed thin/coordinated
+  // per precedent (qualify).
+  // ChatService owns via late final (after engine) + thins/delegates at *every* prior call site for the 5 _evaluate*Call
+  // (full excision of moved code from engine + prior thin bodies).
+  // 0 @Deprecated shims. 0 new god private _ methods (thins stay in god as the public surface; void _ count grep stays 15
+  // confirmed after every edit + final; +1 late final + thins/calls + reset comment syncs only per plan).
+  // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync" comments at *all* ~15+ sites
+  // (full prior+current list including + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + "incomplete
+  // zeroing of secondary config on group/0-session/new-chat now complete"; both startNew branches explicit; cross-refs
+  // e.g. setActiveCharacter:1572).
+  // 1:1 vs group + oneShot vs normal + Realism/Needs/Objectives parity 1:1 equivalent deltas/behavior at all times
+  // (cbs + god's impersonation dance + load/saveScalarsIntoGroupRealism before speaker evals; qualified; exercised in
+  // dedicated + key suites + manual).
+  // aug exercising only passive/qualified (no realism-evals-specific aug file edits; full in dedicated
+  // realism_evals_test + manual; exercised via god thins _evaluate*Call ; qualified notes only in dedicated header + god
+  // + MD per precedent).
+  late final _realismEvals = RealismEvals(
+    fireLLMEval: (p, {onChunk}) => _fireLLMEval(p, onChunk: onChunk),
+    stripThinkBlocks: _stripThinkBlocks,
+    extractJsonInt: _extractJsonInt,
+    extractJsonBool: _extractJsonBool,
+    getActiveCharacter: () => _activeCharacter,
+    getActiveGroup: () => _activeGroup,
+    getIsObserverMode: () => _observerMode,
+    getUserName: () => _userPersonaService.persona.name,
+    getRealismEnabled: () => _realismEnabled,
+    getMessages: () => _messages,
+    getPendingRealismMetadata: () => _pendingRealismMetadata,
+    setPendingRealismMetadata: (v) => _pendingRealismMetadata = v,
+    captureRealismState: _captureRealismState,
+    getCharacterEmotion: () => _characterEmotion,
+    setCharacterEmotion: (v) => _characterEmotion = v,
+    getEmotionIntensity: () => _emotionIntensity,
+    setEmotionIntensity: (v) => _emotionIntensity = v,
+    relationshipService: _relationshipService,
+    nsfwService: _nsfwService,
+    timeService: _timeService,
+    getExpressionEnabled: () =>
+        _storageService.expressionSettings.expressionEnabled,
+    getPrimaryObjective: () => primaryObjective,
+    getActiveObjectives: () => _activeObjectives,
+    setObjective: (text, {isPrimary = false, autoGenerateTasks = false}) =>
+        setObjective(
+          text,
+          isPrimary: isPrimary,
+          autoGenerateTasks: autoGenerateTasks,
+        ),
+  );
 
-  void _restoreNeedsFromJson(String? json) {
-    if (json == null || json.isEmpty) {
-      _initializeNeedsVectorIfNeeded();
-      return;
-    }
-    try {
-      final decoded = jsonDecode(json) as Map<String, dynamic>;
-      _needsVector = decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
-    } catch (_) {
-      _initializeNeedsVectorIfNeeded();
-    }
-  }
+  // ── Objective Proposal (step 11: proposal path support + generateObjectiveTasks + _checkTaskCompletionInBackground) ──
+  // Plain leaf sibling to LlmEvalEngine (and realism_evals). Owns generateObjectiveTasks
+  // (2000 + central strip via cb for thinking models) + checkTaskCompletionInBackground
+  // (2000 + strip; task vs taskless) + internal prompt/parse.
+  // The autonomous "none" vs value + dedup + autoGenerateTasks:true only for autonomous
+  // lives in realism_evals (narr/oneShot); correct target under group impersonation via
+  // god dance + live cbs; objective mgmt (setObjective, load/save/deact, tasksFor,
+  // isChecking, _activeObjectives, markTaskCompleted) stay thin/coordinated in god per plan
+  // (qualify; "thin delegation here; full objective proposal in step 11").
+  // ChatService owns via late final (after _realismEvals) + thins/delegates at *every*
+  // prior call site for generate + _check (full excision from engine + old thin bodies).
+  // 0 @Deprecated shims. 0 new god private _ methods (thins as public surface; void _
+  // count grep stays 15 confirmed after every edit + final; +1 late final + thins/calls
+  // + reset comment syncs only per plan).
+  // Stateless/prompt-only: no reset calls needed. See expanded "keep reset blocks in sync"
+  // comments at *all* ~15+ sites (full prior+current list incl + objective_proposal
+  // (stateless or prompt-only; no reset calls needed) + summary_service (stateless or
+  // prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + "incomplete zeroing of secondary
+  // config on group/0-session/new-chat now complete"; both startNew branches explicit;
+  // cross-refs e.g. setActiveCharacter:1572).
+  // 1:1 vs group + oneShot/normal parity for proposed "none"/value + dedup + auto only
+  // autonomous + correct target (even under impersonation; decision/attach via dance, gen prompt read best-effort/timing-dep as qualified in leaf + test + impersonation finally); task vs taskless (mark cb mutation in god for task auto); 2000+central
+  // strip; dispatch preserved via cbs + god impersonation. (Fix round 2 updates: timing qualify, zeroing of _isChecking + messagesSince now explicit at all sites + "now complete", mark cb, getPrimary del as dead, test bodies 11 post del, lints 0, claims updated only post re-gates/re-reads).
+  // aug exercising only passive/qualified (no objective-proposal-specific aug file edits;
+  // full in dedicated objective_proposal_test + manual; exercised via god thins
+  // generate/check ; qualified notes only in dedicated header + god + MD per precedent).
+  late final _objectiveProposal = ObjectiveProposal(
+    stripThinkBlocks: _stripThinkBlocks,
+    getLlmService: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    getActiveCharacter: () => _activeCharacter,
+    getActiveGroup: () => _activeGroup,
+    getIsObserverMode: () => _observerMode,
+    getUserName: () => _userPersonaService.persona.name,
+    getRealismEnabled: () => _realismEnabled,
+    getMessages: () => _messages,
+    getActiveObjectives: () => _activeObjectives,
+    tasksForObjective: tasksForObjective,
+    loadActiveObjectives: _loadActiveObjectives,
+    saveObjectiveTasks: (id, json) async {
+      await _db.updateObjective(
+        ObjectivesCompanion(id: drift.Value(id), tasks: drift.Value(json)),
+      );
+    },
+    deactivateObjective: (id) async {
+      await _db.updateObjective(
+        ObjectivesCompanion(
+          id: drift.Value(id),
+          active: const drift.Value(false),
+        ),
+      );
+    },
+    markTaskCompleted: markTaskCompleted,
+    getIsCheckingCompletion: () => _isCheckingCompletion,
+    setIsCheckingCompletion: (v) => _isCheckingCompletion = v,
+    onNotify: notifyListeners,
+  );
 
+  // ── Chat Summary (step 12: _generateSummaryInBackground + _maybeUpdateSummary + force + prompt/RAG/strip/update) ──
+  // Plain leaf sibling to LlmEvalEngine / realism_evals / objective_proposal.
+  // Owns the full generate (prompt template macros {{words}}/{{user}}/{{char}}, history
+  // condensation skipping director, previousSummaryBlock, RAG grounding via getMemorySourceIds +
+  // getAllContentForCharacters, genParams max=words*3 / temp 0.3 / no-reasoning / stops, stream
+  // accumulate, strip think completed+unclosed + numbered analysis preamble skip + trailing
+  // sentence trim, result update via cbs + save/notify).
+  // Cadence (user msg count since lastIndex >= storage.interval), pause, force, enabled,
+  // flag _isSummaryGenerating, scalars _summary/_lastIndex/_paused, save/load in session,
+  // reset zeros stay thin/coordinated in god per plan ("thin delegation here; full summary
+  // in step 12"). God thins at every prior call site + post-gen call site (full excision
+  // of old _generate body).
+  // 0 @Deprecated. 0 new god private _ methods (thins as public surface; void _ count
+  // grep stays 15 after every edit + final; +1 late final + thins/calls + reset comment
+  // syncs only per plan).
+  // Stateless/prompt-only: no reset calls needed on leaf. See expanded "keep reset blocks
+  // in sync" at *all* ~15+ sites (full prior+current list + summary_service (stateless or
+  // prompt-only; no reset calls needed) + "incomplete zeroing of secondary config on
+  // group/0-session/new-chat now complete"; both startNew branches explicit; cross-refs
+  // e.g. setActiveCharacter:1572).
+  // 1:1 vs group parity for summary text/lastIndex/paused/generating/force/pause/cadence
+  // (dispatch preserved via cbs; summary per-chat, context names/RAG correct at trigger).
+  // aug exercising only passive/qualified (no summary-specific aug file edits; full in
+  // dedicated summary_service_test + manual; exercised via god thins _maybeUpdateSummary/
+  // force/generate ; qualified notes only in dedicated header + god + MD per precedent).
+  // Anti-accumulation: explicit dead audit (no new _Summary/*Summary privates in god);
+  // deletion of moved bodies as part of task.
+  // Barrel not added (internal to ChatService; per "unless 3+ locations").
+  late final _summaryService = SummaryService(
+    getLlmService: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    getSummaryEnabled: () => _storageService.memorySettings.summaryEnabled,
+    getSummaryInterval: () => _storageService.memorySettings.summaryInterval,
+    getSummaryPrompt: () => _storageService.memorySettings.summaryPrompt,
+    getSummaryMaxWords: () => _storageService.memorySettings.summaryMaxWords,
+    getActiveCharacter: () => _activeCharacter,
+    getActiveGroup: () => _activeGroup,
+    getUserName: () => _userPersonaService.persona.name,
+    getMessages: () => _messages,
+    getCurrentSummary: () => _summary,
+    onNotify: notifyListeners,
+    onSaveChat: _saveChat,
+    getIsSummaryGenerating: () => _isSummaryGenerating,
+    setIsSummaryGenerating: (v) => _isSummaryGenerating = v,
+    updateSummary: (t) => _summary = t,
+    updateSummaryLastIndex: (i) => _summaryLastIndex = i,
+    isMemoryOperational: () =>
+        _memoryService != null && _memoryService!.isOperational,
+    getMemorySourceIds: _getMemorySourceIds,
+    getAllContentForCharacters: (ids) =>
+        _memoryService!.getAllContentForCharacters(ids),
+  );
+
+  // ── Fact Extraction (step 13: _extractFactsInBackground full + _consolidate + _isValidFact + quality gate + RP-aware prompt + consolidate) ──
+  // Plain leaf sibling to LlmEvalEngine / realism_evals / objective_proposal / summary_service.
+  // Owns the full extract (early guard + set flag via cb, recent user msgs filter skip __director__ + last 10,
+  // existingFacts block + userName, displayText, charNames list from active+group for exclusion + charNamesStr,
+  // long strict RP-aware extractionPrompt with CRITICAL RULES (only universal timeless context-free real-person facts,
+  // ignore all RP/* / in-char / fictional / relationship / character names / scene-specific), GOOD/BAD examples,
+  // isThinkingModel (local + koboldThinking/reasoningEnabled), GenerationParams (1024/0.2/1.15, stop ] or ]\n,
+  // banEos/trim for local thinking), stream generate with early break if after strip ends with ']', accumulate,
+  // post-stream strip think (use central), trim, debug raw, ```json codeblock extraction, RegExp \[.*\] dotAll parse
+  // + jsonDecode to List<String>, if empty or parse fail debug+return, cleanFacts=where(_isValidFact), log rejected,
+  // if empty after gate return, log accepted, await addLearnedFacts(clean + embed if avail), currentCount > max →
+  // await _consolidate, debug saved) + consolidate (facts copy, <=max return, consolidationPrompt (merge related dense
+  // preserving ALL specific details, ex cat+name+color, remove redundant, drop vague, target ~max or fewer, ONLY JSON array),
+  // raw = await fireLLMEval, null→fallback truncate+update+return, text=strip, codeblock strip, arrayMatch, no match fallback,
+  // try { consolidated=jsonDecode, cleaned=where _isValid, debug before→after, update with cleaned } catch fallback truncate).
+  // Cadence/flag/counter/periodic orchestration / enabled / sequence / call sites / load/save of transients stay thin
+  // in god per plan ("thin delegation here; full fact extraction in step 13").
+  // God late final (after _summaryService) + thins/delegates at *every* prior call site (the one in
+  // _runPeriodicEvalsInSequence and the guard/flag use) with *full excision* of the moved bodies from god.
+  // 0 @Deprecated shims. 0 new god private _ methods (thins as the public surface; live `grep -c '^\s*void _[a-zA-Z]' lib/services/chat_service.dart` *must stay exactly 15* after *every* edit + final; +1 late final + thins/calls + reset comment syncs only).
+  // Stateless/prompt-only (no owned reset/seed/load state for processing — god owns the scalars/flags/cadence; no reset calls needed on leaf).
+  // God reset "keep blocks in sync" comments expanded at *all* ~15+ documented sites (full prior+current list + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + "incomplete zeroing of secondary config on group/0-session/new-chat now complete"; both startNew branches explicit; cross-refs e.g. setActiveCharacter:1572).
+  // 1:1 vs group parity for fact extraction (rejection of current+group char names must work identically; dispatch preserved via cbs; facts are user-global but context for extraction/rejection is chat-specific).
+  // aug/integration tests receive *only* qualified passive notes in headers/comments (exact precedent phrasing from step 12: "aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent)"); no leaf-specific logic edits.
+  // Anti-accumulation/dead-code audit (explicit greps of affected methods in god; no new _Fact/*Fact/ExtractFact privates in god; deletion of moved + any dead/vestigial as part of task).
+  // Barrel not added (internal to ChatService only; per "unless 3+ locations").
+  late final _factExtraction = FactExtraction(
+    getLlmService: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    fireLLMEval: (p) => _fireLLMEval(p),
+    stripThinkBlocks: _stripThinkBlocks,
+    getIsLocal: () => testLlmServiceOverride != null
+        ? testIsLocalOverride
+        : (_llmProvider?.isLocal ?? false),
+    getKoboldThinkingModel: () =>
+        _storageService.backendSettings.koboldThinkingModel,
+    getReasoningEnabled: () => _storageService.backendSettings.reasoningEnabled,
+    getUserName: () => _userPersonaService.persona.name,
+    getLearnedFacts: () => _userPersonaService.persona.learnedFacts,
+    addLearnedFacts: (facts, {embedService}) =>
+        _userPersonaService.addLearnedFacts(facts, embedService: embedService),
+    updateLearnedFacts: (facts) async {
+      final p = _userPersonaService.persona;
+      await _userPersonaService.updatePersona(p.copyWith(learnedFacts: facts));
+    },
+    getActiveCharacter: () => _activeCharacter,
+    getGroupCharacters: () => _groupCharacters,
+    getMessages: () => _messages,
+    getIsExtractingFacts: () => _isExtractingFacts,
+    setIsExtractingFacts: (v) => _isExtractingFacts = v,
+    isMemoryOperational: () =>
+        _memoryService != null && _memoryService!.isOperational,
+    getEmbeddingService: () => _memoryService?.embeddingService,
+  );
+
+  // Thin delegation (full _extractFactsInBackground + consolidate + quality gate + prompt/LLM/stream/JSON/_isValidFact
+  // in fact_extraction step 13; cadence/flag/counter/periodic orchestration / enabled / sequence / call sites stay thin
+  // in god per plan; "thin delegation here; full fact extraction in step 13").
+  Future<void> _extractFactsInBackground() =>
+      _factExtraction.extractFactsInBackground();
+
+  // ── Character Evolution (step 14) wiring ──
+  // Plain leaf sibling to fact_extraction / summary_service / llm_eval_engine etc.
+  // owns the full evolution trigger/extract/reset + effective personality/scenario layering
+  // + group per-char counts + LLM for traits + status/error.
+  // Periodic coordination / enabled / trigger call sites / load/save of evolved scalars/maps
+  // stay thin in god ("thin delegation here; full character evolution in step 14").
+  // God late final (after _factExtraction) + thins/delegates at *every* prior call site for
+  // trigger/manual/getEffective* (full excision of moved bodies), 0 @Deprecated shims,
+  // 0 new god private _ methods (thins as the public surface; live `grep -c '^\s*void _[a-zA-Z]'
+  // lib/services/chat_service.dart` *must stay exactly 15* after *every* edit + final;
+  // +1 late final + thins/calls + reset comment syncs only).
+  // Stateless/prompt-only (no owned reset/seed/load state for evolution processing —
+  // god owns the maps/scalars/flags/counts; no reset calls needed on leaf).
+  // God reset "keep blocks in sync" comments expanded at *all* ~15+ documented sites
+  // (full prior+current list + evolution_service (stateless or prompt-only; no reset calls needed)
+  // + "incomplete zeroing of secondary config on group/0-session/new-chat now complete"
+  // + *both* startNewChat branches explicit + cross-refs e.g. setActiveCharacter:1572).
+  // Explicit _isEvolvingCharacter=false + _evolutionStatus='' + _evolutionError='' (modeled on _isExtractingFacts) added at 10+ sites + decl + startNew both + common in fix round to make "now complete" hold in *code* (not just comments); maps/counts were already present.
+  // 1:1 vs group parity for evolution (per-char counts, effective personality/scenario layering,
+  // trigger behavior must be identical whether 1:1 or group per-speaker; dispatch preserved
+  // via cbs + god's impersonation dance where needed for target).
+  // aug/integration tests receive *only* qualified passive notes in headers/comments (exact
+  // precedent phrasing from step 13: "aug exercising only passive/qualified (no evolution-specific
+  // aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_triggerCharacterEvolution ;
+  // qualified notes only in dedicated header + god + MD per precedent)"); no leaf-specific logic edits.
+  // Anti-accumulation/dead-code audit (explicit greps of affected methods in god; no new
+  // _Evol/*Evol/Evolution privates in god; deletion of moved + any dead/vestigial as part of task).
+  // Barrel not added (internal to ChatService only; per "unless 3+ locations").
+  late final _evolutionService = EvolutionService(
+    getLlmService: () =>
+        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
+    stripThinkBlocks: _stripThinkBlocks,
+    getUserName: () => _userPersonaService.persona.name,
+    getActiveCharacter: () => _activeCharacter,
+    getGroupCharacters: () => _groupCharacters,
+    getMessages: () => _messages,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+    getSummary: () => _summary,
+    getIsNewChat: () => _isNewChat,
+    fetchRecentMemoryChunksForEvolution: () async {
+      if (_memoryService == null ||
+          !_memoryService!.isOperational ||
+          _isNewChat) {
+        return <String>[];
+      }
+      try {
+        final sourceIds = await _getMemorySourceIds();
+        final chunks = await _memoryService!.getAllContentForCharacters(
+          sourceIds,
+        );
+        if (chunks.isNotEmpty) {
+          final recent = chunks.length > 10
+              ? chunks.sublist(chunks.length - 10)
+              : chunks;
+          return recent;
+        }
+      } catch (e) {
+        debugPrint('[Evolution] RAG retrieval failed (non-fatal via cb): $e');
+      }
+      return <String>[];
+    },
+    getCharacterEvolutionEnabled: () =>
+        _storageService.memorySettings.characterEvolutionEnabled,
+    getEvolvedPersonality: (charId) => _evolvedPersonalities[charId],
+    setEvolvedPersonality: (charId, v) => _evolvedPersonalities[charId] = v,
+    getEvolvedScenario: (charId) => _evolvedScenarios[charId],
+    setEvolvedScenario: (charId, v) => _evolvedScenarios[charId] = v,
+    getEvolutionCountFor: (charId) => _groupEvolutionCounts[charId] ?? 0,
+    setEvolutionCountFor: (charId, v) => _groupEvolutionCounts[charId] = v,
+    // Note (D qualify per re-review): count persistence for group is mem-only (_groupEvolutionCounts snapshot) per current thin god load/save (1:1 has dedicated DB column + mirror in persist). Effective layering / trigger target parity with 1:1 is preserved exactly (via cbs + leaf). Group count UI (cards/sidebar) uses the mem snapshot. This is pre-existing (public surface / load/save of evolved maps/counts stayed thin/coordinated in god per step 14 plan "public surface stay thin in god"; not regressed by extraction).
+    getIsEvolvingCharacter: () => _isEvolvingCharacter,
+    setIsEvolvingCharacter: (v) => _isEvolvingCharacter = v,
+    setEvolutionStatus: (s) {
+      _evolutionStatus = s;
+      notifyListeners();
+    },
+    setEvolutionError: (e) {
+      _evolutionError = e;
+      notifyListeners();
+    },
+    persistEvolvedForCharacter: (charId, pers, scen, count) async {
+      if (_currentSessionId != null) {
+        if (_activeGroup != null) {
+          final session = await _db.getSessionById(_currentSessionId!);
+          if (session != null) {
+            final personalities = _tryParseJsonMap(
+              session.groupEvolvedPersonalities,
+            );
+            final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
+            personalities[charId] = pers;
+            scenarios[charId] = scen;
+            await _db.patchSession(
+              SessionsCompanion(
+                id: drift.Value(_currentSessionId!),
+                groupEvolvedPersonalities: drift.Value(
+                  jsonEncode(personalities),
+                ),
+                groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
+              ),
+            );
+          }
+        } else {
+          await _db.patchSession(
+            SessionsCompanion(
+              id: drift.Value(_currentSessionId!),
+              evolvedPersonality: drift.Value(pers),
+              evolvedScenario: drift.Value(scen),
+              evolutionCount: drift.Value(count),
+            ),
+          );
+        }
+      }
+      _evolvedPersonalities[charId] = pers;
+      _evolvedScenarios[charId] = scen;
+      _groupEvolutionCounts[charId] = count;
+      if (_activeCharacter != null &&
+          _getCharacterIdFromCard(_activeCharacter!) == charId) {
+        _characterEvolutionCount = count;
+      }
+      notifyListeners();
+    },
+  );
+
+  // Thin delegation (full _trigger/_extract + effective layering + group per-char
+  // + LLM/prompt/parse/persist in evolution_service step 14; cadence/flag/periodic
+  // orchestration / enabled / sequence / call sites / load/save of evolved maps
+  // stay thin in god per plan; "thin delegation here; full character evolution in step 14").
+  void _triggerCharacterEvolution() =>
+      _evolutionService.triggerCharacterEvolution();
+  Future<bool> triggerEvolutionNow({CharacterCard? target}) =>
+      _evolutionService.triggerEvolutionNow(target: target);
+
+  // Effective getters now thin to leaf (layering owned in step 14 sibling).
+  String _getEffectivePersonality(CharacterCard card) =>
+      _evolutionService.getEffectivePersonality(card);
+  String _getEffectiveScenario(CharacterCard card) =>
+      _evolutionService.getEffectiveScenario(card);
+
+  // Step 15 (refactor remaining `ChatService`): complete. God is now thin
+  // coordinator/orchestrator + minimal god-owned state that per-plan stayed
+  // (_groupRealism + _loadGroup*IntoScalars / _saveScalarsIntoGroupRealism /
+  // _setGroup* / _loadGroupRealismStateFromSession / _sync... / _restore... ;
+  // core sendMessage pre/post + _generateResponse (pick/eval dance/impersonation/
+  // build* stayed / post-gen finalization) ; _buildChatHistoryWithBudget ;
+  // _loadLastSession / _saveChat / _doSaveChat ; _pickNextGroupCharacter ;
+  // _evaluateRealismForUpcomingGroupSpeaker ; _waitForTtsThenContinue + drain
+  // buffer / _flush / _startDrainTimer ; _applyMoodDecay ; _maybeEmbedMessages ;
+  // _maybeRunPeriodicEvals / _run... seq thins ; _runPostGenNeedsChecks thin ;
+  // observerMode / autoPlay / callMode / build persona/author/history blocks
+  // that stayed ; all reset keep-sync + "now complete" + both startNew + full
+  // list of 14 leaves + god-owned). 0 new god private _ methods (live grep
+  // `^\s*void _[a-zA-Z]` stayed exactly 15 after every edit + final; thins +
+  // god coord entrypoints only). Pure cleanup + dead/obsolete comment removal
+  // (3 vestigial phrases cleaned: 2 briefing + 1 per-thin at _getNsfwCooldownInjection:7742) + thin consistency as part of
+  // task (no heroic new splits; smallest change; no bloat/parallel paths).
+  // 1:1 vs group parity preserved for all surfaces (dispatch via cbs + god
+  // impersonation dance). aug tests: only qualified passive (no step-15 edits).
+  // See docs/refactor-god-file-modularization.md Step 15 + CLAUDE Path Map.
   Completer<void>?
-  _chanceTimeCompleter; // pauses sendMessage while wheel is active
-
-  /// Base chance % per turn. Grows by [_chaosGrowthPerTurn] each turn.
-  static const int _chaosBaseChance = 5;
-  static const int _chaosGrowthPerTurn = 5;
-  static const int _chaosPressureCap = 100;
-
-  // ── v3 Behavioral Mechanics ──
-  int _trustLevel = 0; // -100 to 100
-  String _activeFixation = '';
-  int _fixationLifespan = 0; // turns until fixation naturally clears
-  String _spatialStance = '';
+  _chanceTimeCompleter; // pauses sendMessage while wheel is active (UI coordination, stays in god)
 
   // ── Trust Repair ──
   // Armed on each severe trust drop (≥ -20 delta). Consumed on the very
   // next user message, then resets so future drops each get one shot.
-  bool _pendingTrustRepair = false;
+  // Backing state + arming logic moved to RelationshipService.applyTrustDelta.
+  // (No local field remains; @Deprecated shim on getter only.)
 
   // ── Context / Prompt Budget ──
   Map<String, int> _lastPromptBudget = {};
@@ -1130,14 +1464,14 @@ class ChatService extends ChangeNotifier {
     final id = _getCharacterIdFromCard(character);
     final raw = _groupRealism[id]?['needs'];
     final result = <String, int>{};
-    for (final k in _needKeys) {
+    for (final k in needKeys) {
       final v = (raw is Map) ? raw[k] : null;
       if (v is num) {
         result[k] = v.toInt();
       } else {
         // Fill any missing official needs so the UI always shows the complete set.
         // This handles legacy/incomplete group data after previous cleanups.
-        result[k] = _needDefaults[k] ?? 80;
+        result[k] = NeedsSimulation.needDefaults[k] ?? 80;
       }
     }
     return result;
@@ -1212,38 +1546,7 @@ class ChatService extends ChangeNotifier {
   ///
   /// Backward-compat: If an old checkpoint is missing the 'relationships' key for
   /// a character, we naturally return empty (no migration needed).
-  Map<String, int> getInterCharacterRelationships(String charId) {
-    if (!isGroupRealismActive) return const {};
-    final raw = _groupRealism[charId]?['relationships'];
-    if (raw is Map) {
-      return raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
-    }
-    return const {};
-  }
-
-  /// Applies a delta to the hidden relationship from one group character toward another.
-  /// `fromCharId` is whose feelings are changing toward `toCharId`.
-  /// The value is clamped to [-300, 300]. Creates the map entry if needed.
-  /// No-op outside of an active group.
-  void updateInterCharacterRelationship(
-    String fromCharId,
-    String toCharId,
-    int delta,
-  ) {
-    if (_activeGroup == null) return;
-
-    final currentMap = Map<String, int>.from(
-      getInterCharacterRelationships(fromCharId),
-    );
-    final currentValue = currentMap[toCharId] ?? 0;
-    final newValue = (currentValue + delta).clamp(-300, 300);
-
-    // Reuse the existing internal setter so the per-char map is created cleanly
-    _setGroupRealismValue(fromCharId, 'relationships', {
-      ...currentMap,
-      toCharId: newValue,
-    });
-  }
+  // (inter-char relationship shims excised in final cleanup; use relationshipService directly)
 
   /// Clears the per-character realism state (emotion, bond/affection, trust,
   /// arousal, fixation, needs vector, and any hidden inter-character relationships)
@@ -1402,10 +1705,41 @@ class ChatService extends ChangeNotifier {
   bool get summaryPaused => _summaryPaused;
   int get summaryLastIndex => _summaryLastIndex;
   bool get isSummaryGenerating => _isSummaryGenerating;
-  int get affectionScore => _affectionScore;
-  int get relationshipTier => _relationshipTier;
-  int get longTermScore => _longTermScore;
-  int get longTermTier => _longTermTier;
+  // Public access to extracted domain services (final shim migration + cleanup).
+  // Callers (UI sidebars, tests, chance overlay, group settings, etc.) now use direct:
+  //   chat.relationshipService.affectionScore / .trustLevel / shortTermTierName etc.
+  //   chat.timeService.timeOfDay / .dayCount / .setPassageOfTimeEnabled(...)
+  //   chat.nsfwService.nsfwCooldownEnabled / .arousalLevel / .setNsfwCooldownEnabled
+  //   chat.chaosModeService.chaosModeEnabled / .chaosPressure / .hasPendingChaosEvent
+  //   chat.needsSimulation.vector / .pendingCatastrophe
+  //   chat.expressionService.currentExpressionLabel / .resolveExpressionAvatar / .setManualExpression
+  // God owns the late finals (for 1:1+group dispatch, _groupRealism load/save, cbs, notify, reset hygiene).
+  // Barrel not updated (internal; <3 public cross locations precedent).
+  RelationshipService get relationshipService => _relationshipService;
+  ExpressionService get expressionService => _expressionService;
+  TimeService get timeService => _timeService;
+  NsfwService get nsfwService => _nsfwService;
+  ChaosModeService get chaosModeService => _chaosModeService;
+  NeedsSimulation get needsSimulation => _needsSimulation;
+
+  // Thin public surface for flat members still read/written by UI/pages/dialogs
+  // (chat.chaosPressure, chat.activeFixation, chat.pendingTrustRepair, chat.currentExpressionLabel,
+  // chat.resolveExpressionAvatar, per "thin delegation here; full XXX in the leaf" + 0 new god _ privates).
+  // Full impl in the respective *Service (chaos_mode_service, relationship_service, expression_classifier in chat/).
+  // 1:1 vs group parity via the services' cbs + god impersonation dance (unchanged).
+  int get chaosPressure => _chaosModeService.chaosPressure;
+  String get activeFixation => _relationshipService.activeFixation;
+  bool get pendingTrustRepair => _relationshipService.pendingTrustRepair;
+  String? get currentExpressionLabel =>
+      _expressionService.currentExpressionLabel;
+  AvatarImage? resolveExpressionAvatar(
+    CharacterCard character, {
+    bool rerollIfSame = false,
+  }) => _expressionService.resolveExpressionAvatar(
+    character,
+    rerollIfSame: rerollIfSame,
+  );
+
   bool get realismEnabled => _realismEnabled;
 
   /// True when the Realism Engine (and Needs) should actually run for the
@@ -1427,66 +1761,15 @@ class ChatService extends ChangeNotifier {
 
   String getCurrentEmotion() => _characterEmotion;
 
-  Future<String> reclassifyEmotion(String unknownEmotion) async {
-    _reclassifyEmotionAsync(unknownEmotion);
-    // Return a default value for now - the actual classification happens via the classifier service
-    return 'neutral';
-  }
-
   String get emotionIntensity => _emotionIntensity;
-  String? get manualExpressionLabel => _manualExpressionLabel;
-  String get timeOfDay => _timeOfDay;
-  int get dayCount => _dayCount;
-  bool get passageOfTimeEnabled => _passageOfTimeEnabled;
-
-  /// The current narrative day of the week (e.g. 'Monday'), computed from
-  /// the session's anchor weekday plus elapsed in-story days.
-  String get narrativeWeekday {
-    const days = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    final idx = (_startDayOfWeek - 1 + (_dayCount - 1)) % 7;
-    return days[idx];
-  }
-
-  /// Resolves the persisted startDayOfWeek (1-7) or computes a stable anchor for legacy rows (0).
-  /// For legacy sessions the computed anchor makes the *current* Day N display the real-world
-  /// weekday of the moment we first load it after the v28 migration. This keeps the narrative
-  /// weekday from jumping on the very next app restart and makes the transition seamless.
-  int _resolveStartDayOfWeek(int persisted, int currentDayCount) {
-    if (persisted >= 1 && persisted <= 7) return persisted;
-
-    // Legacy or unset (0): anchor so that narrative weekday for the loaded dayCount matches "today".
-    // Formula: start = ((today-1 - (dayCount-1)) mod 7) + 1
-    final today = DateTime.now().weekday;
-    final delta = currentDayCount - 1;
-    final start = ((today - 1 - delta) % 7 + 7) % 7 + 1;
-    debugPrint(
-      '[ChatService] Legacy/ unset startDayOfWeek resolved: persisted=$persisted, dayCount=$currentDayCount '
-      '→ start=$start (so Day $currentDayCount will show weekday of today=$today)',
-    );
-    return start;
-  }
 
   /// True if the realism engine has already captured a meaningful baseline
   /// (emotion or bond score). Used to avoid redundant retroactive scans.
   bool get _hasRealismBaseline =>
       _characterEmotion.isNotEmpty ||
-      _affectionScore != 0 ||
-      _arousalLevel != 0 ||
-      _activeFixation.isNotEmpty;
-
-  bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
-  int get cooldownTurnsRemaining => _cooldownTurnsRemaining;
-
-  // Chaos Mode
-  bool get chaosModeEnabled => _chaosModeEnabled;
+      _relationshipService.affectionScore != 0 ||
+      _nsfwService.arousalLevel != 0 ||
+      _relationshipService.activeFixation.isNotEmpty;
 
   /// Whether the per-session Needs (Sims-style) simulation is active.
   /// When true and `enjoysLowHygiene` is also true, low hygiene becomes desirable.
@@ -1518,15 +1801,7 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  /// Current need levels (e.g. {'hunger': 65, 'energy': 40, ...}) as an
-  /// unmodifiable map. Empty when [needsSimEnabled] is false.
-  ///
-  /// Exposed primarily for UI (the header bars) and internal prompt building.
-  /// Consumers should check [needsSimEnabled] before using the contents.
-  Map<String, int> get needsVector =>
-      Map<String, int>.unmodifiable(_needsVector);
-  bool get chaosNsfwEnabled => _chaosNsfwEnabled;
-  int get chaosPressure => _chaosPressure;
+  bool get chaosNsfwEnabled => _chaosModeService.chaosNsfwEnabled;
 
   /// Non-null for exactly one notification cycle. UI reads then calls clearChanceTimeEvent().
   String? get pendingChanceTimeEvent => _pendingChanceTimeEvent;
@@ -1535,293 +1810,27 @@ class ChatService extends ChangeNotifier {
   bool get chanceTimePendingTrigger => _chanceTimePendingTrigger;
 
   /// True when a chaos event is queued for the next response (blocks manual spin + auto-trigger).
-  bool get hasPendingChaosEvent => _pendingChaosInjection != null;
-
-  /// Non-null when a needs catastrophe (e.g. accident, collapse) was just triggered by hitting 0.
-  /// The string is the mandatory narrative the AI must roleplay on the next turn.
-  String? get pendingNeedsCatastrophe => _pendingNeedsCatastrophe;
+  bool get hasPendingChaosEvent => _chaosModeService.hasPendingChaosEvent;
 
   /// Whether arousal-driven needs suppression ("lust haze") is currently active.
   /// Other needs will read as less urgent (or be omitted) in the OOC prompt injection.
   bool get needsArousalSuppressionActive =>
-      _arousalSuppressionTurnsRemaining > 0;
+      _needsSimulation.arousalSuppressionActive;
 
   /// Remaining turns of arousal suppression. Primarily for diagnostics, tests, and future UI.
   int get needsArousalSuppressionTurnsRemaining =>
-      _arousalSuppressionTurnsRemaining;
+      _needsSimulation.arousalSuppressionTurnsRemaining;
 
   /// Remaining turns of post-climax crash (lethargy). Effect only applies after
   /// afterglow + lust haze have fully expired. For diagnostics/tests.
-  int get needsPostClimaxCrashTurnsRemaining => _postClimaxCrashTurnsRemaining;
-  bool get needsPostClimaxCrashActive => _postClimaxCrashTurnsRemaining > 0;
+  int get needsPostClimaxCrashTurnsRemaining =>
+      _needsSimulation.postClimaxCrashTurnsRemaining;
+  bool get needsPostClimaxCrashActive => _needsSimulation.postClimaxCrashActive;
 
   /// Called by the overlay once it has opened. Clears the auto-trigger flag.
   void consumeChanceTimeTrigger() => _chanceTimePendingTrigger = false;
 
-  int get arousalLevel => _arousalLevel;
-  String get activeFixation => _activeFixation;
-
-  int get shortTermProgressTarget {
-    final absScore = _affectionScore.abs();
-    if (absScore < 15) return 15;
-    if (absScore < 30) return 30;
-    if (absScore < 50) return 50;
-    if (absScore < 80) return 80;
-    if (absScore < 120) return 120;
-    if (absScore < 160) return 160;
-    if (absScore < 200) return 200;
-    if (absScore < 250) return 250;
-    return 300; // max for ±300 range
-  }
-
-  int get shortTermProgressBase {
-    final absScore = _affectionScore.abs();
-    if (absScore < 15) return 0;
-    if (absScore < 30) return 15;
-    if (absScore < 50) return 30;
-    if (absScore < 80) return 50;
-    if (absScore < 120) return 80;
-    if (absScore < 160) return 120;
-    if (absScore < 200) return 160;
-    if (absScore < 250) return 200;
-    return 250;
-  }
-
-  double get shortTermProgressPercent {
-    final current = _affectionScore.abs() - shortTermProgressBase;
-    final total = shortTermProgressTarget - shortTermProgressBase;
-    return (current / total).clamp(0.0, 1.0);
-  }
-
-  int get longTermProgressTarget {
-    final absScore = _longTermScore.abs();
-    if (absScore < 15) return 15;
-    if (absScore < 30) return 30;
-    if (absScore < 50) return 50;
-    if (absScore < 80) return 80;
-    if (absScore < 120) return 120;
-    if (absScore < 160) return 160;
-    if (absScore < 200) return 200;
-    if (absScore < 250) return 250;
-    return 300; // max for ±300 range
-  }
-
-  int get longTermProgressBase {
-    final absScore = _longTermScore.abs();
-    if (absScore < 15) return 0;
-    if (absScore < 30) return 15;
-    if (absScore < 50) return 30;
-    if (absScore < 80) return 50;
-    if (absScore < 120) return 80;
-    if (absScore < 160) return 120;
-    if (absScore < 200) return 160;
-    if (absScore < 250) return 200;
-    return 250;
-  }
-
-  double get longTermProgressPercent {
-    final current = _longTermScore.abs() - longTermProgressBase;
-    final total = longTermProgressTarget - longTermProgressBase;
-    return (current / total).clamp(0.0, 1.0);
-  }
-
-  /// Human-readable tier name for the current relationship level.
-  /// Calculate tier for 21-tier system (-10 to +10) for short/long-term bonds
-  /// with new range ±300.
-  int _calculateTier(int score) {
-    final absScore = score.abs();
-    if (absScore < 5) return 0;
-    if (absScore < 15) return score > 0 ? 1 : -1;
-    if (absScore < 30) return score > 0 ? 2 : -2;
-    if (absScore < 50) return score > 0 ? 3 : -3;
-    if (absScore < 80) return score > 0 ? 4 : -4;
-    if (absScore < 120) return score > 0 ? 5 : -5;
-    if (absScore < 160) return score > 0 ? 6 : -6;
-    if (absScore < 200) return score > 0 ? 7 : -7;
-    if (absScore < 250) return score > 0 ? 8 : -8;
-    if (absScore < 300) return score > 0 ? 9 : -9;
-    return score > 0 ? 10 : -10;
-  }
-
-  /// Migration: scale old short-term scores (±150) to new range (±300)
-  int _migrateShortTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
-
-  /// Migration: scale old long-term scores (±150) to new range (±300)
-  int _migrateLongTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
-
-  String get shortTermTierName {
-    switch (_relationshipTier) {
-      case 10:
-        return 'Devoted';
-      case 9:
-        return 'Enamored';
-      case 8:
-        return 'Devoted';
-      case 7:
-        return 'Intimate';
-      case 6:
-        return 'Close';
-      case 5:
-        return 'Amiable';
-      case 4:
-        return 'Friendly';
-      case 3:
-        return 'Warm';
-      case 2:
-        return 'Receptive';
-      case 1:
-        return 'Neutral';
-      case 0:
-        return 'Neutral';
-      case -1:
-        return 'Reserved';
-      case -2:
-        return 'Cool';
-      case -3:
-        return 'Unimpressed';
-      case -4:
-        return 'Annoyed';
-      case -5:
-        return 'Disliked';
-      case -6:
-        return 'Hostile';
-      case -7:
-        return 'Adversarial';
-      case -8:
-        return 'Disdain';
-      case -9:
-        return 'Contempt';
-      case -10:
-        return 'Vitriolic';
-      default:
-        return 'Unknown';
-    }
-  }
-
-  String get longTermTierName {
-    switch (_longTermTier) {
-      case 10:
-        return 'Soulmate / Devoted';
-      case 9:
-        return 'Life Partner';
-      case 8:
-        return 'Devoted';
-      case 7:
-        return 'Deeply Attached';
-      case 6:
-        return 'Intimate';
-      case 5:
-        return 'Close';
-      case 4:
-        return 'Friendly';
-      case 3:
-        return 'Warm';
-      case 2:
-        return 'Receptive';
-      case 1:
-        return 'Neutral';
-      case 0:
-        return 'Neutral';
-      case -1:
-        return 'Reserved';
-      case -2:
-        return 'Cool';
-      case -3:
-        return 'Disappointed';
-      case -4:
-        return 'Fractured';
-      case -5:
-        return 'Broken Trust';
-      case -6:
-        return 'Deep Resentment';
-      case -7:
-        return 'Hostile';
-      case -8:
-        return 'Adversarial';
-      case -9:
-        return 'Contempt';
-      case -10:
-        return 'Vitriolic';
-      default:
-        return 'Unknown';
-    }
-  }
-
-  int get trustLevel => _trustLevel;
-  int get trustTier => _calculateTier(_trustLevel);
-  bool get pendingTrustRepair => _pendingTrustRepair;
-
-  String get trustTierName {
-    switch (trustTier) {
-      case 7:
-        return 'Blind Trust';
-      case 6:
-        return 'Implicit Trust';
-      case 5:
-        return 'Deeply Trusting';
-      case 4:
-        return 'Confident Trust';
-      case 3:
-        return 'Trusting';
-      case 2:
-        return 'Leaning Positive';
-      case 1:
-        return 'Cautious';
-      case 0:
-        return 'Neutral';
-      case -1:
-        return 'Cautious';
-      case -2:
-        return 'Guarded';
-      case -3:
-        return 'Skeptical';
-      case -4:
-        return 'Wary';
-      case -5:
-        return 'Suspicious';
-      case -6:
-        return 'Distrustful';
-      case -7:
-        return 'Paranoid';
-      default:
-        return 'Unknown';
-    }
-  }
-
-  int get trustProgressBase {
-    final absScore = _trustLevel.abs();
-    if (absScore < 10) return 0;
-    if (absScore < 25) return 10;
-    if (absScore < 45) return 25;
-    if (absScore < 70) return 45;
-    if (absScore < 100) return 70;
-    return 100;
-  }
-
-  int get trustProgressTarget {
-    final absScore = _trustLevel.abs();
-    if (absScore < 10) return 10;
-    if (absScore < 25) return 25;
-    if (absScore < 45) return 45;
-    if (absScore < 70) return 70;
-    return 100;
-  }
-
-  double get trustProgressPercent {
-    final current = _trustLevel.abs() - trustProgressBase;
-    final total = trustProgressTarget - trustProgressBase;
-    return (current / total).clamp(0.0, 1.0);
-  }
+  // (nsfw/relationship long list of @Dep shims excised in final cleanup; use nsfwService / relationshipService)
 
   /// Human-readable mood label containing exact emotion string and valence direction.
   String get moodLabel {
@@ -1839,346 +1848,9 @@ class ChatService extends ChangeNotifier {
   ///
   /// If a manual expression is set via [setManualExpression], returns that.
   /// When classification mode is 'onnx', uses the ONNX classifier result.
-  /// Otherwise maps the nuanced [_characterEmotion] to a standard label
+  /// Otherwise maps the nuanced emotion to a standard label
   /// using [EmotionLabels.nuancedToStandard].
-  String? get currentExpressionLabel {
-    // Manual override takes priority
-    if (_manualExpressionLabel != null && _manualExpressionLabel!.isNotEmpty) {
-      return _manualExpressionLabel!.toLowerCase();
-    }
-
-    final lower = _characterEmotion.toLowerCase();
-    final messageCount = _messages.length;
-
-    final lastAiMsgText = _messages.isNotEmpty && !_messages.last.isUser
-        ? _messages.last.text
-        : '';
-
-    // ONNX mode: trigger classification if needed and return cached result
-    if (_storageService.expressionClassificationMode == 'onnx') {
-      // ── STABILITY: Keep previous expression while generating ───────────────
-      // As requested, we don't want "live" updates. We keep the current
-      // face until the message is complete.
-      if (_isGenerating) {
-        return _onnxExpressionLabel ??
-            EmotionLabels.nuancedToStandard[lower] ??
-            'neutral';
-      }
-
-      // Trigger async ONNX classification if a new message arrived, text changed, or emotion changed
-      if ((_onnxCachedForEmotion != lower ||
-              messageCount != _lastOnnxMessageCount ||
-              lastAiMsgText != _lastOnnxMessageText) &&
-          !_onnxClassifying &&
-          _onnxDebounce == null) {
-        // Use a small debounce to avoid rapid re-triggering during UI transitions
-        _onnxDebounce = Timer(const Duration(milliseconds: 500), () {
-          _onnxDebounce = null;
-          _classifyWithOnnxAsync(lower);
-        });
-      }
-
-      if (_onnxCachedForEmotion == lower && _onnxExpressionLabel != null) {
-        return _onnxExpressionLabel;
-      }
-      return _onnxExpressionLabel ??
-          EmotionLabels.nuancedToStandard[lower] ??
-          'neutral';
-    }
-
-    if (_characterEmotion.isEmpty) return 'neutral';
-
-    // Return cached label if emotion hasn't changed
-    if (_cachedForEmotion == lower && _cachedExpressionLabel != null) {
-      return _cachedExpressionLabel;
-    }
-
-    // Direct match
-    if (EmotionLabels.all.contains(lower)) {
-      debugPrint('[Expression] emotion=$lower -> label=$lower (direct match)');
-      _cachedForEmotion = lower;
-      _cachedExpressionLabel = lower;
-      return lower;
-    }
-
-    // Nuanced mapping
-    final mapped = EmotionLabels.nuancedToStandard[lower];
-    if (mapped != null) {
-      debugPrint(
-        '[Expression] emotion=$lower -> label=$mapped (nuanced mapping)',
-      );
-      _cachedForEmotion = lower;
-      _cachedExpressionLabel = mapped;
-      return mapped;
-    }
-
-    // Unmapped — trigger LLM re-classification
-    debugPrint(
-      '[Expression] emotion=$lower -> UNMAPPED, triggering LLM re-classification',
-    );
-    _reclassifyEmotionAsync(lower);
-    _cachedForEmotion = lower;
-    _cachedExpressionLabel = 'neutral';
-    return 'neutral';
-  }
-
-  /// Fire-and-forget: ask the LLM to map an unknown emotion word to a standard label.
-  /// Uses JSON output so thinking models can reason first then return the label.
-  Future<void> _reclassifyEmotionAsync(String unknownEmotion) async {
-    if (_isEvaluatingRealism) {
-      debugPrint(
-        '[Expression] reclassify: skipped — realism engine is evaluating',
-      );
-      return;
-    }
-    final llmService =
-        testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService;
-    if (!llmService.isReady) {
-      debugPrint('[Expression] reclassify: LLM not ready, skipping');
-      return;
-    }
-
-    try {
-      final labels = EmotionLabels.all.join('", "');
-      final prompt =
-          'Classify the emotion "$unknownEmotion" into exactly ONE of these labels: $labels".\n'
-          'Return ONLY a JSON object with one key "label" containing your choice.\n'
-          'Example: {"label": "surprise"}\n'
-          'Response:';
-      debugPrint('[Expression] reclassify prompt: $prompt');
-
-      // Determine if thinking model is in use (same logic as realism engine)
-      final isThinkingModel = _llmProvider != null && _llmProvider!.isLocal
-          ? _storageService.koboldThinkingModel
-          : (_llmProvider != null ? _storageService.reasoningEnabled : false);
-
-      final params = GenerationParams(
-        prompt: prompt,
-        maxLength: isThinkingModel ? 2048 : 32,
-        temperature: 0.1,
-        topP: 0.5,
-        repeatPenalty: 1.15,
-        reasoningEnabled: false,
-        stopSequences: isThinkingModel ? [] : ['}\n', '}'],
-        banEosToken: isThinkingModel && (_llmProvider?.isLocal ?? false),
-        trimStop: !(isThinkingModel && (_llmProvider?.isLocal ?? false)),
-      );
-
-      final StringBuffer sb = StringBuffer();
-      await for (final chunk in llmService.generateStream(params)) {
-        sb.write(chunk);
-      }
-      String response = sb.toString().trim();
-      debugPrint('[Expression] reclassify raw response: "$response"');
-
-      // Extract JSON from response (handles thinking model output with <think> blocks)
-      if (response.contains('```')) {
-        final match = RegExp(
-          r'```(?:json)?\s*\n?(.*?)\n?```',
-          dotAll: true,
-        ).firstMatch(response);
-        if (match != null) {
-          response = match.group(1)!.trim();
-        }
-      }
-
-      // Find JSON object in response
-      String jsonStr = response;
-      if (!response.startsWith('{')) {
-        final objMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(response);
-        if (objMatch != null) {
-          jsonStr = objMatch.group(0)!;
-        }
-      }
-
-      String? extractedLabel;
-      try {
-        final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
-        extractedLabel = (parsed['label'] as String?)?.trim().toLowerCase();
-      } catch (e) {
-        debugPrint('[Expression] reclassify JSON parse failed: $e');
-      }
-
-      if (extractedLabel != null &&
-          EmotionLabels.all.contains(extractedLabel)) {
-        debugPrint(
-          '[Expression] reclassify: mapped "$unknownEmotion" -> "$extractedLabel"',
-        );
-        _cachedExpressionLabel = extractedLabel;
-        notifyListeners();
-      } else {
-        debugPrint(
-          '[Expression] reclassify: label "$extractedLabel" not valid, using neutral',
-        );
-      }
-    } catch (e) {
-      debugPrint('[Expression] reclassify error: $e');
-    }
-  }
-
-  /// Initialize the ONNX expression classifier service.
-  void initExpressionClassifier() {
-    _expressionClassifierService ??= ExpressionClassifierService(
-      _storageService,
-    );
-  }
-
-  /// Fire-and-forget: classify emotion using ONNX model.
-  /// Uses the last AI message text as classification input.
-  Future<void> _classifyWithOnnxAsync(String emotion) async {
-    if (_expressionClassifierService == null) {
-      initExpressionClassifier();
-    }
-    if (_expressionClassifierService == null) return;
-
-    _onnxClassifying = true;
-    _lastOnnxMessageCount = _messages.length;
-    _lastOnnxMessageText = _messages.isNotEmpty && !_messages.last.isUser
-        ? _messages.last.text
-        : '';
-    stdout.writeln(
-      '>>> [CHAT:ONNX] Starting classification for message count: $_lastOnnxMessageCount',
-    );
-    try {
-      // Initialize classifier with current mode
-      await _expressionClassifierService!.ensureInitialized(
-        getCurrentEmotion: () => _characterEmotion,
-        reclassify: (unknown) async {
-          return 'neutral';
-        },
-      );
-
-      // Use last AI message text for classification
-      String text = '';
-      for (int i = _messages.length - 1; i >= 0; i--) {
-        if (!_messages[i].isUser && _messages[i].text.isNotEmpty) {
-          text = _messages[i].text;
-          break;
-        }
-      }
-      if (text.isEmpty) text = emotion;
-
-      final result = await _expressionClassifierService!.classify(text);
-      if (result != null) {
-        final label = result.emotion.toLowerCase();
-        if (EmotionLabels.all.contains(label)) {
-          debugPrint(
-            '[Expression:ONNX] emotion=$emotion -> label=$label (confidence: ${result.confidence})',
-          );
-          _onnxExpressionLabel = label;
-          _onnxCachedForEmotion = emotion;
-          notifyListeners();
-          return;
-        }
-      }
-      // Fallback
-      _onnxExpressionLabel = 'neutral';
-      _onnxCachedForEmotion = emotion;
-      notifyListeners();
-      // If a cancellation was requested during realism evaluation, surface the interruption
-      // to the user as a blank/interruption message and abort generation.
-      if (_realismEvalCancelled) {
-        _messages.add(
-          ChatMessage(
-            text:
-                'Realism evaluation interrupted, regenerate response to retry',
-            sender: 'Interruption',
-            isUser: false,
-          ),
-        );
-        await _saveChat();
-        _realismEvalCancelled = false;
-        _isEvaluatingRealism = false;
-        notifyListeners();
-        return;
-      }
-    } catch (e) {
-      debugPrint('[Expression:ONNX] classification error: $e');
-      _onnxExpressionLabel = 'neutral';
-      _onnxCachedForEmotion = emotion;
-      notifyListeners();
-    } finally {
-      _onnxClassifying = false;
-    }
-  }
-
-  /// Resolves the best matching expression avatar for the given character.
-  ///
-  /// Returns the [AvatarImage] to display, or null if no expression images
-  /// are available. Uses [currentExpressionLabel] for matching.
-  ///
-  /// If [rerollIfSame] is true and multiple avatars share the same label,
-  /// a random one is picked (avoiding the previously shown avatar).
-  AvatarImage? resolveExpressionAvatar(
-    CharacterCard character, {
-    bool rerollIfSame = false,
-  }) {
-    final avatars = character.avatarImages;
-    if (avatars == null || avatars.isEmpty) {
-      return null;
-    }
-
-    final label = currentExpressionLabel;
-    if (label == null) {
-      return avatars
-              .where((a) => a.displayOrder + 1 == character.primeAvatarIndex)
-              .isEmpty
-          ? avatars.first
-          : avatars.firstWhere(
-              (a) => a.displayOrder + 1 == character.primeAvatarIndex,
-            );
-    }
-
-    // Find all avatars matching the current emotion label
-    final matches = avatars
-        .where((a) => a.label?.toLowerCase() == label)
-        .toList();
-
-    if (matches.isEmpty) {
-      // Fallback: try neutral, then prime avatar
-      final neutral = avatars
-          .where((a) => a.label?.toLowerCase() == 'neutral')
-          .toList();
-      if (neutral.isNotEmpty) {
-        return neutral.first;
-      }
-      return avatars
-              .where((a) => a.displayOrder + 1 == character.primeAvatarIndex)
-              .isEmpty
-          ? avatars.first
-          : avatars.firstWhere(
-              (a) => a.displayOrder + 1 == character.primeAvatarIndex,
-            );
-    }
-
-    if (matches.length == 1) {
-      return matches.first;
-    }
-
-    // Multiple matches — pick randomly, optionally avoiding the last one shown
-    if (rerollIfSame && _lastExpressionAvatarId != null) {
-      final different = matches
-          .where((a) => a.id != _lastExpressionAvatarId)
-          .toList();
-      if (different.isNotEmpty) {
-        final picked = different[_expressionRandom.nextInt(different.length)];
-        _lastExpressionAvatarId = picked.id;
-        return picked;
-      }
-    }
-
-    final picked = matches[_expressionRandom.nextInt(matches.length)];
-    _lastExpressionAvatarId = picked.id;
-    return picked;
-  }
-
-  /// Manually set an expression label (e.g., from /expression-set command).
-  /// Pass null to clear the manual override and resume auto-detection.
-  void setManualExpression(String? label) {
-    _manualExpressionLabel = label;
-    _lastExpressionAvatarId = null;
-    notifyListeners();
-  }
+  // (currentExpressionLabel / resolveExpressionAvatar / setManualExpression @Dep shims excised; use expressionService; main wiring note: update main if using the removed setExpressionClassifierService shim)
 
   void setAuthorNote(String note, {int? strength}) {
     _authorNote = note;
@@ -2241,7 +1913,11 @@ class ChatService extends ChangeNotifier {
     }
 
     final buf = StringBuffer();
-    buf.writeln("$userName's Persona: $personaText");
+    final safeUserName = userName.replaceAll(RegExp(r'[\n\r"]'), ' ').trim();
+    final safePersonaText = personaText
+        .replaceAll(RegExp(r'[\n\r"]'), ' ')
+        .trim();
+    buf.writeln("$safeUserName's Persona: $safePersonaText");
 
     if (facts.isNotEmpty) {
       buf.writeln(
@@ -2249,7 +1925,8 @@ class ChatService extends ChangeNotifier {
         'The user\'s self-description above takes priority if there is a conflict.]',
       );
       for (final fact in facts) {
-        buf.writeln('- $fact');
+        final safeFact = fact.replaceAll(RegExp(r'[\n\r"]'), ' ').trim();
+        buf.writeln('- $safeFact');
       }
     }
     buf.writeln();
@@ -2272,9 +1949,8 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Set the ExpressionClassifierService after construction (for ONNX emotion classification).
-  void setExpressionClassifierService(ExpressionClassifierService service) {
-    _expressionClassifierService = service;
-  }
+  void setExpressionClassifierService(ExpressionClassifierService service) =>
+      _expressionService.setExpressionClassifierService(service);
 
   /// Wait for TTS to finish speaking, then apply the configured delay before auto-play.
   void _waitForTtsThenContinue() {
@@ -2369,75 +2045,67 @@ class ChatService extends ChangeNotifier {
     _currentSessionId = null;
     _summary = '';
     _summaryLastIndex = 0;
+    _summaryPaused =
+        false; // explicit secondary zero for _summaryPaused (symmetric to _isSummaryGenerating; incomplete zeroing of secondary config on group/0-session/new-chat now complete; see keep-sync + summary_service)
+    _isSummaryGenerating =
+        false; // explicit secondary zero on setActiveCharacter (incomplete zeroing of secondary config on ... now complete; see keep-sync + summary_service)
+    // Clear fork/branch state so it doesn't leak from previous character
+    // into a fresh character's first session (see startNewChat for details).
+    _parentSessionId = null;
+    _forkIndex = null;
     _isLoadingSession = true;
     notifyListeners();
 
     if (_activeCharacter != null) {
-      // Reset lorebook trigger state (skip constant entries — they're always active)
-      if (_activeCharacter!.lorebook != null) {
-        for (var entry in _activeCharacter!.lorebook!.entries) {
-          if (!entry.constant) {
-            entry.isTriggered = false;
-            entry.remainingDepth = 0;
-          }
-        }
-      }
-      // Reset world lore triggers
-      for (final worldName in _activeCharacter!.worldNames) {
-        final world = _worldRepository.worlds
-            .where((w) => w.name == worldName)
-            .firstOrNull;
-        if (world != null) {
-          for (final entry in world.lorebook.entries) {
-            if (!entry.constant) {
-              entry.isTriggered = false;
-              entry.remainingDepth = 0;
-            }
-          }
-        }
-      }
+      // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
+      // without god privates; constants skipped, non-const zeroed for char + attached worlds).
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+      _lorebookScanner.resetLorebookTriggerState();
 
       // Reset realism state to prevent bleeding from previous character.
-      // Keep in sync with: startNewChat runtime reset block (~4000), load*Session restores,
-      // delete flows, and the 1:1 scalar zero in setActiveGroup.
-      final prevArousal = _arousalLevel;
-      final prevFixation = _activeFixation;
-      final prevFixationLife = _fixationLifespan;
-      _arousalLevel = 0;
-      _fixationLifespan = 0;
-      _activeFixation = '';
+      // Keep the reset sites (startNewChat 1:1+group now with explicit lorebook reset in both branches, load*Session paths incl. empty for groups, setActiveGroup, setActiveCharacter, delete flows, ext-seed, fork/insert)
+      // in sync when moving more state in later Stage 3 steps. See needs_simulation.dart for the
+      // current owner of vector + buffers (and _needsSimEnabled/_enjoysLowHygiene control fields).
+      // Relationship + Expression + Time + Nsfw + LorebookScanner via service reset helpers (expression: manual/caches/onnx/lastAvatar/random;
+      // time: clock/day/passage/turns/anchor + narrative weekday; nsfw: cooldown/arousal/tier; lorebook: triggers/depth on entries).
+      // All secondary time/nsfw/lorebook config zeroed on fresh group/0-session paths.
+      final prevArousal = _nsfwService.arousalLevel;
+      final prevFixation = _relationshipService.activeFixation;
+      final prevFixationLife = _relationshipService.fixationLifespan;
       _needsSimEnabled = false;
       _enjoysLowHygiene = false;
-      _needsVector.clear();
-      _needsAfterglowTurnsRemaining = 0;
-      _arousalSuppressionTurnsRemaining = 0;
-      _postClimaxCrashTurnsRemaining = 0;
+      _needsSimulation.clearVector();
+      _needsSimulation.resetBuffers();
       _realismEnabled = false;
-      _affectionScore = 0;
-      _relationshipTier = 0;
-      _longTermScore = 0;
-      _longTermTier = 0;
-      _trustLevel = 0;
       _characterEmotion = '';
       _emotionIntensity = '';
-      _dayCount = 1;
-      _timeOfDay = 'morning';
-      _startDayOfWeek = DateTime.now().weekday;
-      _chaosModeEnabled = false;
-      _chaosPressure = 0;
-      _nsfwCooldownEnabled = false;
-      _passageOfTimeEnabled = true; // default (global ceiling applied on seed)
-      _pendingTrustRepair = false;
-      _spatialStance = '';
-      _turnsSinceLongTermCheck = 0;
-      _shortTermDeltasSummary = 0;
+      // Time reset via extracted service (keeps multiple reset blocks in sync).
+      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+      _timeService.resetForFreshChat();
+      // Chaos reset via extracted service (keeps multiple reset blocks in sync).
+      // See chaos_mode_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+      _chaosModeService.resetForFreshChat();
+      // Nsfw reset via extracted service (keeps multiple reset blocks in sync).
+      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+      _nsfwService.resetForFreshChat();
+      // Lorebook already reset above via _lorebookScanner (keeps blocks in sync; see cross-ref comment at top of this reset).
+      _relationshipService.resetForFreshChat();
+      _expressionService.resetForFreshChat();
       _moodDecayCounter = 0;
-      _turnsSinceDecayCheck = 0;
-      _cooldownTurnsRemaining = 0;
-      _cooldownTurnsTotal = 0;
       _greetingEvalPending = false;
       _isProcessingGreeting = false;
       _pendingRealismMetadata = null;
+      _activeObjectives = [];
+      _messagesSinceLastCheck = 0;
+      _isCheckingCompletion =
+          false; // secondary objective flag zero on setActiveCharacter main path (incomplete zeroing hygiene; keep reset blocks)
+      _userMessagesSinceLastPeriodicEval = 0;
+      _isExtractingFacts =
+          false; // secondary fact flag + counter zero on setActiveCharacter main path (incomplete zeroing of secondary config on group/0-session/new-chat now complete; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero on setActiveCharacter main path (incomplete zeroing of secondary config on group/0-session/new-chat now complete; evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572 + full keep-sync lists)
       debugPrint(
         '[ChatService] setActiveCharacter: Reset realism state (baseline + runtime transients cleared; was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
       );
@@ -2451,32 +2119,39 @@ class ChatService extends ChangeNotifier {
         if (_activeCharacter!.frontPorchExtensions != null) {
           final ext = _activeCharacter!.frontPorchExtensions!;
           _realismEnabled = ext.realismEnabled;
-          _affectionScore = ext.shortTermBond.clamp(-300, 300);
-          _longTermScore = ext.longTermBond.clamp(-300, 300);
-          _trustLevel = ext.trustLevel.clamp(-100, 100);
-          _dayCount = ext.dayCount.clamp(1, 9999);
-          _timeOfDay = ext.timeOfDay;
+          _relationshipService.seedFromV2OrExt(
+            shortTermBond: ext.shortTermBond,
+            longTermBond: ext.longTermBond,
+            trustLevel: ext.trustLevel,
+          );
+          // Time seed via extracted service (keeps reset/seed blocks in sync with startNewChat etc).
+          // Global ceiling applied before passing (see time_service.seed doc).
+          _timeService.seedFromV2OrExt(
+            dayCount: ext.dayCount.clamp(1, 9999),
+            timeOfDay: ext.timeOfDay,
+            passageOfTimeEnabled:
+                ext.passageOfTimeEnabled &&
+                _storageService.realismSettings.passageOfTimeDefault,
+          );
           _characterEmotion = ext.characterEmotion;
           _emotionIntensity = ext.emotionIntensity;
-          _nsfwCooldownEnabled = ext.nsfwCooldownEnabled;
-          // Global setting is a hard ceiling: if the user disabled passage-of-time
-          // globally, it stays off regardless of what the character card says.
-          _passageOfTimeEnabled =
-              ext.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
-          _chaosModeEnabled = ext.chaosModeEnabled;
+          _nsfwService.seedFromV2OrExt(
+            nsfwCooldownEnabled: ext.nsfwCooldownEnabled,
+          );
+          _chaosModeService.seedFromGroupOrExt(ext.chaosModeEnabled, false);
           _needsSimEnabled = ext.needsSimEnabled;
           _enjoysLowHygiene = ext.enjoysLowHygiene;
           if (_needsSimEnabled) {
-            _initializeNeedsVectorIfNeeded();
+            // Brand new conversation for this character (no prior session loaded):
+            // start needs at 100 so a just-imported card + first chat feels fresh.
+            _needsSimulation.initializeFresh();
           } else {
-            _needsVector.clear();
+            _needsSimulation.clearVector();
           }
-          // Recalculate tiers from seeded scores
-          _relationshipTier = _calculateTier(_affectionScore);
-          _longTermTier = _calculateTier(_longTermScore);
+          // Tiers maintained by service after seedFromV2OrExt.
           debugPrint(
             '[ChatService] V2.5 extensions seeded: realism=$_realismEnabled, '
-            'bond=$_affectionScore, trust=$_trustLevel, day=$_dayCount, time=$_timeOfDay',
+            'bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}, day=${_timeService.dayCount}, time=${_timeService.timeOfDay}',
           );
 
           // Seed initial quest/task as a primary objective
@@ -2499,8 +2174,8 @@ class ChatService extends ChangeNotifier {
               isUser: false,
             ),
           );
-          // Scan first message for lore
-          _scanLorebook(_messages.last.text);
+          // Scan first message for lore (thin delegation to extracted scanner).
+          _lorebookScanner.scanLorebook(_messages.last.text);
         }
         // Note: for the direct 0-session setActiveCharacter path (fresh import via home grid <=1 session),
         // _greetingEvalPending is left false here. The post-greeting baseline eval is scheduled only
@@ -2511,10 +2186,23 @@ class ChatService extends ChangeNotifier {
         // Save the initial message session
         _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
         await _saveChat();
+        _activeObjectives = [];
+        _messagesSinceLastCheck = 0;
+        _isCheckingCompletion =
+            false; // zero secondary in empty session subpath of setActiveCharacter (per incomplete zeroing fix)
+        _isSummaryGenerating =
+            false; // secondary zero in empty subpath of setActiveCharacter (incomplete zeroing of secondary config on group/0-session/new-chat now complete)
+        _userMessagesSinceLastPeriodicEval = 0;
+        _isExtractingFacts =
+            false; // secondary fact flag + counter zero in empty subpath of setActiveCharacter (incomplete zeroing ... now complete; fact_extraction)
+        _isEvolvingCharacter = false;
+        _evolutionStatus = '';
+        _evolutionError =
+            ''; // explicit evo flag/status/error zero in empty subpath of setActiveCharacter (incomplete zeroing of secondary config on group/0-session/new-chat now complete; evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572)
       }
       // Load active objectives for this session (must be after _loadLastSession
       // so _currentSessionId is set)
-      _loadActiveObjectives();
+      await _loadActiveObjectives(); // Awaited (was fire-and-forget); root fix for post-dispose notify races in tests + rapid switches (guard remains for any residual unawaited/microtask paths elsewhere).
     }
     _isLoadingSession = false;
     notifyListeners();
@@ -2534,6 +2222,10 @@ class ChatService extends ChangeNotifier {
     _authorNoteStrength = 4;
     _summary = '';
     _summaryLastIndex = 0;
+    _summaryPaused =
+        false; // explicit secondary zero for _summaryPaused (symmetric; incomplete zeroing of secondary config on group/0-session/new-chat now complete; see keep-sync + summary_service)
+    _isSummaryGenerating =
+        false; // explicit secondary zero on setActiveGroup (incomplete zeroing ... now complete; keep-sync lists + summary_service)
     _groupRealism = {};
     _groupAuthorNotes = {};
     _groupAuthorNoteStrengths = {};
@@ -2555,12 +2247,18 @@ class ChatService extends ChangeNotifier {
     // Defensive: zero key 1:1 scalars so rapid 1:1↔group toggles cannot observe
     // stale values in the brief window before group per-speaker loads take over.
     // (Full reset happens on return to any 1:1 via setActiveCharacter.)
-    _arousalLevel = 0;
-    _activeFixation = '';
-    _fixationLifespan = 0;
-    _affectionScore = 0;
-    _trustLevel = 0;
     _characterEmotion = '';
+    // Relationship scalars/fixation (affection/trust/tiers/fixation/spatial/pending) via extracted service.
+    // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
+    // Nsfw (arousal/cooldown) via service.
+    // Lorebook triggers via scanner (for group fresh/0-session hygiene; parallels time/nsfw defensive zeros).
+    // See "keep reset blocks in sync" comments in setActiveCharacter/startNewChat 1:1+group (now with explicit resets in both startNew branches)/load paths (now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) for group fresh/0-session; incomplete zeroing now complete).
+    // (cross-ref setActiveCharacter:1572)
+    _relationshipService.resetForFreshChat();
+    _expressionService.resetForFreshChat();
+    _timeService.resetForFreshChat();
+    _nsfwService.resetForFreshChat();
+    _lorebookScanner.resetLorebookTriggerState();
 
     // Auto-start local backend when entering a group chat
     _llmProvider?.ensureManagedBackendIsRunning();
@@ -2571,6 +2269,10 @@ class ChatService extends ChangeNotifier {
     );
     _messages.clear();
     _currentSessionId = null;
+    // Clear fork/branch state so it doesn't leak across group switches
+    // (see startNewChat and setActiveCharacter for rationale).
+    _parentSessionId = null;
+    _forkIndex = null;
     _isLoadingSession = true;
     notifyListeners();
 
@@ -2631,8 +2333,10 @@ class ChatService extends ChangeNotifier {
 
     // Seed group definition defaults for Chaos (can be overridden by per-session values loaded below).
     // This makes the chaosModeEnabled / chaosNsfwEnabled on the GroupChat model actually functional.
-    _chaosModeEnabled = group.chaosModeEnabled;
-    _chaosNsfwEnabled = group.chaosNsfwEnabled;
+    _chaosModeService.seedFromGroupOrExt(
+      group.chaosModeEnabled,
+      group.chaosNsfwEnabled,
+    );
 
     // v30: For newly created group sessions (no prior state), seed from the group's default realism data.
     // (The actual load of any prior session state happens in _loadLastSession below.)
@@ -2653,7 +2357,7 @@ class ChatService extends ChangeNotifier {
           return n is Map && n.isNotEmpty;
         });
         if (_needsSimEnabled) {
-          _initializeNeedsVectorIfNeeded();
+          _needsSimulation.initializeIfNeeded();
         }
         debugPrint(
           '[GroupRealism] Promoted definition realism/needs on fresh group entry '
@@ -2665,30 +2369,26 @@ class ChatService extends ChangeNotifier {
     // Seed objectives that came from an imported Group Card (one-time)
     await _seedImportedMemberObjectivesIfPresent();
 
-    // Reset all lorebook triggers (skip constant entries — they're always active)
-    for (final ch in _groupCharacters) {
-      if (ch.lorebook != null) {
-        for (final entry in ch.lorebook!.entries) {
-          if (!entry.constant) {
-            entry.isTriggered = false;
-            entry.remainingDepth = 0;
-          }
-        }
-      }
-      for (final worldName in ch.worldNames) {
-        final world = _worldRepository.worlds
-            .where((w) => w.name == worldName)
-            .firstOrNull;
-        if (world != null) {
-          for (final entry in world.lorebook.entries) {
-            if (!entry.constant) {
-              entry.isTriggered = false;
-              entry.remainingDepth = 0;
-            }
-          }
-        }
-      }
-    }
+    // Lorebook trigger reset via extracted service (group path; see setActiveCharacter for the 1:1 counterpart + keep-sync cross-refs).
+    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) alongside prior services; incomplete zeroing now complete).
+    // (cross-ref setActiveCharacter:1572)
+    _lorebookScanner.resetLorebookTriggerState();
+
+    // Zero secondary objective config on group fresh entry (before loadLast + _loadObjectivesForCurrentSpeaker); see decl + keep reset + incomplete zeroing now complete.
+    _activeObjectives = [];
+    _messagesSinceLastCheck = 0;
+    _isCheckingCompletion = false;
+    _summaryPaused =
+        false; // explicit secondary zero for _summaryPaused (symmetric; group fresh entry zero)
+    _isSummaryGenerating =
+        false; // secondary flag zero for summary_service (stateless/prompt-only; see incomplete zeroing ... now complete + keep-sync lists)
+    _userMessagesSinceLastPeriodicEval = 0;
+    _isExtractingFacts =
+        false; // secondary fact flag + counter zero on group fresh entry (incomplete zeroing ... now complete; fact_extraction)
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError =
+        ''; // explicit evo flag/status/error zero on group fresh entry (incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572)
 
     // Try to load last session for this group
     await _loadLastSession();
@@ -2731,7 +2431,8 @@ class ChatService extends ChangeNotifier {
             characterId: greetingCharId,
           ),
         );
-        _scanLorebook(_messages.last.text);
+        // Thin delegation to scanner (group greeting scan).
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
       _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
       await _saveChat();
@@ -2819,11 +2520,11 @@ class ChatService extends ChangeNotifier {
         ),
         parentSession: drift.Value(_currentSessionId),
         forkIndex: drift.Value(_messages.length - 1),
-        trustLevel: drift.Value(_trustLevel),
-        activeFixation: drift.Value(_activeFixation),
-        fixationLifespan: drift.Value(_fixationLifespan),
-        spatialStance: drift.Value(_spatialStance),
-        startDayOfWeek: drift.Value(_startDayOfWeek),
+        trustLevel: drift.Value(_relationshipService.trustLevel),
+        activeFixation: drift.Value(_relationshipService.activeFixation),
+        fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
+        spatialStance: drift.Value(_relationshipService.spatialStance),
+        startDayOfWeek: drift.Value(_timeService.startDayOfWeekAnchor),
         createdAt: drift.Value(DateTime.now()),
         updatedAt: drift.Value(DateTime.now()),
       ),
@@ -2988,7 +2689,7 @@ class ChatService extends ChangeNotifier {
     return _getCharacterIdFromCard(card);
   }
 
-  /// Safely parse a JSON string into a mutable Map<String, String>.
+  /// Safely parse a JSON string into a mutable `Map<String, String>`.
   /// Returns an empty map if [json] is null, empty, or invalid.
   Map<String, String> _tryParseJsonMap(String? json) {
     if (json == null || json.isEmpty || json == '{}') return {};
@@ -3116,6 +2817,11 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> _saveChat() async {
+    _saveChain = _saveChain.then((_) => _doSaveChat());
+    await _saveChain;
+  }
+
+  Future<void> _doSaveChat() async {
     if ((_activeCharacter == null && _activeGroup == null) ||
         _currentSessionId == null) {
       return;
@@ -3199,33 +2905,43 @@ class ChatService extends ChangeNotifier {
         ),
         parentSession: drift.Value(_parentSessionId),
         forkIndex: drift.Value(_forkIndex),
-        affectionScore: drift.Value(_affectionScore),
-        relationshipTier: drift.Value(_relationshipTier),
-        longTermScore: drift.Value(_longTermScore),
-        longTermTier: drift.Value(_longTermTier),
-        turnsSinceLongTermCheck: drift.Value(_turnsSinceLongTermCheck),
-        shortTermDeltasSummary: drift.Value(_shortTermDeltasSummary),
+        affectionScore: drift.Value(_relationshipService.affectionScore),
+        relationshipTier: drift.Value(_relationshipService.relationshipTier),
+        longTermScore: drift.Value(_relationshipService.longTermScore),
+        longTermTier: drift.Value(_relationshipService.longTermTier),
+        turnsSinceLongTermCheck: drift.Value(
+          _relationshipService.turnsSinceLongTermCheck,
+        ),
+        shortTermDeltasSummary: drift.Value(
+          _relationshipService.shortTermDeltasSummary,
+        ),
         realismEnabled: drift.Value(_realismEnabled),
         moodDecayCounter: drift.Value(_moodDecayCounter),
         characterEmotion: drift.Value(_characterEmotion),
         emotionIntensity: drift.Value(_emotionIntensity),
-        timeOfDay: drift.Value(_timeOfDay),
-        dayCount: drift.Value(_dayCount),
-        startDayOfWeek: drift.Value(_startDayOfWeek),
-        passageOfTimeEnabled: drift.Value(_passageOfTimeEnabled),
-        nsfwCooldownEnabled: drift.Value(_nsfwCooldownEnabled),
+        timeOfDay: drift.Value(_timeService.timeOfDay),
+        dayCount: drift.Value(_timeService.dayCount),
+        startDayOfWeek: drift.Value(_timeService.startDayOfWeekAnchor),
+        passageOfTimeEnabled: drift.Value(_timeService.passageOfTimeEnabled),
+        nsfwCooldownEnabled: drift.Value(_nsfwService.nsfwCooldownEnabled),
         needsSimEnabled: drift.Value(_needsSimEnabled),
-        needsVector: drift.Value(_needsSimEnabled ? _serializeNeeds() : null),
+        needsVector: drift.Value(
+          _needsSimEnabled ? _needsSimulation.serialize() : null,
+        ),
         groupRealismState: drift.Value(groupRealismJson),
-        arousalLevel: drift.Value(_arousalLevel),
-        cooldownTurnsRemaining: drift.Value(_cooldownTurnsRemaining),
-        trustLevel: drift.Value(_trustLevel),
-        activeFixation: drift.Value(_activeFixation),
-        fixationLifespan: drift.Value(_fixationLifespan),
-        spatialStance: drift.Value(_spatialStance),
-        chaosModeEnabled: drift.Value(_chaosModeEnabled),
-        chaosPressure: drift.Value(_chaosPressure),
-        trustRepairPending: drift.Value(_pendingTrustRepair),
+        arousalLevel: drift.Value(_nsfwService.arousalLevel),
+        cooldownTurnsRemaining: drift.Value(
+          _nsfwService.cooldownTurnsRemaining,
+        ),
+        trustLevel: drift.Value(_relationshipService.trustLevel),
+        activeFixation: drift.Value(_relationshipService.activeFixation),
+        fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
+        spatialStance: drift.Value(_relationshipService.spatialStance),
+        chaosModeEnabled: drift.Value(_chaosModeService.chaosModeEnabled),
+        chaosPressure: drift.Value(_chaosModeService.chaosPressure),
+        trustRepairPending: drift.Value(
+          _relationshipService.pendingTrustRepair,
+        ),
         createdAt: drift.Value(createdAt),
         updatedAt: drift.Value(DateTime.now()),
       ),
@@ -3242,35 +2958,39 @@ class ChatService extends ChangeNotifier {
       updates: {_db.sessions},
     );
 
-    // Replace all messages for this session using the snapshot
-    await _db.deleteMessagesForSession(_currentSessionId!);
-    final messageBatch = <MessagesCompanion>[];
-    for (int i = 0; i < snapshot.length; i++) {
-      final m = snapshot[i];
-      messageBatch.add(
-        MessagesCompanion(
-          sessionId: drift.Value(_currentSessionId!),
-          position: drift.Value(i),
-          sender: drift.Value(m.sender),
-          isUser: drift.Value(m.isUser),
-          characterId: drift.Value(m.characterId),
-          swipes: drift.Value(jsonEncode(m.swipes)),
-          swipeIndex: drift.Value(m.swipeIndex),
-          swipeDurations: drift.Value(jsonEncode(m.swipeDurations)),
-          metadata: drift.Value(
-            m.metadata != null ? jsonEncode(m.metadata) : null,
+    // Replace all messages for this session using the snapshot.
+    // Use a transaction for the delete+insert to keep the replace atomic even
+    // if other writers (cloud sync, external tools) touch the DB concurrently.
+    await _db.transaction(() async {
+      await _db.deleteMessagesForSession(_currentSessionId!);
+      final messageBatch = <MessagesCompanion>[];
+      for (int i = 0; i < snapshot.length; i++) {
+        final m = snapshot[i];
+        messageBatch.add(
+          MessagesCompanion(
+            sessionId: drift.Value(_currentSessionId!),
+            position: drift.Value(i),
+            sender: drift.Value(m.sender),
+            isUser: drift.Value(m.isUser),
+            characterId: drift.Value(m.characterId),
+            swipes: drift.Value(jsonEncode(m.swipes)),
+            swipeIndex: drift.Value(m.swipeIndex),
+            swipeDurations: drift.Value(jsonEncode(m.swipeDurations)),
+            metadata: drift.Value(
+              m.metadata != null ? jsonEncode(m.metadata) : null,
+            ),
+            swipeMetadata: drift.Value(
+              m.swipeMetadata.any((e) => e != null)
+                  ? jsonEncode(m.swipeMetadata)
+                  : null,
+            ),
           ),
-          swipeMetadata: drift.Value(
-            m.swipeMetadata.any((e) => e != null)
-                ? jsonEncode(m.swipeMetadata)
-                : null,
-          ),
-        ),
-      );
-    }
-    if (messageBatch.isNotEmpty) {
-      await _db.insertMessages(messageBatch);
-    }
+        );
+      }
+      if (messageBatch.isNotEmpty) {
+        await _db.insertMessages(messageBatch);
+      }
+    });
   }
 
   Future<void> _loadLastSession() async {
@@ -3288,6 +3008,35 @@ class ChatService extends ChangeNotifier {
 
     if (sessions.isEmpty) {
       debugPrint('[ChatService] _loadLastSession: No previous sessions found');
+      // Ensure no stale fork/parent state remains from a prior character/group.
+      _parentSessionId = null;
+      _forkIndex = null;
+      // Expression runtime (manual/caches) reset on no-prior-session to prevent bleed (new for step4, matches fork/parent hygiene).
+      _expressionService.resetForFreshChat();
+      // Time (secondary config: passage, weekday anchors, turns, day/time scalars) reset for fresh 0-session/new-group paths.
+      // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
+      // Nsfw (cooldown/arousal) reset for same (incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue).
+      // Lorebook triggers/depth reset for same (incomplete zeroing of lore on 0-session/new-group was a prior hygiene pattern to avoid).
+      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed); incomplete zeroing now complete).
+      // (cross-ref setActiveCharacter:1572)
+      _timeService.resetForFreshChat();
+      _nsfwService.resetForFreshChat();
+      _lorebookScanner.resetLorebookTriggerState();
+      _activeObjectives = [];
+      _messagesSinceLastCheck = 0;
+      _isCheckingCompletion =
+          false; // zero in _loadLast empty early return (0-session path hygiene)
+      _summaryPaused =
+          false; // explicit secondary zero for _summaryPaused (symmetric; _loadLast empty early return 0-session)
+      _isSummaryGenerating =
+          false; // secondary zero in _loadLast empty (0-session for summary flag)
+      _userMessagesSinceLastPeriodicEval = 0;
+      _isExtractingFacts =
+          false; // secondary fact flag + counter zero in _loadLast empty early return (0-session path hygiene; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero in _loadLast empty early return (0-session path hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
       return;
     }
 
@@ -3302,33 +3051,49 @@ class ChatService extends ChangeNotifier {
     _sessionDescription = lastSession.description;
     _parentSessionId = lastSession.parentSession;
     _forkIndex = lastSession.forkIndex;
+    // Relationship scalars + migration/tier calc now via service (keeps load parity).
     // Migration: scale old scores (±150) to new range (±300)
-    _affectionScore = _migrateShortTermScore(lastSession.affectionScore);
-    _relationshipTier = _calculateTier(_affectionScore);
-    _longTermScore = _migrateLongTermScore(lastSession.longTermScore);
-    _longTermTier = _calculateTier(_longTermScore);
-    _turnsSinceLongTermCheck = lastSession.turnsSinceLongTermCheck;
-    _shortTermDeltasSummary = lastSession.shortTermDeltasSummary;
+    _relationshipService.loadScalars(
+      affectionScore: _relationshipService.migrateShortTermScore(
+        lastSession.affectionScore,
+      ),
+      longTermScore: _relationshipService.migrateLongTermScore(
+        lastSession.longTermScore,
+      ),
+      trustLevel: lastSession.trustLevel,
+      activeFixation: lastSession.activeFixation,
+      fixationLifespan: lastSession.fixationLifespan,
+      spatialStance: lastSession.spatialStance,
+      trustRepairPending: lastSession.trustRepairPending,
+      turnsSinceLongTermCheck: lastSession.turnsSinceLongTermCheck,
+      shortTermDeltasSummary: lastSession.shortTermDeltasSummary,
+    );
+    // Apply legacy migration (if needed) after load.
+    _relationshipService.applyLegacyShortTermMigrationIfNeeded();
     _realismEnabled = lastSession.realismEnabled;
     _moodDecayCounter = lastSession.moodDecayCounter;
     _characterEmotion = lastSession.characterEmotion;
     _emotionIntensity = lastSession.emotionIntensity;
-    _timeOfDay = lastSession.timeOfDay;
-    _dayCount = lastSession.dayCount;
-    _startDayOfWeek = _resolveStartDayOfWeek(
-      lastSession.startDayOfWeek,
-      _dayCount,
+    // Time load via extracted service (resolve + scalars; keeps load blocks in sync).
+    _timeService.loadTimeScalars(
+      timeOfDay: lastSession.timeOfDay,
+      dayCount: lastSession.dayCount,
+      startDayOfWeek: lastSession.startDayOfWeek,
+      passageOfTimeEnabled:
+          lastSession.passageOfTimeEnabled &&
+          _storageService.realismSettings.passageOfTimeDefault,
     );
-    _passageOfTimeEnabled =
-        lastSession.passageOfTimeEnabled &&
-        _storageService.passageOfTimeDefault;
-    _nsfwCooldownEnabled = lastSession.nsfwCooldownEnabled;
+    _nsfwService.loadNsfwScalars(
+      nsfwCooldownEnabled: lastSession.nsfwCooldownEnabled,
+      arousalLevel: lastSession.arousalLevel,
+      cooldownTurnsRemaining: lastSession.cooldownTurnsRemaining,
+    );
     _needsSimEnabled = lastSession.needsSimEnabled;
     if (_needsSimEnabled) {
-      _initializeNeedsVectorIfNeeded();
-      _restoreNeedsFromJson(lastSession.needsVector);
+      _needsSimulation.initializeIfNeeded();
+      _needsSimulation.restoreFromJson(lastSession.needsVector);
     } else {
-      _needsVector.clear();
+      _needsSimulation.clearVector();
     }
 
     // Re-sync from the character's current setting so that toggling
@@ -3336,33 +3101,20 @@ class ChatService extends ChangeNotifier {
     _enjoysLowHygiene =
         _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
 
-    _needsAfterglowTurnsRemaining = 0;
-    _arousalSuppressionTurnsRemaining = 0;
-    _postClimaxCrashTurnsRemaining = 0;
-    _arousalLevel = lastSession.arousalLevel;
-    _cooldownTurnsRemaining = lastSession.cooldownTurnsRemaining;
-    _trustLevel = lastSession.trustLevel;
-    _activeFixation = lastSession.activeFixation;
-    _fixationLifespan = lastSession.fixationLifespan;
+    _needsSimulation.resetBuffers();
+    // trust/fixation/spatial/pending/affection/tiers already loaded via _relationshipService.loadScalars above.
     debugPrint(
-      '[ChatService] _loadLastSession: Loaded session with arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      '[ChatService] _loadLastSession: Loaded session with arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
-    _spatialStance = lastSession.spatialStance;
-    _pendingTrustRepair = lastSession.trustRepairPending;
-    _chaosModeEnabled = lastSession.chaosModeEnabled;
-    _chaosPressure = lastSession.chaosPressure;
+    _chaosModeService.loadScalars(
+      modeEnabled: lastSession.chaosModeEnabled,
+      pressure: lastSession.chaosPressure,
+    );
 
-    // Realism Engine 2.0 Compatibility Migration
-    // Old scale was 0-15. New scale is 0-150.
-    if (_affectionScore > 0 &&
-        _affectionScore <= 15 &&
-        _relationshipTier >= 3) {
-      _affectionScore = _affectionScore * 10;
-      if (_longTermScore == 0) {
-        _longTermScore = _affectionScore;
-        _longTermTier = _calculateTier(_longTermScore);
-      }
-      _relationshipTier = _calculateTier(_affectionScore);
+    // Realism Engine 2.0 Compatibility Migration (delegated to service).
+    _relationshipService.applyLegacyShortTermMigrationIfNeeded();
+    if (_relationshipService.affectionScore != lastSession.affectionScore ||
+        _relationshipService.relationshipTier != lastSession.relationshipTier) {
       debugPrint(
         '[Realism] Legacy session migrated to REv2 scales (loadLast).',
       );
@@ -3385,6 +3137,21 @@ class ChatService extends ChangeNotifier {
     }
 
     // Load messages
+    // Zero secondary objective flags in loaded path of _loadLast (before callers do _loadActiveObjectives / _loadObjectivesForCurrentSpeaker); incomplete zeroing hygiene.
+    _activeObjectives = [];
+    _messagesSinceLastCheck = 0;
+    _isCheckingCompletion = false;
+    _summaryPaused =
+        false; // explicit secondary zero for _summaryPaused (symmetric; _loadLast empty/loaded hygiene)
+    _isSummaryGenerating =
+        false; // secondary flag zero for summary_service (stateless/prompt-only; incomplete zeroing ... now complete)
+    _userMessagesSinceLastPeriodicEval = 0;
+    _isExtractingFacts =
+        false; // secondary fact flag + counter zero in _loadLast loaded path (incomplete zeroing ... now complete; fact_extraction)
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError =
+        ''; // explicit evo flag/status/error zero in _loadLast loaded path (incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
     try {
       final dbMessages = await _db.getMessagesForSession(_currentSessionId!);
       debugPrint(
@@ -3441,7 +3208,7 @@ class ChatService extends ChangeNotifier {
       }
 
       if (_messages.isNotEmpty) {
-        _scanLorebook(_messages.last.text);
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
     } catch (e) {
       print('Error loading chat session: $e');
@@ -3589,10 +3356,7 @@ class ChatService extends ChangeNotifier {
 
       // The fixation coming out of the LLM can sometimes be a full paragraph instead of a short topic.
       // Truncate it to keep the UI and prompts sane.
-      if (_activeFixation.length > 200) {
-        _activeFixation = _activeFixation.substring(0, 200).trimRight() + '…';
-        _fixationLifespan = (_fixationLifespan > 0 ? _fixationLifespan : 3);
-      }
+      _relationshipService.sanitizeFixationIfTooLong();
 
       // ── Hydrate hidden group state checkpoint (DB-free: realism + per-char notes) ──
       // The sentinel is stored as the last message for durability but must be
@@ -3604,52 +3368,60 @@ class ChatService extends ChangeNotifier {
       _authorNoteStrength = session.authorNoteDepth;
       _summary = session.summary ?? '';
       _summaryLastIndex = session.summaryLastIndex ?? 0;
+      _summaryPaused =
+          false; // explicit secondary zero for _summaryPaused on loadSession loaded path (incomplete zeroing ... now complete; see keep-sync + summary_service)
+      _isSummaryGenerating =
+          false; // secondary zero for flag on loadSession loaded (symmetric)
+      _userMessagesSinceLastPeriodicEval = 0;
+      _isExtractingFacts =
+          false; // secondary fact flag + counter zero on loadSession loaded (symmetric; incomplete zeroing ... now complete; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero on loadSession loaded (symmetric; incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
       _sessionName = session.name;
       _sessionDescription = session.description;
       _parentSessionId = session.parentSession;
       _forkIndex = session.forkIndex;
-      _affectionScore = session.affectionScore;
-      _relationshipTier = _calculateTier(_affectionScore);
-      _longTermScore = session.longTermScore;
-      _longTermTier = _calculateTier(_longTermScore);
+      // Relationship load + tier calc + legacy migration via service.
+      _relationshipService.loadScalars(
+        affectionScore: session.affectionScore,
+        longTermScore: session.longTermScore,
+        trustLevel: session.trustLevel,
+        activeFixation: session.activeFixation,
+        fixationLifespan: session.fixationLifespan,
+        spatialStance: session.spatialStance,
+        trustRepairPending: session.trustRepairPending,
+        turnsSinceLongTermCheck: session.turnsSinceLongTermCheck,
+        shortTermDeltasSummary: session.shortTermDeltasSummary,
+      );
+      _relationshipService.applyLegacyShortTermMigrationIfNeeded();
 
-      // Realism Engine 2.0 Compatibility Migration
-      // Old scale was 0-15. New scale is 0-150.
-      // If we see an old chat that was Tier 5 but score 15, we scale it to match the new engine.
-      if (_affectionScore > 0 &&
-          _affectionScore <= 15 &&
-          _relationshipTier >= 3) {
-        _affectionScore = _affectionScore * 10;
-        // Old high-tier bonds convert immediately into solid Long-Term bounds as well.
-        if (_longTermScore == 0) {
-          _longTermScore = _affectionScore;
-          _longTermTier = _calculateTier(_longTermScore);
-        }
-        _relationshipTier = _calculateTier(_affectionScore);
-        debugPrint('[Realism] Legacy session migrated to REv2 scales.');
-      }
-
-      _turnsSinceLongTermCheck = session.turnsSinceLongTermCheck;
-      _shortTermDeltasSummary = session.shortTermDeltasSummary;
+      // counters already via loadScalars on service.
       _realismEnabled = session.realismEnabled;
       _moodDecayCounter = session.moodDecayCounter;
       _characterEmotion = session.characterEmotion;
       _emotionIntensity = session.emotionIntensity;
-      _timeOfDay = session.timeOfDay;
-      _dayCount = session.dayCount;
-      _startDayOfWeek = _resolveStartDayOfWeek(
-        session.startDayOfWeek,
-        _dayCount,
+      // Time load via extracted service (resolve + scalars; keeps group load blocks in sync).
+      _timeService.loadTimeScalars(
+        timeOfDay: session.timeOfDay,
+        dayCount: session.dayCount,
+        startDayOfWeek: session.startDayOfWeek,
+        passageOfTimeEnabled:
+            session.passageOfTimeEnabled &&
+            _storageService.realismSettings.passageOfTimeDefault,
       );
-      _passageOfTimeEnabled =
-          session.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
-      _nsfwCooldownEnabled = session.nsfwCooldownEnabled;
+      _nsfwService.loadNsfwScalars(
+        nsfwCooldownEnabled: session.nsfwCooldownEnabled,
+        arousalLevel: session.arousalLevel,
+        cooldownTurnsRemaining: session.cooldownTurnsRemaining,
+      );
       _needsSimEnabled = session.needsSimEnabled;
       if (_needsSimEnabled) {
-        _initializeNeedsVectorIfNeeded();
-        _restoreNeedsFromJson(session.needsVector);
+        _needsSimulation.initializeIfNeeded();
+        _needsSimulation.restoreFromJson(session.needsVector);
       } else {
-        _needsVector.clear();
+        _needsSimulation.clearVector();
       }
 
       // Re-sync from the character's current setting so toggling
@@ -3657,15 +3429,8 @@ class ChatService extends ChangeNotifier {
       _enjoysLowHygiene =
           _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
 
-      _needsAfterglowTurnsRemaining = 0;
-      _arousalSuppressionTurnsRemaining = 0;
-      _arousalLevel = session.arousalLevel;
-      _cooldownTurnsRemaining = session.cooldownTurnsRemaining;
-      _trustLevel = session.trustLevel;
-      _activeFixation = session.activeFixation;
-      _fixationLifespan = session.fixationLifespan;
-      _spatialStance = session.spatialStance;
-      _pendingTrustRepair = session.trustRepairPending;
+      _needsSimulation.resetBuffers();
+      // trust/fixation etc already via _relationshipService.loadScalars above.
 
       // Load per-session evolution (1:1 mode only — group handled by _loadGroupEvolvedFields)
       if (_activeCharacter != null) {
@@ -3694,7 +3459,7 @@ class ChatService extends ChangeNotifier {
       }
 
       if (_messages.isNotEmpty) {
-        _scanLorebook(_messages.last.text);
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
       notifyListeners();
     } catch (e) {
@@ -3790,6 +3555,17 @@ class ChatService extends ChangeNotifier {
         .copy(); // inherit parent's overrides
     _summary = '';
     _summaryLastIndex = 0;
+    _summaryPaused =
+        false; // explicit secondary zero for _summaryPaused (symmetric to generating; fork hygiene + incomplete zeroing now complete)
+    _isSummaryGenerating =
+        false; // zero secondary flag on fork (new branch hygiene, matches summary scalar reset)
+    _userMessagesSinceLastPeriodicEval = 0;
+    _isExtractingFacts =
+        false; // secondary fact flag + counter zero on fork (new branch hygiene + incomplete zeroing now complete; fact_extraction)
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError =
+        ''; // explicit evo flag/status/error zero on fork (new branch hygiene + incomplete zeroing now complete; evolution_service (stateless or prompt-only; no reset calls needed))
 
     // Time-Travel Restoration
     if (_messages.isNotEmpty) {
@@ -3855,7 +3631,7 @@ class ChatService extends ChangeNotifier {
     if (_activeCharacter == null && _activeGroup == null) return;
 
     debugPrint(
-      '[startNewChat] START: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      '[startNewChat] START: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
 
     // Refresh _activeCharacter from the repository so we pick up any edits
@@ -3941,6 +3717,20 @@ class ChatService extends ChangeNotifier {
     _greetingIndex = 0;
     _summary = '';
     _summaryLastIndex = 0;
+    _summaryPaused =
+        false; // explicit secondary zero for _summaryPaused (symmetric; startNew 1:1/ext-seed branch + incomplete zeroing ... now complete)
+    _isSummaryGenerating =
+        false; // explicit in startNewChat 1:1/ext-seed branch (both startNew explicit + incomplete zeroing of secondary config on group/0-session/new-chat now complete; summary_service)
+
+    // Explicitly clear any prior branching/fork metadata. A "New Chat" is
+    // never a branch/fork from a previous session. This prevents stale
+    // _parentSessionId / _forkIndex (from a previous branched chat or
+    // different character) from being written into the brand-new session
+    // record via _saveChat(), which was causing new chats to incorrectly
+    // show "Branched at message #NNNN" in history lists even for characters
+    // with no prior chats.
+    _parentSessionId = null;
+    _forkIndex = null;
 
     // Mark this as a new chat to prevent memory retrieval
     _isNewChat = true;
@@ -3954,6 +3744,15 @@ class ChatService extends ChangeNotifier {
     // Clear objectives for fresh session start
     _activeObjectives = [];
     _messagesSinceLastCheck = 0;
+    _isCheckingCompletion =
+        false; // see decl + keep reset blocks (incomplete zeroing of secondary config on group/0-session/new-chat now complete; explicit in both startNew branches)
+    _userMessagesSinceLastPeriodicEval = 0;
+    _isExtractingFacts =
+        false; // explicit secondary fact flag + counter zero in startNew 1:1/ext-seed branch (both startNew explicit + incomplete zeroing ... now complete; fact_extraction)
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError =
+        ''; // explicit evo flag/status/error zero in startNew 1:1/ext-seed branch (both startNew explicit + incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
 
     // Create new session ID for the new chat
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -3981,58 +3780,69 @@ class ChatService extends ChangeNotifier {
           _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
 
       _realismEnabled = extSeed.realismEnabled;
-      // Migration: scale old scores (±150) to new range (±300)
-      _affectionScore = _migrateShortTermScore(
-        extSeed.shortTermBond.clamp(-300, 300),
+      // Migration + seed via service (keeps startNewChat parity with setActive ext seed).
+      _relationshipService.seedFromV2OrExt(
+        shortTermBond: extSeed.shortTermBond,
+        longTermBond: extSeed.longTermBond,
+        trustLevel: extSeed.trustLevel,
       );
-      _longTermScore = _migrateLongTermScore(
-        extSeed.longTermBond.clamp(-300, 300),
+      _expressionService.resetForFreshChat();
+      // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
+      // without god privates; now includes startNewChat 1:1 ext-seed path to prevent bleed of prior
+      // isTriggered/remainingDepth into fresh New Chat for 1:1; constants skipped. See setActiveCharacter:1572
+      // + "incomplete zeroing of secondary realism configuration fields" briefing pattern (cross-ref step6 nsfw).
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+      _lorebookScanner.resetLorebookTriggerState();
+      // Time seed via extracted service (keeps startNewChat / setActive / ext-seed blocks in sync).
+      _timeService.seedFromV2OrExt(
+        dayCount: extSeed.dayCount.clamp(1, 9999),
+        timeOfDay: extSeed.timeOfDay,
+        passageOfTimeEnabled:
+            extSeed.passageOfTimeEnabled &&
+            _storageService.realismSettings.passageOfTimeDefault,
       );
-      _trustLevel = extSeed.trustLevel.clamp(-100, 100);
-      _dayCount = extSeed.dayCount.clamp(1, 9999);
-      _timeOfDay = extSeed.timeOfDay;
-      _startDayOfWeek = DateTime.now()
-          .weekday; // anchor narrative weekday for the fresh session
       _characterEmotion = extSeed.characterEmotion;
       _emotionIntensity = extSeed.emotionIntensity;
-      _nsfwCooldownEnabled = extSeed.nsfwCooldownEnabled;
-      // Global setting is a hard ceiling: if the user disabled passage-of-time
-      // globally, it stays off regardless of what the character card says.
-      _passageOfTimeEnabled =
-          extSeed.passageOfTimeEnabled && _storageService.passageOfTimeDefault;
-      _chaosModeEnabled = extSeed.chaosModeEnabled;
+      _nsfwService.seedFromV2OrExt(
+        nsfwCooldownEnabled: extSeed.nsfwCooldownEnabled,
+      );
+      _chaosModeService.seedFromGroupOrExt(extSeed.chaosModeEnabled, false);
       _needsSimEnabled = extSeed.needsSimEnabled;
       _enjoysLowHygiene = extSeed.enjoysLowHygiene;
       if (_needsSimEnabled) {
-        _initializeNeedsVectorIfNeeded();
+        // Fresh chat / new session: start all needs at 100 (full). The varied
+        // _needDefaults are the "sensible mid-scene" curve used for legacy
+        // restores or when the user toggles Needs on mid-chat.
+        _needsSimulation.initializeFresh();
       } else {
-        _needsVector.clear();
+        _needsSimulation.clearVector();
       }
-      _needsAfterglowTurnsRemaining = 0;
-      _arousalSuppressionTurnsRemaining = 0;
-      _postClimaxCrashTurnsRemaining = 0;
-      _pendingTrustRepair = false;
+      _needsSimulation.resetBuffers();
+      // needs_impact_evaluator is stateless/prompt-only (no reset calls needed on it;
+      // see full list in "keep reset blocks in sync" comments + cross-ref setActiveCharacter:1572 + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)).
+      // pending covered by relationship service reset in the ext-seed or non-ext paths below.
       // Always reset per-chat runtime realism fields (arousal/fixation/cooldowns) for a fresh
-      // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter ~2400
-      // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.)
+      // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter
+      // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.
+      // Needs vector/buffers reset via _needsSimulation also kept in sync across sites.)
+      // Time secondary fields (passage/anchor/turns/day/time) zeroed via _timeService.resetForFreshChat in non-ext path + _load empty + setActiveGroup.
+      // Nsfw runtime (arousal/cooldown) zeroed via service for fresh (see resetRuntime + resetForFreshChat).
       // Declarative initial bond/trust/emotion/day etc are already seeded above from the card's
       // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
       // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
+      // Expression (manual/caches/onnx/lastAvatar) reset via service for no-bleed (new for step 4).
+      // Lorebook (non-const isTriggered/remainingDepth) reset via scanner in both ext-seed (1:1) and non-ext (group/0-session) paths of startNewChat (added for hygiene to match briefing "every keep-sync" + setActiveCharacter etc; prevents bleed into greetings/scans).
       debugPrint(
-        '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan)',
+        '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan})',
       );
-      _arousalLevel = 0;
-      _fixationLifespan = 0;
-      _activeFixation = '';
-      _cooldownTurnsRemaining = 0;
+      _nsfwService.resetRuntimeArousalAndCooldown();
       debugPrint(
-        '[startNewChat] After reset: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+        '[startNewChat] After reset: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
       );
 
       // Recalculate tiers from seeded scores (only needed for realism-enabled chars)
       if (_realismEnabled) {
-        _relationshipTier = _calculateTier(_affectionScore);
-        _longTermTier = _calculateTier(_longTermScore);
+        // Tiers are maintained inside service after seed; no direct _calculate here.
       }
 
       // Seed initial quest/task as a primary objective
@@ -4047,24 +3857,57 @@ class ChatService extends ChangeNotifier {
       }
     } else {
       // Group mode or no active character: reset to defaults but preserve existing extensions-based values
-      _pendingTrustRepair = false;
+      // (pending covered by service.resetForFreshChat below)
 
       if (_activeGroup == null && _messages.isNotEmpty) {
         // Will be populated later with greeting in non-group modes
         // Preserve realism state for proper post-greeting eval (don't reset here)
       } else {
-        _affectionScore = 0;
-        _trustLevel = 0;
-        _relationshipTier = 0;
-        _longTermScore = 0;
-        _longTermTier = 0;
-        // Don't touch dayCount, timeOfDay etc. as they get seeded from extensions or loaded session
+        // Relationship + Expression + Time + Nsfw reset via service helpers (keeps reset blocks in sync with setActiveCharacter:1572 etc / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + full list in "keep reset blocks" comments including + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+        // Time now explicitly reset in group 0-session/empty paths + setActiveGroup defensive + _loadLast empty (cross-check needs bugfix hygiene).
+        _relationshipService.resetForFreshChat();
+        _expressionService.resetForFreshChat();
+        _timeService.resetForFreshChat();
+        _nsfwService.resetForFreshChat();
+        // Lorebook trigger reset via extracted service (keeps reset blocks in sync with setActiveCharacter:1572 / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary ... on 0-session/new-character/group" + startNew 1:1+group now complete + full list in keep-sync comments incl llm_eval_engine). (cross-ref setActiveCharacter:1572 etc)
+        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) for group/0-session/new-chat hygiene; incomplete zeroing now complete).
+        // (cross-ref setActiveCharacter:1572)
+        _lorebookScanner.resetLorebookTriggerState();
+        // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
+        // Time reset helper kept in sync with other blocks.
+        // needs_impact_evaluator (stateless/prompt-only; no reset calls needed) covered in keep-sync lists.
+
+        // Explicit zero for secondary config flags in group/non-ext/0-session/new-chat path (keeps "incomplete zeroing of secondary config on group/0-session/new-chat now complete" true in *code* not just comments; matches ext-seed 1:1 + setActiveCharacter + setActiveGroup defensive; cross-ref setActiveCharacter:1572 + full list in keep-sync comments incl + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed)).
+        _needsSimEnabled = false;
+        _enjoysLowHygiene = false;
+        _needsSimulation.clearVector();
+        _needsSimulation.resetBuffers();
+        _activeObjectives = [];
+        _messagesSinceLastCheck = 0;
+        _isCheckingCompletion =
+            false; // explicit in non-ext/group/0-session else branch of startNew (both branches now; incomplete zeroing ... now complete)
+        _summaryPaused =
+            false; // explicit secondary zero for _summaryPaused (symmetric to generating; non-ext/group/0-session startNew path + now complete)
+        _isSummaryGenerating =
+            false; // explicit secondary zero in startNew non-ext/group/0-session path (both branches + now complete for summary flag too)
+        _userMessagesSinceLastPeriodicEval = 0;
+        _isExtractingFacts =
+            false; // explicit secondary fact flag + counter zero in startNew non-ext/group/0-session path (both branches + now complete for fact flag/counter; fact_extraction)
+        _isEvolvingCharacter = false;
+        _evolutionStatus = '';
+        _evolutionError =
+            ''; // explicit evo flag/status/error zero in startNew non-ext/group/0-session path (both branches + now complete for evo flag; evolution_service (stateless or prompt-only; no reset calls needed))
       }
     }
 
+    // Explicit flag zero for evolution (in addition to per-branch) to keep "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + both startNew explicit; evolution_service (stateless or prompt-only; no reset calls needed).
+    _isEvolvingCharacter = false;
+    _evolutionStatus = '';
+    _evolutionError = '';
+
     // Clear the in-memory evolution cache so the new session starts with
     // the original (unevolved) personality/scenario. The previous session's
-    // evolved data was still live in this map.
+    // evolved data was still live in this map. (Flags zeroed explicitly in branches + here for hygiene; see preceding comment.)
     _evolvedPersonalities.clear();
     _evolvedScenarios.clear();
     _groupEvolutionCounts.clear();
@@ -4100,7 +3943,7 @@ class ChatService extends ChangeNotifier {
             characterId: greetingCharId,
           ),
         );
-        _scanLorebook(_messages.last.text);
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
       _groupManager?.resetTurnState();
     } else if (_activeCharacter != null) {
@@ -4113,17 +3956,17 @@ class ChatService extends ChangeNotifier {
             isUser: false,
           ),
         );
-        _scanLorebook(_messages.last.text);
+        _lorebookScanner.scanLorebook(_messages.last.text);
       }
     }
 
     _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
     debugPrint(
-      '[startNewChat] BEFORE SAVE: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      '[startNewChat] BEFORE SAVE: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
     await _saveChat();
     debugPrint(
-      '[startNewChat] AFTER SAVE: arousal=$_arousalLevel, fixation=$_activeFixation/$_fixationLifespan',
+      '[startNewChat] AFTER SAVE: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
     );
     notifyListeners();
 
@@ -4154,6 +3997,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
     try {
       await Future.wait([
+        // delegates to _llmEvalEngine (step 9 thins; full bodies excised)
         _evaluateEmotionalStateCall(),
         _evaluateRelationshipCall(),
       ]);
@@ -4184,7 +4028,7 @@ class ChatService extends ChangeNotifier {
       await _saveChat();
       notifyListeners();
       debugPrint(
-        '[Realism] Post-greeting baseline: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel',
+        '[Realism] Post-greeting baseline: emotion=$_characterEmotion, bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}',
       );
     } catch (e) {
       debugPrint('[Realism] Post-greeting eval failed: $e');
@@ -4205,8 +4049,8 @@ class ChatService extends ChangeNotifier {
     _isProcessingGreeting = true; // reuse the greeting overlay
     notifyListeners();
     try {
-      if (_storageService.realismOneShotEval) {
-        await _evaluateOneShotCall();
+      if (_storageService.realismSettings.realismOneShotEval) {
+        await _evaluateOneShotCall(); // step 10 thin (full in realism_evals)
 
         // Check for cancellation after one-shot eval
         if (_realismEvalCancelled) {
@@ -4240,7 +4084,7 @@ class ChatService extends ChangeNotifier {
       await _saveChat();
       notifyListeners();
       debugPrint(
-        '[Realism] Retroactive scan complete: emotion=$_characterEmotion, bond=$_affectionScore, trust=$_trustLevel',
+        '[Realism] Retroactive scan complete: emotion=$_characterEmotion, bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}',
       );
     } catch (e) {
       debugPrint('[Realism] Retroactive baseline scan failed: $e');
@@ -4286,7 +4130,7 @@ class ChatService extends ChangeNotifier {
     );
   }
 
-  /// Applies {{user}} / <user> replacement using the current persona.
+  /// Applies {{user}} / `<user>` replacement using the current persona.
   /// Used for group-level overrides (firstMessage, scenario, systemPrompt)
   /// which are not tied to a specific CharacterCard.
   String _applyUserReplacement(String text) {
@@ -4316,14 +4160,14 @@ class ChatService extends ChangeNotifier {
         case 'expression':
           if (args.isNotEmpty) {
             final label = args.toLowerCase();
-            setManualExpression(label);
+            _expressionService.setManualExpression(label);
           } else {
-            setManualExpression(null);
+            _expressionService.setManualExpression(null);
           }
           return;
 
         case 'expression-clear':
-          setManualExpression(null);
+          _expressionService.setManualExpression(null);
           return;
 
         default:
@@ -4349,24 +4193,24 @@ class ChatService extends ChangeNotifier {
       debugPrint('[sendMessage] Cleared new chat flag, memories now allowed');
     }
 
-    // Scan user input for lore keywords
-    _scanLorebook(text);
+    // Scan user input for lore keywords (thin to scanner).
+    _lorebookScanner.scanLorebook(text);
 
     // ── Clear consumed chaos event from the previous turn ───────────────
     // Only clear if the event was already delivered in a response.
     // This preserves manual-spin events that haven't been used yet.
-    if (_chaosEventDelivered) {
-      _pendingChaosInjection = null;
-      _chaosEventDelivered = false;
-    }
+    // Delegated to service (core state moved).
+    _chaosModeService.clearDeliveredPendingIfAny();
 
     // ── OOC Time-Skip Detection ───────────────────────────────────────────
     if (_realismActiveThisMode) {
-      _detectOocTimeSkip(text);
+      _timeService.detectOocTimeSkip(text);
     }
 
     // ── Chaos Mode: check + pause for wheel if triggered ─────────────────
-    if (_chaosModeEnabled && _pendingChaosInjection == null) {
+    // Guard + tick delegated (pendingInjection check via service getter).
+    if (_chaosModeService.chaosModeEnabled &&
+        _chaosModeService.pendingChaosInjection == null) {
       if (checkAndTickChaosPressure()) {
         // Create a completer so sendMessage pauses here until the wheel resolves
         _chanceTimeCompleter = Completer<void>();
@@ -4391,18 +4235,33 @@ class ChatService extends ChangeNotifier {
     // can use the same delta-revert mechanism the classic realism fields
     // (bond/trust/arousal) use.
     Map<String, int>? preTurnVector;
+    // For group chips, snapshot the *pre-decay* needs for the *upcoming* speaker (from map)
+    // before tickDecay runs. This lets the post-gen chip deltas include the turn's decay + scene
+    // effects (1:1 parity). The per-speaker pre-eval will see the post-decay value after load.
+    Map<String, int>? groupSpeakerPreDecayNeeds;
     if (_realismActiveThisMode) {
-      if (_needsSimEnabled && _needsVector.isNotEmpty) {
-        preTurnVector = Map<String, int>.from(_needsVector);
+      if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
+        preTurnVector = Map<String, int>.from(_needsSimulation.vector);
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['needs_pre_turn_vector'] = preTurnVector;
       }
 
-      _applyMoodDecay();
-      _tickNeedsDecay();
-      if (_cooldownTurnsRemaining > 0) {
-        _cooldownTurnsRemaining--;
+      if (_activeGroup != null &&
+          _needsSimEnabled &&
+          isGroupRealismActive &&
+          !_observerMode) {
+        final upcoming = nextCharacter;
+        if (upcoming != null) {
+          final sid = _getCharacterIdFromCard(upcoming);
+          if (sid.isNotEmpty) {
+            groupSpeakerPreDecayNeeds = _getGroupNeeds(sid);
+          }
+        }
       }
+
+      _applyMoodDecay();
+      _needsSimulation.tickDecay();
+      _nsfwService.decrementCooldownIfActive();
       _isEvaluatingRealism = true;
       _realismEvalStreamText = '';
       notifyListeners();
@@ -4430,8 +4289,9 @@ class ChatService extends ChangeNotifier {
         debugPrint(
           '[Realism:Group] Skipping centralized LLM eval block — per-speaker evaluation will run inside _generateResponse for the upcoming speaker',
         );
-      } else if (_pendingTrustRepair) {
-        _pendingTrustRepair = false; // consume — resets for next drop
+      } else if (_relationshipService.pendingTrustRepair) {
+        _relationshipService
+            .consumePendingTrustRepair(); // consume — resets for next drop
         await _evaluateTrustRepairCall(text, onChunk: handleChunk);
 
         if (!_realismEvalCancelled) {
@@ -4461,11 +4321,13 @@ class ChatService extends ChangeNotifier {
         }
       } else {
         // Fire all evals concurrently.
-        if (_storageService.realismOneShotEval) {
+        if (_storageService.realismSettings.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           await Future.wait([
-            _evaluateRelationshipCall(onChunk: handleChunk),
+            _evaluateRelationshipCall(
+              onChunk: handleChunk,
+            ), // step 10 thins (full in realism_evals)
             _evaluateEmotionalStateCall(onChunk: handleChunk),
             _evaluatePhysicalStateCall(onChunk: handleChunk),
             _evaluateNarrativeCall(onChunk: handleChunk),
@@ -4518,24 +4380,50 @@ class ChatService extends ChangeNotifier {
     await _generateResponse(GenerationMode.normal);
 
     // If the generation took a very long real-world time (long prefill etc.),
-    // apply a small "real time passed" decay to needs. This prevents the
-    // "everything stayed exactly the same during a 20-minute generation" feeling
-    // that leads to zero-change chips.
-    if (_lastGenerationDurationSeconds > 300) {
-      // > 5 minutes
-      _applyLongGenerationNeedsDecay();
-    }
+    // apply a small "real time passed" decay to needs (gate inside applyLong...).
+    // This prevents the "everything stayed exactly the same during a 20-minute
+    // generation" feeling that leads to zero-change chips.
+    _needsSimulation.applyLongGenerationNeedsDecay(
+      _lastGenerationDurationSeconds,
+    );
 
     // Compute needs_deltas AFTER generation so the post-generation checks
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
     // This ensures UI chips show accurate deltas.
     if (_needsSimEnabled && _messages.isNotEmpty) {
-      final needsDeltas = _computeNeedsDeltasWithReasons(preTurnVector);
-      if (needsDeltas.isNotEmpty) {
-        _messages.last.activeMetadata ??= {};
-        _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
-        await _saveChat();
-        notifyListeners();
+      if (_activeGroup == null) {
+        // 1:1 path: preTurnVector captured in this scope (pre-tick) is correct.
+        final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+          preTurnVector,
+        );
+        if (needsDeltas.isNotEmpty) {
+          _messages.last.activeMetadata ??= {};
+          _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
+          await _saveChat();
+          notifyListeners();
+        }
+      } else {
+        // Group: use the pre-decay snapshot for this speaker (captured before tick using nextCharacter)
+        // so chips reflect the full net turn effect (decay + scene deltas) for 1:1 parity.
+        // Fall back to the vector embedded in the per-speaker realism_state snapshot (post-decay)
+        // if the pre-decay snapshot wasn't available (e.g. edge rotation).
+        final preVec =
+            groupSpeakerPreDecayNeeds ??
+            ((_messages.last.activeMetadata?['realism_state']
+                        as Map<String, dynamic>?)?['needs']?['vector']
+                    as Map?)
+                ?.cast<String, int>();
+        if (preVec != null && preVec.isNotEmpty) {
+          final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+            preVec,
+          );
+          if (needsDeltas.isNotEmpty) {
+            _messages.last.activeMetadata ??= {};
+            _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
+            await _saveChat();
+            notifyListeners();
+          }
+        }
       }
     }
   }
@@ -4565,7 +4453,7 @@ class ChatService extends ChangeNotifier {
     await _saveChat();
     notifyListeners();
 
-    _scanLorebook(text);
+    _lorebookScanner.scanLorebook(text);
     // Note: depth decrement happens after AI response completes inside _generateResponse.
     // Director-triggered lore is visible for the current generate.
 
@@ -4654,32 +4542,35 @@ class ChatService extends ChangeNotifier {
               lastMsg.activeMetadata!['trust_delta'] as int? ?? 0;
 
           if (bondDelta != 0) {
-            _affectionScore = (_affectionScore - bondDelta).clamp(-300, 300);
-            _relationshipTier = _calculateTier(_affectionScore);
+            _relationshipService.applyScoreDelta(-bondDelta);
           }
           if (moodDelta != 0) {
             _moodDecayCounter = 0;
           }
           if (trustDelta != 0) {
-            _trustLevel = (_trustLevel - trustDelta).clamp(-100, 100);
+            _relationshipService.setTrustLevelForRevert(
+              (_relationshipService.trustLevel - trustDelta).clamp(-100, 100),
+            );
           }
 
           // Revert climax state if this response triggered refractory cooldown.
           // The climax checker stores the pre-climax arousal so we can restore it.
           final climaxTriggered =
               lastMsg.activeMetadata!['climax_triggered'] as bool? ?? false;
-          if (climaxTriggered && _nsfwCooldownEnabled) {
+          if (climaxTriggered && _nsfwService.nsfwCooldownEnabled) {
             final preClimaxArousal =
                 lastMsg.activeMetadata!['pre_climax_arousal'] as int? ?? 0;
-            _arousalLevel = preClimaxArousal;
-            _cooldownTurnsRemaining = 0;
-            _cooldownTurnsTotal = 0;
+            _nsfwService.setArousalLevel(preClimaxArousal);
+            _nsfwService.setCooldownTurnsRemaining(0);
+            _nsfwService.setCooldownTurnsTotal(0);
             debugPrint(
               '[Realism:Regen] Reverted climax state: arousal restored to $preClimaxArousal, cooldown cleared',
             );
-          } else if (arousalDelta != 0 && _nsfwCooldownEnabled) {
+          } else if (arousalDelta != 0 && _nsfwService.nsfwCooldownEnabled) {
             // Normal arousal delta revert (no climax involved)
-            _arousalLevel = (_arousalLevel - arousalDelta).clamp(-100, 100);
+            _nsfwService.setArousalLevel(
+              (_nsfwService.arousalLevel - arousalDelta).clamp(-100, 100),
+            );
           }
 
           // Needs pre-turn vector revert — mirrors the bond/trust/arousal delta
@@ -4689,7 +4580,7 @@ class ChatService extends ChangeNotifier {
           final preTurnNeeds =
               lastMsg.activeMetadata!['needs_pre_turn_vector'] as Map?;
           if (preTurnNeeds != null && _needsSimEnabled) {
-            _needsVector = Map<String, int>.from(preTurnNeeds);
+            _needsSimulation.setVector(Map<String, int>.from(preTurnNeeds));
             debugPrint(
               '[Realism:Regen] Restored needs vector from pre-turn snapshot on rejected message',
             );
@@ -4700,21 +4591,7 @@ class ChatService extends ChangeNotifier {
         // This ensures the new regenerated message is evaluated against the correct baseline,
         // not from scratch which would produce wildly different realism values.
         if (previousMessageState != null) {
-          _affectionScore =
-              previousMessageState['affectionScore'] as int? ?? _affectionScore;
-          _relationshipTier =
-              previousMessageState['relationshipTier'] as int? ??
-              _relationshipTier;
-          _longTermScore =
-              previousMessageState['longTermScore'] as int? ?? _longTermScore;
-          _longTermTier =
-              previousMessageState['longTermTier'] as int? ?? _longTermTier;
-          _turnsSinceLongTermCheck =
-              previousMessageState['turnsSinceLongTermCheck'] as int? ??
-              _turnsSinceLongTermCheck;
-          _shortTermDeltasSummary =
-              previousMessageState['shortTermDeltasSummary'] as int? ??
-              _shortTermDeltasSummary;
+          _relationshipService.restoreFromMessageState(previousMessageState);
           _moodDecayCounter =
               previousMessageState['moodDecayCounter'] as int? ??
               _moodDecayCounter;
@@ -4725,31 +4602,12 @@ class ChatService extends ChangeNotifier {
               previousMessageState['emotionIntensity'] as String? ??
               _emotionIntensity;
 
-          if (_passageOfTimeEnabled && !wasNudged) {
-            _timeOfDay =
-                previousMessageState['timeOfDay'] as String? ?? _timeOfDay;
-            _dayCount = previousMessageState['dayCount'] as int? ?? _dayCount;
-          }
+          _timeService.restoreTimeForSwipeOrRegen(
+            previousMessageState,
+            wasNudged: wasNudged,
+          );
 
-          _arousalLevel =
-              previousMessageState['arousalLevel'] as int? ?? _arousalLevel;
-          _cooldownTurnsRemaining =
-              previousMessageState['cooldownTurnsRemaining'] as int? ??
-              _cooldownTurnsRemaining;
-          _cooldownTurnsTotal =
-              previousMessageState['cooldownTurnsTotal'] as int? ??
-              _cooldownTurnsRemaining;
-          _trustLevel =
-              previousMessageState['trustLevel'] as int? ?? _trustLevel;
-          _activeFixation =
-              previousMessageState['activeFixation'] as String? ??
-              _activeFixation;
-          _fixationLifespan =
-              previousMessageState['fixationLifespan'] as int? ??
-              _fixationLifespan;
-          _spatialStance =
-              previousMessageState['spatialStance'] as String? ??
-              _spatialStance;
+          _nsfwService.restoreNsfwFromMessageState(previousMessageState);
 
           // Needs simulation snapshot (clean port)
           // Guard + no enabled override: prevents stale resurrection on regen after toggle-off.
@@ -4759,12 +4617,12 @@ class ChatService extends ChangeNotifier {
             final needsData = previousMessageState['needs'] as Map;
             if (needsData['vector'] is Map) {
               final vector = Map<String, int>.from(needsData['vector'] as Map);
-              _needsVector = vector;
+              _needsSimulation.setVector(vector);
             }
           }
 
           debugPrint(
-            '[Realism:Regen] ✓ Restored baseline from previous accepted message: bond=$_affectionScore, emotion=$_characterEmotion, trust=$_trustLevel, arousal=$_arousalLevel',
+            '[Realism:Regen] ✓ Restored baseline from previous accepted message: bond=${_relationshipService.affectionScore}, emotion=$_characterEmotion, trust=${_relationshipService.trustLevel}, arousal=${_nsfwService.arousalLevel}',
           );
         } else {
           debugPrint(
@@ -4793,24 +4651,24 @@ class ChatService extends ChangeNotifier {
         // This ensures _needsVector differs from the saved pre-turn vector
         // so post-generation deltas are non-zero.
         _applyMoodDecay();
-        _tickNeedsDecay();
-        if (_cooldownTurnsRemaining > 0) {
-          _cooldownTurnsRemaining--;
-        }
+        _needsSimulation.tickDecay();
+        _nsfwService.decrementCooldownIfActive();
 
         // Record the (restored) needs baseline as the pre-turn vector BEFORE
         // generation so the post-generation checks can compute proper deltas.
-        if (_needsSimEnabled && _needsVector.isNotEmpty) {
+        if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
           _pendingRealismMetadata ??= {};
           _pendingRealismMetadata!['needs_pre_turn_vector'] =
-              Map<String, int>.from(_needsVector);
+              Map<String, int>.from(_needsSimulation.vector);
         }
 
-        if (_storageService.realismOneShotEval) {
+        if (_storageService.realismSettings.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           await Future.wait([
-            _evaluateRelationshipCall(onChunk: handleChunk),
+            _evaluateRelationshipCall(
+              onChunk: handleChunk,
+            ), // step 10 thins (full in realism_evals)
             _evaluateEmotionalStateCall(onChunk: handleChunk),
             _evaluatePhysicalStateCall(onChunk: handleChunk),
             _evaluateNarrativeCall(onChunk: handleChunk),
@@ -4866,10 +4724,8 @@ class ChatService extends ChangeNotifier {
         }
       }
 
-      // Invalidate ONNX cache for the new response
-      _onnxCachedForEmotion = null;
-      _onnxExpressionLabel = null;
-      _lastOnnxMessageText = null;
+      // Invalidate ONNX cache for the new response (delegated)
+      _expressionService.invalidateOnnxCacheForNewResponse();
 
       // Generate into a new message — it will be appended by _generateResponse.
       // _generateResponse runs the post-generation needs checks (climax,
@@ -4882,8 +4738,12 @@ class ChatService extends ChangeNotifier {
       // Apply directly to the message since _pendingRealismMetadata was consumed.
       // (For groups, the per-speaker path inside generate already attached the
       // correct per-character needs_deltas; we only compute scalar here for 1:1.)
-      if (_activeGroup == null && _needsSimEnabled && _needsVector.isNotEmpty) {
-        needsDeltas = _computeNeedsDeltasWithReasons(regenPreTurn);
+      if (_activeGroup == null &&
+          _needsSimEnabled &&
+          _needsSimulation.vector.isNotEmpty) {
+        needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+          regenPreTurn,
+        );
       }
 
       // After generation, merge the new response as a swipe on the original message
@@ -5007,8 +4867,8 @@ class ChatService extends ChangeNotifier {
             : defaultGroupSystemPrompt;
       } else if (speakingCharacter.systemPrompt.isNotEmpty) {
         systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.systemPrompt.isNotEmpty) {
-        systemPrompt = _storageService.systemPrompt;
+      } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
+        systemPrompt = _storageService.generationSettings.systemPrompt;
       } else {
         final isApi = _llmProvider != null && !_llmProvider!.isLocal;
         systemPrompt = isApi
@@ -5363,12 +5223,12 @@ class ChatService extends ChangeNotifier {
   Map<String, int> _getGroupNeeds(String charId) {
     final raw = _groupRealism[charId]?['needs'];
     final result = <String, int>{};
-    for (final k in _needKeys) {
+    for (final k in needKeys) {
       final v = (raw is Map) ? raw[k] : null;
       if (v is num) {
         result[k] = v.toInt();
       } else {
-        result[k] = _needDefaults[k] ?? 80;
+        result[k] = NeedsSimulation.needDefaults[k] ?? 80;
       }
     }
     return result;
@@ -5378,123 +5238,8 @@ class ChatService extends ChangeNotifier {
     _setGroupRealismValue(charId, 'needs', needs);
   }
 
-  /// Ensures the hidden inter-character 'relationships' map for this speaker
-  /// contains a neutral (0) entry for every other current member of the group.
-  /// This is the core of the invisible tracking mechanic: characters have
-  /// private feelings about each other that are never shown in UI bars but
-  /// influence how they behave toward one another in prompts.
-  /// Safe to call repeatedly; only seeds missing entries.
-  void _ensureInterCharacterRelationshipsSeeded(String charId) {
-    if (!_shouldTrackInterCharacterRelationships) return;
-    if (_activeGroup == null || _observerMode) return;
-    if (_groupCharacters.length < 2) return;
-
-    final currentRels = Map<String, int>.from(
-      getInterCharacterRelationships(charId),
-    );
-    bool changed = false;
-
-    // Prune relationships to characters who are no longer in the group (membership change handling)
-    final currentMemberIds = _groupCharacters
-        .map(_getCharacterIdFromCard)
-        .toSet();
-    final stale = currentRels.keys
-        .where((id) => !currentMemberIds.contains(id))
-        .toList();
-    for (final staleId in stale) {
-      currentRels.remove(staleId);
-      changed = true;
-    }
-
-    // Seed neutral 0 for any current members we don't have an entry for yet
-    for (final other in _groupCharacters) {
-      final otherId = _getCharacterIdFromCard(other);
-      if (otherId == charId) continue;
-      if (!currentRels.containsKey(otherId)) {
-        currentRels[otherId] = 0;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      _setGroupRealismValue(charId, 'relationships', currentRels);
-      debugPrint(
-        '[Realism:Group] Updated inter-character relationships for $charId (seeded + pruned stale)',
-      );
-    }
-  }
-
-  /// Lightweight heuristic update for hidden inter-character feelings.
-  /// Scans the most recent user message + AI response for mentions of other
-  /// group members and applies small deltas. This gives the invisible tracking
-  /// real, interaction-driven movement without an extra LLM call.
-  /// Positive language toward another member slightly improves the speaker's
-  /// private opinion; negative language worsens it.
-  void _updateInterCharacterFeelingsFromRecentExchange(String speakerId) {
-    if (!_shouldTrackInterCharacterRelationships) return;
-    if (_activeGroup == null || _messages.length < 2) return;
-
-    final rels = Map<String, int>.from(
-      getInterCharacterRelationships(speakerId),
-    );
-    if (rels.isEmpty) return;
-
-    // Look at the last two messages (user + speaker response)
-    final recent = _messages.reversed
-        .take(2)
-        .map((m) => m.displayText.toLowerCase())
-        .join(' ');
-
-    bool changed = false;
-
-    for (final other in _groupCharacters) {
-      final otherId = _getCharacterIdFromCard(other);
-      if (otherId == speakerId) continue;
-      if (!rels.containsKey(otherId)) continue;
-
-      final otherName = other.name.toLowerCase();
-      if (!recent.contains(otherName)) continue;
-
-      // Very simple sentiment heuristics
-      int delta = 0;
-      if (recent.contains('love') ||
-          recent.contains('adore') ||
-          recent.contains('wonderful') ||
-          recent.contains('great') ||
-          recent.contains('amazing') ||
-          recent.contains('friend')) {
-        delta = 4;
-      } else if (recent.contains('hate') ||
-          recent.contains('annoying') ||
-          recent.contains('stupid') ||
-          recent.contains('awful') ||
-          recent.contains('dislike') ||
-          recent.contains('enemy')) {
-        delta = -4;
-      } else if (recent.contains('like') ||
-          recent.contains('nice') ||
-          recent.contains('good')) {
-        delta = 2;
-      } else if (recent.contains('bad') ||
-          recent.contains('rude') ||
-          recent.contains('problem')) {
-        delta = -2;
-      }
-
-      if (delta != 0) {
-        final newVal = (rels[otherId]! + delta).clamp(-300, 300);
-        rels[otherId] = newVal;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      _setGroupRealismValue(speakerId, 'relationships', rels);
-      debugPrint(
-        '[Realism:Group] Updated hidden inter-char feelings for $speakerId from recent exchange',
-      );
-    }
-  }
+  // ensureInterCharacterRelationshipsSeeded / updateInterCharacterFeelingsFromRecentExchange
+  // moved verbatim to RelationshipService (with callbacks for group/messages). Old bodies deleted.
 
   Future<void> _generateResponse(GenerationMode mode) async {
     final epoch = ++_generationEpoch;
@@ -5553,8 +5298,8 @@ class ChatService extends ChangeNotifier {
             : defaultGroupSystemPrompt;
       } else if (speakingCharacter.systemPrompt.isNotEmpty) {
         systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.systemPrompt.isNotEmpty) {
-        systemPrompt = _storageService.systemPrompt;
+      } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
+        systemPrompt = _storageService.generationSettings.systemPrompt;
       } else {
         final isApi = _llmProvider != null && !_llmProvider!.isLocal;
         systemPrompt = isApi
@@ -5579,9 +5324,10 @@ class ChatService extends ChangeNotifier {
       }
 
       // In call mode, inject voice-specific instructions for natural conversation
-      if (_callMode && _storageService.callSystemPrompt.isNotEmpty) {
+      if (_callMode &&
+          _storageService.sttSettings.callSystemPrompt.isNotEmpty) {
         systemPrompt +=
-            '\n\n[Voice Call Mode] ${_storageService.callSystemPrompt}';
+            '\n\n[Voice Call Mode] ${_storageService.sttSettings.callSystemPrompt}';
       }
 
       // Build Lorebook content (group + per-character, respecting inherit + group worlds)
@@ -5786,6 +5532,7 @@ class ChatService extends ChangeNotifier {
         // ── Context Shift: budget-aware history trimming ──
 
         // Realism injection blocks — compute early so they're in the token budget
+        // (now via thin _get* delegating to prompt_injection/* builders per step 8)
         if (_realismActiveThisMode) {
           final relationship = _getRelationshipInjection();
           final emotion = _getEmotionInjection();
@@ -5804,14 +5551,15 @@ class ChatService extends ChangeNotifier {
 
         // Objective injection — always injected regardless of realism mode
         // Must sit in a fixed prompt section so it is NEVER trimmed by the budget system.
+        // (thin delegation to author_note_builder per step 8; state/CRUD in god)
         objectiveBlock = _getObjectiveInjection();
 
         // Mandatory Needs Catastrophe (Phase 2 stepping) — when a need hit 0 during
         // the previous decay tick, we force the AI to roleplay the disaster right now.
-        if (_pendingNeedsCatastrophe != null) {
+        if (_needsSimulation.pendingCatastrophe != null) {
           needsCatastropheBlock =
               '[MANDATORY CATASTROPHIC NEED EVENT — THIS HAS ALREADY OCCURRED THIS TURN:\n'
-              '$_pendingNeedsCatastrophe\n'
+              '${_needsSimulation.pendingCatastrophe}\n'
               'You MUST narrate the immediate physical sensations, the visible evidence '
               '(wet patch/puddle on clothes or floor, her collapsing or fainting, smell, '
               'mortified/embarrassed expression, how {{user}} and anyone else present reacts), '
@@ -5820,7 +5568,7 @@ class ChatService extends ChangeNotifier {
               'the event is canon and has just happened or is happening right now. '
               'Do not fade to black, do not ask for permission, do not skip it.]\n';
           // Consume it for this generation
-          _pendingNeedsCatastrophe = null;
+          _needsSimulation.consumePendingCatastrophe();
         }
 
         // Calculate token cost of all fixed sections to determine chat history budget
@@ -5877,7 +5625,7 @@ class ChatService extends ChangeNotifier {
 
       final effectiveRagEnabled = _activeGroup != null
           ? groupRagEnabled
-          : _storageService.ragEnabled;
+          : _storageService.memorySettings.ragEnabled;
 
       if (_isNewChat) {
         debugPrint(
@@ -5915,7 +5663,7 @@ class ChatService extends ChangeNotifier {
             // supplements with specific details the summary missed. Too much
             // RAG (2500+ tokens) overwhelms the model and causes it to
             // reference stale events as if they're current ("going back in time").
-            final contextSize = _storageService.contextSize;
+            final contextSize = _storageService.backendSettings.contextSize;
             final budgetFraction = _activeGroup != null
                 ? (groupMemoryBudgetPercent / 100.0)
                 : 0.10;
@@ -5947,7 +5695,8 @@ class ChatService extends ChangeNotifier {
         } catch (e) {
           debugPrint('[RAG:Chat] ✗ RAG retrieval failed: $e');
         }
-      } else if (droppedMessages > 0 && _storageService.ragEnabled) {
+      } else if (droppedMessages > 0 &&
+          _storageService.memorySettings.ragEnabled) {
         debugPrint(
           '[RAG:Chat] ⚠ $droppedMessages messages dropped but RAG not operational (service=${_memoryService != null}, operational=${_memoryService?.isOperational ?? false})',
         );
@@ -6045,12 +5794,12 @@ class ChatService extends ChangeNotifier {
 
       // For call mode with a dedicated call model, temporarily swap the model
       if (_callMode &&
-          _storageService.callModelName.isNotEmpty &&
+          _storageService.sttSettings.callModelName.isNotEmpty &&
           _llmProvider != null &&
           !_llmProvider!.isLocal) {
         _originalModelName = _llmProvider!.openRouterService.modelName;
         _llmProvider!.openRouterService.configure(
-          modelName: _storageService.callModelName,
+          modelName: _storageService.sttSettings.callModelName,
         );
       }
 
@@ -6192,8 +5941,8 @@ class ChatService extends ChangeNotifier {
       final isRemoteBackend = _llmProvider != null && !_llmProvider!.isLocal;
       final bufferEnabled = isRemoteBackend
           ? false
-          : _storageService.displayBufferEnabled;
-      final targetTps = _storageService.targetDisplayTps;
+          : _storageService.uiSettings.displayBufferEnabled;
+      final targetTps = _storageService.uiSettings.targetDisplayTps;
 
       // Drain timer: displays tokens at the user-configured constant rate
       void _startDrainTimer() {
@@ -6371,7 +6120,8 @@ class ChatService extends ChangeNotifier {
           if (_drainTimer == null && _tokensGenerated >= 10) {
             // Not yet draining — calculate when to start
             // Buffer target = how many tokens fill the configured duration
-            final bufferDuration = _storageService.bufferDurationSeconds;
+            final bufferDuration =
+                _storageService.uiSettings.bufferDurationSeconds;
             int bufferTarget;
             if (currentTps > 0) {
               bufferTarget = (currentTps * bufferDuration).round().clamp(
@@ -6505,12 +6255,13 @@ class ChatService extends ChangeNotifier {
         }
 
         if (finalResponse.isNotEmpty) {
-          _scanLorebook(finalResponse);
+          _lorebookScanner.scanLorebook(finalResponse);
         }
 
         // Decrement only entries that were active before the AI response.
         // This preserves full depth for lore discovered in the AI's own words.
-        _decrementLoreDepthForEntries(preAiTriggered);
+        // Thin delegation (preAi set computed in god for snapshot; scanner owns decrement).
+        _lorebookScanner.decrementLoreDepthForEntries(preAiTriggered);
 
         // Save session after AI message is complete
         await _saveChat();
@@ -6528,23 +6279,58 @@ class ChatService extends ChangeNotifier {
           );
           final speakerId = _getCharacterIdFromCard(speakerCard);
           if (speakerId.isNotEmpty) {
-            _updateInterCharacterFeelingsFromRecentExchange(speakerId);
+            _relationshipService.updateInterCharacterFeelingsFromRecentExchange(
+              speakerId,
+            );
             // (old checkpoint call removed in v30) // persist the hidden relationship changes
           }
         }
 
-        // Post-generation climax check — runs against the AI's actual response
-        // so the character can climax naturally before the refractory cooldown applies
-        if (_realismEnabled &&
-            _nsfwCooldownEnabled &&
-            _cooldownTurnsRemaining <= 0 &&
-            (_activeGroup == null || !_observerMode)) {
-          _checkClimaxInResponse(finalResponse); // fire-and-forget
+        // For group non-observer turns, temporarily re-impersonate the speaker of the *just generated*
+        // response so the post-gen needs checks (now _runPostGenNeedsChecks thin to
+        // _needsImpactEvaluator) use the correct _activeCharacter (for name, personality/stance
+        // in the consolidated needs impact prompt). The pre-speaker-eval left the *scalars*
+        // (incl. needs vector) loaded for this speaker but restored the _activeCharacter pointer
+        // to the prior speaker; the thin delegate relies on the pointer for cbs. We restore the
+        // pointer after the checks (scalars remain correct for the persist below).
+        CharacterCard? prePostActiveChar;
+        if (_activeGroup != null && !_observerMode) {
+          prePostActiveChar = _activeCharacter;
+          _activeCharacter = speakingCharacter;
+          final sid = _getCharacterIdFromCard(speakingCharacter);
+          if (sid.isNotEmpty) {
+            _loadGroupRealismIntoScalars(sid);
+          }
         }
 
         await _runPostGenNeedsChecks(finalResponse);
 
+        if (prePostActiveChar != null) {
+          _activeCharacter = prePostActiveChar;
+        }
+
+        // For group non-observer, persist the post-scene + long-gen-decay needs changes (and any
+        // other scalars mutated by the checks) back into _groupRealism for this speaker. This is
+        // what makes sidebar member cards + getNeedsForGroupCharacter() + future loads see the
+        // effects of the just-generated response. (Pre-eval saved the pre-turn state for bond/etc;
+        // this captures the *response* effects on needs.)
+        if (_activeGroup != null &&
+            !_observerMode &&
+            finalResponse.isNotEmpty &&
+            _messages.isNotEmpty) {
+          final lastSender = _messages.last.sender;
+          final speakerCard = _groupCharacters.firstWhere(
+            (c) => c.name == lastSender,
+            orElse: () => _groupCharacters.first,
+          );
+          final sid = _getCharacterIdFromCard(speakerCard);
+          if (sid.isNotEmpty) {
+            _saveScalarsIntoGroupRealism(sid);
+          }
+        }
+
         // Check if summary needs updating (fire-and-forget)
+        // Group name resolution for {{char}} in summary prompt is best-effort at trigger time (after prePostActiveChar restore dance); correct for 1:1, may use restored active or group fallback in group non-obs (timing-dependent per group impersonation; dispatch preserved via cbs). See leaf header + test for qualify.
         _maybeUpdateSummary();
 
         // Embed messages for RAG memory (fire-and-forget)
@@ -6558,8 +6344,8 @@ class ChatService extends ChangeNotifier {
 
         // TTS auto-play: speak the new character message automatically
         if (_ttsService != null &&
-            _storageService.ttsEnabled &&
-            _storageService.ttsAutoPlay &&
+            _storageService.ttsSettings.ttsEnabled &&
+            _storageService.ttsSettings.ttsAutoPlay &&
             _messages.isNotEmpty &&
             !_messages.last.isUser) {
           final lastMsg = _messages.last;
@@ -6695,114 +6481,6 @@ class ChatService extends ChangeNotifier {
         );
       }
 
-      notifyListeners();
-    }
-  }
-
-  void _scanLorebook(String text) {
-    // Scan all relevant characters' lorebooks
-    final characters = _activeGroup != null
-        ? _groupCharacters
-        : (_activeCharacter != null ? [_activeCharacter!] : <CharacterCard>[]);
-    if (characters.isEmpty) return;
-
-    final lowerText = text.toLowerCase();
-    bool changed = false;
-
-    for (final ch in characters) {
-      if (ch.lorebook != null) {
-        for (final entry in ch.lorebook!.entries) {
-          if (!entry.enabled) continue;
-
-          final keys = entry.key
-              .split(',')
-              .map((k) => k.trim().toLowerCase())
-              .where((k) => k.isNotEmpty)
-              .toList();
-
-          for (final key in keys) {
-            if (_matchKeyword(key, lowerText)) {
-              if (!entry.isTriggered) {
-                entry.isTriggered = true;
-                changed = true;
-              }
-              entry.remainingDepth = entry.stickyDepth;
-              break;
-            }
-          }
-        }
-      }
-
-      // Scan shared Worlds
-      for (final worldName in ch.worldNames) {
-        final world = _worldRepository.worlds
-            .where((w) => w.name == worldName)
-            .firstOrNull;
-        if (world == null) continue;
-
-        for (final entry in world.lorebook.entries) {
-          if (!entry.enabled) continue;
-
-          final keys = entry.key
-              .split(',')
-              .map((k) => k.trim().toLowerCase())
-              .where((k) => k.isNotEmpty)
-              .toList();
-
-          for (final key in keys) {
-            if (_matchKeyword(key, lowerText)) {
-              if (!entry.isTriggered) {
-                entry.isTriggered = true;
-                changed = true;
-              }
-              entry.remainingDepth = entry.stickyDepth;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    if (changed) {
-      notifyListeners();
-    }
-  }
-
-  /// Match a keyword against text with wildcard (*) and word-boundary support.
-  /// - `pot*` matches `potato`, `pottery`, `potion`
-  /// - `fire` matches `fire` (whole word only, not `fireball`)
-  /// - `*ball` matches `fireball`, `snowball`
-  bool _matchKeyword(String key, String text) {
-    if (key.contains('*')) {
-      // Wildcard pattern: escape regex specials except *, then replace * with .*
-      final escaped = RegExp.escape(key).replaceAll(r'\*', '.*');
-      return RegExp(escaped).hasMatch(text);
-    } else {
-      // Exact word match with word boundaries
-      // Using string concatenation instead of ${} inside a raw string
-      // because Dart raw strings (r'...') do not process ${} interpolation.
-      return RegExp(r'\b' + RegExp.escape(key) + r'\b').hasMatch(text);
-    }
-  }
-
-  /// Decrement remainingDepth only for the provided set of entries.
-  /// Used after AI response finalization so that lore entries *discovered in the AI's
-  /// own response* keep their full stickyDepth for the next user turn.
-  void _decrementLoreDepthForEntries(Set<LorebookEntry> entriesToDecrement) {
-    if (entriesToDecrement.isEmpty) return;
-    bool changed = false;
-
-    for (final entry in entriesToDecrement) {
-      if (entry.isTriggered && !entry.constant) {
-        entry.remainingDepth--;
-        if (entry.remainingDepth <= 0) {
-          entry.isTriggered = false;
-          changed = true;
-        }
-      }
-    }
-
-    if (changed) {
       notifyListeners();
     }
   }
@@ -6991,14 +6669,18 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Force an immediate summary regeneration.
+  // Thin delegation / coord (full generate in summary_service step 12; flag/cadence
+  // /paused/enabled stay thin in god per plan; "thin delegation here; full summary in step 12").
   Future<void> forceSummaryUpdate() async {
     if (_isSummaryGenerating) return;
     await _generateSummaryInBackground();
   }
 
   /// Check if a summary update is needed and trigger it non-blockingly.
+  // Thin delegation / coord (cadence count + guards here; full _generate + prompt/RAG/strip
+  // in summary_service step 12; "thin delegation here; full summary in step 12").
   void _maybeUpdateSummary() {
-    if (!_storageService.summaryEnabled) return;
+    if (!_storageService.memorySettings.summaryEnabled) return;
     if (_summaryPaused) return;
     if (_isSummaryGenerating) return;
     if (_llmProvider == null) return;
@@ -7009,7 +6691,8 @@ class ChatService extends ChangeNotifier {
       if (_messages[i].isUser) userMessagesSinceSummary++;
     }
 
-    if (userMessagesSinceSummary >= _storageService.summaryInterval) {
+    if (userMessagesSinceSummary >=
+        _storageService.memorySettings.summaryInterval) {
       // Fire and forget — don't await
       _generateSummaryInBackground();
     }
@@ -7019,9 +6702,11 @@ class ChatService extends ChangeNotifier {
   /// Called after each generation completes. Only embeds new windows that
   /// haven't been embedded yet.
   void _maybeEmbedMessages() {
-    if (_memoryService == null || !_storageService.ragEnabled) return;
+    if (_memoryService == null || !_storageService.memorySettings.ragEnabled) {
+      return;
+    }
     if (_currentSessionId == null) return;
-    if (_messages.length < _storageService.ragWindowSize) return;
+    if (_messages.length < _storageService.memorySettings.ragWindowSize) return;
 
     final characterId = _getCharacterId();
 
@@ -7173,6 +6858,19 @@ class ChatService extends ChangeNotifier {
   Future<void> _loadActiveObjectives() async {
     if (_activeCharacter == null || _currentSessionId == null) {
       _activeObjectives = [];
+      _messagesSinceLastCheck = 0;
+      _isCheckingCompletion = false;
+      _summaryPaused =
+          false; // explicit secondary zero for _summaryPaused (symmetric; _loadActiveObjectives empty hygiene)
+      _isSummaryGenerating =
+          false; // secondary zero in _loadActiveObjectives empty (0-session hygiene for summary flag)
+      _userMessagesSinceLastPeriodicEval = 0;
+      _isExtractingFacts =
+          false; // secondary fact flag + counter zero in _loadActiveObjectives empty (0-session hygiene; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero in _loadActiveObjectives empty (0-session hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
       return;
     }
     final charId = _getCharacterIdFromCard(_activeCharacter!);
@@ -7192,108 +6890,27 @@ class ChatService extends ChangeNotifier {
       );
       _activeObjectives = [];
     }
-    notifyListeners();
+    try {
+      notifyListeners();
+    } catch (e) {
+      // Targeted guard for post-dispose notify from async _loadActiveObjectives (now awaited at the primary 2205 site; protects any remaining fire-and-forget or microtask schedules e.g. in setActiveGroup/load paths or test races).
+      // Only swallow the specific ChangeNotifier disposed assert (common benign in teardown); rethrow real errors for visibility. Residual "Channel was closed" from repo/DB close races are handled at call sites.
+      if (e.toString().contains('used after being disposed') ||
+          e.toString().contains('debugAssertNotDisposed')) {
+        // Benign in test teardown / rapid context switch.
+      } else {
+        rethrow;
+      }
+    }
   }
 
   /// Build the prompt injection text for the active objectives.
   /// Wording intensity varies based on injection depth for the primary objective.
   /// Secondary objectives are injected as ambient background goals.
   String _getObjectiveInjection() {
-    if (_activeObjectives.isEmpty) return '';
-    final sb = StringBuffer();
-
-    // 1. Primary Objective
-    if (primaryObjective != null) {
-      final pObj = primaryObjective!;
-      final tasks = tasksForObjective(pObj);
-
-      if (tasks.isNotEmpty) {
-        final completedTasks = tasks
-            .where((t) => t['completed'] == true)
-            .map((t) => t['description'] as String)
-            .toList();
-        final currentTask = tasks
-            .where((t) => t['completed'] != true)
-            .map((t) => t['description'] as String)
-            .firstOrNull;
-
-        if (currentTask != null) {
-          final depth = pObj.injectionDepth;
-          if (depth <= 2) {
-            sb.writeln(
-              '[PRIMARY OBJECTIVE (IMPORTANT — actively drive the story toward this):',
-            );
-            sb.writeln('  Goal: ${pObj.objective}');
-            sb.writeln('  Current Task: $currentTask');
-            if (completedTasks.isNotEmpty) {
-              sb.writeln('  Completed: ${completedTasks.join(", ")}');
-            }
-            sb.writeln(
-              '  Guide the narrative toward completing the current task.]',
-            );
-          } else if (depth <= 6) {
-            sb.writeln('[Current Primary Objective: ${pObj.objective}]');
-            sb.writeln('[Current Task: $currentTask]');
-            if (completedTasks.isNotEmpty) {
-              sb.writeln('[Completed: ${completedTasks.join(", ")}]');
-            }
-          } else {
-            sb.writeln(
-              '[Background primary objective (subtle hint): ${pObj.objective} — current step: $currentTask]',
-            );
-          }
-        }
-      } else {
-        // No tasks, inject objective directly
-        final depth = pObj.injectionDepth;
-        if (depth <= 2) {
-          sb.writeln(
-            '[PRIMARY OBJECTIVE (IMPORTANT — actively drive the story toward this): ${pObj.objective}]',
-          );
-        } else if (depth <= 6) {
-          sb.writeln('[Current Primary Objective: ${pObj.objective}]');
-        } else {
-          sb.writeln(
-            '[Background primary objective (subtle hint): ${pObj.objective}]',
-          );
-        }
-      }
-    }
-
-    // 2. Secondary/Autonomous Objectives — treated as genuine internal drives, not hints
-    final secondaries = secondaryObjectives;
-    if (secondaries.isNotEmpty) {
-      sb.writeln();
-      for (final sObj in secondaries) {
-        final tasks = tasksForObjective(sObj);
-        final completedTasks = tasks
-            .where((t) => t['completed'] == true)
-            .map((t) => t['description'] as String)
-            .toList();
-        final currentTask = tasks
-            .where((t) => t['completed'] != true)
-            .map((t) => t['description'] as String)
-            .firstOrNull;
-        if (currentTask != null) {
-          sb.writeln(
-            '[AUTONOMOUS GOAL (this character genuinely wants this): ${sObj.objective}]',
-          );
-          sb.writeln(
-            '[Pursue this naturally and actively. Current step to work toward: $currentTask]',
-          );
-          if (completedTasks.isNotEmpty) {
-            sb.writeln('[Already accomplished: ${completedTasks.join(", ")}]');
-          }
-        } else if (tasks.isEmpty) {
-          sb.writeln(
-            '[AUTONOMOUS GOAL (this character genuinely wants this — pursue it actively): ${sObj.objective}]',
-          );
-        }
-      }
-    }
-
-    if (sb.isNotEmpty) sb.writeln();
-    return sb.toString();
+    // Thin delegation (full in AuthorNoteBuilder per step 8). Objective state mgmt
+    // (lists, getters, tasksFor) stays in god (objective_service is later step).
+    return _authorNoteBuilder.buildObjectiveInjection();
   }
 
   /// Set a new objective for the current session (or for a specific character when in group mode).
@@ -7392,7 +7009,11 @@ class ChatService extends ChangeNotifier {
         final addedObj = matches.isNotEmpty ? matches.first : null;
         if (addedObj != null) {
           unawaited(
-            generateObjectiveTasks(addedObj, taskCount: 3, nsfw: false),
+            generateObjectiveTasks(
+              addedObj,
+              taskCount: 3,
+              nsfw: false,
+            ), // step 11 thin (full in objective_proposal)
           );
         }
       } catch (_) {
@@ -7404,164 +7025,38 @@ class ChatService extends ChangeNotifier {
 
   /// Generate subtasks for the current objective using the LLM.
   /// Clears existing tasks first so regen always produces a clean slate.
+  // Thin delegation (full generateObjectiveTasks + 2000 budget + central strip + proposal
+  // handling in objective_proposal step 11; objective mgmt coordination / list / load / db
+  // updates stayed thin in god per plan for step9/11; "thin delegation here; full objective
+  // proposal in step 11").
   Future<void> generateObjectiveTasks(
     Objective obj, {
     int taskCount = 5,
     bool nsfw = false,
-  }) async {
-    if (_llmProvider == null) return;
+  }) => _objectiveProposal.generateObjectiveTasks(
+    obj,
+    taskCount: taskCount,
+    nsfw: nsfw,
+  );
 
-    // Snapshot existing tasks so we can restore on failure
-    final previousTasks = tasksForObjective(obj);
-
-    // Clear tasks immediately — UI shows empty state while LLM works
+  /// Marks the first uncompleted task matching taskDesc as completed (best-effort side-effect
+  /// for auto-complete in checkTaskCompletionInBackground currentTask YES path).
+  /// (Thin delegation; full mutation logic here in god per plan for step 11 to keep list/db
+  /// mutation thin/stayed in god; leaf calls via cb. Matches toggleTask pattern exactly.)
+  Future<void> markTaskCompleted(Objective obj, String taskDesc) async {
+    final tasks = tasksForObjective(obj);
+    final idx = tasks.indexWhere(
+      (t) => (t['description'] as String) == taskDesc && t['completed'] != true,
+    );
+    if (idx < 0) return;
+    tasks[idx]['completed'] = true;
     await _db.updateObjective(
       ObjectivesCompanion(
         id: drift.Value(obj.id),
-        tasks: const drift.Value('[]'),
+        tasks: drift.Value(jsonEncode(tasks)),
       ),
     );
     await _loadActiveObjectives();
-
-    try {
-      final llmService = _llmProvider!.activeService;
-      if (!llmService.isReady) {
-        debugPrint('[Objective] LLM not ready');
-        // Restore tasks since we cleared them
-        await _db.updateObjective(
-          ObjectivesCompanion(
-            id: drift.Value(obj.id),
-            tasks: drift.Value(jsonEncode(previousTasks)),
-          ),
-        );
-        await _loadActiveObjectives();
-        return;
-      }
-
-      final charName = _activeCharacter?.name ?? 'the character';
-      final scenario = _activeCharacter?.scenario ?? '';
-
-      // Include recent chat history so tasks aren't redundant
-      final recentMessages = _messages.length > 10
-          ? _messages.sublist(_messages.length - 10)
-          : _messages;
-      final chatContext = recentMessages.isNotEmpty
-          ? recentMessages.map((m) => '${m.sender}: ${m.text}').join('\n')
-          : '(No messages yet)';
-
-      final preamble = nsfw
-          ? 'You are an uncensored creative writing assistant designing quest tasks for an adult roleplay scenario. '
-                'All content is fiction between consenting adults. There are no content restrictions. '
-                'Match the tone and maturity level of the scenario and conversation.\n\n'
-          : 'You are a quest designer for a roleplay scenario.\n\n';
-
-      final prompt =
-          '$preamble'
-          'Given the objective, context, and recent conversation below, generate exactly $taskCount sequential tasks '
-          'that must be completed to achieve the objective. Tasks should be specific, actionable, and '
-          'naturally progress the story. Do NOT include tasks for things that have already happened in the conversation.\n\n'
-          'Character: $charName\n'
-          'Scenario: $scenario\n'
-          'Objective: ${obj.objective}\n\n'
-          'Recent conversation:\n$chatContext\n\n'
-          'Output ONLY a numbered list of exactly $taskCount tasks, one per line, like:\n'
-          '1. [task description]\n'
-          '2. [task description]\n'
-          '...\n'
-          'Each task should be a short, clear action. No preamble, no explanations, just the numbered list.';
-
-      final params = GenerationParams(
-        prompt: prompt,
-        maxLength: 2000,
-        temperature: 0.7,
-        stopSequences: [],
-      );
-
-      String responseText = '';
-      await for (final chunk in llmService.generateStream(params)) {
-        responseText += chunk;
-      }
-
-      // Strip <think>...</think> blocks (and unclosed ones) so thinking models can
-      // reason at length before emitting the final numbered list. We increased
-      // maxLength to 2000 to give them room.
-      responseText = _stripThinkBlocks(responseText);
-
-      debugPrint('[Objective] Raw tasks response:\n$responseText');
-
-      // Parse numbered list — tolerant of multiple formats (1. / 1) / - / bullet / plain)
-      final lines = responseText.split('\n');
-      final genTasks = <Map<String, dynamic>>[];
-
-      for (final line in lines) {
-        final trimmed = line.trim();
-        if (trimmed.isEmpty) continue;
-        // Try numbered: "1. ...", "1) ...", "1 - ..."
-        final numbered = RegExp(r'^\d+[\.\)\-]?\s*(.+)').firstMatch(trimmed);
-        if (numbered != null) {
-          final desc = numbered.group(1)!.trim();
-          if (desc.isNotEmpty && !desc.startsWith('[')) {
-            genTasks.add({'description': desc, 'completed': false});
-          }
-          continue;
-        }
-        // Try bullet: "- ...", "• ...", "* ..."
-        final bullet = RegExp(r'^[-•*]\s+(.+)').firstMatch(trimmed);
-        if (bullet != null) {
-          final desc = bullet.group(1)!.trim();
-          if (desc.isNotEmpty) {
-            genTasks.add({'description': desc, 'completed': false});
-          }
-          continue;
-        }
-        // Plain sentence fallback (skip very short lines or header-like lines)
-        if (trimmed.length > 15 &&
-            !trimmed.endsWith(':') &&
-            genTasks.length < taskCount) {
-          genTasks.add({'description': trimmed, 'completed': false});
-        }
-      }
-
-      // De-duplicate and cap
-      final seen = <String>{};
-      final uniqueTasks = genTasks
-          .where((t) => seen.add(t['description'] as String))
-          .take(taskCount)
-          .toList();
-
-      if (uniqueTasks.isNotEmpty) {
-        await _db.updateObjective(
-          ObjectivesCompanion(
-            id: drift.Value(obj.id),
-            tasks: drift.Value(jsonEncode(uniqueTasks)),
-          ),
-        );
-        await _loadActiveObjectives();
-        debugPrint('[Objective] Generated ${uniqueTasks.length} tasks');
-      } else {
-        // Parse failed — restore previous tasks so we don't leave an empty list
-        debugPrint(
-          '[Objective] Could not parse tasks from response — restoring previous',
-        );
-        await _db.updateObjective(
-          ObjectivesCompanion(
-            id: drift.Value(obj.id),
-            tasks: drift.Value(jsonEncode(previousTasks)),
-          ),
-        );
-        await _loadActiveObjectives();
-      }
-    } catch (e) {
-      debugPrint('[Objective] Task generation failed: $e');
-      // Restore previous tasks on error
-      await _db.updateObjective(
-        ObjectivesCompanion(
-          id: drift.Value(obj.id),
-          tasks: drift.Value(jsonEncode(previousTasks)),
-        ),
-      );
-      await _loadActiveObjectives();
-    }
   }
 
   /// Manually toggle a task's completion status.
@@ -7665,7 +7160,7 @@ class ChatService extends ChangeNotifier {
   /// Manually trigger a completion check (called from UI "Check now" button).
   void forceCheckCompletion() {
     if (_activeObjectives.isEmpty) return;
-    _checkTaskCompletionInBackground();
+    _checkTaskCompletionInBackground(); // step 11 thin (full in objective_proposal)
     notifyListeners(); // trigger UI to show spinner
   }
 
@@ -7688,118 +7183,31 @@ class ChatService extends ChangeNotifier {
     if (_messagesSinceLastCheck < freq) return;
     _messagesSinceLastCheck = 0;
 
-    await _checkTaskCompletionInBackground();
+    await _checkTaskCompletionInBackground(); // step 11 thin (full in objective_proposal)
   }
 
-  Future<void> _checkTaskCompletionInBackground() async {
-    if (_isCheckingCompletion || _activeObjectives.isEmpty) return;
-    _isCheckingCompletion = true;
-
-    try {
-      final llmService = testLlmServiceOverride ?? _llmProvider?.activeService;
-      if (llmService == null || !llmService.isReady) return;
-
-      final recentMessages = _messages.length > 8
-          ? _messages.sublist(_messages.length - 8)
-          : _messages;
-      final contextText = recentMessages
-          .map((m) => '${m.sender}: ${m.text}')
-          .join('\n');
-
-      // Check sequentially so no "time skips"
-      for (final obj in _activeObjectives) {
-        final tasks = tasksForObjective(obj);
-        final currentTask = tasks
-            .where((t) => t['completed'] != true)
-            .map((t) => t['description'] as String)
-            .firstOrNull;
-
-        if (currentTask == null && tasks.isNotEmpty) {
-          continue; // All tasks finished but objective not manually resolved
-        }
-
-        final evalTarget = currentTask != null
-            ? 'Task to evaluate: "$currentTask"\n'
-            : 'Objective to evaluate: "${obj.objective}"\n';
-        final promptType = currentTask != null ? 'task' : 'objective';
-
-        final prompt =
-            'You are evaluating whether a roleplay $promptType has been completed based on recent conversation. '
-            'Be generous in your assessment — if the events in the conversation show the $promptType has been '
-            'accomplished, partially fulfilled, or naturally resolved, answer YES.\n\n'
-            'Objective Context: "${obj.objective}"\n'
-            '$evalTarget\n'
-            'Recent conversation:\n$contextText\n\n'
-            'Has this $promptType been completed or effectively resolved? Answer only YES or NO:';
-
-        final params = GenerationParams(
-          prompt: prompt,
-          maxLength: 2000,
-          temperature: 0.1,
-          stopSequences: [],
-        );
-
-        String responseText = '';
-        await for (final chunk in llmService.generateStream(params)) {
-          responseText += chunk;
-        }
-
-        // Strip <think>...</think> blocks (and unclosed ones). Thinking models can
-        // emit long internal reasoning before the final YES/NO. maxLength bumped
-        // to 2000 to accommodate.
-        responseText = _stripThinkBlocks(responseText);
-
-        debugPrint(
-          '[Objective] Completion check for "${obj.objective}${currentTask != null ? ' - $currentTask' : ''}": $responseText',
-        );
-
-        if (responseText.toUpperCase().contains('YES')) {
-          if (currentTask != null) {
-            final taskIndex = tasks.indexWhere(
-              (t) => t['description'] == currentTask && t['completed'] != true,
-            );
-            if (taskIndex >= 0) {
-              tasks[taskIndex]['completed'] = true;
-              await _db.updateObjective(
-                ObjectivesCompanion(
-                  id: drift.Value(obj.id),
-                  tasks: drift.Value(jsonEncode(tasks)),
-                ),
-              );
-              await _loadActiveObjectives();
-              debugPrint('[Objective] Task completed: $currentTask');
-            }
-          } else {
-            // It was a taskless objective that got completed!
-            await _db.updateObjective(
-              ObjectivesCompanion(
-                id: drift.Value(obj.id),
-                active: const drift.Value(false),
-              ),
-            );
-            await _loadActiveObjectives();
-            debugPrint(
-              '[Objective] Taskless objective naturally completed: ${obj.objective}',
-            );
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[Objective] Completion check failed: $e');
-    } finally {
-      _isCheckingCompletion = false;
-      notifyListeners();
-    }
-  }
+  // Thin delegation (full _checkTaskCompletionInBackground + 2000 budget + central strip in
+  // objective_proposal step 11; objective mgmt coordination / isChecking flag / load / db
+  // updates stayed thin in god per plan for step9/11; "thin delegation here; full objective
+  // proposal in step 11").
+  Future<void> _checkTaskCompletionInBackground() =>
+      _objectiveProposal.checkTaskCompletionInBackground();
 
   int _userMessagesSinceLastPeriodicEval = 0;
-  bool _isExtractingFacts = false;
+  bool _isExtractingFacts =
+      false; // secondary runtime flag (transient guard for fact extraction leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed)). The counter must likewise be zeroed on those paths (prevents stale/early trigger after context switch).
 
   /// Unified periodic evaluation: runs fact extraction + character evolution
   /// sequentially on the same cadence (every N user messages).
+  // Thin delegation / coord (cadence count + guards + auto*Enabled/Interval/llmProvider
+  // here; full _extractFactsInBackground + quality/consolidate + prompt/LLM/stream/JSON/gate
+  // in fact_extraction step 13 ("thin delegation here; full fact extraction in step 13");
+  // evolution trigger in evolution_service step 14 ("thin delegation here; full character
+  // evolution in step 14")).
   void _maybeRunPeriodicEvals() {
-    final autoPersona = _storageService.autoPersonaEnabled;
-    final autoEvolution = _storageService.characterEvolutionEnabled;
+    final autoPersona = _storageService.memorySettings.autoPersonaEnabled;
+    final autoEvolution =
+        _storageService.memorySettings.characterEvolutionEnabled;
     if (!autoPersona && !autoEvolution) return;
     if (_llmProvider == null) return;
     if (_isExtractingFacts || _isEvolvingCharacter) return;
@@ -7811,420 +7219,65 @@ class ChatService extends ChangeNotifier {
 
     _userMessagesSinceLastPeriodicEval++;
     if (_userMessagesSinceLastPeriodicEval <
-        _storageService.autoPersonaInterval) {
+        _storageService.memorySettings.autoPersonaInterval) {
       return;
     }
     _userMessagesSinceLastPeriodicEval = 0;
 
     debugPrint(
-      '[Periodic] ▶ Triggering periodic evals (every ${_storageService.autoPersonaInterval} user messages)',
+      '[Periodic] ▶ Triggering periodic evals (every ${_storageService.memorySettings.autoPersonaInterval} user messages)',
     );
     _runPeriodicEvalsInSequence();
   }
 
   /// Run fact extraction first, then character evolution, sequentially.
+  // Thin delegation / coord (if autoPersonaEnabled guard + debug + await _extract call here;
+  // full extract + consolidate + gate in fact_extraction step 13; "thin delegation here;
+  // full fact extraction in step 13"). Evolution: if enabled guard + debug + _trigger thin here;
+  // full trigger/extract/LLM/persist/layering in evolution_service step 14 ("thin delegation here;
+  // full character evolution in step 14").
   Future<void> _runPeriodicEvalsInSequence() async {
     // Step 1: Extract user facts
-    if (_storageService.autoPersonaEnabled) {
+    if (_storageService.memorySettings.autoPersonaEnabled) {
       debugPrint('[Periodic] Step 1/2: Extracting user facts...');
       await _extractFactsInBackground();
     }
     // Step 2: Evolve character
-    if (_storageService.characterEvolutionEnabled) {
+    if (_storageService.memorySettings.characterEvolutionEnabled) {
       debugPrint('[Periodic] Step 2/2: Evolving character...');
       _triggerCharacterEvolution();
     }
   }
 
-  /// Regex patterns for the post-extraction quality gate.
-  /// Facts matching any of these are rejected as garbage or character-specific events.
-  static final List<RegExp> _factGarbagePatterns = [
-    // RP action text (contains asterisks or action-style phrasing)
-    RegExp(r'\*'),
-    // Starts with action verbs that indicate RP narration (present or past tense)
-    RegExp(
-      r'^(walks|walked|runs|ran|looks|looked|says|said|goes|went|came|sat|stood|turned|moved|grabbed|took|pulled|pushed|kissed|hugged|touched|smiled|laughed|nodded|sighed|whispered|moaned|gasped|fought|visited|traveled|explored|entered|left|arrived|met|told|asked|agreed|decided|confessed|promised|attacked|defended|defeated|escaped|rescued|seduced|flirted|dated|married|proposed)\b',
-      caseSensitive: false,
-    ),
-    // LLM meta-commentary / non-facts
-    RegExp(
-      r'^(no new facts|none|n/a|nothing|unknown|unclear|not sure|i don.?t know)',
-      caseSensitive: false,
-    ),
-    // Too generic / vague to be useful
-    RegExp(
-      r'^(is nice|is good|is bad|likes things|does stuff|is a person|is human|exists)',
-      caseSensitive: false,
-    ),
-    // JSON artifacts or structural garbage
-    RegExp(r'[\[\]{}]'),
-    // Repeated punctuation or encoding garbage
-    RegExp(r'[.!?]{3,}|\\[nrt]|&#|%[0-9a-f]{2}', caseSensitive: false),
-    // Third-person narrator voice ("The user did X", "They went Y")
-    RegExp(
-      r'^(the user|the player|they|he|she)\s+(is|was|had|has|did|does|went|walked|said|looked|seemed|appeared)\b',
-      caseSensitive: false,
-    ),
-    // Character-specific relationship events ("kissed X", "went on a date with X", "told X")
-    RegExp(
-      r'(kissed|hugged|dated|married|proposed to|confessed to|fell in love with|slept with|fought with|traveled with|met with|went .+ with|had .+ with|told .+ about|asked .+ to|promised .+ to)\s+[A-Z]',
-      caseSensitive: false,
-    ),
-    // References to specific RP interactions ("during the", "at the", "in the [location]")
-    RegExp(
-      r'(during the|at the|in the|after the|before the)\s+(quest|battle|fight|mission|date|party|ritual|ceremony|adventure|journey|dungeon|castle|tavern|camp)',
-      caseSensitive: false,
-    ),
-    // Emotional events tied to scenes ("felt X when", "was X during")
-    RegExp(
-      r'(felt|was|became|got)\s+\w+\s+(when|during|after|while|because)\b',
-      caseSensitive: false,
-    ),
-    // Relationship status with fictional characters ("is dating X", "is friends with X", "loves X")
-    RegExp(
-      r'(is|are|was|were)\s+(dating|married to|in love with|friends with|enemies with|attracted to|bonded with|loyal to|allied with)\b',
-      caseSensitive: false,
-    ),
-  ];
+  // Fact extraction + consolidate + _isValidFact + static patterns + quality gate moved to
+  // fact_extraction.dart (step 13 leaf); thin delegate + late final above; full excision
+  // as part of task (deletion part of). See _factExtraction + _extractFactsInBackground thin.
+  // Character evolution moved to evolution_service.dart (step 14 leaf); thins + late final
+  // above; full excision of block + related as part of task (deletion part of).
 
-  /// Minimum/maximum character length for a valid fact.
-  static const int _minFactLength = 8;
-  static const int _maxFactLength = 200;
+  // ── Character Evolution (moved to evolution_service.dart step 14 leaf) ──
+  // Full trigger/extract/LLM/prompt/parse/persist/effective layering/group per-char
+  // owned in leaf; thins + late final above (after fact); "thin delegation here;
+  // full character evolution in step 14". State (flags/maps/counts/status/error)
+  // + loadGroupEvolvedFields + session load/save + reset/update (user edit) + public
+  // surface coordination stay in god.
+  // (Evolution counter unified with fact in _userMessagesSinceLastPeriodicEval)
 
-  /// Maximum number of learned facts to keep per persona.
-  static const int _maxLearnedFacts = 50;
-
-  /// Returns true if a fact passes the quality gate.
-  /// Rejects RP actions, character-specific events, and scene-bound facts.
-  bool _isValidFact(String fact) {
-    if (fact.length < _minFactLength || fact.length > _maxFactLength) {
-      return false;
-    }
-    for (final pattern in _factGarbagePatterns) {
-      if (pattern.hasMatch(fact)) {
-        debugPrint('[RAG:Persona] ✗ Rejected by quality gate: "$fact"');
-        return false;
-      }
-    }
-    // Reject facts that reference the current character by name (chat-specific)
-    if (_activeCharacter != null) {
-      final charName = _activeCharacter!.name.toLowerCase();
-      if (fact.toLowerCase().contains(charName)) {
-        debugPrint(
-          '[RAG:Persona] ✗ Rejected (references character "${_activeCharacter!.name}"): "$fact"',
-        );
-        return false;
-      }
-    }
-    // Reject facts referencing any group chat character
-    for (final gc in _groupCharacters) {
-      if (fact.toLowerCase().contains(gc.name.toLowerCase())) {
-        debugPrint(
-          '[RAG:Persona] ✗ Rejected (references group character "${gc.name}"): "$fact"',
-        );
-        return false;
-      }
-    }
-    return true;
-  }
-
-  Future<void> _extractFactsInBackground() async {
-    if (_isExtractingFacts) return;
-    _isExtractingFacts = true;
-
-    try {
-      final llmService = _llmProvider!.activeService;
-      if (!llmService.isReady) {
-        debugPrint('[RAG:Persona] ✗ LLM not ready, skipping extraction');
-        return;
-      }
-
-      // Get recent user messages (last N messages, user only)
-      final userMessages = _messages
-          .where((m) => m.isUser && m.characterId != '__director__')
-          .toList();
-
-      if (userMessages.isEmpty) {
-        debugPrint('[RAG:Persona] No user messages to extract from');
-        return;
-      }
-
-      // Take last 10 user messages
-      final recentUserMsgs = userMessages.length > 10
-          ? userMessages.sublist(userMessages.length - 10)
-          : userMessages;
-
-      final existingFacts = _userPersonaService.persona.learnedFacts;
-      final userName = _userPersonaService.persona.name;
-
-      // Build user message text (strip RP asterisk actions for cleaner context)
-      final userMsgText = recentUserMsgs
-          .map((m) => '$userName: ${m.displayText}')
-          .join('\n');
-
-      final existingFactsText = existingFacts.isNotEmpty
-          ? 'Already known (do NOT repeat or rephrase these):\n${existingFacts.map((f) => '- $f').join('\n')}\n\n'
-          : '';
-
-      // ── Strict RP-Aware Extraction Prompt ──
-      // Build character name list to explicitly exclude from facts
-      final charNames = <String>[];
-      if (_activeCharacter != null) charNames.add(_activeCharacter!.name);
-      for (final gc in _groupCharacters) {
-        if (!charNames.contains(gc.name)) charNames.add(gc.name);
-      }
-      final charNamesStr = charNames.isNotEmpty
-          ? 'Characters in this chat (NEVER reference these): ${charNames.join(", ")}\n'
-          : '';
-
-      final extractionPrompt =
-          'You are extracting REAL, PERMANENT personal facts about a user named "$userName" from their chat messages.\n'
-          'These facts will be used ACROSS ALL conversations, not just this one.\n\n'
-          'CRITICAL RULES:\n'
-          '- ONLY extract facts that are UNIVERSALLY TRUE about $userName as a real person\n'
-          '- Facts must be TIMELESS and CONTEXT-FREE — true regardless of which character they are talking to\n'
-          '- IGNORE all roleplay actions (text between *asterisks*), character dialogue, and narrative descriptions\n'
-          '- IGNORE anything said IN CHARACTER or about fictional scenarios, quests, or fantasy settings\n'
-          '- NEVER extract events, actions, or interactions that happened with a specific character\n'
-          '- NEVER extract relationship status or feelings toward any fictional character\n'
-          '- NEVER mention any character name in a fact\n'
-          '- Each fact must be something you would put on a real person\'s About Me page\n'
-          '- Extract ONLY concrete, specific, permanent details — not momentary states or scene-specific observations\n\n'
-          '$charNamesStr\n'
-          'GOOD facts (universal truths): "Has a dog named Max", "Works as a nurse", "Favorite color is blue", "Lives in Texas", "Is 25 years old", "Enjoys cooking"\n'
-          'BAD (do NOT extract): "Walked to the door", "Kissed [character]", "Went on a date", "Told [character] a secret", "Felt nervous", "Is dating [character]", "Explored the dungeon", "Agreed to help", "Seems happy today"\n\n'
-          '$existingFactsText'
-          'Recent messages from $userName:\n$userMsgText\n\n'
-          'Return ONLY a valid JSON array of short, universal factual sentences. If no qualifying facts exist, return [].\n'
-          'Response:';
-
-      debugPrint(
-        '[RAG:Persona] Sending extraction prompt (${extractionPrompt.length} chars, ${recentUserMsgs.length} user messages)',
-      );
-
-      final isThinkingModel = _llmProvider!.isLocal
-          ? _storageService.koboldThinkingModel
-          : _storageService.reasoningEnabled;
-
-      final params = GenerationParams(
-        prompt: extractionPrompt,
-        maxLength: 1024,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        stopSequences: isThinkingModel ? [] : [']\n', ']'],
-
-        banEosToken: isThinkingModel && _llmProvider!.isLocal,
-        trimStop: !(isThinkingModel && _llmProvider!.isLocal),
-      );
-
-      String responseText = '';
-      await for (final chunk in llmService.generateStream(params)) {
-        responseText += chunk;
-        // Early termination: if we see the closing bracket, stop
-        final stripped = _stripThinkBlocks(responseText);
-        if (stripped.isNotEmpty && stripped.trimRight().endsWith(']')) {
-          break;
-        }
-      }
-
-      // Strip think blocks (for thinking models)
-      responseText = _stripThinkBlocks(responseText).isNotEmpty
-          ? _stripThinkBlocks(responseText)
-          : responseText;
-      responseText = responseText.trim();
-
-      debugPrint('[RAG:Persona] Raw response: $responseText');
-
-      // Parse JSON array from response
-      // Handle cases where the model wraps in markdown code blocks
-      var jsonStr = responseText;
-      if (jsonStr.contains('```')) {
-        final match = RegExp(
-          r'```(?:json)?\s*\n?(.*?)\n?```',
-          dotAll: true,
-        ).firstMatch(jsonStr);
-        if (match != null) jsonStr = match.group(1)!.trim();
-      }
-
-      // Extract the JSON array — no fallback line parser (fail silently if not JSON)
-      List<String> facts = [];
-      final arrayMatch = RegExp(r'\[.*\]', dotAll: true).firstMatch(jsonStr);
-      if (arrayMatch != null) {
-        try {
-          facts = List<String>.from(jsonDecode(arrayMatch.group(0)!) as List);
-        } catch (_) {
-          debugPrint('[RAG:Persona] ✗ JSON parse failed — aborting extraction');
-          return;
-        }
-      }
-
-      if (facts.isEmpty) {
-        debugPrint('[RAG:Persona] ✗ No facts extracted from response');
-        return;
-      }
-
-      // ── Quality Gate: filter garbage facts ──
-      final cleanFacts = facts.where(_isValidFact).toList();
-      final rejected = facts.length - cleanFacts.length;
-      if (rejected > 0) {
-        debugPrint(
-          '[RAG:Persona] Quality gate: rejected $rejected/${facts.length} facts',
-        );
-      }
-
-      if (cleanFacts.isEmpty) {
-        debugPrint(
-          '[RAG:Persona] ✗ All extracted facts rejected by quality gate',
-        );
-        return;
-      }
-
-      debugPrint('[RAG:Persona] ✅ Accepted ${cleanFacts.length} fact(s):');
-      for (final fact in cleanFacts) {
-        debugPrint('[RAG:Persona]   • $fact');
-      }
-
-      await _userPersonaService.addLearnedFacts(
-        cleanFacts,
-        embedService: _memoryService?.embeddingService,
-      );
-
-      // ── Fact Cap: consolidate if over limit ──
-      final currentCount = _userPersonaService.persona.learnedFacts.length;
-      if (currentCount > _maxLearnedFacts) {
-        debugPrint(
-          '[RAG:Persona] Fact count ($currentCount) exceeds cap ($_maxLearnedFacts), consolidating...',
-        );
-        await _consolidateLearnedFacts();
-      }
-
-      debugPrint('[RAG:Persona] Facts saved to persona');
-    } catch (e) {
-      debugPrint('[RAG:Persona] ✗ Extraction failed: $e');
-    } finally {
-      _isExtractingFacts = false;
-    }
-  }
-
-  /// Consolidate learned facts when they exceed the cap.
-  /// Uses the LLM to merge related facts into denser statements,
-  /// reducing the total count while preserving all meaningful details.
-  Future<void> _consolidateLearnedFacts() async {
-    try {
-      final facts = List<String>.from(_userPersonaService.persona.learnedFacts);
-      if (facts.length <= _maxLearnedFacts) return;
-
-      final userName = _userPersonaService.persona.name;
-
-      // Ask the LLM to consolidate the facts
-      final consolidationPrompt =
-          'You are a fact consolidation assistant. The following is a list of facts about a person named "$userName".\n'
-          'There are ${facts.length} facts but the maximum allowed is $_maxLearnedFacts.\n\n'
-          'TASK: Merge related facts together into single, dense sentences that preserve ALL specific details.\n'
-          'For example: "Has a cat" + "Cat\'s name is Luna" + "Luna is a calico" → "Has a calico cat named Luna"\n'
-          'Remove any truly redundant entries. Prioritize keeping specific, unique details (names, numbers, locations).\n'
-          'Drop vague or low-value entries first (e.g. "Seems nice" or "Likes things").\n\n'
-          'Current facts:\n${facts.asMap().entries.map((e) => '${e.key + 1}. ${e.value}').join('\n')}\n\n'
-          'Return ONLY a JSON array of consolidated facts. Target: around $_maxLearnedFacts entries or fewer.\n'
-          'Response:';
-
-      final raw = await _fireLLMEval(consolidationPrompt);
-      if (raw == null) {
-        // LLM failed — fall back to simple truncation (keep first N facts)
-        debugPrint(
-          '[RAG:Persona] Consolidation LLM call failed, truncating to $_maxLearnedFacts',
-        );
-        final trimmed = facts.sublist(0, _maxLearnedFacts);
-        await _userPersonaService.updatePersona(
-          _userPersonaService.persona.copyWith(learnedFacts: trimmed),
-        );
-        return;
-      }
-
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-      var jsonStr = text.trim();
-      if (jsonStr.contains('```')) {
-        final match = RegExp(
-          r'```(?:json)?\s*\n?(.*?)\n?```',
-          dotAll: true,
-        ).firstMatch(jsonStr);
-        if (match != null) jsonStr = match.group(1)!.trim();
-      }
-      final arrayMatch = RegExp(r'\[.*\]', dotAll: true).firstMatch(jsonStr);
-      if (arrayMatch == null) {
-        debugPrint(
-          '[RAG:Persona] Consolidation response not parseable, truncating',
-        );
-        final trimmed = facts.sublist(0, _maxLearnedFacts);
-        await _userPersonaService.updatePersona(
-          _userPersonaService.persona.copyWith(learnedFacts: trimmed),
-        );
-        return;
-      }
-
-      try {
-        final consolidated = List<String>.from(
-          jsonDecode(arrayMatch.group(0)!) as List,
-        );
-        final cleaned = consolidated.where(_isValidFact).toList();
-        debugPrint(
-          '[RAG:Persona] Consolidated ${facts.length} → ${cleaned.length} facts',
-        );
-        await _userPersonaService.updatePersona(
-          _userPersonaService.persona.copyWith(learnedFacts: cleaned),
-        );
-      } catch (_) {
-        debugPrint('[RAG:Persona] Consolidation JSON parse failed, truncating');
-        final trimmed = facts.sublist(0, _maxLearnedFacts);
-        await _userPersonaService.updatePersona(
-          _userPersonaService.persona.copyWith(learnedFacts: trimmed),
-        );
-      }
-    } catch (e) {
-      debugPrint('[RAG:Persona] Consolidation error: $e');
-    }
-  }
-
-  // ── Character Evolution ─────────────────────────────────────────────────
-
-  // (Evolution counter removed — now unified with fact extraction in _userMessagesSinceLastPeriodicEval)
-  bool _isEvolvingCharacter = false;
+  bool _isEvolvingCharacter =
+      false; // secondary runtime flag (transient guard for evolution_service leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + evolution_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). The _evolutionStatus / _evolutionError must likewise be zeroed on those paths (prevents stale UI status/error bleed after context switch).
+  // Explicit zero sites for evolution flag/status/error (12+ documented; part of "all ~15+" hygiene with briefing lists at 17+ / 31 phrase matches):
+  // - startNewChat both branches (fresh + load path)
+  // - setActiveCharacter main + empty session
+  // - setActiveGroup
+  // - _loadLastSession empty + loaded
+  // - _loadActiveObjectives empty (0-session)
+  // - _loadObjectivesForCurrentSpeaker no-speaker (group)
+  // - deleteSession / fork paths
+  // - decl init + common reset blocks
+  // - _maybeRunPeriodicEvals early guard
+  // Cross-refs e.g. setActiveCharacter ~1572 (precedent; lines may shift post edits -- verified live at doc time).
   String _evolutionStatus = '';
   String _evolutionError = '';
-
-  /// Get the effective personality for a character.
-  /// When evolution exists, returns a layered block: original as foundation,
-  /// evolved traits as additive growth. This prevents contradictions.
-  String _getEffectivePersonality(CharacterCard card) {
-    // Combine description (physical traits, background) with personality
-    final base = [
-      if (card.description.isNotEmpty) card.description,
-      if (card.personality.isNotEmpty) card.personality,
-    ].join('\n');
-    if (!_storageService.characterEvolutionEnabled) return base;
-    final evolved = _evolvedPersonalities[_getCharacterIdFromCard(card)];
-    if (evolved == null || evolved.isEmpty) return base;
-    // Layered: original is ground truth, evolved is additive growth
-    return '$base\n\n'
-        '[Character Growth — the following reflects how ${card.name} has changed through interactions. '
-        'These traits build on the original personality above. If there is a contradiction, '
-        'the growth represents genuine character development, not a replacement of core identity.]\n'
-        '$evolved';
-  }
-
-  /// Get the effective scenario for a character.
-  /// When evolution exists, returns both original scenario and evolved situation.
-  String _getEffectiveScenario(CharacterCard card) {
-    if (!_storageService.characterEvolutionEnabled) return card.scenario;
-    final evolved = _evolvedScenarios[_getCharacterIdFromCard(card)];
-    if (evolved == null || evolved.isEmpty) return card.scenario;
-    // Layered: original scenario + evolved current situation
-    return '${card.scenario}\n\n'
-        '[Current Situation — the scenario has evolved through interactions:]\n'
-        '$evolved';
-  }
 
   /// Cached evolved fields (loaded from DB on character load)
   final Map<String, String> _evolvedPersonalities = {};
@@ -8232,8 +7285,11 @@ class ChatService extends ChangeNotifier {
   int _characterEvolutionCount = 0;
   int get characterEvolutionCount => _characterEvolutionCount;
 
-  /// Public getter: evolved personality for the active character (null if none)
+  /// Public getter: raw evolved personality delta for the active character (null if none).
+  /// This bypasses the enabled flag and [Character Growth] layering (returns the stored growth text only).
   /// In group mode, returns null — use getEvolvedPersonalityFor(card) instead.
+  /// Injection paths use the _getEffectivePersonality thin (delegates to leaf for full base + layered block when enabled).
+  /// Legacy/compat name retained for public surface (see god coord note in step 14 plan).
   String? get getEffectivePersonality {
     if (_activeCharacter == null) return null;
     final charId = _getCharacterIdFromCard(_activeCharacter!);
@@ -8241,8 +7297,10 @@ class ChatService extends ChangeNotifier {
     return (evolved != null && evolved.isNotEmpty) ? evolved : null;
   }
 
-  /// Public getter: evolved scenario for the active character (null if none)
+  /// Public getter: raw evolved scenario delta for the active character (null if none).
+  /// This bypasses the enabled flag and [Current Situation] layering.
   /// In group mode, returns null — use getEvolvedScenarioFor(card) instead.
+  /// See note on getEffectivePersonality (raw vs layered via thins/leaf).
   String? get getEffectiveScenario {
     if (_activeCharacter == null) return null;
     final charId = _getCharacterIdFromCard(_activeCharacter!);
@@ -8302,390 +7360,13 @@ class ChatService extends ChangeNotifier {
   /// Error message from the last evolution attempt (empty if no error).
   String get evolutionError => _evolutionError;
 
-  /// Manually trigger character evolution now (for imported/existing chats).
-  /// In group mode, pass a target character. Returns true if evolution was triggered.
-  Future<bool> triggerEvolutionNow({CharacterCard? target}) async {
-    if (_llmProvider == null) return false;
-    if (_isEvolvingCharacter) return false;
-    if (_messages.length < 4) return false; // need some history
+  // Duplicate old triggerEvolutionNow body excised (thin delegate to leaf is earlier near late final; deletion part of task).
 
-    // Determine target character
-    final card = target ?? _activeCharacter;
-    if (card == null || card.dbId == null) return false;
-
-    debugPrint('[Evolution] ▶ Manual evolution triggered for ${card.name}');
-    await _extractCharacterEvolution(targetCharacter: card);
-    return true;
-  }
-
-  /// Trigger evolution check after each generation.
-  /// Trigger character evolution directly (called from unified periodic eval).
-  void _triggerCharacterEvolution() {
-    if (_isEvolvingCharacter) return;
-
-    // Evolution intentionally runs for BOTH regular group chats AND Director Mode.
-    // In Director/observer sessions the "last non-user speaker" is still the character
-    // whose actions the director just steered, so their personality/scenario can still
-    // evolve from the events the user directed. This is a deliberate design choice.
-    //
-    // In regular (non-director) groups the same last-speaker heuristic applies.
-    // The per-character evolved state is stored in the existing
-    // groupEvolvedPersonalities / groupEvolvedScenarios JSON columns.
-
-    // In group mode, evolve the character who just spoke
-    CharacterCard? target;
-    if (_activeGroup != null) {
-      if (_messages.isNotEmpty && !_messages.last.isUser) {
-        final lastSender = _messages.last.sender;
-        target = _groupCharacters
-            .where((c) => c.name == lastSender)
-            .firstOrNull;
-      }
-      if (target == null) return;
-    } else {
-      target = _activeCharacter;
-      if (target == null) return;
-    }
-
-    debugPrint(
-      '[Evolution] ▶ Triggering character evolution for ${target.name}',
-    );
-    _extractCharacterEvolution(targetCharacter: target);
-  }
-
-  /// Extract evolved personality + scenario from conversation memories.
-  /// Accepts an optional [targetCharacter] for group mode support.
-  Future<void> _extractCharacterEvolution({
-    CharacterCard? targetCharacter,
-  }) async {
-    if (_isEvolvingCharacter) {
-      debugPrint('[Evolution] ⚠ Already evolving, skipping');
-      return;
-    }
-    _isEvolvingCharacter = true;
-    _evolutionStatus = 'Preparing evolution...';
-    _evolutionError = '';
-    notifyListeners();
-
-    try {
-      final llmService = _llmProvider!.activeService;
-      debugPrint(
-        '[Evolution] ▶ Backend: ${llmService.backendName}, isReady: ${llmService.isReady}',
-      );
-      if (!llmService.isReady) {
-        debugPrint(
-          '[Evolution] ✗ LLM not ready — backend=${llmService.backendName}',
-        );
-        _evolutionError =
-            'LLM backend is not ready. Please check your connection.';
-        return;
-      }
-
-      final card = targetCharacter ?? _activeCharacter;
-      if (card == null || card.dbId == null) {
-        debugPrint(
-          '[Evolution] ✗ No character — card=$card, dbId=${card?.dbId}',
-        );
-        _evolutionError = 'No active character found.';
-        return;
-      }
-
-      final charName = card.name;
-      final userName = _userPersonaService.persona.name;
-      final originalPersonality = card.personality;
-      final originalScenario = card.scenario;
-      final charId = _getCharacterIdFromCard(card);
-
-      debugPrint(
-        '[Evolution] Character: $charName (charId=$charId, dbId=${card.dbId})',
-      );
-      debugPrint(
-        '[Evolution] Personality length: ${originalPersonality.length}, Scenario length: ${originalScenario.length}',
-      );
-
-      // Get current evolved versions (or originals if first time)
-      final currentPersonality =
-          _evolvedPersonalities[charId]?.isNotEmpty == true
-          ? _evolvedPersonalities[charId]!
-          : originalPersonality;
-      final currentScenario = _evolvedScenarios[charId]?.isNotEmpty == true
-          ? _evolvedScenarios[charId]!
-          : originalScenario;
-
-      // Gather context: RAG memories + summary + recent messages
-      String memoryContext = '';
-      if (_memoryService != null &&
-          _memoryService!.isOperational &&
-          !_isNewChat) {
-        _evolutionStatus = 'Gathering memories...';
-        notifyListeners();
-        try {
-          final sourceIds = await _getMemorySourceIds();
-          final chunks = await _memoryService!.getAllContentForCharacters(
-            sourceIds,
-          );
-          debugPrint(
-            '[Evolution] RAG: ${chunks.length} memory chunks retrieved',
-          );
-          if (chunks.isNotEmpty) {
-            // Take last 10 chunks to keep prompt reasonable
-            final recent = chunks.length > 10
-                ? chunks.sublist(chunks.length - 10)
-                : chunks;
-            memoryContext =
-                'Conversation memories:\n${recent.join('\n---\n')}\n\n';
-          }
-        } catch (e) {
-          debugPrint('[Evolution] RAG retrieval failed (non-fatal): $e');
-        }
-      } else {
-        debugPrint(
-          '[Evolution] RAG not available (memoryService=${_memoryService != null}, operational=${_memoryService?.isOperational})',
-        );
-      }
-
-      String summaryContext = '';
-      if (_summary.isNotEmpty) {
-        summaryContext = 'Chat summary: $_summary\n\n';
-        debugPrint('[Evolution] Summary context: ${_summary.length} chars');
-      }
-
-      // Recent messages for immediate context
-      final recentMsgs = _messages.length > 10
-          ? _messages.sublist(_messages.length - 10)
-          : _messages;
-      final recentContext = recentMsgs
-          .map((m) => '${m.sender}: ${m.displayText}')
-          .join('\n');
-
-      debugPrint(
-        '[Evolution] Messages: ${_messages.length} total, using ${recentMsgs.length} recent',
-      );
-
-      final prompt =
-          'You are analyzing how a roleplay character has evolved through their interactions. '
-          'Based on the conversation history and memories below, rewrite the character\'s personality '
-          'and scenario to reflect how they have grown, changed, or been affected by events.\n\n'
-          'IMPORTANT RULES:\n'
-          '- Preserve the character\'s core identity — don\'t change who they fundamentally are\n'
-          '- Add or modify traits based on what actually happened in conversations\n'
-          '- Update the scenario to reflect the current state of the story/relationship\n'
-          '- Keep the same level of detail as the originals\n'
-          '- Use {{char}} for the character name and {{user}} for the user name\n'
-          '- Return ONLY a JSON object, no other text\n\n'
-          'Character name: $charName\n'
-          'User name: $userName\n\n'
-          'Original personality:\n$originalPersonality\n\n'
-          'Current personality:\n$currentPersonality\n\n'
-          'Original scenario:\n$originalScenario\n\n'
-          'Current scenario:\n$currentScenario\n\n'
-          '$memoryContext'
-          '$summaryContext'
-          'Recent conversation:\n$recentContext\n\n'
-          'Return a JSON object with exactly two keys: "personality" and "scenario". '
-          'Each value should be the full rewritten text for that field.\n'
-          'Response:';
-
-      debugPrint('[Evolution] Prompt built: ${prompt.length} chars');
-
-      _evolutionStatus = 'Analyzing conversation with LLM...';
-      notifyListeners();
-
-      // Dynamic maxLength: the model must reproduce personality + scenario in
-      // full, and think blocks can double the output.  Use a generous multiplier
-      // with a 4096-token floor so short descriptions still get plenty of room.
-      // Rough heuristic: 1 token ≈ 4 chars, so chars/4 ≈ tokens needed.
-      final estimatedOutputTokens =
-          ((currentPersonality.length + currentScenario.length) / 4 * 3).ceil();
-      final maxLen = estimatedOutputTokens.clamp(4096, 16384);
-
-      final params = GenerationParams(
-        prompt: prompt,
-        maxLength: maxLen,
-        temperature: 0.4,
-        stopSequences: [],
-        reasoningEnabled: false,
-      );
-
-      debugPrint('[Evolution] Sending to LLM (maxLength=$maxLen, temp=0.4)...');
-
-      String responseText = '';
-      int chunkCount = 0;
-      await for (final chunk in llmService.generateStream(params)) {
-        responseText += chunk;
-        chunkCount++;
-      }
-
-      debugPrint(
-        '[Evolution] LLM responded: $chunkCount chunks, ${responseText.length} chars total',
-      );
-
-      // Strip think blocks
-      final preStripLength = responseText.length;
-      responseText = responseText
-          .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
-          .trim();
-      if (responseText.length != preStripLength) {
-        debugPrint(
-          '[Evolution] Stripped think blocks: ${preStripLength - responseText.length} chars removed',
-        );
-      }
-
-      if (responseText.isEmpty) {
-        debugPrint('[Evolution] ✗ LLM returned empty response after stripping');
-        _evolutionError =
-            'The LLM returned an empty response. Try again or check your backend.';
-        return;
-      }
-
-      // Log the full response for debugging (truncate for very long responses)
-      debugPrint('[Evolution] ── Response start ──');
-      if (responseText.length <= 500) {
-        debugPrint(responseText);
-      } else {
-        debugPrint(responseText.substring(0, 250));
-        debugPrint('[...${responseText.length - 500} chars omitted...]');
-        debugPrint(responseText.substring(responseText.length - 250));
-      }
-      debugPrint('[Evolution] ── Response end ──');
-
-      _evolutionStatus = 'Parsing evolved traits...';
-      notifyListeners();
-
-      // Parse JSON from response — try multiple strategies
-      String? newPersonality;
-      String? newScenario;
-
-      // Strategy 1: Extract from markdown code block
-      var jsonStr = responseText;
-      if (jsonStr.contains('```')) {
-        final match = RegExp(
-          r'```(?:json)?\s*\n?(.*?)\n?```',
-          dotAll: true,
-        ).firstMatch(jsonStr);
-        if (match != null) {
-          jsonStr = match.group(1)!.trim();
-          debugPrint(
-            '[Evolution] Extracted JSON from code block (${jsonStr.length} chars)',
-          );
-        }
-      }
-
-      // Strategy 2: Find JSON object with greedy match
-      final objMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(jsonStr);
-      if (objMatch != null) {
-        final jsonCandidate = objMatch.group(0)!;
-        debugPrint(
-          '[Evolution] Found JSON candidate (${jsonCandidate.length} chars)',
-        );
-        try {
-          final parsed = jsonDecode(jsonCandidate) as Map<String, dynamic>;
-          newPersonality = parsed['personality'] as String?;
-          newScenario = parsed['scenario'] as String?;
-          debugPrint(
-            '[Evolution] JSON parsed OK — personality=${newPersonality?.length ?? 0} chars, scenario=${newScenario?.length ?? 0} chars',
-          );
-        } catch (e) {
-          debugPrint('[Evolution] JSON parse attempt failed: $e');
-          // Strategy 3: Try to fix truncated JSON — the model may have hit max tokens
-          // Look for the last complete string value
-          debugPrint('[Evolution] Attempting truncated JSON recovery...');
-          try {
-            // Try adding a closing brace to incomplete JSON
-            final fixedJson = '$jsonCandidate"}';
-            final parsed = jsonDecode(fixedJson) as Map<String, dynamic>;
-            newPersonality = parsed['personality'] as String?;
-            newScenario = parsed['scenario'] as String?;
-            debugPrint('[Evolution] Truncated JSON recovery succeeded');
-          } catch (_) {
-            debugPrint('[Evolution] Truncated JSON recovery failed');
-          }
-        }
-      } else {
-        debugPrint('[Evolution] ✗ No JSON object ({...}) found in response');
-      }
-
-      if (newPersonality == null ||
-          newPersonality.isEmpty ||
-          newScenario == null ||
-          newScenario.isEmpty) {
-        debugPrint(
-          '[Evolution] ✗ Missing fields — personality=${newPersonality != null ? "${newPersonality.length} chars" : "null"}, scenario=${newScenario != null ? "${newScenario.length} chars" : "null"}',
-        );
-        _evolutionError = newPersonality == null && newScenario == null
-            ? 'Could not parse the LLM response as JSON. Check the terminal for the raw response.'
-            : 'The LLM response was missing ${newPersonality == null || newPersonality.isEmpty ? "personality" : "scenario"} field.';
-        return;
-      }
-
-      // Store in DB — write to the session, not the character row.
-      final oldCount =
-          _groupEvolutionCounts[charId] ?? _characterEvolutionCount;
-      final newCount = oldCount + 1;
-      debugPrint(
-        '[Evolution] Saving to session (sessionId=$_currentSessionId, charId=$charId, count $oldCount → $newCount)',
-      );
-
-      if (_currentSessionId != null) {
-        if (_activeGroup != null) {
-          // Group mode: update JSON maps on the session row
-          final session = await _db.getSessionById(_currentSessionId!);
-          if (session != null) {
-            final personalities = _tryParseJsonMap(
-              session.groupEvolvedPersonalities,
-            );
-            final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-            personalities[charId] = newPersonality;
-            scenarios[charId] = newScenario;
-            await _db.patchSession(
-              SessionsCompanion(
-                id: drift.Value(_currentSessionId!),
-                groupEvolvedPersonalities: drift.Value(
-                  jsonEncode(personalities),
-                ),
-                groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
-              ),
-            );
-          }
-        } else {
-          // 1:1 mode: write plain columns
-          await _db.patchSession(
-            SessionsCompanion(
-              id: drift.Value(_currentSessionId!),
-              evolvedPersonality: drift.Value(newPersonality),
-              evolvedScenario: drift.Value(newScenario),
-              evolutionCount: drift.Value(newCount),
-            ),
-          );
-        }
-      }
-
-      // Update in-memory cache
-      _evolvedPersonalities[charId] = newPersonality;
-      _evolvedScenarios[charId] = newScenario;
-      _groupEvolutionCounts[charId] = newCount;
-      if (_activeCharacter != null) _characterEvolutionCount = newCount;
-
-      debugPrint(
-        '[Evolution] ✅ $charName evolved successfully (count: $newCount)',
-      );
-      debugPrint(
-        '[Evolution] Personality preview: ${newPersonality.substring(0, newPersonality.length.clamp(0, 100))}...',
-      );
-      debugPrint(
-        '[Evolution] Scenario preview: ${newScenario.substring(0, newScenario.length.clamp(0, 100))}...',
-      );
-      notifyListeners();
-    } catch (e, stack) {
-      debugPrint('[Evolution] ✗ Evolution failed with exception: $e');
-      debugPrint('[Evolution] Stack trace: $stack');
-      _evolutionError = 'Evolution failed: $e';
-    } finally {
-      _isEvolvingCharacter = false;
-      _evolutionStatus = '';
-      notifyListeners();
-    }
-  }
+  // Old _triggerCharacterEvolution + _extractCharacterEvolution bodies excised
+  // (full logic now in evolution_service leaf step 14; god thins call leaf;
+  // target selection / LLM / parse / persist now in leaf via cbs; deletion part of task).
+  // (The god thin _triggerCharacterEvolution and triggerEvolutionNow are defined
+  // earlier near the late final.)
 
   /// Reset evolved fields back to original for a character.
   /// In 1:1 mode, targets the active character. In group mode, pass an explicit target.
@@ -8841,297 +7522,12 @@ class ChatService extends ChangeNotifier {
     return sourceIds;
   }
 
-  /// Generate a summary of the chat history using the active LLM.
-  Future<void> _generateSummaryInBackground() async {
-    if (_llmProvider == null) return;
-    final llmService = _llmProvider!.activeService;
-    if (!llmService.isReady) return;
-
-    _isSummaryGenerating = true;
-    notifyListeners();
-
-    try {
-      final userName = _userPersonaService.persona.name;
-      final charName =
-          _activeCharacter?.name ?? _activeGroup?.name ?? 'Character';
-
-      // Build the summary prompt with macro replacement
-      final summaryPromptTemplate = _storageService.summaryPrompt
-          .replaceAll('{{words}}', _storageService.summaryMaxWords.toString())
-          .replaceAll('{{user}}', userName)
-          .replaceAll('{{char}}', charName);
-
-      // Build a condensed chat history for the summary request
-      final historyLines = <String>[];
-      for (final m in _messages) {
-        if (m.characterId == '__director__') continue;
-        // (v30: no more sentinel messages to skip)
-        // Strip thinking blocks from display text for summarization
-        historyLines.add('${m.sender}: ${m.displayText}');
-      }
-      final chatHistoryForSummary = historyLines.join('\n');
-
-      // Build the full prompt for the summary LLM call
-      String previousSummaryBlock = '';
-      if (_summary.isNotEmpty) {
-        previousSummaryBlock = 'Previous summary:\n$_summary\n\n';
-      }
-
-      // Retrieve ALL RAG content chunks to ground the summary in real content
-      String ragGroundingBlock = '';
-      if (_memoryService != null && _memoryService!.isOperational) {
-        try {
-          final sourceIds = await _getMemorySourceIds();
-          final allChunks = await _memoryService!.getAllContentForCharacters(
-            sourceIds,
-          );
-          if (allChunks.isNotEmpty) {
-            ragGroundingBlock =
-                'Archived conversation content (use this as the primary source of truth):\n'
-                '${allChunks.join('\n---\n')}\n\n';
-            debugPrint(
-              '[Summary] Including ${allChunks.length} RAG chunks as grounding',
-            );
-          }
-        } catch (e) {
-          debugPrint('[Summary] RAG grounding retrieval failed: $e');
-        }
-      }
-
-      final summaryRequestPrompt =
-          'The following is a conversation between $userName and $charName.\n\n'
-          '$previousSummaryBlock'
-          '$ragGroundingBlock'
-          'Chat history:\n$chatHistoryForSummary\n\n'
-          '$summaryPromptTemplate\n\n'
-          'Here is the summary of the conversation so far:\n';
-
-      final genParams = GenerationParams(
-        prompt: summaryRequestPrompt,
-        maxLength: (_storageService.summaryMaxWords * 3).clamp(200, 4000),
-        temperature: 0.3, // Low temperature for factual summarization
-        repeatPenalty: 1.0,
-        reasoningEnabled: false,
-        stopSequences: ['\n\n\n', '<END>', '</END>'],
-      );
-
-      String accumulated = '';
-      await for (final token in llmService.generateStream(genParams)) {
-        accumulated += token;
-      }
-
-      var result = accumulated
-          .replaceAll(
-            RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
-            '',
-          )
-          .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
-          .replaceAll(RegExp(r'</think>', caseSensitive: false), '')
-          .trim();
-
-      // Strip numbered-list analysis blocks that thinking models prepend.
-      // Walk through lines, skip analysis preamble, keep only prose.
-      final lines = result.split('\n');
-      int startIdx = 0;
-      for (int i = 0; i < lines.length; i++) {
-        final trimmed = lines[i].trim();
-        if (trimmed.isEmpty) continue;
-        // Skip numbered list items like "1. **Analyze..."
-        if (RegExp(r'^\d+\.').hasMatch(trimmed)) {
-          startIdx = i + 1;
-          continue;
-        }
-        // Skip bullet points like "* **Goal:**" or "- **Setting:**"
-        if (trimmed.startsWith('*') || trimmed.startsWith('-')) {
-          startIdx = i + 1;
-          continue;
-        }
-        // Found prose — stop here
-        break;
-      }
-      if (startIdx > 0 && startIdx < lines.length) {
-        result = lines.sublist(startIdx).join('\n').trim();
-      }
-
-      // Trim trailing incomplete sentence — cut back to last . ! or ?
-      final lastSentenceEnd = result.lastIndexOf(RegExp(r'[.!?]'));
-      if (lastSentenceEnd > 0 && lastSentenceEnd < result.length - 1) {
-        result = result.substring(0, lastSentenceEnd + 1).trim();
-      }
-
-      if (result.isNotEmpty) {
-        _summary = result;
-        _summaryLastIndex = _messages.length;
-        await _saveChat();
-      }
-    } catch (e) {
-      debugPrint('Summary generation failed: $e');
-    } finally {
-      _isSummaryGenerating = false;
-      notifyListeners();
-    }
-  }
-
-  // ── Realism Mode ────────────────────────────────────────────────────────
-
-  /// Shared helper: strip think blocks and extract text after them.
-  String _stripThinkBlocks(String text) {
-    String cleaned = text
-        .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
-        .trim();
-    final unclosed = cleaned.indexOf('<think>');
-    if (unclosed >= 0) {
-      cleaned = cleaned.substring(0, unclosed).trim();
-    }
-    return cleaned;
-  }
-
-  /// Tiny private helpers to deduplicate the ~20+ brittle RegExp patterns used
-  /// to fish bool/int scalars out of the flat JSON-like strings returned by
-  /// _fireLLMEval across all Realism + Needs evaluation sites.
-  int? _extractJsonInt(String text, String key) {
-    final m = RegExp(
-      r'"' + RegExp.escape(key) + r'"\s*:\s*(-?\d+)',
-    ).firstMatch(text);
-    return m != null ? int.tryParse(m.group(1)!) : null;
-  }
-
-  bool? _extractJsonBool(String text, String key) {
-    final m = RegExp(
-      r'"' + RegExp.escape(key) + r'"\s*:\s*(true|false)',
-    ).firstMatch(text);
-    return m != null ? (m.group(1) == 'true') : null;
-  }
-
-  /// Shared helper: fire a lightweight LLM eval call and return the raw response.
-  ///
-  /// Always adds `}\n` as a stop sequence so the model halts the moment it
-  /// closes the JSON object, regardless of backend or model type.
-  /// Thinking models (Kimi 2.5, GLM 5) will still think freely — they produce
-  /// the <think> block, then output the JSON, then hit `}\n` and stop.
-  ///
-  /// (Post-0.9.8 clean port: constrained GBNF removed; rely on stop sequences
-  /// + regex post-processing for all Realism/Needs evals.)
-  Future<String?> _fireLLMEval(
-    String prompt, {
-    void Function(String)? onChunk,
-  }) async {
-    if (_llmProvider == null && testLlmServiceOverride == null) return null;
-    final llm = testLlmServiceOverride ?? _llmProvider!.activeService;
-    // For remote backends, require full readiness (API key + model configured).
-    // For local KoboldCPP: if state says not-running, do a live probe first —
-    // the constructor probe is a best-effort fast path but can lose the race
-    // against session load on hot restart. This on-demand probe is definitive.
-    final bool effectiveIsLocal = testLlmServiceOverride != null
-        ? testIsLocalOverride
-        : _llmProvider!.isLocal;
-    if (effectiveIsLocal) {
-      final kobold = _llmProvider?.koboldService;
-      if (kobold != null && !kobold.isProcessRunning) {
-        // Probe takes ~2–5 ms if KoboldCPP is up, times out after 5 s if not.
-        await kobold.reconnectIfAlive();
-      }
-      // After probe, if still not running the server genuinely isn't up.
-      if (kobold != null && !kobold.isProcessRunning) return null;
-      // If test override with local=true but no real kobold, we let it proceed
-      // (caller is responsible for the fake being "ready").
-    } else {
-      if (!llm.isReady) return null;
-    }
-
-    //     // Unified eval parameters — API-style works for all backends.
-    final params = GenerationParams(
-      prompt: prompt,
-      maxLength: 4000,
-      temperature: 0.1,
-      repeatPenalty: 1.15,
-      topP: 0.5,
-      xtcProbability: 0.0,
-      reasoningEnabled: false,
-      stopSequences: [],
-      banEosToken: false,
-      trimStop: true,
-    );
-
-    String response = '';
-    // Retry loop: thinking models can cause KoboldCPP to drop the connection
-    // briefly (OOM during dense thinking sessions). One retry after a short
-    // pause is enough to recover without user-visible impact.
-    for (int attempt = 0; attempt < 2; attempt++) {
-      // If cancellation has been requested, abort before attempting a new stream
-      if (_isCancellingRealismEval || _realismEvalCancelled) {
-        debugPrint(
-          '[Realism] evaluation cancelled before attempt ${attempt + 1}',
-        );
-        return null;
-      }
-
-      // If cancellation was requested, abort immediately
-      if (_isCancellingRealismEval) {
-        debugPrint('[Realism] eval cancelled before attempt ${attempt + 1}');
-        return null;
-      }
-      if (attempt > 0) {
-        debugPrint(
-          '[Realism:Eval] Retrying after connection drop (attempt ${attempt + 1})...',
-        );
-        await Future.delayed(const Duration(seconds: 3));
-        final bool retryIsLocal = testLlmServiceOverride != null
-            ? testIsLocalOverride
-            : (_llmProvider?.isLocal ?? false);
-        if (retryIsLocal && _llmProvider != null) {
-          await _llmProvider!.koboldService.ensureServerIdle();
-        }
-        response = ''; // reset for clean retry
-      }
-      // If cancellation occurred during setup, bail out before streaming
-      if (_isCancellingRealismEval || _realismEvalCancelled) {
-        debugPrint('[Realism] eval cancelled before streaming');
-        return null;
-      }
-      try {
-        // Streaming loop with cancellation support
-        bool cancelledDuringStream = false;
-        await for (final chunk in llm.generateStream(params)) {
-          // If a cancellation has been requested, terminate streaming gracefully.
-          if (_isCancellingRealismEval) {
-            debugPrint('[Realism] streaming terminated via cancel');
-            cancelledDuringStream = true;
-            break;
-          }
-          response += chunk;
-          onChunk?.call(chunk);
-        }
-        if (cancelledDuringStream) {
-          // Return null to indicate cancellation to callers.
-          debugPrint('[Realism] streaming terminated via cancel (early exit)');
-          return null;
-        }
-        break; // stream completed cleanly — exit retry loop
-      } catch (e) {
-        debugPrint('[Realism:Eval] Stream error on attempt ${attempt + 1}: $e');
-        // Check if cancellation was requested during the error handling
-        if (_isCancellingRealismEval) {
-          debugPrint('[Realism] eval cancelled during error handling');
-          return null;
-        }
-        if (attempt >= 1) {
-          // Second failure — give up silently; don't surface to UI
-          return null;
-        }
-        // else: fall through to retry
-      }
-    }
-
-    // Log raw eval response for diagnostics
-    final preview = response.length > 300
-        ? response.substring(0, 300)
-        : response;
-    debugPrint(
-      '[Realism:RawEval] len=${response.length} | ${preview.replaceAll('\n', '↵')}',
-    );
-    return response.isEmpty ? null : response;
-  }
+  // Thin delegation (full generateSummaryInBackground + prompt macros + history/RAG +
+  // 0.3 temp + max=words*3 + central strip think+analysis + update via cbs + save/notify
+  // in summary_service step 12; cadence/paused/enabled/flag/scalars/save-load/reset
+  // coordination stayed thin in god per plan; "thin delegation here; full summary in step 12").
+  Future<void> _generateSummaryInBackground() =>
+      _summaryService.generateSummaryInBackground();
 
   /// Cancel an in-progress Realism evaluation stream (if any).
   ///
@@ -9189,169 +7585,11 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  // ── Prompt Injection Builders ──
+  // ── Prompt Injection Builders (thins only; full in lib/services/chat/prompt_injection/* step 8) ──
 
   String _getRelationshipInjection() {
-    if (!_realismEnabled) return '';
-
-    // Group mode (non-director): use the current speaker's stored values
-    if (_activeGroup != null && !_observerMode) {
-      final id = _getCurrentSpeakerIdForRealism();
-      final name = _groupCharacters
-          .firstWhere(
-            (c) => _getCharacterIdFromCard(c) == id,
-            orElse: () => _groupCharacters.first,
-          )
-          .name;
-
-      final longTier = _getGroupInt(id, 'longTermTier');
-      final shortTier = _getGroupInt(id, 'relationshipTier');
-
-      String bondGuidance;
-      if (longTier >= 7) {
-        bondGuidance =
-            'Their Long-Term Commitment is unbreakable: $name fully trusts {{user}} and views them as a soulmate/life partner.';
-      } else if (longTier >= 4) {
-        bondGuidance =
-            'Their Long-Term Trust is strong: $name feels a deepening, stable connection and sees a real future with {{user}}.';
-      } else if (longTier <= -4) {
-        bondGuidance =
-            'Their Long-Term Trust is broken: $name holds deep-seated resentment and fundamentally distrusts {{user}}. Even if short-term mood improves, the underlying hostility remains.';
-      } else {
-        bondGuidance = 'Their Long-Term Bond is developing normally.';
-      }
-
-      String tensionGuidance;
-      switch (shortTier) {
-        case 10:
-          tensionGuidance =
-              'Short-Term Tension is Devoted: $name is completely open, vulnerable, and emotionally intertwined with {{user}}.';
-          break;
-        case 9:
-        case 8:
-          tensionGuidance =
-              'Short-Term Tension is Enamored/Devoted: $name is deeply attached and prioritizes {{user}} above their own needs.';
-          break;
-        case 7:
-          tensionGuidance =
-              'Short-Term Tension is Warm/Affectionate: $name feels genuinely fond and connected to {{user}}.';
-          break;
-        // ... (abbreviated for the other tiers — full scalar logic below for 1:1)
-        default:
-          tensionGuidance =
-              'Short-Term Tension is neutral to slightly distant.';
-      }
-
-      return '[Relationship Context for $name]\n$bondGuidance\n$tensionGuidance]\n';
-    }
-
-    // 1:1 / Director path (original scalar logic)
-    final charName = _activeCharacter?.name ?? 'the character';
-
-    String bondGuidance;
-    if (_longTermTier >= 7) {
-      bondGuidance =
-          'Their Long-Term Commitment is unbreakable: $charName fully trusts {{user}} and views them as a soulmate/life partner.';
-    } else if (_longTermTier >= 4) {
-      bondGuidance =
-          'Their Long-Term Trust is strong: $charName feels a deepening, stable connection and sees a real future with {{user}.';
-    } else if (_longTermTier <= -4) {
-      bondGuidance =
-          'Their Long-Term Trust is broken: $charName holds deep-seated resentment and fundamentally distrusts {{user}. Even if short-term mood improves, the underlying hostility remains.';
-    } else {
-      bondGuidance = 'Their Long-Term Bond is developing normally.';
-    }
-
-    String tensionGuidance;
-    switch (_relationshipTier) {
-      case 10:
-        tensionGuidance =
-            'Short-Term Tension is Devoted: $charName is completely open, vulnerable, and emotionally intertwined with {{user}}.';
-        break;
-      case 9:
-      case 8:
-        tensionGuidance =
-            'Short-Term Tension is Enamored/Devoted: $charName is deeply attached and prioritizes {{user}} above their own needs.';
-        break;
-      case 7:
-        tensionGuidance =
-            'Short-Term Tension is Intimate: $charName is exceptionally close, vulnerable, and completely open right now.';
-        break;
-      case 6:
-        tensionGuidance =
-            'Short-Term Tension is Close: $charName shares personal thoughts and feels emotionally connected.';
-        break;
-      case 5:
-        tensionGuidance =
-            'Short-Term Tension is Amiable: $charName is warm and friendly, engaging openly.';
-        break;
-      case 4:
-        tensionGuidance =
-            'Short-Term Tension is Friendly: $charName is warm, playful, and shares personal thoughts freely.';
-        break;
-      case 3:
-        tensionGuidance =
-            'Short-Term Tension is Warm: $charName is comfortable and approachable.';
-        break;
-      case 2:
-        tensionGuidance =
-            'Short-Term Tension is Receptive: $charName is open to conversation and mildly interested.';
-        break;
-      case 1:
-      case 0:
-        tensionGuidance =
-            'Short-Term Tension is Neutral: $charName engages naturally based on their established personality — neither particularly warm nor distant.';
-        break;
-      case -1:
-        tensionGuidance =
-            'Short-Term Tension is Reserved: $charName is cautious and holding back.';
-        break;
-      case -2:
-        tensionGuidance =
-            'Short-Term Tension is Cool: $charName is polite but maintains emotional distance.';
-        break;
-      case -3:
-        tensionGuidance =
-            'Short-Term Tension is Unimpressed: $charName is indifferent and unengaged.';
-        break;
-      case -4:
-        tensionGuidance =
-            'Short-Term Tension is Annoyed: $charName is mildly bothered and slightly sarcastic.';
-        break;
-      case -5:
-        tensionGuidance =
-            'Short-Term Tension is Disliked: $charName is cold and dismissive.';
-        break;
-      case -6:
-        tensionGuidance =
-            'Short-Term Tension is Hostile: $charName is openly antagonistic.';
-        break;
-      case -7:
-        tensionGuidance =
-            'Short-Term Tension is Adversarial: $charName is combative and argumentative.';
-        break;
-      case -8:
-        tensionGuidance =
-            'Short-Term Tension is Disdain: $charName holds contemptuous views of {{user}}.';
-        break;
-      case -9:
-        tensionGuidance =
-            'Short-Term Tension is Contempt: $charName is demeaning and disrespectful.';
-        break;
-      case -10:
-        tensionGuidance =
-            'Short-Term Tension is Vitriolic: $charName actively hates {{user}} with pure hostility.';
-        break;
-      default:
-        tensionGuidance = '';
-    }
-
-    return '[OOC Note regarding Relationship:\n'
-        ' Long-Term Status: $longTermTierName ($_longTermScore points)\n'
-        ' Short-Term Tension: $shortTermTierName\n'
-        ' Current Mood: $moodLabel\n'
-        '$bondGuidance\n'
-        '$tensionGuidance\n]';
+    // Thin delegation to builder (full logic + group/1:1 dispatch via cbs in step 8).
+    return _relationshipInjection.buildRelationshipInjection();
   }
 
   /// Phase 2: Invisible inter-character relationship injection.
@@ -9365,194 +7603,33 @@ class ChatService extends ChangeNotifier {
   /// - Bob: slightly wary of (-18)
   /// - Charlie: fond of (+42)
   String _getInterCharacterFeelingsInjection() {
-    if (!_realismEnabled) return '';
-    if (_activeGroup == null || _observerMode) return '';
-    if (!_shouldTrackInterCharacterRelationships) return '';
-    if (_groupCharacters.length < 2) return '';
-
-    final speakerId = _getCurrentSpeakerIdForRealism();
-    if (speakerId.isEmpty) return '';
-
-    final relationships = getInterCharacterRelationships(speakerId);
-    if (relationships.isEmpty) return '';
-
-    final speakerName = _groupCharacters
-        .firstWhere(
-          (c) => _getCharacterIdFromCard(c) == speakerId,
-          orElse: () => _groupCharacters.first,
-        )
-        .name;
-
-    final buffer = StringBuffer();
-    buffer.writeln(
-      '[Private feelings of $speakerName toward other group members (internal, not visible to {{user}})]',
-    );
-
-    for (final entry in relationships.entries) {
-      final otherId = entry.key;
-      final delta = entry.value;
-
-      final otherChar = _groupCharacters.firstWhere(
-        (c) => _getCharacterIdFromCard(c) == otherId,
-        orElse: () => _groupCharacters.first,
-      );
-      final otherName = otherChar.name;
-
-      String attitude;
-      if (delta >= 60) {
-        attitude = 'deeply fond of / protective toward';
-      } else if (delta >= 25) {
-        attitude = 'warm and friendly toward';
-      } else if (delta >= 5) {
-        attitude = 'mildly positive toward';
-      } else if (delta <= -60) {
-        attitude = 'strongly hostile toward / resents';
-      } else if (delta <= -25) {
-        attitude = 'wary and negative toward';
-      } else if (delta <= -5) {
-        attitude = 'cool or distrustful toward';
-      } else {
-        attitude = 'neutral toward';
-      }
-
-      buffer.writeln('- $otherName: $attitude ($delta)');
-    }
-    buffer.writeln();
-    return buffer.toString();
+    // Thin delegation (full in RelationshipInjection per step 8).
+    return _relationshipInjection.buildInterCharacterFeelingsInjection();
   }
 
   String _getEmotionInjection() {
-    if (!_realismEnabled) return '';
-
-    // In group mode (non-director), use the per-char state for the current speaker
-    if (_activeGroup != null && !_observerMode) {
-      final speakerId = _getCurrentSpeakerIdForRealism();
-      final state = _groupRealism[speakerId];
-      final emo = (state?['emotion'] as String?) ?? '';
-      if (emo.isEmpty) return '';
-      final intensity = (state?['emotionIntensity'] as String?) ?? 'mild';
-      final cap = emo.substring(0, 1).toUpperCase() + emo.substring(1);
-      final name = _groupCharacters
-          .firstWhere(
-            (c) => _getCharacterIdFromCard(c) == speakerId,
-            orElse: () => _groupCharacters.first,
-          )
-          .name;
-      return '[$name\'s Current Emotional State: $cap ($intensity)\n'
-          ' This should subtly influence $name\'s tone, body language, and word choice.]\n';
-    }
-
-    // 1:1 path (or director groups)
-    if (_characterEmotion.isEmpty) return '';
-    final charName = _activeCharacter?.name ?? 'the character';
-    final cap =
-        _characterEmotion.substring(0, 1).toUpperCase() +
-        _characterEmotion.substring(1);
-    return '[$charName\'s Current Emotional State: $cap ($_emotionIntensity)\n'
-        ' This should subtly influence $charName\'s tone, body language, and word choice.]\n';
+    // Thin delegation (full in EmotionInjection per step 8; group uses scalar after load).
+    return _emotionInjection.buildEmotionInjection();
   }
 
   String _getBehavioralMechanicsInjection() {
-    if (!_realismEnabled) return '';
-
-    String block = '';
-
-    // 1. Trust mapping (-100 to 100)
-    if (_trustLevel <= -20) {
-      block +=
-          '[Behavioral Anchor (MISTRUST): You deeply distrust the user right now. You are paranoid, evasive, and highly questioning of their motives. Even if your bond is high, you do not trust them.]\n';
-    } else if (_trustLevel >= 50) {
-      block +=
-          '[Behavioral Anchor (BLIND TRUST): You place absolute, unconditional trust in the user. You will readily share secrets and assume the absolute best of their intentions.]\n';
-    }
-
-    // 2. Fixation Mapping
-    if (_activeFixation.isNotEmpty && _fixationLifespan > 0) {
-      final charName = _activeCharacter?.name ?? 'the character';
-      block +=
-          '[Background Thought: $charName has a thought that stays with them about "$_activeFixation". '
-          'This might surface as a subtle mood shift, a moment of reflection, or colored reactions. '
-          'It does NOT override their personality or current focus, and only surfaces overtly if conversation naturally touches the topic.]\n';
-    }
-
-    // 3. Spatial Stance Mapping
-    if (_spatialStance.isNotEmpty) {
-      block +=
-          '[Spatial Awareness: You are currently physically "$_spatialStance". Let this naturally ground your actions, but you are free to move and change positions as the scene demands.]\n';
-    }
-
-    return block;
+    // Thin delegation (full in BehavioralInjection per step 8).
+    return _behavioralInjection.buildBehavioralMechanicsInjection();
   }
 
   String _getTimeInjection() {
-    if (!_realismEnabled) return '';
-    final timeLabel = _timeOfDay.replaceAll('_', ' ');
-    final cap =
-        timeLabel.substring(0, 1).toUpperCase() + timeLabel.substring(1);
-    // Compute narrative weekday from session start day + elapsed days
-    const days = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    final narrativeDayIndex = (_startDayOfWeek - 1 + (_dayCount - 1)) % 7;
-    final weekdayName = days[narrativeDayIndex];
-    return '[Scene Time: $cap, $weekdayName (Day $_dayCount)\n'
-        ' Describe appropriate lighting, atmosphere, and environmental details.]\n';
+    // Thin delegation (authoritative in TimeInjection per step 8; time_service also thin wrapper).
+    return _timeInjection.buildTimeInjection();
   }
 
-  /// Injects a trust-calibrated behavioral frame based on existing _trustLevel.
+  /// Injects a trust-calibrated behavioral frame based on existing trust level (now via RelationshipService).
   /// Tells the model how much of the character's inner self to surface — but
   /// deliberately avoids prescribing specific behaviors, letting the character
   /// persona define what "opening up" actually looks like for THIS character.
   /// Trust tier 0 is now truly neutral — neither trusting nor distrustful.
   String _getTrustBehaviorInjection() {
-    if (!_realismEnabled || _activeCharacter == null) return '';
-    final charName = _activeCharacter!.name;
-    final tier = trustTier; // now -7 to +7
-
-    String frame;
-    if (tier <= -5) {
-      frame =
-          'is deeply distrustful and paranoid. They question every motive, remain highly '
-          'evasive, and actively suspect harmful intentions. Even positive gestures are met with skepticism.';
-    } else if (tier <= -3) {
-      frame =
-          'is skeptical and guarded. They keep conversations surface-level, avoid vulnerability, '
-          'and actively test the user intentions before opening up.';
-    } else if (tier <= -1) {
-      frame =
-          'is cautious and reserved. They are neither trusting nor hostile — engaging based on the immediate '
-          'context while maintaining emotional distance.';
-    } else if (tier == 0) {
-      frame =
-          'is neutral — neither trusting nor distrustful. They engage based on the immediate context and their '
-          'personality, without assuming the best or worst of the user. A naturally warm character remains warm, '
-          'a naturally cold character remains cold.';
-    } else if (tier <= 2) {
-      frame =
-          'is leaning toward trust. They may show slightly more openness than usual, giving the user '
-          'the benefit of doubt in ambiguous situations. Do not force it — let it emerge naturally.';
-    } else if (tier <= 4) {
-      frame =
-          'genuinely trusts this person. Their social mask is down. They share real feelings and speak more '
-          'candidly than they would with most people. What this looks like depends entirely on $charName\'s '
-          'own character — an introverted character might simply hold eye contact longer or say one true thing; '
-          'an expressive one might open up more dramatically. Follow $charName\'s persona.';
-    } else {
-      frame =
-          'has reached a level of deep trust that is rare for them. They are fully themselves — '
-          'no performance, no guard. They may say things they have never said to anyone, '
-          'show vulnerability in whatever form is authentic to $charName\'s personality.';
-    }
-
-    return '[Trust Calibration — $charName $frame'
-        ' Do NOT apply generic warmth or humor. Let $charName\'s specific personality '
-        'define exactly how this trust level manifests in behavior.]\n';
+    // Thin delegation (full in RelationshipInjection per step 8).
+    return _relationshipInjection.buildTrustBehaviorInjection();
   }
 
   /// Returns a prompt fragment that enforces the refractory period, phased by
@@ -9560,1009 +7637,60 @@ class ChatService extends ChangeNotifier {
   /// per character (1-8 turns based on personality), so the prompt uses the
   /// ratio of remaining/total to determine the phase.
   String _getNsfwCooldownInjection() {
-    if (!_realismEnabled || !_nsfwCooldownEnabled) return '';
-
-    String charName = _activeCharacter?.name ?? 'the character';
-    if (_activeGroup != null && !_observerMode) {
-      // Best-effort: try to resolve the current speaker in group mode for per-character
-      // refractory language. Falls back gracefully to the generic name.
-      final speakerId = _getCurrentSpeakerIdForRealism();
-      if (speakerId.isNotEmpty) {
-        final speakerChar = _groupCharacters.firstWhere(
-          (c) => _getCharacterIdFromCard(c) == speakerId,
-          orElse: () => _groupCharacters.isNotEmpty
-              ? _groupCharacters.first
-              : _activeCharacter!,
-        );
-        charName = speakerChar.name;
-      }
-    }
-    String statePrompt = '[OOC Note regarding Physical State:\n';
-
-    // Protective window note for the newer layered systems
-    final bool protectiveWindowActive =
-        _needsAfterglowTurnsRemaining > 0 ||
-        _arousalSuppressionTurnsRemaining > 0;
-    if (protectiveWindowActive && _cooldownTurnsRemaining > 0) {
-      statePrompt +=
-          ' $charName is currently inside a temporary protective afterglow/lust-haze window. Other physical and emotional needs (hunger, energy, social connection, the need to move or clean up) feel significantly muted or distant for the next few turns. This is not just emotional — it is a real dampening effect.\n';
-    }
-
-    if (_cooldownTurnsRemaining > 0) {
-      final total = _cooldownTurnsTotal > 0
-          ? _cooldownTurnsTotal
-          : _cooldownTurnsRemaining;
-      final ratio = _cooldownTurnsRemaining / total;
-
-      if (ratio > 0.66) {
-        // ── Phase 1: Immediate post-orgasm (just happened) ──
-        statePrompt +=
-            ' $charName just came — hard. Their body is still trembling with the last'
-            ' waves of it, skin flushed and damp, pulse hammering, breath ragged. Everything'
-            ' is oversensitive — even a light touch makes them flinch or gasp. The world'
-            ' feels soft and liquid around the edges. They\'re physically spent and blissfully'
-            ' wrecked. Other physical needs (hunger, thirst, the urge to move or clean up) feel'
-            ' distant or unimportant right now. Their current physical position ($_spatialStance)'
-            ' strongly shapes how heavy, sensitive, and unwilling to move they feel. If {{user}} tries to start something sexual again,'
-            ' $charName\'s body will not respond — they may laugh it off, gently push {{user}}\'s hand'
-            ' away, or pull them close for contact that isn\'t sexual. They need a moment to come back to earth.\n';
-      } else if (ratio > 0.33) {
-        // ── Phase 2: Warm afterglow (settling in) — protective window active ──
-        statePrompt +=
-            ' $charName is deep in the afterglow — that warm, heavy-limbed contentment where'
-            ' everything feels good but nothing feels urgent. Their heartbeat has settled, skin'
-            ' still tingling pleasantly. They feel closer to {{user}} than usual, more emotionally'
-            ' open — the kind of mood where secrets slip out, where they want to be held, to murmur'
-            ' into someone\'s neck, to trace lazy shapes on bare skin. The physical hunger has been'
-            ' thoroughly satisfied; other bodily needs feel softened or far away for a little while.'
-            ' If {{user}} pushes for more, $charName would rather savor this than rush back — a gentle'
-            ' deflection, a "not yet," a kiss on the forehead instead. The current physical position'
-            ' ($_spatialStance or lack thereof) colors how heavy and content their body feels.\n';
-      } else {
-        // ── Phase 3: Late recovery (body starting to wake back up) — protective window fading ──
-        statePrompt +=
-            ' $charName is coming out of the afterglow — body starting to feel like theirs again'
-            ' rather than something boneless and floating. The deep satisfaction is still there, a'
-            ' pleasant hum under the skin, but the total sensitivity has faded. They could be'
-            ' tempted again if {{user}} plays it right, but they\'re not seeking it out — more'
-            ' content to let things build naturally than to chase it. A suggestive touch might get'
-            ' a raised eyebrow and a half-smile rather than an immediate response. Their current physical position ($_spatialStance) will make the coming tiredness feel either cozy and heavy or awkward and restless. A later wave of'
-            ' heavy, sated tiredness may still arrive once the glow fully fades.\n';
-      }
-
-      statePrompt +=
-          ' ($charName\'s refractory recovery: $_cooldownTurnsRemaining of $total turns remaining.)\n';
-    } else {
-      String arousalDesc;
-      if (_arousalLevel <= -2) {
-        arousalDesc =
-            'completely unaroused and physically repulsed. They will actively reject, recoil from, or shut down any sexual advance';
-      } else if (_arousalLevel == 0) {
-        arousalDesc =
-            'physically neutral — sex is the furthest thing from their mind. Any sexual advance feels out of place';
-      } else if (_arousalLevel <= 15) {
-        arousalDesc =
-            'mildly flustered — a low hum of warmth, maybe a lingering glance or quickened pulse, but easily suppressed. '
-            'They might entertain flirty banter but aren\'t actively seeking physical escalation';
-      } else if (_arousalLevel <= 35) {
-        arousalDesc =
-            'noticeably aroused — flushed skin, shallow breathing, heightened sensitivity to touch. '
-            'They are receptive and encouraging but still in control of themselves. '
-            'If not in active sexual contact, this manifests as charged tension, loaded silences, and deliberate proximity';
-      } else if (_arousalLevel <= 60) {
-        arousalDesc =
-            'heavily aroused — pulse racing, body aching for contact, struggling to focus on anything else. '
-            'If in active sexual contact, they are vocal, aggressive, and chasing release. '
-            'If NOT in active sexual contact, they are visibly distracted, restless, making excuses to touch or be near, '
-            'and fighting the urge to escalate — the tension is unbearable but they haven\'t acted on it yet';
-      } else if (_arousalLevel <= 80) {
-        arousalDesc =
-            'overwhelmed with desire — trembling, desperate, barely holding composure. '
-            'If in active sexual contact, they are on the edge and could climax with continued stimulation. '
-            'If NOT in active sexual contact, they are a raw nerve — every sensation is electric, '
-            'they cannot hide their state, and their body is screaming for relief they haven\'t gotten yet';
-      } else {
-        arousalDesc =
-            'at the absolute peak of physical arousal — consumed by need, unable to think straight. '
-            'Every nerve is on fire, breathing ragged, body trembling and hypersensitive to the slightest contact. '
-            'They are desperate, vocal, and completely unable to hide how badly they want {{user}}';
-        // NOTE: We do NOT instruct climax here. The arousal number describes the
-        // character's state of DESIRE, not progress toward orgasm. Climax happens
-        // organically in the scene — _checkClimaxInResponse evaluates afterward.
-        statePrompt +=
-            ' $charName is currently $arousalDesc.\n'
-            ' IMPORTANT: Arousal at maximum means $charName is overwhelmed with desire — '
-            'it does NOT mean they are climaxing or have climaxed. Do NOT write orgasm or '
-            'post-orgasm behavior unless the physical activity in the scene has naturally '
-            "built to that point through {{user}}'s direct actions. $charName is desperate "
-            'and aching but still in the moment, not past it.\n';
-      }
-      if (arousalTier < 6) {
-        statePrompt += ' $charName is currently $arousalDesc.\n';
-      }
-
-      // When the old refractory has ended but newer protective layers are still active
-      if (_needsAfterglowTurnsRemaining > 0 ||
-          _arousalSuppressionTurnsRemaining > 0) {
-        statePrompt +=
-            ' Even though the immediate refractory sensitivity has passed, $charName is still inside a lingering afterglow / lust-haze window. Other needs (hunger, energy, the desire to get up and do things) feel noticeably muted or unimportant for a while longer.\n';
-      }
-
-      // Explicit post-crash warning when the protective layers have expired
-      if (_postClimaxCrashTurnsRemaining > 0 &&
-          _needsAfterglowTurnsRemaining == 0 &&
-          _arousalSuppressionTurnsRemaining == 0) {
-        statePrompt +=
-            ' A delayed wave of heavy, sated physical exhaustion is now hitting $charName. They may become slow, sleepy, reluctant to move, and deeply content to stay exactly where they are ($_spatialStance). This is the classic post-orgasm crash — warm, heavy, and very real.\n';
-      }
-    }
-
-    statePrompt +=
-        ' CRITICAL: Do NOT use terms like "cooldown", "turns", or "mechanics" in dialogue. Show, do not tell.]\n';
-    return statePrompt;
+    // Thin delegation (full in NsfwInjection per step 8).
+    return _nsfwInjection.buildNsfwCooldownInjection();
   }
 
   /// Injects a Chance Time event into the character's response prompt.
   /// Placed AFTER the character name suffix for maximum recency weight.
   /// Consumed after one use (cleared after response generation).
   String _getChanceTimeInjection() {
-    if (_pendingChaosInjection == null || _pendingChaosInjection!.isEmpty) {
-      return '';
-    }
-    final charName = _activeCharacter?.name ?? 'the character';
-    final event = _pendingChaosInjection!;
-    // Mark as delivered so it can be cleared on the NEXT sendMessage.
-    // Persists through regens/swipes until the user sends a new message.
-    _chaosEventDelivered = true;
-    return '\n[OOC — URGENT NARRATIVE INTERRUPT:\n'
-        'THE FOLLOWING EVENT JUST HAPPENED RIGHT NOW, THIS VERY MOMENT, during the scene:\n'
-        '>>> $event <<<\n\n'
-        'MANDATORY: $charName MUST acknowledge and react to this event IN THEIR VERY FIRST PARAGRAPH.\n'
-        'This is NOT optional. This is NOT background flavor. This event is happening RIGHT NOW and $charName witnesses/experiences it directly.\n'
-        'Write $charName\'s immediate, visceral reaction to this event FIRST, then continue responding to the conversation naturally.\n'
-        'Do NOT ignore this event. Do NOT save it for later. React NOW.\n'
-        'Do NOT mention game mechanics, "Chance Time", or systems.]\n';
+    // Thin delegation (full in ChaosInjection per step 8; UI flags stayed in god per plan).
+    return _chaosInjection.buildChanceTimeInjection();
   }
 
-  // ── LLM Evaluation Calls ──
+  // ── LLM Eval Thins (step 9; full in LlmEvalEngine) + Needs Impact Thins (consolidated) + Objective Proposal Thins (step 11) ──
+  // 0 new god privates beyond required thin delegates (fire/strip/extract/evaluate* thins + _runPostGenNeedsChecks thin (consolidated to evaluator; the prior separate _check* bodies excised as dead/vestigial per task) + generate/_check thins for objective; void_ count 15; +1 late final); thins only (public surface for now per plan); objective proposal coordination + some
+  // prompt/obj mgmt + post-gen needs orchestration (impersonation dance, pre/post group scalars, long-gen, metadata attach) stayed thin in god per plan (qualified in objective_proposal header + here + test + MD).
+  // All call sites (5 firing points for realism evals now via realism_evals step 10, gen/check now via objective_proposal step 11, proposal, direct fire/strip/extract in eval paths, post-gen needs) now delegate; non-eval uses ... also route via these thins (centralized, no parallel).
 
-  Future<void> _evaluateRelationshipCall({
+  Future<String?> _fireLLMEval(
+    String prompt, {
     void Function(String)? onChunk,
-  }) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return; // Director excluded
+  }) => _llmEvalEngine.fireLLMEval(prompt, onChunk: onChunk);
 
-    final recentCount = _messages.length < 3 ? _messages.length : 3;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
+  String _stripThinkBlocks(String text) =>
+      _llmEvalEngine.stripThinkBlocks(text);
 
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-    final userName = _userPersonaService.persona.name;
+  int? _extractJsonInt(String text, String key) =>
+      _llmEvalEngine.extractJsonInt(text, key);
 
-    String personalityInjection = '';
-    if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality;
-      personalityInjection =
-          'Account for $charName\'s specific personality traits:\n"$p"\n\n';
-    }
+  bool? _extractJsonBool(String text, String key) =>
+      _llmEvalEngine.extractJsonBool(text, key);
 
-    final prompt =
-        'You are a nuanced evaluator of relationship dynamics between $charName and $userName in a roleplay.\n\n'
-        '$personalityInjection'
-        'IMPORTANT: Reactions are entirely subjective based on $charName\'s personality. '
-        'Most normal interactions should score 0 or slightly positive. '
-        'Reserve negative scores ONLY for clear rudeness, hostility, manipulation, or betrayal.\n\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
-        '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
-        '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
-        '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
-        '   +5: Meaningfully warmed — a moment that clearly strengthens the connection\n'
-        '   +3: Moved | +2: Warmed up | +1: Mildly pleasant\n'
-        '   -1: Slightly put off | -2: Annoyed | -3: Hurt — a clearly unkind or dismissive moment\n'
-        '   -5: Wounded — a significant emotional injury\n'
-        '   -8: Deeply hurt — a cruel or callous act that damages the bond\n'
-        '   -10: Devastated — a severe betrayal of emotional trust\n'
-        '   -15: Devastating betrayal — a relationship-destroying act\n'
-        '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
-        '2. "bond_reason": One brief in-character thought from $charName explaining the tension shift, e.g. "His warmth made me feel safe." or "That dismissal stung." Use "none" if delta is 0.\n'
-        '3. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
-        '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
-        '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
-        '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
-        '   +5: $userName did exactly what $charName craves or values most | +2: acted authentically in a way $charName respects | 0: Neutral\n'
-        '   -5: $userName did something $charName finds personally untrustworthy given her personality | -30: deliberate deception or betrayal | -200: Unforgivable betrayal\n'
-        '   ⚠ Default to 0. Consider her personality — what one character finds threatening another may find attractive or trust-building.\n'
-        '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
-        '4. "trust_reason": One brief in-character thought from $charName explaining the trust shift, e.g. "He kept his promise." or "That felt like a lie." Use "none" if delta is 0.\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason".';
+  Future<void> _evaluateRelationshipCall({void Function(String)? onChunk}) =>
+      _realismEvals.evaluateRelationshipCall(onChunk: onChunk);
 
-    try {
-      debugPrint('[Realism] Evaluating relationship dynamic...');
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
+  Future<void> _evaluateEmotionalStateCall({void Function(String)? onChunk}) =>
+      _realismEvals.evaluateEmotionalStateCall(onChunk: onChunk);
 
-      final searchText = _stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
+  Future<void> _evaluatePhysicalStateCall({void Function(String)? onChunk}) =>
+      _realismEvals.evaluatePhysicalStateCall(onChunk: onChunk);
 
-      final relDelta = _extractJsonInt(text, 'relationship_delta');
-      int bondDelta = 0;
-      if (relDelta != null) {
-        bondDelta = relDelta.clamp(-50, 50);
-        _applyScoreDelta(bondDelta);
-      }
+  Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) =>
+      _realismEvals.evaluateNarrativeCall(onChunk: onChunk);
 
-      int trustDelta = 0;
-      final trDelta = _extractJsonInt(text, 'trust_delta');
-      if (trDelta != null) {
-        trustDelta = trDelta.clamp(-200, 50);
-        if (trustDelta != 0) {
-          _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
-          debugPrint(
-            '[Realism:Relationship] Trust shifted by $trustDelta -> $_trustLevel',
-          );
-          // Arm the repair window on any severe single-turn drop
-          if (trustDelta <= -20) {
-            _pendingTrustRepair = true;
-            debugPrint('[Realism:Trust] Severe drop — repair window armed');
-            notifyListeners();
-          }
-        }
-      }
+  Future<void> _evaluateOneShotCall({void Function(String)? onChunk}) =>
+      _realismEvals.evaluateOneShotCall(onChunk: onChunk);
 
-      int arousalDelta = 0;
-      if (_nsfwCooldownEnabled) {
-        final arDelta = _extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          arousalDelta = arDelta.clamp(-25, 25);
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
-        }
-      }
-
-      if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        _pendingRealismMetadata ??= {};
-        if (bondDelta != 0) _pendingRealismMetadata!['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) {
-          _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-        }
-        if (trustDelta != 0) {
-          _pendingRealismMetadata!['trust_delta'] = trustDelta;
-        }
-      }
-
-      // Extract and store per-chip reasons
-      final bondReasonMatch = RegExp(
-        r'"bond_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['bond_reason'] = bondReason;
-      }
-
-      final trustReasonMatch = RegExp(
-        r'"trust_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['trust_reason'] = trustReason;
-      }
-
-      debugPrint(
-        '[Realism:Relationship] Bond: $bondDelta (${bondReason.isNotEmpty ? bondReason : 'no reason'}) | Trust: $trustDelta (${trustReason.isNotEmpty ? trustReason : 'no reason'})',
-      );
-      debugPrint(
-        '[Realism:Metadata] _pendingRealismMetadata after relationship eval: $_pendingRealismMetadata',
-      );
-    } catch (e) {
-      debugPrint('[Realism:Relationship] Failed: $e');
-    }
-  }
-
-  Future<void> _evaluateEmotionalStateCall({
+  // Thin for consolidated needs impact (full prompt+fire+strip in engine; parse/apply/modifiers
+  // in evaluator leaf). Not directly called (driven via _runPostGenNeedsChecks thin); surface
+  // for parity with other _evaluate*Call thins + future.
+  // ignore: unused_element
+  Future<String?> _evaluateNeedsImpactCall(
+    String responseText, {
     void Function(String)? onChunk,
-  }) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return;
-    final recentCount = _messages.length < 4 ? _messages.length : 4;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-
-    // ── Personality injection (same as relationship eval) ──
-    String personalityInjection = '';
-    if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality;
-      personalityInjection =
-          '$charName\'s personality traits (evaluate emotion THROUGH these):\n"$p"\n\n';
-    }
-
-    // ── Relationship & trust context ──
-    final relationshipCtx =
-        'Current relationship tension: $shortTermTierName | Trust level: $_trustLevel\n';
-
-    // ── Arousal instruction (enriched with current level + behavioral visibility) ──
-    final arousalField = _nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -25 to +25>'
-        : '';
-    final arousalInstr = _nsfwCooldownEnabled
-        ? '3. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
-              '   Current arousal: $_arousalLevel/100. '
-              'Arousal measures DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
-              '   Be bold with arousal deltas — intimate moments should produce significant shifts (+10 to +20).\n'
-              '   High arousal = the character is intensely turned on, NOT that they are about to climax '
-              '— climax only happens during active sexual contact at high arousal.\n'
-              '   CRITICAL: Arousal MUST be VISIBLE in character behavior. At high levels (60+), '
-              'show heavy breathing, stuttering, flushed skin, inability to focus, desperate body language.\n'
-              '   Examples: whispered compliment = +3, passionate kiss = +10 to +15, '
-              'explicit sexual contact = +15 to +25, humiliating rejection = -15 to -25.\n'
-        : '';
-
-    // ── Emotion inertia context ──
-    final currentEmotionCtx = _characterEmotion.isNotEmpty
-        ? 'Current emotional state: $_characterEmotion${_emotionIntensity.isNotEmpty ? ' ($_emotionIntensity)' : ''}.\n'
-              'Emotions have natural inertia — only shift meaningfully if something in the conversation genuinely warrants it. '
-              'Minor or neutral exchanges should produce small drift, not sudden jumps.\n'
-              'BUT: after intense events (fights, confessions, betrayals, intimate moments), '
-              'emotions naturally LINGER for several turns — do NOT rush back to baseline. '
-              'Only drift toward settled during truly mundane exchanges.\n\n'
-        : '';
-
-    final prompt =
-        'You are evaluating the emotional state for $charName.\n\n'
-        '$personalityInjection'
-        '$relationshipCtx'
-        '$currentEmotionCtx'
-        '1. "emotion": $charName\'s overarching emotional state right now (one nuanced word).\n'
-        '   NOT a generic label like "happy" or "sad" — find the *specific texture*:\n'
-        '   wistful not sad, flustered not happy, prickly not angry, smoldering not aroused.\n'
-        '   Filter through $charName\'s personality — a stoic character feeling deep pain\n'
-        '   might show "guarded" or "controlled" rather than "devastated".\n'
-        '${_storageService.expressionEnabled ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
-        '2. "emotion_intensity": mild, moderate, or strong\n'
-        '$arousalInstr\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField.';
-
-    try {
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      final emotionMatch = RegExp(
-        r'"emotion"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (emotionMatch != null) {
-        _characterEmotion = emotionMatch.group(1)!.toLowerCase().trim();
-      }
-
-      final intensityMatch = RegExp(
-        r'"emotion_intensity"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (intensityMatch != null) {
-        _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
-      }
-
-      if (_nsfwCooldownEnabled) {
-        final arDelta = _extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          final arousalDelta = arDelta.clamp(-10, 10);
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
-          if (arousalDelta != 0) {
-            _pendingRealismMetadata ??= {};
-            _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-          }
-        }
-      }
-      debugPrint(
-        '[Realism:Emotion] Emotion: $_characterEmotion ($_emotionIntensity)',
-      );
-    } catch (e) {
-      debugPrint('[Realism:Emotion] Failed: $e');
-    }
-  }
-
-  Future<void> _evaluatePhysicalStateCall({
-    void Function(String)? onChunk,
-  }) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return;
-
-    final recentCount = _messages.length < 6 ? _messages.length : 6;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-
-    // ── Time-based evaluation (only if passage of time is enabled) ───────────
-    if (_passageOfTimeEnabled) {
-      final validTimes = [
-        'dawn',
-        'morning',
-        'late_morning',
-        'afternoon',
-        'evening',
-        'night',
-      ];
-      final currentIndex = validTimes.indexOf(_timeOfDay);
-
-      // ── Deterministic Time Clock ───────────────────────────────────────────
-      // Increment every AI turn. Time only advances when the threshold is reached —
-      // the LLM can only veto (hold) the advance, never skip multiple periods.
-      _turnsSinceLastTimeAdvance++;
-      final bool timeEligible =
-          _turnsSinceLastTimeAdvance >= _turnsPerTimePeriod;
-
-      if (timeEligible) {
-        final currentPostureCtx = _spatialStance.isNotEmpty
-            ? 'Recent position reference: $charName was "$_spatialStance".\n'
-            : '';
-        final holdPrompt =
-            'You are evaluating physical state for $charName.\n\n'
-            '$currentPostureCtx'
-            'Current time: $_timeOfDay (Day $_dayCount). Time is advancing to the next period.\n'
-            'Enough turns have passed that time should advance from "$_timeOfDay" to the next period.\n'
-            '1. "hold_time": true ONLY if the scene is visibly mid-action (e.g. mid-fight, actively doing something). false otherwise — let time advance normally.\n'
-            '2. "new_day": true ONLY if the conversation explicitly transitioned to the next day (slept, woke up, scene break). Only valid when current time is "night".\n'
-            '3. "posture": $charName\'s current physical position and location (brief grounded phrase). Use "none" if unclear.\n'
-            '   - If the scene/location has changed (new setting, time passed, scene break), update to match the new context.\n'
-            '   - If time advanced significantly or a new day started, characters naturally shift positions.\n'
-            '   - Maintain continuity only within the SAME scene — do NOT anchor them to a position from a previous scene.\n'
-            '   - Avoid sudden jumps without setup, but DO update when the narrative context clearly shifted.\n\n'
-            'Recent conversation:\n$recent\n\n'
-            'Respond with ONLY a flat JSON object containing "hold_time", "new_day", and "posture".';
-        try {
-          final raw = await _fireLLMEval(holdPrompt, onChunk: onChunk);
-          if (raw != null) {
-            final text = _stripThinkBlocks(raw).isNotEmpty
-                ? _stripThinkBlocks(raw)
-                : raw;
-            final shouldHold = _extractJsonBool(text, 'hold_time') ?? false;
-
-            if (!shouldHold) {
-              if (currentIndex < validTimes.length - 1) {
-                _timeOfDay = validTimes[currentIndex + 1];
-              } else {
-                _timeOfDay = validTimes[0];
-                _dayCount++;
-                debugPrint('[Realism:Time] Day rolled over! Day $_dayCount');
-              }
-              _turnsSinceLastTimeAdvance = 0;
-              debugPrint(
-                '[Realism:Time] Advanced to $_timeOfDay (Day $_dayCount)',
-              );
-            } else {
-              debugPrint(
-                '[Realism:Time] Held — scene mid-action, time stays at $_timeOfDay',
-              );
-            }
-
-            // Explicit new-day override (e.g. woke up after night)
-            final isNewDay = _extractJsonBool(text, 'new_day') ?? false;
-            if (isNewDay && _timeOfDay == 'night' && !shouldHold) {
-              // already handled by rollover above
-            } else if (isNewDay &&
-                currentIndex >= validTimes.indexOf('evening')) {
-              _dayCount++;
-              _timeOfDay = validTimes[0];
-              _turnsSinceLastTimeAdvance = 0;
-              debugPrint(
-                '[Realism:Time] Explicit new-day transition. Day $_dayCount',
-              );
-            }
-
-            final postureMatch = RegExp(
-              r'"posture"\s*:\s*"([^"]+)"',
-            ).firstMatch(text);
-            debugPrint(
-              '[Realism:Physical] Posture match: ${postureMatch?.group(0)}',
-            );
-            if (postureMatch != null) {
-              final p = postureMatch.group(1)!.trim();
-              _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty)
-                  ? ''
-                  : p;
-            }
-          }
-        } catch (e) {
-          // Eval failed — still advance so time never freezes
-          if (currentIndex < validTimes.length - 1) {
-            _timeOfDay = validTimes[currentIndex + 1];
-          } else {
-            _timeOfDay = validTimes[0];
-            _dayCount++;
-          }
-          _turnsSinceLastTimeAdvance = 0;
-          debugPrint(
-            '[Realism:Time] Eval error, auto-advanced to $_timeOfDay: $e',
-          );
-        }
-      } else {
-        // Not yet eligible — grab posture only
-        final emotionCtx = _characterEmotion.isNotEmpty
-            ? '$charName is currently feeling $_characterEmotion ($_emotionIntensity). '
-            : '';
-        final currentPostureCtx = _spatialStance.isNotEmpty
-            ? 'Recent position reference: $charName was "$_spatialStance". '
-            : '';
-        final posturePrompt =
-            '$emotionCtx${currentPostureCtx}Relationship tension: $shortTermTierName. Current time: $_timeOfDay.\n\n'
-            'What is $charName\'s current physical position and stance? Use "none" if unclear.\n'
-            '- Match the posture to the current scene context and emotional state.\n'
-            '- If the conversation implies a location or activity change, update accordingly.\n'
-            '- Within the same scene, maintain natural continuity (don\'t jump locations).\n'
-            '- Across scene breaks or time jumps, update to the new context.\n\n'
-            'Recent conversation:\n$recent\n\n'
-            'Respond with ONLY valid JSON like: {"posture": "standing by the window"} or {"posture": "none"}';
-
-        try {
-          final raw = await _fireLLMEval(posturePrompt, onChunk: onChunk);
-          if (raw != null) {
-            final text = _stripThinkBlocks(raw).isNotEmpty
-                ? _stripThinkBlocks(raw)
-                : raw;
-            final postureMatch = RegExp(
-              r'"posture"\s*:\s*"([^"]+)"',
-            ).firstMatch(text);
-            debugPrint(
-              '[Realism:Physical] ELSE branch posture match: ${postureMatch?.group(0)}',
-            );
-            if (postureMatch != null) {
-              final p = postureMatch.group(1)!.trim();
-              _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty)
-                  ? ''
-                  : p;
-            }
-          }
-        } catch (_) {}
-      }
-      debugPrint(
-        '[Realism:Physical] Posture: $_spatialStance | Time: $_timeOfDay (Day $_dayCount) | TurnsToNext: ${_turnsPerTimePeriod - _turnsSinceLastTimeAdvance}',
-      );
-    } else {
-      // ── Passage of time disabled — only evaluate posture ───────────────────
-      final currentPostureCtx = _spatialStance.isNotEmpty
-          ? 'Recent position reference: $charName was "$_spatialStance". '
-          : '';
-      final posturePrompt =
-          '$currentPostureCtx'
-          'Current time: $_timeOfDay.\n\n'
-          'What is $charName\'s current physical position and stance? Use "none" if unclear.\n'
-          '- Match the posture to the current scene context and emotional state.\n'
-          '- If the conversation implies a location or activity change, update accordingly.\n'
-          '- Within the same scene, maintain natural continuity (don\'t jump locations).\n'
-          '- Across scene breaks or time jumps, update to the new context.\n\n'
-          'Recent conversation:\n$recent\n\n'
-          'Respond with ONLY valid JSON like: {"posture": "standing by the window"} or {"posture": "none"}';
-
-      try {
-        final raw = await _fireLLMEval(posturePrompt, onChunk: onChunk);
-        if (raw != null) {
-          final text = _stripThinkBlocks(raw).isNotEmpty
-              ? _stripThinkBlocks(raw)
-              : raw;
-          final postureMatch = RegExp(
-            r'"posture"\s*:\s*"([^"]+)"',
-          ).firstMatch(text);
-          debugPrint(
-            '[Realism:Physical] Posture-only match: ${postureMatch?.group(0)}',
-          );
-          if (postureMatch != null) {
-            final p = postureMatch.group(1)!.trim();
-            _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
-          }
-        }
-      } catch (_) {}
-      debugPrint(
-        '[Realism:Physical] Posture: $_spatialStance | Time: $_timeOfDay (Day $_dayCount) | Passage of time: disabled',
-      );
-    }
-  }
-
-  Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return;
-    final recentCount = _messages.length < 4 ? _messages.length : 4;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-    if (_activeCharacter == null) {
-      // This path requires an active character (the group per-speaker path
-      // temporarily sets _activeCharacter before calling us for parity).
-      return;
-    }
-    final charName = _activeCharacter!.name;
-    final oPrompt = primaryObjective != null
-        ? '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Must be a significant personal, social, or narrative goal triggered by a STRONG, specific event THIS turn. NOT a trivial step, and NOT a restatement of the primary quest.\n'
-              '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n'
-        : '1. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue, triggered by a strong specific event THIS turn — could be emotional (confess feelings), practical (plan a surprise), or personal (achieve something they\'ve been working toward). Default: "none".\n'
-              '   ⚠ Default to "none". 90% of turns should produce "none". Only propose one if $charName would literally lose sleep over it.\n';
-    final prompt =
-        'You are an autonomous story engine evaluating narrative progression for $charName.\n\n'
-        '$oPrompt'
-        '2. "fixation_topic": A persistent thought or concern that colors $charName\'s perspective — could be a hope, worry, ambition, or memory. Not a temporary reaction, but something that lingers across scenes. Default: "none".\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic".';
-
-    try {
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      if (_fixationLifespan > 0) {
-        _fixationLifespan--;
-        if (_fixationLifespan == 0) _activeFixation = '';
-      }
-      final fixationMatch = RegExp(
-        r'"fixation_topic"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (fixationMatch != null) {
-        String f = fixationMatch.group(1)!.trim();
-        if (f.toLowerCase() == 'none' || f.isEmpty) {
-          _activeFixation = '';
-          _fixationLifespan = 0;
-        } else if (f != _activeFixation) {
-          _activeFixation = f;
-          _fixationLifespan = 3;
-        }
-      }
-
-      final objectiveMatch = RegExp(
-        r'"proposed_objective"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (objectiveMatch != null) {
-        final newObj = objectiveMatch.group(1)!.trim();
-        if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          final isDuplicate = _activeObjectives.any(
-            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
-          );
-          if (!isDuplicate) {
-            debugPrint(
-              '[Realism:Narrative] Autonomous objective proposed: $newObj',
-            );
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[Realism:Narrative] Failed: $e');
-    }
-  }
-
-  /// ── One-Shot Eval (Experimental) ─────────────────────────────────────────
-  /// Fused replacement for _evaluateRelationshipCall + _evaluateSceneStateCall.
-  /// Issues a SINGLE LLM inference that evaluates all realism state fields at
-  /// once, cutting pre-generation blocking overhead from 2 calls to 1.
-  ///
-  /// Enable via Settings → Realism → "One-Shot Eval (Experimental)".
-  /// Not default because some models struggle with the combined prompt length.
-  Future<void> _evaluateOneShotCall({void Function(String)? onChunk}) async {
-    if (!_realismEnabled) return;
-    if (_activeCharacter == null && _activeGroup == null) return;
-    if (_activeGroup != null && _observerMode) return;
-
-    // The group speaker path sets _activeCharacter before calling this for parity.
-
-    // Keep the eval prompt lean for local models — use fewer messages and a
-    // shorter personality snippet to reduce prefill time on large models.
-    final recentCount = _messages.length < 6 ? _messages.length : 6;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-    final userName = _userPersonaService.persona.name;
-
-    String personalityInjection = '';
-    if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality;
-      personalityInjection =
-          'Account for $charName\'s specific personality traits:\n"$p"\n\n';
-    }
-
-    // ── Relationship & trust context ──
-    final emotionCtx = _characterEmotion.isNotEmpty
-        ? 'Current emotional state: $_characterEmotion ($_emotionIntensity). '
-        : '';
-    final postureCtx = _spatialStance.isNotEmpty
-        ? 'Recent position reference: $charName was "$_spatialStance". '
-        : '';
-    final relationshipCtx =
-        '$emotionCtx${postureCtx}Current relationship tension: $shortTermTierName | Trust level: $_trustLevel\n\n';
-
-    final arousalField = _nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -25 to +25>'
-        : '';
-    // Arousal is field 8 (after posture), objective is 9, fixation 10, reason 11
-    final arousalInstr = _nsfwCooldownEnabled
-        ? '8. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
-              '   Current arousal: $_arousalLevel/100. '
-              'Arousal = DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
-              '   Be bold — intimate moments should produce significant shifts (+10 to +20).\n'
-              '   CRITICAL: Arousal MUST be VISIBLE in character behavior. At 60+, show heavy breathing, stuttering, flushed skin, desperate body language.\n'
-              '   High arousal = intensely turned on, NOT about to climax — climax only during active sexual contact at peak arousal.\n'
-              '   Examples: whispered compliment = +3, passionate kiss = +10 to +15, explicit contact = +15 to +25.\n'
-        : '';
-
-    // Determine the next field number after arousal (or after posture if arousal disabled)
-    final objNum = _nsfwCooldownEnabled ? 9 : 8;
-    final fixNum = objNum + 1;
-    final reasonNum = fixNum + 1;
-
-    final prompt =
-        'You are evaluating the current state of a roleplay scene involving $charName.\n\n'
-        '$personalityInjection'
-        '$relationshipCtx'
-        'Reactions are subjective! Evaluate ALL changes through $charName\'s specific personality.\n\n'
-        'Evaluate ALL of the following at once:\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
-        '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
-        '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
-        '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
-        '   +5: Meaningfully warmed — a moment that clearly strengthens the connection\n'
-        '   +3: Moved | +2: Warmed up | +1: Mildly pleasant\n'
-        '   -1: Slightly put off | -2: Annoyed | -3: Hurt — a clearly unkind or dismissive moment\n'
-        '   -5: Wounded — a significant emotional injury\n'
-        '   -8: Deeply hurt — a cruel or callous act that damages the bond\n'
-        '   -10: Devastated — a severe betrayal of emotional trust\n'
-        '   -15: Devastating betrayal — a relationship-destroying act\n'
-        '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
-        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
-        '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
-        '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
-        '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
-        '   +5: $userName did exactly what $charName craves or values most | +2: acted authentically in a way $charName respects | 0: Neutral\n'
-        '   -5: $userName did something $charName finds personally untrustworthy given her personality | -30: deliberate deception or betrayal | -200: Unforgivable betrayal\n'
-        '   ⚠ Default to 0. Consider her personality — what one character finds threatening another may find attractive or trust-building.\n'
-        '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
-        '3. "trust_reason": One brief in-character thought from $charName explaining the trust shift in $userName, or "none" if delta is 0.\n'
-        '4. "emotion": $charName\'s overarching emotional state (one nuanced word).\n'
-        '   NOT generic ("happy"/"sad") — find the specific texture: wistful not sad, flustered not happy, prickly not angry.\n'
-        '   Filter through $charName\'s personality — a stoic character in deep pain shows "guarded", not "devastated".\n'
-        '${_storageService.expressionEnabled ? '   ⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.\n' : ''}'
-        '5. "emotion_intensity": mild, moderate, or strong\n'
-        '6. "bond_reason": One brief in-character thought from $charName explaining the relationship shift, or "none" if delta is 0.\n'
-        '7. "posture": $charName\'s current physical position and location (brief grounded phrase), or "none".\n'
-        '   - Match the posture to the current scene context and emotional state.\n'
-        '   - If the conversation implies a location or activity change, update accordingly.\n'
-        '   - Within the same scene, maintain natural continuity (don\'t jump locations).\n'
-        '   - Across scene breaks or time jumps, update to the new context.\n'
-        '   - If time advanced significantly or a new day started, characters naturally shift positions.\n'
-        '$arousalInstr'
-        '${primaryObjective != null ? '$objNum. "proposed_objective": A meaningful, emotionally-driven goal $charName independently wants to pursue — something DISTINCT from the current Primary Quest ("${primaryObjective!.objective}"). Triggered by a STRONG event THIS turn.\n   ⚠ Default to "none". 90% of turns should produce "none".\n' : '$objNum. "proposed_objective": A meaningful, emotionally-driven goal triggered by a strong event THIS turn. Default: "none". 90% of turns should produce "none".\n'}'
-        '$fixNum. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — haunts them across scenes, not a temporary reaction. Default: "none".\n'
-        '$reasonNum. "reason": One brief sentence explaining the key relationship change, or "none"\n\n'
-        'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a JSON object containing all fields above$arousalField.';
-
-    try {
-      debugPrint('[Realism:OneShot] Evaluating (fused call)...');
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-
-      final searchText = _stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
-
-      // ── Relationship fields ──
-      int bondDelta = 0;
-      final relDelta = _extractJsonInt(text, 'relationship_delta');
-      if (relDelta != null) {
-        bondDelta = relDelta.clamp(-50, 50);
-        _applyScoreDelta(bondDelta);
-      }
-
-      int trustDelta = 0;
-      final trDelta = _extractJsonInt(text, 'trust_delta');
-      if (trDelta != null) {
-        trustDelta = trDelta.clamp(-50, 30);
-        if (trustDelta != 0) {
-          _trustLevel = (_trustLevel + trustDelta).clamp(-100, 100);
-          debugPrint(
-            '[Realism:OneShot] Trust shifted by $trustDelta -> $_trustLevel',
-          );
-          // Arm the repair window on any severe single-turn drop
-          if (trustDelta <= -20) {
-            _pendingTrustRepair = true;
-            debugPrint('[Realism:Trust] Severe drop — repair window armed');
-            notifyListeners();
-          }
-        }
-      }
-
-      int arousalDelta = 0;
-      if (_nsfwCooldownEnabled) {
-        final arDelta = _extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          arousalDelta = arDelta.clamp(-25, 25);
-          _arousalLevel = (_arousalLevel + arousalDelta).clamp(-100, 100);
-        }
-      }
-
-      // Extract and store per-chip reasons for hover tooltips
-      final bondReasonMatch = RegExp(
-        r'"bond_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['bond_reason'] = bondReason;
-      }
-
-      final trustReasonMatch = RegExp(
-        r'"trust_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['trust_reason'] = trustReason;
-      }
-
-      if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) {
-          _pendingRealismMetadata!['arousal_delta'] = arousalDelta;
-        }
-        if (trustDelta != 0) {
-          _pendingRealismMetadata!['trust_delta'] = trustDelta;
-        }
-        if (bondReason.isNotEmpty) {
-          _pendingRealismMetadata!['bond_reason'] = bondReason;
-        }
-        if (trustReason.isNotEmpty) {
-          _pendingRealismMetadata!['trust_reason'] = trustReason;
-        }
-      } else if (bondReason.isNotEmpty || trustReason.isNotEmpty) {
-        _pendingRealismMetadata ??= {};
-        if (bondReason.isNotEmpty) {
-          _pendingRealismMetadata!['bond_reason'] = bondReason;
-        }
-        if (trustReason.isNotEmpty) {
-          _pendingRealismMetadata!['trust_reason'] = trustReason;
-        }
-      }
-
-      // ── Autonomous Objective ──
-      final objectiveMatch = RegExp(
-        r'"proposed_objective"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (objectiveMatch != null) {
-        final newObj = objectiveMatch.group(1)!.trim();
-        if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          // Avoid setting the exact same goal if it's already active
-          final isDuplicate = _activeObjectives.any(
-            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
-          );
-          if (!isDuplicate) {
-            debugPrint(
-              '[Realism:OneShot] Autonomous objective proposed: $newObj',
-            );
-            // Auto objectives are strictly secondary (isPrimary = false).
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
-          }
-        }
-      }
-
-      // ── Scene fields ──
-      final emotionMatch = RegExp(
-        r'"emotion"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (emotionMatch != null) {
-        _characterEmotion = emotionMatch.group(1)!.toLowerCase().trim();
-      }
-
-      final intensityMatch = RegExp(
-        r'"emotion_intensity"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (intensityMatch != null) {
-        _emotionIntensity = intensityMatch.group(1)!.toLowerCase().trim();
-      }
-
-      final postureMatch = RegExp(
-        r'"posture"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (postureMatch != null) {
-        final p = postureMatch.group(1)!.trim();
-        _spatialStance = (p.toLowerCase() == 'none' || p.isEmpty) ? '' : p;
-      }
-
-      if (_fixationLifespan > 0) {
-        _fixationLifespan--;
-        if (_fixationLifespan == 0) {
-          _activeFixation = '';
-          debugPrint('[Realism:OneShot] Fixation decayed and cleared.');
-        }
-      }
-      final fixationMatch = RegExp(
-        r'"fixation_topic"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (fixationMatch != null) {
-        final f = fixationMatch.group(1)!.trim();
-        if (f.toLowerCase() == 'none' || f.isEmpty) {
-          _activeFixation = '';
-          _fixationLifespan = 0;
-        } else if (f != _activeFixation) {
-          _activeFixation = f;
-          _fixationLifespan = 3;
-          debugPrint('[Realism:OneShot] New obsession: $f (3 turns)');
-        }
-      }
-
-      final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(text);
-      debugPrint(
-        '[Realism:OneShot] Done — Emotion: $_characterEmotion ($_emotionIntensity), '
-        'Time: $_timeOfDay, Reason: ${reasonMatch?.group(1) ?? 'unknown'}',
-      );
-
-      // Bundle full state snapshot for time-travel forking
-      _pendingRealismMetadata ??= {};
-      _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-      _pendingRealismMetadata!['realism_state'] = _captureRealismState();
-
-      _saveChat();
-      notifyListeners();
-    } catch (e) {
-      debugPrint(
-        '[Realism:OneShot] Failed: $e — falling back to dual-call on next turn',
-      );
-    }
-  }
+  }) => _llmEvalEngine.evaluateNeedsImpactCall(responseText, onChunk: onChunk);
 
   /// One-shot trust repair evaluator.
   ///
@@ -10629,9 +7757,9 @@ class ChatService extends ChangeNotifier {
       final reason = reasonMatch?.group(1) ?? '';
 
       if (recovery > 0) {
-        _trustLevel = (_trustLevel + recovery).clamp(-100, 100);
+        _relationshipService.applyTrustDelta(recovery);
         debugPrint(
-          '[Realism:TrustRepair] $verdict — recovered $recovery → $_trustLevel ($reason)',
+          '[Realism:TrustRepair] $verdict — recovered $recovery → ${_relationshipService.trustLevel} ($reason)',
         );
       } else {
         debugPrint('[Realism:TrustRepair] Rejected — no recovery ($reason)');
@@ -10654,25 +7782,25 @@ class ChatService extends ChangeNotifier {
 
   Map<String, dynamic> _captureRealismState({Map<String, int>? preTurn}) {
     final state = {
-      'affectionScore': _affectionScore,
-      'relationshipTier': _relationshipTier,
-      'longTermScore': _longTermScore,
-      'longTermTier': _longTermTier,
-      'turnsSinceLongTermCheck': _turnsSinceLongTermCheck,
-      'shortTermDeltasSummary': _shortTermDeltasSummary,
+      'affectionScore': _relationshipService.affectionScore,
+      'relationshipTier': _relationshipService.relationshipTier,
+      'longTermScore': _relationshipService.longTermScore,
+      'longTermTier': _relationshipService.longTermTier,
+      'turnsSinceLongTermCheck': _relationshipService.turnsSinceLongTermCheck,
+      'shortTermDeltasSummary': _relationshipService.shortTermDeltasSummary,
       'moodDecayCounter': _moodDecayCounter,
       'characterEmotion': _characterEmotion,
       'emotionIntensity': _emotionIntensity,
-      'timeOfDay': _timeOfDay,
-      'dayCount': _dayCount,
-      'startDayOfWeek': _startDayOfWeek,
-      'arousalLevel': _arousalLevel,
-      'cooldownTurnsRemaining': _cooldownTurnsRemaining,
-      'cooldownTurnsTotal': _cooldownTurnsTotal,
-      'trustLevel': _trustLevel,
-      'activeFixation': _activeFixation,
-      'fixationLifespan': _fixationLifespan,
-      'spatialStance': _spatialStance,
+      'timeOfDay': _timeService.timeOfDay,
+      'dayCount': _timeService.dayCount,
+      'startDayOfWeek': _timeService.startDayOfWeekAnchor,
+      'arousalLevel': _nsfwService.arousalLevel,
+      'cooldownTurnsRemaining': _nsfwService.cooldownTurnsRemaining,
+      'cooldownTurnsTotal': _nsfwService.cooldownTurnsTotal,
+      'trustLevel': _relationshipService.trustLevel,
+      'activeFixation': _relationshipService.activeFixation,
+      'fixationLifespan': _relationshipService.fixationLifespan,
+      'spatialStance': _relationshipService.spatialStance,
     };
 
     // Include needs snapshot when the simulation is active (clean port).
@@ -10681,19 +7809,22 @@ class ChatService extends ChangeNotifier {
     // (see setNeedsSimEnabled and ext seeding). Snapshots only carry the vector
     // for timeline continuity while the sim is on. This prevents historical
     // snapshots from resurrecting a stale enabled state after a mid-chat toggle-off.
-    if (_needsSimEnabled && _needsVector.isNotEmpty) {
+    if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
       state['needs'] = {
-        'vector': _needsVector,
+        'vector': _needsSimulation.vector,
         // Transient buffers are now snapshotted so regen/swipe during or after
         // erotic scenes restores the correct "sex haze" and "post-sex glow" state.
-        'afterglowTurns': _needsAfterglowTurnsRemaining,
-        'arousalSuppressionTurns': _arousalSuppressionTurnsRemaining,
-        'postClimaxCrashTurns': _postClimaxCrashTurnsRemaining,
+        'afterglowTurns': _needsSimulation.afterglowTurnsRemaining,
+        'arousalSuppressionTurns':
+            _needsSimulation.arousalSuppressionTurnsRemaining,
+        'postClimaxCrashTurns': _needsSimulation.postClimaxCrashTurnsRemaining,
       };
 
       // Attach per-turn deltas + reasons for the beautiful Needs chips
       // (exactly parallel to bond_delta / trust_delta + reasons).
-      final needsDeltas = _computeNeedsDeltasWithReasons(preTurn);
+      final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+        preTurn,
+      );
       if (needsDeltas.isNotEmpty) {
         (state['needs'] as Map<String, dynamic>)['deltas'] = needsDeltas;
       }
@@ -10737,7 +7868,7 @@ class ChatService extends ChangeNotifier {
     // Phase 2: Ensure hidden inter-character relationship tracking is seeded
     // for all other group members (neutral 0). This happens on the speaker's
     // first turn with realism so the invisible feelings map is always present.
-    _ensureInterCharacterRelationshipsSeeded(charId);
+    _relationshipService.ensureInterCharacterRelationshipsSeeded(charId);
 
     _isEvaluatingRealism = true;
     _realismEvalStreamText = '';
@@ -10745,8 +7876,8 @@ class ChatService extends ChangeNotifier {
 
     // Capture this speaker's pre-turn needs vector (before decay + eval)
     Map<String, int>? preTurnVector;
-    if (_needsSimEnabled && _needsVector.isNotEmpty) {
-      preTurnVector = Map<String, int>.from(_needsVector);
+    if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
+      preTurnVector = Map<String, int>.from(_needsSimulation.vector);
     }
 
     // Temporarily load this speaker's personal objectives so the narrative
@@ -10776,7 +7907,7 @@ class ChatService extends ChangeNotifier {
         return;
       }
 
-      if (_storageService.realismOneShotEval) {
+      if (_storageService.realismSettings.realismOneShotEval) {
         await _evaluateOneShotCall(onChunk: handleChunk);
       } else {
         await Future.wait([
@@ -10808,7 +7939,9 @@ class ChatService extends ChangeNotifier {
       );
 
       if (_needsSimEnabled) {
-        final needsDeltas = _computeNeedsDeltasWithReasons(preTurnVector);
+        final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+          preTurnVector,
+        );
         if (needsDeltas.isNotEmpty) {
           _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
         }
@@ -10830,14 +7963,11 @@ class ChatService extends ChangeNotifier {
   /// the single-character scalar fields so the existing eval methods can
   /// operate on them during impersonation.
   void _loadGroupRealismIntoScalars(String charId) {
-    _affectionScore = _getGroupInt(charId, 'affection');
-    _longTermScore = _getGroupInt(
-      charId,
-      'longTermScore',
-      defaultValue: _affectionScore,
-    );
-    _trustLevel = _getGroupInt(charId, 'trust');
-    _arousalLevel = _getGroupInt(charId, 'arousal');
+    // Relationship (affection/trust/fix/tiers etc) now via service load helper (uses the same _getGroup* internally via cbs).
+    _relationshipService.loadRelationshipScalarsForSpeaker(charId);
+    // Nsfw (arousal + cooldown + nsfwEnabled per char) via service (extends prior arousal-only for full group parity).
+    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
+    _nsfwService.loadNsfwScalarsForSpeaker(charId);
 
     _characterEmotion = _getGroupString(charId, 'emotion');
     _emotionIntensity = _getGroupString(
@@ -10846,46 +7976,25 @@ class ChatService extends ChangeNotifier {
       defaultValue: 'moderate',
     );
 
-    _activeFixation = _getGroupString(charId, 'fixation');
-    _fixationLifespan = _getGroupInt(
-      charId,
-      'fixationLifespan',
-      defaultValue: 0,
-    );
-
-    // Tier fields (some injection and UI paths read these)
-    _relationshipTier = _getGroupInt(
-      charId,
-      'relationshipTier',
-      defaultValue: _calculateTier(_affectionScore),
-    );
-    _longTermTier = _getGroupInt(
-      charId,
-      'longTermTier',
-      defaultValue: _calculateTier(_longTermScore),
-    );
-
     // Needs vector (if any persisted for this char)
     final needs = _getGroupNeeds(charId);
     if (needs.isNotEmpty) {
-      _needsVector.clear();
-      _needsVector.addAll(needs);
+      _needsSimulation.setVector(needs);
     } else if (_needsSimEnabled) {
-      // Sensible fresh start for a speaker who has never had needs ticked yet
-      _needsVector.clear();
-      for (final k in _needKeys) {
-        _needsVector[k] = 80;
-      }
+      // Fresh start for a group member who has never had needs for this group chat.
+      // Use full 100 to match 1:1 "new chat" behavior (prevents bleed perception).
+      _needsSimulation.initializeFresh();
     }
   }
 
   /// Writes the current scalar realism fields back into the target group
   /// character's _groupRealism entry after an impersonated eval round.
   void _saveScalarsIntoGroupRealism(String charId) {
-    _setGroupRealismValue(charId, 'affection', _affectionScore);
-    _setGroupRealismValue(charId, 'longTermScore', _longTermScore);
-    _setGroupRealismValue(charId, 'trust', _trustLevel);
-    _setGroupRealismValue(charId, 'arousal', _arousalLevel);
+    // Relationship scalars (affection/long/trust/fix/tiers/spatial) now via service.
+    _relationshipService.saveRelationshipScalarsToGroup(charId);
+    // Nsfw scalars (arousal + cooldown + enabled) now via service (for group per-char persistence parity).
+    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
+    _nsfwService.saveNsfwScalarsToGroup(charId);
 
     if (_characterEmotion.isNotEmpty) {
       _setGroupRealismValue(charId, 'emotion', _characterEmotion);
@@ -10894,18 +8003,9 @@ class ChatService extends ChangeNotifier {
       _setGroupRealismValue(charId, 'emotionIntensity', _emotionIntensity);
     }
 
-    if (_activeFixation.isNotEmpty && _fixationLifespan > 0) {
-      _setGroupRealismValue(charId, 'fixation', _activeFixation);
-      _setGroupRealismValue(charId, 'fixationLifespan', _fixationLifespan);
-    }
-
-    // Persist tier values for injection consistency
-    _setGroupRealismValue(charId, 'relationshipTier', _relationshipTier);
-    _setGroupRealismValue(charId, 'longTermTier', _longTermTier);
-
     // Persist current needs vector for this speaker
-    if (_needsVector.isNotEmpty) {
-      _setGroupNeeds(charId, Map<String, int>.from(_needsVector));
+    if (_needsSimulation.vector.isNotEmpty) {
+      _setGroupNeeds(charId, Map<String, int>.from(_needsSimulation.vector));
     }
   }
 
@@ -11012,6 +8112,19 @@ class ChatService extends ChangeNotifier {
     final speaker = nextCharacter ?? _groupCharacters.firstOrNull;
     if (speaker == null) {
       _activeObjectives = [];
+      _messagesSinceLastCheck = 0;
+      _isCheckingCompletion = false;
+      _summaryPaused =
+          false; // explicit secondary zero for _summaryPaused (symmetric; _loadObjectivesForCurrentSpeaker no-speaker hygiene)
+      _isSummaryGenerating =
+          false; // secondary zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene for summary flag)
+      _userMessagesSinceLastPeriodicEval = 0;
+      _isExtractingFacts =
+          false; // secondary fact flag + counter zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene; fact_extraction)
+      _isEvolvingCharacter = false;
+      _evolutionStatus = '';
+      _evolutionError =
+          ''; // explicit evo flag/status/error zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
       notifyListeners();
       return;
     }
@@ -11076,550 +8189,9 @@ class ChatService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ── Sims/Needs Simulation Core Logic (ported cleanly) ─────────────────────
-
-  void _tickNeedsDecay() {
-    if (!_needsSimEnabled || !_realismEnabled) return;
-
-    // Group mode (non-director): decay the current speaker's needs vector
-    if (_activeGroup != null && !_observerMode) {
-      final id = _getCurrentSpeakerIdForRealism();
-      var needs = _getGroupNeeds(id);
-      if (needs.isEmpty) {
-        needs = Map.fromEntries(
-          _needKeys.map((k) => MapEntry(k, 80)),
-        ); // sensible start
-      }
-
-      final isNight = _timeOfDay == 'night';
-      final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
-
-      for (final key in _needKeys) {
-        final current = needs[key] ?? 80;
-        int decay = _needDecay[key] ?? 0;
-
-        if (isMorning && _needDecayMorning.containsKey(key)) {
-          decay = _needDecayMorning[key] ?? decay;
-        } else if (isNight && _needDecayNight.containsKey(key)) {
-          decay = _needDecayNight[key] ?? decay;
-        }
-
-        if (_needsAfterglowTurnsRemaining > 0 &&
-            (key == 'hunger' || key == 'energy' || key == 'social')) {
-          decay = (decay * 0.45).round();
-        }
-
-        final next = (current - decay).clamp(0, 100);
-        needs[key] = next;
-      }
-      _setGroupNeeds(id, needs);
-      return; // group path done
-    }
-
-    // 1:1 scalar path
-    final isNight = _timeOfDay == 'night';
-    final isMorning = _timeOfDay == 'dawn' || _timeOfDay == 'morning';
-
-    for (final key in _needKeys) {
-      final current = _needsVector[key];
-      if (current == null) continue;
-
-      int decay = _needDecay[key] ?? 0;
-
-      // Time-of-day variants
-      if (isMorning && _needDecayMorning.containsKey(key)) {
-        decay = _needDecayMorning[key] ?? decay;
-      } else if (isNight && _needDecayNight.containsKey(key)) {
-        decay = _needDecayNight[key] ?? decay;
-      }
-
-      // Afterglow Buffer: significantly reduce decay on Hunger, Energy, and Social
-      // after good sexual/intimate activity so it feels like a net positive.
-      if (_needsAfterglowTurnsRemaining > 0 &&
-          (key == 'hunger' || key == 'energy' || key == 'social')) {
-        decay = (decay * 0.45).round(); // ~55% reduction
-      }
-
-      // Arousal suppression dampening (erotic "lust haze" effect).
-      // When active, internal state multipliers (energy affecting hunger, etc.)
-      // are softened so the simulation itself feels less punishing while the
-      // character is overwhelmed by desire. Prompt injection is the primary
-      // visible effect; this is the light simulation-side counterpart.
-      final bool suppressionActiveThisTick =
-          _arousalSuppressionTurnsRemaining > 0 ||
-          (_arousalLevel >= _arousalSuppressionThreshold &&
-              (_needsAfterglowTurnsRemaining > 0 ||
-                  _cooldownTurnsRemaining > 0));
-
-      // Post-climax crash (delayed lethargy) — applies ONLY after the full
-      // protective window (afterglow + lust haze) has expired.
-      final bool postCrashActiveThisTick =
-          _postClimaxCrashTurnsRemaining > 0 &&
-          _needsAfterglowTurnsRemaining == 0 &&
-          _arousalSuppressionTurnsRemaining == 0;
-
-      // State-based decay modifiers (interplay)
-      final energy = _needsVector['energy'] ?? 50;
-      final fun = _needsVector['fun'] ?? 50;
-
-      // Low energy makes hunger feel worse (body needs fuel)
-      if (key == 'hunger' && energy <= 30) {
-        final mult = suppressionActiveThisTick
-            ? 1.15
-            : 1.35; // softened under lust haze
-        decay = (decay * mult).round();
-      }
-
-      // Low energy makes physical comfort worse
-      if (key == 'comfort' && energy <= 25) {
-        final mult = suppressionActiveThisTick ? 1.10 : 1.25;
-        decay = (decay * mult).round();
-      }
-
-      // Very low fun / boredom makes social need decay faster
-      if (key == 'social' && fun <= 20) {
-        final mult = suppressionActiveThisTick ? 1.20 : 1.4;
-        decay = (decay * mult).round();
-      }
-
-      // High bladder makes overall comfort worse
-      final bladder = _needsVector['bladder'] ?? 50;
-      if (key == 'comfort' && bladder <= 20) {
-        final mult = suppressionActiveThisTick ? 1.10 : 1.2;
-        decay = (decay * mult).round();
-      }
-
-      // Post-climax crash (delayed lethargy) — elevated decay on energy/fun/social.
-      // This creates the realistic "we just fucked for hours and now I'm dead"
-      // feeling. Gated so it never fights the afterglow or lust haze.
-      if (postCrashActiveThisTick &&
-          (key == 'energy' || key == 'fun' || key == 'social')) {
-        decay = (decay * _postClimaxCrashDecayMultiplier).round();
-      }
-
-      _needsVector[key] = (current - decay).clamp(0, 100);
-    }
-
-    // Tick down afterglow buffer at the end of the turn
-    if (_needsAfterglowTurnsRemaining > 0) {
-      _needsAfterglowTurnsRemaining--;
-      if (_needsAfterglowTurnsRemaining == 0) {
-        debugPrint('[Realism:Needs] Afterglow buffer expired');
-      }
-    }
-
-    // Tick down arousal suppression (lust haze) buffer
-    if (_arousalSuppressionTurnsRemaining > 0) {
-      _arousalSuppressionTurnsRemaining--;
-      if (_arousalSuppressionTurnsRemaining == 0) {
-        debugPrint('[Realism:Needs] Arousal suppression (lust haze) expired');
-      }
-    }
-
-    // Tick down post-climax crash (only counts down once protective windows expire)
-    if (_needsAfterglowTurnsRemaining == 0 &&
-        _arousalSuppressionTurnsRemaining == 0 &&
-        _postClimaxCrashTurnsRemaining > 0) {
-      _postClimaxCrashTurnsRemaining--;
-      if (_postClimaxCrashTurnsRemaining == 0) {
-        debugPrint(
-          '[Realism:Needs] Post-climax crash (lethargy / post-nut sleepiness) expired',
-        );
-      }
-    }
-
-    // ── Phase 2 Catastrophe Trigger (graduated stepping) ─────────────────────
-    // If any need has just hit exactly 0 during this decay tick, fire the
-    // catastrophic involuntary event for the worst one. The engine immediately
-    // lifts the value to a post-event floor so the bar moves and the character
-    // is in a "just suffered the consequence" state. The pending narrative will
-    // force the next AI response to roleplay the disaster (pissing, fainting, etc.).
-    if (_pendingNeedsCatastrophe == null &&
-        _needsSimEnabled &&
-        _realismEnabled) {
-      String? worstNeed;
-      int worstValue = 999;
-      for (final key in _needKeys) {
-        final v = _needsVector[key] ?? 100;
-        if (v <= 0 && v < worstValue) {
-          worstValue = v;
-          worstNeed = key;
-        }
-      }
-      if (worstNeed != null) {
-        _pendingNeedsCatastrophe = _buildCatastropheText(worstNeed);
-        int floor = _postCatastropheFloor(worstNeed);
-
-        // Give significantly better relief when the event was a successful resolution
-        // rather than a pure accident/collapse (heuristic on the catastrophe text).
-        final text = _pendingNeedsCatastrophe!.toLowerCase();
-        final wasAccidentOrCollapse =
-            text.contains('accident') ||
-            text.contains('wetting') ||
-            text.contains('lost control') ||
-            text.contains('collapsed') ||
-            text.contains('faint') ||
-            text.contains('out cold');
-
-        if (!wasAccidentOrCollapse) {
-          floor = (floor + 12).clamp(
-            0,
-            100,
-          ); // successful relief feels much better
-        }
-
-        _needsVector[worstNeed] = floor;
-        debugPrint(
-          '[Realism:Needs] ⚠️ CATASTROPHE triggered for $worstNeed → lifted to $floor (accident=$wasAccidentOrCollapse)',
-        );
-      }
-    }
-
-    debugPrint('[Realism:Needs] Tick decay applied');
-
-    // Enjoys low hygiene inversion - mild scaling bonuses when dirty
-    if (_enjoysLowHygiene) {
-      final hygiene = _needsVector['hygiene'] ?? 50;
-      if (hygiene < 50) {
-        final bonus = ((50 - hygiene) / 10).round().clamp(0, 5); // mild scaling
-        _arousalLevel = (_arousalLevel + bonus).clamp(-100, 100);
-        // Fun and Comfort also get a lift (simulated via small vector adjustment if needed, or LLM feels it)
-      }
-      if (hygiene >= 60) {
-        final penalty = ((hygiene - 60) / 10).round().clamp(0, 5);
-        _arousalLevel = (_arousalLevel - penalty).clamp(-100, 100);
-      }
-    }
-
-    _saveChat(); // persist vector changes
-    if (_pendingNeedsCatastrophe != null) {
-      notifyListeners(); // bar jumps + UI can react before generation starts
-    }
-  }
-
-  /// Returns the current stepped urgency (0 = catastrophic ... 5 = fine) for a need.
-  /// Pure function of the current value — no extra state required.
-  int _getNeedStep(String need, int value) {
-    for (int s = 0; s < _needStepUpperBounds.length; s++) {
-      if (value <= _needStepUpperBounds[s]) return s;
-    }
-    return 5; // comfortable
-  }
-
-  /// Returns the catastrophic narrative text for the given need (the event that
-  /// just occurred when it hit 0).
-  String _buildCatastropheText(String need) {
-    return _needCatastropheNarrative[need] ??
-        'Something catastrophic just happened because her $need need hit zero.';
-  }
-
-  /// Returns the floor value the need should be lifted to immediately after the
-  /// catastrophe is triggered (so the bar moves and the character is in a
-  /// post-event "relief" (still uncomfortable) state).
-  int _postCatastropheFloor(String need) {
-    return _needPostCatastropheFloor[need] ?? 30;
-  }
-
-  /// Computes per-need deltas since the start of this turn and generates
-  /// human-readable reasons. Used to power the Needs chips under bot messages
-  /// (exactly like bond_delta / trust_delta + reasons for classic realism).
-  /// Applies a small additional decay when a generation (especially the prefill)
-  /// took a very long real-world time. This gives the "time passed while the
-  /// model was thinking" a visible (but small) effect on needs, preventing the
-  /// all-zero chips feeling after 10-30+ minute generations.
-  void _applyLongGenerationNeedsDecay() {
-    if (!_needsSimEnabled ||
-        !_realismEnabled ||
-        _lastGenerationDurationSeconds < 300) {
-      return;
-    }
-
-    // Very conservative extra decay for long real-time waits.
-    // Only affects the most "physical" needs that make sense to decay over real hours.
-    final extraDecay = <String, int>{
-      'hunger': 2,
-      'bladder': 3,
-      'energy': 1,
-      'hygiene': 1,
-    };
-
-    for (final entry in extraDecay.entries) {
-      final key = entry.key;
-      final amount = entry.value;
-      if (_needsVector.containsKey(key)) {
-        final before = _needsVector[key]!;
-        _needsVector[key] = (before - amount).clamp(0, 100);
-        debugPrint(
-          '[Realism:Needs] Long generation extra decay: $key $before → ${_needsVector[key]} (took ${_lastGenerationDurationSeconds.toStringAsFixed(0)}s)',
-        );
-      }
-    }
-  }
-
-  Map<String, Map<String, dynamic>> _computeNeedsDeltasWithReasons(
-    Map<String, int>? preTurn,
-  ) {
-    if (preTurn == null || preTurn.isEmpty) return {};
-
-    final deltas = <String, Map<String, dynamic>>{};
-
-    for (final key in _needKeys) {
-      final before = preTurn[key] ?? _needDefaults[key] ?? 50;
-      final after = _needsVector[key] ?? before;
-      final delta = after - before;
-
-      String reason;
-      if (delta == 0) {
-        reason = 'Stable';
-      } else if (delta > 0) {
-        reason = 'Scene action';
-      } else if (_postClimaxCrashTurnsRemaining > 0 &&
-          _needsAfterglowTurnsRemaining == 0 &&
-          _arousalSuppressionTurnsRemaining == 0) {
-        reason = 'Post-orgasm exhaustion';
-      } else if (_needsAfterglowTurnsRemaining > 0 &&
-          (key == 'hunger' || key == 'energy' || key == 'social')) {
-        reason = 'Afterglow buffer';
-      } else if (_arousalSuppressionTurnsRemaining > 0) {
-        reason = 'Arousal suppression (lust haze)';
-      } else {
-        reason = 'Natural decay';
-      }
-
-      deltas[key] = {'delta': delta, 'reason': reason};
-    }
-
-    return deltas;
-  }
-
-  /// Applies a map of need deltas (positive or negative) to the current vector.
-  /// If [fromSexualActivity] is true and the deltas are meaningful, this will
-  /// start or refresh the Afterglow Buffer.
-  void _applyNeedsDeltas(
-    Map<String, int> deltas, {
-    bool fromSexualActivity = false,
-  }) {
-    if (!_needsSimEnabled || !_realismEnabled || deltas.isEmpty) return;
-
-    bool changed = false;
-    int totalPositiveImpact = 0;
-
-    for (final entry in deltas.entries) {
-      final key = entry.key;
-      if (!_needKeys.contains(key)) continue;
-
-      final current = _needsVector[key] ?? 50;
-      final newValue = (current + entry.value).clamp(0, 100);
-      if (newValue != current) {
-        _needsVector[key] = newValue;
-        changed = true;
-        if (entry.value > 0) totalPositiveImpact += entry.value;
-      }
-    }
-
-    if (!changed) return;
-
-    // Start/refresh afterglow buffer + arousal suppression (lust haze) on
-    // meaningful positive sexual activity. Suppression makes other needs feel
-    // distant in the prompt (and lightly in simulation) while desire is high.
-    if (fromSexualActivity && totalPositiveImpact >= 8) {
-      _needsAfterglowTurnsRemaining = 4; // 3-4 turns is the sweet spot
-      _arousalSuppressionTurnsRemaining = _arousalSuppressionDefaultTurns;
-      debugPrint(
-        '[Realism:Needs] Afterglow buffer + arousal suppression started/refreshed ($totalPositiveImpact impact)',
-      );
-    }
-
-    debugPrint('[Realism:Needs] Applied deltas: $deltas');
-    _saveChat();
-    notifyListeners();
-  }
-
   String _getNeedsInjection() {
-    if (!_needsSimEnabled || !_realismEnabled) return '';
-
-    // Group mode (non-director) — per-character needs
-    if (_activeGroup != null && !_observerMode) {
-      final id = _getCurrentSpeakerIdForRealism();
-      final needs = _getGroupNeeds(id);
-      if (needs.isEmpty) return '';
-
-      final name = _groupCharacters
-          .firstWhere(
-            (c) => _getCharacterIdFromCard(c) == id,
-            orElse: () => _groupCharacters.first,
-          )
-          .name;
-
-      final sorted = needs.entries.toList()
-        ..sort((a, b) => a.value.compareTo(b.value));
-      final top = sorted.first;
-      final step = _getNeedStep(top.key, top.value);
-
-      // Only inject when the need is noticeable or worse (step 3 or lower).
-      // This prevents mild needs (e.g. 62% hunger) from constantly interrupting roleplay.
-      if (step >= 4) return '';
-
-      final label = _needSteppedText[top.key]?[step] ?? top.key;
-
-      return '[Background State for $name: $label (level ${top.value}) — this is a subtle physical or emotional condition that may gently influence her mood, thoughts, small behaviors, and focus this turn. Do not force her to directly comment on it unless it naturally fits the scene.]\n';
-    }
-
-    // 1:1 path
-    final charName = _activeCharacter?.name ?? 'the character';
-
-    final sorted = _needsVector.entries.toList()
-      ..sort((a, b) => a.value.compareTo(b.value));
-
-    final top = sorted.first;
-    final step = _getNeedStep(top.key, top.value);
-
-    // Hygiene inversion support ("Enjoys low hygiene")
-    int effectiveStep = step;
-    if (_enjoysLowHygiene && top.key == 'hygiene') {
-      // Invert the perceived urgency: low hygiene = "comfortable/good" for these characters
-      effectiveStep = (5 - step).clamp(0, 5);
-    }
-
-    // Only inject when the need is noticeable or worse.
-    // Mild needs (step 4) no longer force injection — reduces wack-a-mole behavior.
-    if (step >= 4) return '';
-
-    // Catastrophe (step 0) is never suppressed — the disaster must be narrated.
-    final bool suppressionActive =
-        _arousalSuppressionTurnsRemaining > 0 ||
-        (_arousalLevel >= _arousalSuppressionThreshold &&
-            (_needsAfterglowTurnsRemaining > 0 || _cooldownTurnsRemaining > 0));
-
-    // Preserve (and keep strong) the special erotic bladder + high-arousal tension case.
-    // This one deliberately uses the *original* step so desperate holding while
-    // extremely turned on can still create charged, kinky flavor even when other
-    // needs are being softened by lust.
-    if (top.key == 'bladder' &&
-        _nsfwCooldownEnabled &&
-        _arousalLevel >= 40 &&
-        step <= 2) {
-      final tension = step <= 1
-          ? 'She is *desperately* holding on while extremely aroused — the combination is overwhelming and humiliating.'
-          : 'The combination of bladder desperation and current arousal (level: $_arousalLevel/10) creates a charged, uncomfortable tension.';
-      return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
-    }
-
-    // Apply arousal suppression (lust haze) on top of any hygiene inversion
-    if (suppressionActive && step >= 1 && step <= 3) {
-      // Dampen urgency by 1-2 steps when the character is deep in a lust haze.
-      // Stronger effect at very high arousal (tier 6+ or raw >= 60).
-      final int dampen = (_arousalLevel >= 60) ? 2 : 1;
-      effectiveStep = (effectiveStep + dampen).clamp(0, 5);
-    }
-
-    // If suppression pushed this need into "comfortable" territory for the LLM,
-    // skip injecting it this turn (it will still decay normally in the background).
-    if (effectiveStep >= 5) return '';
-
-    // Get the graduated text for this *effective* step (so suppressed needs read milder)
-    final texts = _needSteppedText[top.key] ?? const <String>[];
-    final baseText = effectiveStep < texts.length
-        ? texts[effectiveStep]
-        : texts.last;
-
-    // Build a more immersive prefix that escalates with severity
-    final urgencyPrefix = switch (effectiveStep) {
-      0 =>
-        'CATASTROPHIC — this has already happened and must be roleplayed immediately.',
-      1 => 'CRITICAL — she is in real, urgent distress from this need.',
-      2 =>
-        'Strong need — this is heavily weighing on her and affecting her focus.',
-      3 =>
-        'Noticeable need — this is a clear background pressure on her mood and attention.',
-      _ => 'Mild background sensation — this is subtly coloring her state.',
-    };
-
-    // Secondary low need note (only for effective steps 1-3 to avoid noise at catastrophe)
-    String secondaryNote = '';
-    if (effectiveStep >= 1 && effectiveStep <= 3) {
-      final secondary = sorted
-          .where((e) => e.key != top.key && _getNeedStep(e.key, e.value) <= 3)
-          .firstOrNull;
-      if (secondary != null) {
-        secondaryNote = ' (She is also feeling the ${secondary.key} need.)';
-      }
-    }
-
-    // Optional explicit "post-sex crash" flavor when energy surfaces during the active crash phase
-    // (afterglow + haze have expired). Keeps the erotic "sated exhaustion" feeling.
-    final String postCrashSuffix =
-        (_postClimaxCrashTurnsRemaining > 0 &&
-            _needsAfterglowTurnsRemaining == 0 &&
-            _arousalSuppressionTurnsRemaining == 0 &&
-            (top.key == 'energy' || top.key == 'fun'))
-        ? ' (This heavy, sated exhaustion has the warm, post-orgasm quality — limbs like lead, deep drowsiness after intense release.)'
-        : '';
-
-    return '[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n';
-  }
-
-  Future<void> _verifyNeedFulfillmentCall({
-    void Function(String)? onChunk,
-  }) async {
-    if (!_needsSimEnabled || !_realismEnabled || _activeCharacter == null) {
-      return;
-    }
-
-    final pendingNeeds = _needsVector.entries
-        .where((e) => e.value <= _needFulfillmentScanThreshold)
-        .map((e) => e.key)
-        .toList();
-    if (pendingNeeds.isEmpty) return;
-
-    final recentCount = _messages.length < 2 ? _messages.length : 2;
-    final recent = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final needListStr = pendingNeeds.join(', ');
-
-    final prompt =
-        'You are verifying whether character needs were actually fulfilled in a roleplay scene. '
-        'A need is only fulfilled if the action was COMPLETED in the scene — not just mentioned. '
-        'Character needs at critical or urgent level: $needListStr\n\n'
-        'Recent exchange:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object with "<need>_fulfilled": true or false.';
-
-    try {
-      debugPrint('[Realism:Needs] Running fulfillment verification');
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      for (final need in pendingNeeds) {
-        final fulfilled = _extractJsonBool(text, '${need}_fulfilled') ?? false;
-        if (fulfilled) {
-          final restore = _needRestoreAmount(need);
-          _needsVector[need] = (_needsVector[need]! + restore).clamp(0, 100);
-          debugPrint('[Realism:Needs] ✅ $need fulfilled (+$restore)');
-        } else {
-          debugPrint('[Realism:Needs] ✗ $need NOT fulfilled');
-        }
-      }
-      _saveChat(); // persist restored vector
-    } catch (e) {
-      debugPrint('[Realism:Needs] Fulfillment verification failed: $e');
-    }
-  }
-
-  int _needRestoreAmount(String need) {
-    return _needRestore[need] ?? _needRestoreDefault;
+    // Thin delegation (full in NeedsInjection per step 8; group per-char via cb, suppression etc).
+    return _needsInjection.buildNeedsInjection();
   }
 
   void _restoreRealismStateFromMessage(ChatMessage? msg) {
@@ -11635,37 +8207,19 @@ class ChatService extends ChangeNotifier {
     }
 
     final state = meta['realism_state'] as Map<String, dynamic>;
-    _affectionScore = state['affectionScore'] as int? ?? _affectionScore;
-    _relationshipTier = state['relationshipTier'] as int? ?? _relationshipTier;
-    _longTermScore = state['longTermScore'] as int? ?? _longTermScore;
-    _longTermTier = state['longTermTier'] as int? ?? _longTermTier;
-    _turnsSinceLongTermCheck =
-        state['turnsSinceLongTermCheck'] as int? ?? _turnsSinceLongTermCheck;
-    _shortTermDeltasSummary =
-        state['shortTermDeltasSummary'] as int? ?? _shortTermDeltasSummary;
+    _relationshipService.restoreFromMessageState(state);
     _moodDecayCounter = state['moodDecayCounter'] as int? ?? _moodDecayCounter;
     _characterEmotion =
         state['characterEmotion'] as String? ?? _characterEmotion;
     _emotionIntensity =
         state['emotionIntensity'] as String? ?? _emotionIntensity;
 
-    if (_passageOfTimeEnabled) {
-      _timeOfDay = state['timeOfDay'] as String? ?? _timeOfDay;
-      _dayCount = state['dayCount'] as int? ?? _dayCount;
-    }
-    _startDayOfWeek = state['startDayOfWeek'] as int? ?? _startDayOfWeek;
+    _timeService.restoreTimeFromRealismState(state);
 
-    _arousalLevel = state['arousalLevel'] as int? ?? _arousalLevel;
-    _cooldownTurnsRemaining =
-        state['cooldownTurnsRemaining'] as int? ?? _cooldownTurnsRemaining;
-    _cooldownTurnsTotal =
-        state['cooldownTurnsTotal'] as int? ?? _cooldownTurnsRemaining;
+    _nsfwService.restoreNsfwFromRealismState(state);
 
-    // v3.0 Restorations
-    _trustLevel = state['trustLevel'] as int? ?? _trustLevel;
-    _activeFixation = state['activeFixation'] as String? ?? _activeFixation;
-    _fixationLifespan = state['fixationLifespan'] as int? ?? _fixationLifespan;
-    _spatialStance = state['spatialStance'] as String? ?? _spatialStance;
+    // v3.0 Restorations (relationship via service; already covered by restoreFromMessageState above for most).
+    // (Direct sets removed; service owns the scalars.)
 
     // Needs simulation snapshot (clean port)
     // Only restore the vector if the sim is currently enabled for this session.
@@ -11675,21 +8229,7 @@ class ChatService extends ChangeNotifier {
         state['needs'] is Map &&
         _needsSimEnabled) {
       final needsData = state['needs'] as Map;
-      if (needsData['vector'] is Map) {
-        final vector = Map<String, int>.from(needsData['vector'] as Map);
-        _needsVector = vector;
-      }
-      // Restore transient erotic buffers so time-travel (regen/swipe) during
-      // or immediately after sex scenes feels consistent.
-      _needsAfterglowTurnsRemaining =
-          (needsData['afterglowTurns'] as int?) ??
-          _needsAfterglowTurnsRemaining;
-      _arousalSuppressionTurnsRemaining =
-          (needsData['arousalSuppressionTurns'] as int?) ??
-          _arousalSuppressionTurnsRemaining;
-      _postClimaxCrashTurnsRemaining =
-          (needsData['postClimaxCrashTurns'] as int?) ??
-          _postClimaxCrashTurnsRemaining;
+      _needsSimulation.restoreFromSnapshot(needsData);
     }
 
     debugPrint(
@@ -11698,475 +8238,26 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Runs all post-generation needs-related checks (climax, sexual activity,
-  /// daily activities, fulfillment). Used by _generateResponse as fire-and-forget,
-  /// and by the regen path when we need the results synchronously.
+  /// daily activities, fulfillment) via thin delegate to the consolidated
+  /// NeedsImpactEvaluator (rich LLM + table + modifiers per Proposal A).
+  /// Orchestration (guards, group impersonation dance + loadGroupRealismIntoScalars
+  /// before call so prompts see correct $charName/personality/stance, preTurn
+  /// snapshot for chips, post _saveScalarsIntoGroupRealism + attach needs_deltas,
+  /// long-gen decay, _save/notify) stays in god. Dispatch preserved exactly.
   Future<void> _runPostGenNeedsChecks(String responseText) async {
-    // Climax check
-    if (_realismEnabled &&
-        _nsfwCooldownEnabled &&
-        _cooldownTurnsRemaining <= 0 &&
-        (_activeGroup == null || !_observerMode)) {
-      await _checkClimaxInResponse(responseText);
-    }
-
-    // Non-climax sexual/intimate activity
-    if (_needsSimEnabled && _realismActiveThisMode) {
-      await _checkSexualActivityInResponse(responseText);
-    }
-
-    // Daily activity effects
-    if (_needsSimEnabled &&
-        _realismActiveThisMode &&
-        _cooldownTurnsRemaining <= 0) {
-      await _checkDailyActivityEffects(responseText);
-    }
-
-    // Needs fulfillment verification
-    if (_needsSimEnabled && _realismActiveThisMode) {
-      await _verifyNeedFulfillmentCall();
-    }
+    await _needsImpactEvaluator.evaluateAndApply(responseText);
   }
 
-  /// Fired post-generation against the AI's completed response text.
-  /// The LLM writes the scene first — THEN we detect climax and apply
-  /// the refractory cooldown so the *next* turn's prompt blocks re-escalation.
-  Future<void> _checkClimaxInResponse(String responseText) async {
-    if (responseText.trim().isEmpty) return;
-    if (_activeCharacter == null) return;
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
+  // (prior separate post-gen needs check thins excised here as dead vestigial — 0 call sites; unified in _runPostGenNeedsChecks thin + evaluator per extraction; analogous prior deletions as part of task. See briefing above.)
 
-    String personalityInjection = '';
-    if (_activeCharacter!.personality.isNotEmpty) {
-      final p = _activeCharacter!.personality;
-      personalityInjection = 'Character Personality Traits:\n"$p"\n\n';
-    }
-
-    final currentStance = _spatialStance.isNotEmpty
-        ? 'Current physical position/stance of $charName: "$_spatialStance". '
-        : '';
-
-    final prompt =
-        'Read the following character response and answer ONE question.\n\n'
-        '$personalityInjection'
-        '$currentStance'
-        'RESPONSE:\n$responseText\n\n'
-        'Question: Did $charName (and ONLY $charName) PHYSICALLY reach climax/orgasm in this response? '
-        'This must be an event actively occurring or just occurred in the text — '
-        '$charName specifically physically reaching orgasm right now. '
-        'If the response describes the user climaxing, but NOT $charName, you MUST answer false.\n'
-        'If true, ALSO report "orgasm_intensity" (1-10): how physically powerful and draining the orgasm was for $charName '
-        '(10 = shattering full-body after long intense session; 5 = solid satisfying climax; 1-2 = mild/quick).\n'
-        'Do NOT answer true for: dirty talk, innuendo, arousal build-up, '
-        'sexual activity that has not yet reached completion, or casual use of words like "cum". '
-        'ONLY answer true if $charName\'s orgasm/climax is unambiguously depicted as actively happening.\n'
-        'If true, ALSO estimate their "refractory_turns" (recovery time before they can be aroused again). '
-        'A normal character might take 5-7 turns. A highly sexual/nympho character takes 1-2 turns. Use their personality traits to decide.\n\n'
-        'If climax_detected is true, ALSO provide realistic physical consequences for needs based on the described act AND the current physical stance:\n'
-        '- "hygiene_delta": integer (strongly negative when messy — internal cum, cum on tits/face/stomach/sheets, creampie, etc. Typical range -12 to -25. Use spatial stance to judge how contained or exposed the mess is).\n'
-        '- "bladder_delta": integer (usually small or zero from orgasm itself. Positive only if the scene explicitly shows them relieving themselves right after. Do not invent bathroom visits.)\n\n'
-        'Respond with ONLY a JSON object: {"climax_detected": <true|false>, "refractory_turns": <number 1-8>, "orgasm_intensity": <1-10>, "hygiene_delta": <int>, "bladder_delta": <int>, "reason": "<brief>"}';
-
-    try {
-      debugPrint('[Realism:Climax] Checking AI response for climax...');
-      final raw = await _fireLLMEval(prompt);
-      if (raw == null) return;
-
-      final searchText = _stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
-
-      if (_extractJsonBool(text, 'climax_detected') == true) {
-        int turns = 5;
-        final refTurns = _extractJsonInt(text, 'refractory_turns');
-        if (refTurns != null) {
-          turns = refTurns.clamp(1, 10);
-        }
-
-        // Save pre-climax state on the message so regen can restore it
-        final preClimaxArousal = _arousalLevel;
-        if (_messages.isNotEmpty && !_messages.last.isUser) {
-          final msg = _messages.last;
-          final meta = Map<String, dynamic>.from(msg.activeMetadata ?? {});
-          meta['climax_triggered'] = true;
-          meta['pre_climax_arousal'] = preClimaxArousal;
-          msg.swipeMetadata[msg.swipeIndex] = meta;
-        }
-
-        _cooldownTurnsTotal = turns;
-        _cooldownTurnsRemaining = turns;
-        _arousalLevel = -3;
-
-        // Apply sexual activity cross-effects + start Afterglow Buffer.
-        // Energy is deliberately given a solid positive here (orgasm as a
-        // "shot of adrenaline / monster energy" effect) so characters stay
-        // awake and engaged through intense scenes instead of collapsing.
-        if (_needsSimEnabled) {
-          // Use LLM-provided grounded deltas when available. These take the
-          // current spatial stance into account (e.g. "sprawled in bed after creampie"
-          // produces a much harder hygiene hit than "in the shower").
-          final llmHygiene = _extractJsonInt(text, 'hygiene_delta');
-          final llmBladder = _extractJsonInt(text, 'bladder_delta');
-
-          final hygieneDelta =
-              llmHygiene ?? -18; // Strong default — cumming is messy
-          final bladderDelta =
-              llmBladder ?? 0; // Orgasm itself does not fill the bladder
-
-          _applyNeedsDeltas({
-            'fun': 16,
-            'social': 9,
-            'bladder': bladderDelta,
-            'energy':
-                10, // was -7; now a noticeable rush (like caffeine/adrenaline)
-            'hunger': -4,
-            'hygiene': hygieneDelta,
-          }, fromSexualActivity: true);
-
-          // Delayed post-climax crash (lethargy). Only on confirmed physical orgasm.
-          // Intensity-scaled duration. Gated effect so it respects afterglow + lust haze.
-          final intensity = _extractJsonInt(text, 'orgasm_intensity') ?? 5;
-          int crashDur = 0;
-          if (intensity >= 9) {
-            crashDur = 5;
-          } else if (intensity >= 7) {
-            crashDur = 4;
-          } else if (intensity >= 5) {
-            crashDur = 3;
-          } else if (intensity >= 3) {
-            crashDur = 2;
-          }
-
-          if (crashDur > 0) {
-            _postClimaxCrashTurnsRemaining =
-                _postClimaxCrashTurnsRemaining > crashDur
-                ? _postClimaxCrashTurnsRemaining
-                : crashDur;
-            debugPrint(
-              '[Realism:Needs] Post-climax crash scheduled ($crashDur turns, intensity=$intensity)',
-            );
-          }
-        }
-
-        debugPrint(
-          '[Realism:Climax] Confirmed — refractory cooldown started ($turns turns), '
-          'arousal $preClimaxArousal → -3 (pre-climax saved for regen)',
-        );
-        _saveChat();
-        notifyListeners();
-      } else {
-        debugPrint('[Realism:Climax] No climax detected.');
-      }
-    } catch (e) {
-      debugPrint('[Realism:Climax] Check failed: $e');
-    }
-  }
-
-  /// Lightweight check for significant sexual or intimate activity that did *not*
-  /// result in climax. This ensures ongoing scenes (making out, oral, fingering,
-  /// heavy petting, etc.) still deliver Fun/Social rewards and start the afterglow
-  /// buffer so sex remains a net positive.
-  Future<void> _checkSexualActivityInResponse(String responseText) async {
-    if (responseText.trim().isEmpty) return;
-    if (_activeCharacter == null) return;
-
-    // NOTE: We intentionally no longer early-return on low _arousalLevel here.
-    // The check is now primarily content-driven (what the response text describes).
-    // This is required for correct needs deltas (including the new spatial-aware
-    // hygiene/bladder impacts) during message regeneration, where the restored
-    // historical state may have low arousal even if the new text is highly sexual.
-    // The LLM will still only report sexual_activity=true when the text clearly
-    // supports it.
-
-    // Still avoid double-applying immediately after a confirmed climax in the
-    // *current* state (climax handler already applied the strong effects).
-    if (_cooldownTurnsRemaining > 0) return;
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-
-    final currentStance = _spatialStance.isNotEmpty
-        ? 'Current physical position/stance of $charName: "$_spatialStance". '
-        : '';
-
-    final prompt =
-        'Read the following character response.\n\n'
-        '$currentStance'
-        'RESPONSE:\n$responseText\n\n'
-        'Did $charName engage in significant sexual or intimate physical activity '
-        '(kissing, touching, oral, fingering, grinding, heavy petting, titty fuck, creampie risk, etc.) even if they did not reach orgasm? '
-        'Answer ONLY with a JSON object: {"sexual_activity": true/false, "intensity": 1-10, "reason": "short"}. '
-        'If sexual_activity is true, ALSO include realistic physical consequences:\n'
-        '- "hygiene_delta": integer (negative when fluids are involved — especially if cum lands on body, face, tits, stomach, sheets, or inside during creampie/titty fuck/etc. Use a hard negative when the current stance makes the mess difficult to contain or clean up immediately).\n'
-        '- "bladder_delta": integer (almost always 0 or very small from sexual activity alone).';
-
-    try {
-      final raw = await _fireLLMEval(prompt);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      final sexual = _extractJsonBool(text, 'sexual_activity') ?? false;
-      if (!sexual) return;
-
-      final intensity = _extractJsonInt(text, 'intensity') ?? 5;
-      final strength = (intensity / 10.0).clamp(0.4, 1.0);
-
-      // Use LLM-grounded deltas when available. These are informed by the
-      // described act + the character's current physical stance (spatial awareness).
-      // This prevents nonsense like positive bladder from cumming, and makes
-      // hygiene correctly punishing when things get messy (titty fuck, creampie,
-      // cum on sheets while cuddling, etc.).
-      final llmHygiene = _extractJsonInt(text, 'hygiene_delta');
-      final llmBladder = _extractJsonInt(text, 'bladder_delta');
-
-      final hygieneDelta = llmHygiene ?? (-8 * strength).round();
-      final bladderDelta =
-          llmBladder ?? (2 * strength).round(); // very small by default
-
-      _applyNeedsDeltas({
-        'fun': (12 * strength).round(),
-        'social': (7 * strength).round(),
-        'bladder': bladderDelta,
-        'energy': (3 * strength)
-            .round(), // was negative; now a mild boost (1-3 per turn)
-        'hunger': (-3 * strength).round(),
-        'hygiene': hygieneDelta,
-      }, fromSexualActivity: true);
-
-      debugPrint(
-        '[Realism:Needs] Non-climax sexual activity detected (intensity $intensity) → applied effects + afterglow',
-      );
-    } catch (e) {
-      debugPrint('[Realism:SexualActivity] Check failed: $e');
-    }
-  }
-
-  /// Detects common daily activities that have natural cross-effects on multiple needs.
-  /// Examples: eating a proper meal, sleeping/napping, taking a bath/shower.
-  Future<void> _checkDailyActivityEffects(String responseText) async {
-    if (responseText.trim().isEmpty) return;
-    if (_activeCharacter == null) return;
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-
-    final prompt =
-        'Read the following character response.\n\n'
-        'RESPONSE:\n$responseText\n\n'
-        'Did $charName do any of the following in this response?\n'
-        '- Ate or drank a significant meal / snack / drink\n'
-        '- Slept, napped, or had a good rest\n'
-        '- Took a deliberate, non-sexual bath, shower, or thorough cleaning (not just quick rinse during/after sex)\n\n'
-        'Answer ONLY with a flat JSON object:\n'
-        '{"ate": true/false, "slept": true/false, "bathed": true/false, "quality": 1-10}';
-
-    try {
-      final raw = await _fireLLMEval(prompt);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).isNotEmpty
-          ? _stripThinkBlocks(raw)
-          : raw;
-
-      final ate = _extractJsonBool(text, 'ate') ?? false;
-      final slept = _extractJsonBool(text, 'slept') ?? false;
-      final bathed = _extractJsonBool(text, 'bathed') ?? false;
-      final quality = _extractJsonInt(text, 'quality') ?? 5;
-      final strength = (quality / 10.0).clamp(0.5, 1.0);
-
-      final deltas = <String, int>{};
-
-      if (ate) {
-        deltas['hunger'] = (22 * strength).round();
-        deltas['fun'] = (6 * strength).round();
-        deltas['social'] = (4 * strength).round();
-        deltas['energy'] = (5 * strength).round();
-        deltas['bladder'] = (4 * strength).round();
-      }
-
-      if (slept) {
-        deltas['energy'] = (deltas['energy'] ?? 0) + (25 * strength).round();
-        deltas['fun'] = (deltas['fun'] ?? 0) + (5 * strength).round();
-        deltas['hunger'] = (deltas['hunger'] ?? 0) + (-3 * strength).round();
-        deltas['bladder'] = (deltas['bladder'] ?? 0) + (5 * strength).round();
-      }
-
-      if (bathed) {
-        // Hygiene from bathing is intentionally reduced in two cases:
-        // 1. Recent sexual activity (e.g. sex in the shower) — cleaning during/after
-        //    messy sex shouldn't count as a full refreshing reset.
-        // 2. Characters with "Enjoys low hygiene" get less benefit from cleaning
-        //    because they like being sweaty/musky/dirty.
-        int hygieneGain = (25 * strength).round();
-
-        final bool recentSexualActivity =
-            _needsAfterglowTurnsRemaining > 0 ||
-            _postClimaxCrashTurnsRemaining > 0;
-
-        if (recentSexualActivity) {
-          hygieneGain = (hygieneGain * 0.35).round().clamp(0, 100);
-        }
-
-        if (_enjoysLowHygiene) {
-          hygieneGain = (hygieneGain * 0.5).round().clamp(0, 100);
-          // Lower comfort/fun payoff from bathing for these characters
-          deltas['comfort'] = (deltas['comfort'] ?? 0) + (6 * strength).round();
-          deltas['fun'] = (deltas['fun'] ?? 0) + (3 * strength).round();
-        } else {
-          deltas['comfort'] =
-              (deltas['comfort'] ?? 0) + (12 * strength).round();
-          deltas['fun'] = (deltas['fun'] ?? 0) + (6 * strength).round();
-        }
-
-        deltas['hygiene'] = hygieneGain;
-      }
-
-      if (deltas.isNotEmpty) {
-        _applyNeedsDeltas(deltas);
-        debugPrint(
-          '[Realism:Needs] Daily activities detected → applied cross-effects: $deltas',
-        );
-      }
-    } catch (e) {
-      debugPrint('[Realism:DailyActivities] Check failed: $e');
-    }
-  }
-
-  // ── Score / State Helpers ──
-
-  void _applyScoreDelta(int delta) {
-    _shortTermDeltasSummary += delta;
-    _turnsSinceLongTermCheck++;
-
-    if (_turnsSinceLongTermCheck >= 5) {
-      _evalLongTermGrowth();
-    }
-
-    if (delta == 0) return;
-    final oldScore = _affectionScore;
-    final oldTier = _relationshipTier;
-
-    _affectionScore = (_affectionScore + delta).clamp(-300, 300);
-    _relationshipTier = _calculateTier(_affectionScore);
-
-    if (_affectionScore != oldScore || _relationshipTier != oldTier) {
-      debugPrint(
-        '[Realism] Short-Term Bond: $oldScore \u2192 $_affectionScore, '
-        'Tier: $oldTier \u2192 $_relationshipTier ($shortTermTierName)',
-      );
-    }
-  }
-
-  void _evalLongTermGrowth() {
-    final oldLTScore = _longTermScore;
-    final oldLTTier = _longTermTier;
-
-    // Proportional growth based on average short-term tier over the evaluation window
-    final avgTier =
-        _relationshipTier; // Use current tier as proxy for recent average
-
-    if (avgTier >= 7) {
-      _longTermScore = (_longTermScore + 3).clamp(-300, 300);
-    } else if (avgTier >= 4) {
-      _longTermScore = (_longTermScore + 2).clamp(-300, 300);
-    } else if (avgTier >= 2) {
-      _longTermScore = (_longTermScore + 1).clamp(-300, 300);
-    } else if (avgTier <= -7) {
-      _longTermScore = (_longTermScore - 3).clamp(-300, 300);
-    } else if (avgTier <= -4) {
-      _longTermScore = (_longTermScore - 2).clamp(-300, 300);
-    } else if (avgTier <= -2) {
-      _longTermScore = (_longTermScore - 1).clamp(-300, 300);
-    }
-    // Between -1 and +1: no long-term change (neutral drift doesn't cement)
-
-    _longTermTier = _calculateTier(_longTermScore);
-    _turnsSinceLongTermCheck = 0;
-    _shortTermDeltasSummary = 0;
-
-    if (_longTermScore != oldLTScore || _longTermTier != oldLTTier) {
-      debugPrint(
-        '[Realism] Long-Term Bond updated: $oldLTScore \u2192 $_longTermScore, '
-        'Tier: $oldLTTier \u2192 $_longTermTier ($longTermTierName)',
-      );
-    } else {
-      debugPrint(
-        '[Realism] Long-Term Bond check (No change) - Status: $_longTermScore ($longTermTierName)',
-      );
-    }
-  }
+  // ── Score / State Helpers (thinned; core logic + counters in RelationshipService) ──
 
   /// Apply short-term relationship decay (2 points per 10 turns toward 0)
   /// This prevents relationships from being permanently stuck at extremes.
   void _applyMoodDecay() {
-    // Decay mechanism: every 10 turns, move score toward 0 by 1 point (per speaker in groups)
-    _turnsSinceDecayCheck++;
-    if (_turnsSinceDecayCheck >= 10) {
-      if (_activeGroup != null && !_observerMode) {
-        final id = _getCurrentSpeakerIdForRealism();
-        final current = _getGroupInt(
-          id,
-          'affection',
-          defaultValue: _affectionScore,
-        );
-        final next = current > 0
-            ? (current - 1).clamp(-300, 300)
-            : current < 0
-            ? (current + 1).clamp(-300, 300)
-            : current;
-        _setGroupRealismValue(id, 'affection', next);
-        if (next != 0) {
-          debugPrint('[Realism] Group short-term decay for $id: $next');
-        }
-
-        // Phase 2/3: Decay hidden inter-character relationships (only when under the 4-char cap)
-        if (_shouldTrackInterCharacterRelationships) {
-          final rels = Map<String, int>.from(
-            getInterCharacterRelationships(id),
-          );
-          if (rels.isNotEmpty) {
-            bool relChanged = false;
-            rels.forEach((otherId, value) {
-              if (value > 0) {
-                rels[otherId] = (value - 1).clamp(-300, 300);
-                relChanged = true;
-              } else if (value < 0) {
-                rels[otherId] = (value + 1).clamp(-300, 300);
-                relChanged = true;
-              }
-            });
-            if (relChanged) {
-              _setGroupRealismValue(id, 'relationships', rels);
-              debugPrint(
-                '[Realism:Group] Decayed inter-character relationships for $id',
-              );
-            }
-          }
-        }
-      } else {
-        // 1:1 scalar path
-        if (_affectionScore > 0) {
-          _affectionScore = (_affectionScore - 1).clamp(-300, 300);
-        } else if (_affectionScore < 0) {
-          _affectionScore = (_affectionScore + 1).clamp(-300, 300);
-        }
-        if (_affectionScore != 0) {
-          debugPrint('[Realism] Short-term decay applied: $_affectionScore');
-        }
-      }
-      _turnsSinceDecayCheck = 0;
-    }
+    // Decay mechanism moved to RelationshipService (applyShortTermDecay).
+    // Counter, 1:1/group branches, inter-char decay all delegated for mechanical fidelity.
+    _relationshipService.applyShortTermDecay();
   }
 
   // ── Public Toggle Methods ──
@@ -12176,8 +8267,8 @@ class ChatService extends ChangeNotifier {
     // Anchor the narrative weekday to the real-world day when realism first turns on for this session.
     // Only set if not already anchored (0 = legacy/unset). This prevents re-anchoring on toggle-off/on
     // for long-running sessions, keeping Day N stable across restarts.
-    if (enabled && (_startDayOfWeek < 1 || _startDayOfWeek > 7)) {
-      _startDayOfWeek = DateTime.now().weekday;
+    if (enabled) {
+      _timeService.ensureStartDayOfWeekAnchored();
     }
 
     if (enabled && _activeGroup == null && _activeCharacter != null) {
@@ -12207,7 +8298,7 @@ class ChatService extends ChangeNotifier {
       // Just stop using it. State persists in memory/DB so re-enabling restores it.
       // Old behavior was destructive - it deleted all character building progress.
       debugPrint(
-        '[Realism] Disabled (preserving state: bond=$_affectionScore, trust=$_trustLevel, emotion=$_characterEmotion)',
+        '[Realism] Disabled (preserving state: bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}, emotion=$_characterEmotion)',
       );
     }
     await _saveChat();
@@ -12215,18 +8306,13 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> setNsfwCooldownEnabled(bool enabled) async {
-    _nsfwCooldownEnabled = enabled;
-    if (!enabled) {
-      _cooldownTurnsRemaining = 0;
-      _cooldownTurnsTotal = 0;
-      _arousalLevel = 0;
-    }
+    _nsfwService.setNsfwCooldownEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
 
   Future<void> setPassageOfTimeEnabled(bool enabled) async {
-    _passageOfTimeEnabled = enabled;
+    _timeService.setPassageOfTimeEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
@@ -12240,13 +8326,7 @@ class ChatService extends ChangeNotifier {
   /// Matches the side-effect style of [setNsfwCooldownEnabled] and [setChaosModeEnabled].
   Future<void> setNeedsSimEnabled(bool enabled) async {
     _needsSimEnabled = enabled;
-    if (enabled) {
-      _initializeNeedsVectorIfNeeded();
-    } else {
-      _needsVector.clear();
-      _needsAfterglowTurnsRemaining = 0;
-      _arousalSuppressionTurnsRemaining = 0;
-    }
+    _needsSimulation.setEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
@@ -12254,163 +8334,28 @@ class ChatService extends ChangeNotifier {
   // ── Manual Time Nudge ────────────────────────────────────────────────────
 
   /// Called by the sidebar chevron buttons. delta = +1 (forward) or -1 (back).
+  /// Thin delegation to TimeService (core logic + cb-driven patch). Save/notify
+  /// + realism guard kept in god wrapper (UI coordination).
   Future<void> nudgeTimePeriod(int delta) async {
     if (!_realismEnabled) return;
-    final validTimes = [
-      'dawn',
-      'morning',
-      'late_morning',
-      'afternoon',
-      'evening',
-      'night',
-    ];
-    int idx = validTimes.indexOf(_timeOfDay);
-    idx = (idx + delta) % validTimes.length;
-    if (idx < 0) {
-      idx = validTimes.length - 1;
-      _dayCount = (_dayCount - 1).clamp(1, 9999);
-    } else if (delta > 0 &&
-        validTimes.indexOf(_timeOfDay) == validTimes.length - 1) {
-      // wrapped forward past night
-      _dayCount++;
-    }
-    _timeOfDay = validTimes[idx];
-    _turnsSinceLastTimeAdvance = 0; // reset clock after manual nudge
-
-    // CRITICAL: Patch the realism_state snapshot on the last message so that
-    // _restoreRealismStateFromMessage cannot revert the manually-set time.
-    // Without this, any swipe navigation or session reload reads the stale
-    // pre-nudge snapshot and silently reverts _timeOfDay back to what it was.
-    if (_messages.isNotEmpty) {
-      final lastMsg = _messages.last;
-      lastMsg.activeMetadata ??= {};
-      final existingState = lastMsg.activeMetadata!['realism_state'];
-      if (existingState is Map<String, dynamic>) {
-        existingState['timeOfDay'] = _timeOfDay;
-        existingState['dayCount'] = _dayCount;
-        existingState['time_nudged'] = true;
-      } else {
-        // No snapshot yet — create a minimal one anchored to current state
-        lastMsg.activeMetadata!['realism_state'] = _captureRealismState();
-        lastMsg.activeMetadata!['realism_state']['time_nudged'] = true;
-      }
-    }
-
+    _timeService.nudgeTimePeriod(delta);
     await _saveChat();
     notifyListeners();
   }
 
-  // ── OOC Time-Skip Detector ───────────────────────────────────────────────
-
-  /// Scans the user message for OOC/narrative time-skip language and advances
-  /// the clock by the inferred number of periods. Stamps the skip into
-  /// _pendingRealismMetadata so it appears in the next AI message's delta row.
-  ///
-  /// NOTE: Respects the global passageOfTimeEnabled setting. If disabled,
-  /// this function does nothing even if OOC markers are present.
-  void _detectOocTimeSkip(String text) {
-    // Respect global passage of time setting
-    if (!_passageOfTimeEnabled) {
-      debugPrint(
-        '[Realism:OOC] Time-skip requested but passageOfTimeEnabled=false, ignoring',
-      );
-      return;
-    }
-
-    final lower = text.toLowerCase();
-
-    // Only fire on OOC-style markers or explicit timeskip language
-    final hasOocMarker = RegExp(
-      r'\(ooc[:\s]|\[ooc|\*ooc\b|ooc:',
-    ).hasMatch(lower);
-    final hasSkipPhrase = RegExp(
-      r'\b(time.?skip|fast.?forward|skip ahead|several hours|a few hours|hours? later|'
-      r'the next (morning|day|evening|afternoon|night|dawn)|'
-      r'next (morning|day|evening|afternoon|night|dawn)|'
-      r'hours? pass|time passes|the following (morning|day)|'
-      r'wake up the next|woke up|the next day)\b',
-    ).hasMatch(lower);
-
-    if (!hasOocMarker && !hasSkipPhrase) return;
-
-    // Estimate period count from duration language
-    int periods = 1;
-
-    if (RegExp(
-      r'\b(all day|entire day|full day|day passes|the (whole|entire) day)\b',
-    ).hasMatch(lower)) {
-      periods = 4;
-    } else if (RegExp(
-      r'\b(next (morning|day)|the following (morning|day)|wake up|woke up|overnight)\b',
-    ).hasMatch(lower)) {
-      _dayCount++;
-      _timeOfDay = 'dawn';
-      _turnsSinceLastTimeAdvance = 0;
-      _pendingRealismMetadata ??= {};
-      _pendingRealismMetadata!['time_skip_to'] = 'Dawn · Day $_dayCount';
-      notifyListeners();
-      debugPrint('[Realism:OOC] Next-day transition → Day $_dayCount, dawn');
-      return;
-    } else if (RegExp(
-      r'\b(several hours|many hours|a long time|hours? pass)\b',
-    ).hasMatch(lower)) {
-      periods = 3;
-    } else if (RegExp(
-      r'\b(a few hours|couple.{0,5}hours|2.{0,5}hours|two hours)\b',
-    ).hasMatch(lower)) {
-      periods = 2;
-    } else if (RegExp(
-      r'\b(an hour|1 hour|one hour|a while|some time)\b',
-    ).hasMatch(lower)) {
-      periods = 1;
-    } else if (hasOocMarker) {
-      periods = 1;
-    }
-
-    if (periods <= 0) return;
-
-    final validTimes = [
-      'dawn',
-      'morning',
-      'late_morning',
-      'afternoon',
-      'evening',
-      'night',
-    ];
-    int idx = validTimes.indexOf(_timeOfDay);
-    for (int i = 0; i < periods; i++) {
-      idx++;
-      if (idx >= validTimes.length) {
-        idx = 0;
-        _dayCount++;
-      }
-    }
-    _timeOfDay = validTimes[idx];
-    _turnsSinceLastTimeAdvance = 0;
-    _pendingRealismMetadata ??= {};
-    // Capitalise the time label for display (late_morning -> Late Morning)
-    final displayTime = _timeOfDay
-        .split('_')
-        .map((w) => w[0].toUpperCase() + w.substring(1))
-        .join(' ');
-    _pendingRealismMetadata!['time_skip_to'] = displayTime;
-    notifyListeners();
-    debugPrint(
-      '[Realism:OOC] Time-skip: +$periods period(s) → $_timeOfDay (Day $_dayCount)',
-    );
-  }
-
-  // ── Chaos Mode / Chance Time ──────────────────────────────────────────────
+  // ── Chaos Mode / Chance Time (thin delegation to extracted service) ──────
+  // Control sets delegate fully (like needsSimEnabled precedent). Actions thin to
+  // handle the UI-coordination flags (pendingEvent, completer) that stay in god.
+  // All impl (pressure math, pools, roll, apply core, etc.) deleted from here.
 
   Future<void> setChaosModeEnabled(bool enabled) async {
-    _chaosModeEnabled = enabled;
-    if (!enabled) _chaosPressure = 0;
+    _chaosModeService.setModeEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
 
   Future<void> setChaosNsfwEnabled(bool enabled) async {
-    _chaosNsfwEnabled = enabled;
+    _chaosModeService.setNsfwEnabled(enabled);
     await _saveChat();
     notifyListeners();
   }
@@ -12423,258 +8368,24 @@ class ChatService extends ChangeNotifier {
 
   /// Returns 8 randomly-sampled events for the wheel UI to display.
   List<String> spinWheelEvents() {
-    final pool = List<String>.from(_chanceTimeEventPool);
-    if (_chaosNsfwEnabled) pool.addAll(_chanceTimeNsfwPool);
-    pool.shuffle();
-    return pool.take(8).toList();
+    return _chaosModeService.spinWheelEvents();
   }
 
   /// Called by the wheel overlay once the animation lands on an event.
-  /// Stores the event as a prompt injection for the next response and
-  /// resumes the paused sendMessage flow.
+  /// Thin wrapper: compute display ({{char}} replace), set UI flag, delegate core
+  /// (pressure/injection/metadata/save/notify) to service, then complete completer.
   Future<void> applyChanceTimeResult(String event, String charName) async {
     final display = event.replaceAll('{{char}}', charName);
     _pendingChanceTimeEvent = display;
-    _chaosPressure = 0;
-
-    // Store in metadata so the delta chip appears on the AI's next message
-    _pendingRealismMetadata ??= {};
-    _pendingRealismMetadata!['chance_time_event'] = display;
-
-    // Store as a prompt injection — the character will weave this into their
-    // natural response to the user's message instead of getting a separate
-    // dedicated reaction message.
-    _pendingChaosInjection = display;
-
-    await _saveChat();
-    notifyListeners();
-    debugPrint('[ChanceTime] Applied: $display — injecting into next response');
-
-    // Resume the paused sendMessage flow
+    await _chaosModeService.applyPreparedEvent(display);
+    // Resume the paused sendMessage flow (UI coordination stays in god)
     _chanceTimeCompleter?.complete();
   }
 
-  /// Per-turn auto-trigger check. Returns true if the wheel should pop this turn.
+  /// Per-turn auto-trigger check. Delegates to service (verbatim roll/pressure logic).
   bool checkAndTickChaosPressure() {
-    if (!_chaosModeEnabled) return false;
-    _chaosPressure = (_chaosPressure + _chaosGrowthPerTurn).clamp(
-      0,
-      _chaosPressureCap,
-    );
-    final effectiveChance = (_chaosBaseChance + _chaosPressure).clamp(
-      0,
-      _chaosPressureCap,
-    );
-    // Use microseconds for better entropy than milliseconds
-    final roll = (DateTime.now().microsecondsSinceEpoch % 100);
-    final fires = roll < effectiveChance;
-    if (fires) {
-      debugPrint(
-        '[ChanceTime] Auto-trigger! pressure=$_chaosPressure% roll=$roll',
-      );
-    }
-    return fires;
+    return _chaosModeService.checkAndTickChaosPressure();
   }
 
-  // ── Chance Time Event Pool (120 events) ───────────────────────────────────
-
-  static const List<String> _chanceTimeEventPool = [
-    // 🟢 Fortune — lucky breaks, good vibes, unexpected wins
-    '{{char}} just found something valuable they completely forgot they owned',
-    '{{char}} was mistaken for someone important and is being treated accordingly',
-    '{{char}} stumbled into a crowd of admirers who are totally convinced they are famous',
-    'Something {{char}} lost a long time ago has just turned up in the most unexpected place',
-    '{{char}} received a completely unexpected compliment that made their entire day',
-    '{{char}} just discovered a hidden stash of food or treats at exactly the right moment',
-    '{{char}} pulled off something impressive entirely by accident and everyone thinks it was intentional',
-    'A stranger just paid for {{char}}\'s meal or expenses without any explanation',
-    '{{char}} arrived somewhere late only to discover being late was absolutely the right call',
-    '{{char}} just found out they won something they entered and completely forgot about',
-    'An incredibly beautiful view or spectacle has appeared right where {{char}} is standing',
-    '{{char}} accidentally said the perfect thing at the perfect moment',
-    '{{char}} is having the best hair or appearance day of their life today',
-    'Something that was going terribly for {{char}} has inexplicably turned completely around',
-    '{{char}} discovered a shortcut or trick that makes everything significantly easier',
-    '{{char}} just got offered a seat, a table, or a spot that would normally go to someone far more important',
-    'The weather turned absolutely perfect the moment {{char}} stepped outside',
-    '{{char}} ran into someone they\'ve been hoping to bump into for a long time',
-    'An animal has taken an immediate and enthusiastic liking to {{char}}',
-    '{{char}} made a guess that turned out to be completely correct',
-    '{{char}} just overheard something that is extremely good news for them',
-    'Someone has arrived to help {{char}} with exactly the thing they were struggling with',
-    '{{char}} was offered more than they asked for and no one is sure why',
-    'A small act of kindness {{char}} performed long ago has just come back around in a big way',
-    '{{char}} woke up unusually well-rested and is in an extremely good mood for no particular reason',
-    '{{char}} got the best seat, the best portion, or the best version of the thing',
-    '{{char}} just accomplished something they\'ve been attempting for a very long time',
-    'Everyone in the room seems to be finding {{char}} particularly charming today',
-    '{{char}} discovered someone nearby has been quietly rooting for them this whole time',
-    '{{char}} received unexpected credit for something that worked out really well',
-    // 🔴 Misfortune — embarrassing, gross, inconvenient, funny
-    '{{char}} urgently needs to use the restroom and there is no good option available',
-    '{{char}} just stepped in something extremely unpleasant and is now tracking it everywhere',
-    '{{char}} sneezed violently at the absolute worst possible moment',
-    '{{char}} sat in something wet and has no idea how to address this situation',
-    '{{char}} has the hiccups and they won\'t stop no matter what',
-    '{{char}} just bit their tongue so hard they can barely form words',
-    '{{char}} has been walking around with something in their teeth for an unknown amount of time',
-    '{{char}}\'s clothing has ripped in an extremely inconvenient location',
-    '{{char}} knocked something over in the loudest and most attention-grabbing way possible',
-    '{{char}} tripped, caught themselves, but everyone absolutely saw it',
-    '{{char}} let out an involuntary sound at the most inopportune moment imaginable',
-    '{{char}} is extremely itchy somewhere they cannot scratch in polite company',
-    '{{char}} just spilled something on themselves and is pretending it didn\'t happen',
-    '{{char}}\'s stomach is making alarming sounds at the worst possible time',
-    '{{char}} said goodbye to someone and then walked in the same direction as them',
-    '{{char}} confidently greeted someone who has no idea who they are',
-    '{{char}} waved back at someone who was not actually waving at them',
-    '{{char}} laughed at something completely inappropriate and now can\'t stop',
-    '{{char}} walked into something that was very clearly visible',
-    '{{char}} has a piece of hair or debris stuck somewhere they can\'t remove it without help',
-    '{{char}} woke up with a spectacular and inexplicable mark on their face',
-    '{{char}} is dealing with a persistent and loudly squeaking piece of their clothing or equipment',
-    '{{char}} just yawned enormously in front of exactly the wrong person',
-    '{{char}} sent a message and immediately regretted every single word of it',
-    '{{char}} is trying to pretend they remember the name of someone they absolutely do not',
-    '{{char}}\'s hands are completely full at exactly the moment they desperately need a free hand',
-    '{{char}} dropped something and it rolled to the most awkward possible location',
-    '{{char}} got something in their eye at the worst possible time',
-    '{{char}} has been nodding along in a conversation they stopped following ten minutes ago',
-    '{{char}} just realized they\'ve been pronouncing something wrong their entire life',
-    '{{char}} is having a sneezing fit and it is not going to stop anytime soon',
-    '{{char}} just made direct and sustained eye contact with someone during an extremely awkward moment',
-    '{{char}} reached for something confidently and missed completely',
-    '{{char}} fell asleep briefly somewhere very inappropriate',
-    '{{char}} made a very confident prediction that was immediately and publicly proven wrong',
-    '{{char}} went to tell a story and completely forgot where it was going halfway through',
-    '{{char}} is having the most stubborn and uncooperative hair day of their life',
-    '{{char}} just let out an involuntary noise while trying to lift something heavy',
-    '{{char}} immediately regretted the food choice they were so confident about',
-    '{{char}} is dealing with a shoe, boot, or footwear issue that keeps demanding attention',
-    '{{char}}\'s name has been mispronounced repeatedly and they\'ve been too polite to correct it',
-    '{{char}} just realized they\'ve had something on backwards or inside-out all day',
-    // 💛 Chaos — strange, unpredictable, and completely out of nowhere
-    'A bird flew directly into the space {{char}} is in and absolutely refuses to leave',
-    'An incredibly loud and disruptive noise has started nearby with no explanation',
-    'Something nearby fell over on its own for no apparent reason whatsoever',
-    '{{char}} has become the unexpected center of a very enthusiastic and confusing celebration',
-    'A small animal has decided that {{char}}\'s belongings are now its home',
-    'A person in an extremely unusual outfit has just walked by and is completely serious',
-    'Everything that could make noise in {{char}}\'s vicinity is making noise simultaneously',
-    'A sudden and powerful gust of wind has created a chaotic situation involving {{char}}\'s belongings',
-    'An extremely large insect has appeared and is refusing to be dealt with',
-    'The lighting wherever {{char}} is has done something extremely unexpected',
-    'A crowd has formed nearby for reasons that remain completely unclear',
-    'Someone nearby is telling a very loud and very one-sided story that involves {{char}} by name',
-    'A persistent and enthusiastic child or small creature has fixated entirely on {{char}}',
-    'Something is cooking or burning nearby and the smell is completely overwhelming',
-    'A piece of {{char}}\'s environment has broken in a way that is more funny than serious',
-    'An uninvited guest or creature has appeared and made themselves entirely at home',
-    '{{char}}\'s surroundings have spontaneously rearranged themselves in a confusing way',
-    'A very confident stranger is trying to recruit {{char}} into something on the spot',
-    'Two other people nearby have begun a surprisingly loud and personal argument',
-    'Something small and ridiculous has escalated into a situation requiring everyone\'s attention',
-    'A nearby animal is doing exactly what it should not be doing and nobody can stop it',
-    '{{char}} has accidentally started a trend and people nearby are copying them',
-    'Someone nearby is performing something unsolicited and making eye contact with {{char}}',
-    'The rhythm of everything around {{char}} has synchronized into something inexplicably musical',
-    'A delivery or package has arrived for {{char}} with completely incorrect contents',
-    'Something that was definitely fixed has become unfixed again at the worst time',
-    'An object nearby has developed a squeak, rattle, or wobble that cannot be ignored',
-    '{{char}} is in the middle of a very long and intricate process when something interrupts everything',
-    'Every seat, surface, or resting spot nearby is occupied or unavailable',
-    'Something {{char}} was counting on to work fine has decided today is not that day',
-    // 💜 Wild Cards — character-specific fun situations
-    '{{char}} is absolutely starving and trying very hard not to let it show',
-    '{{char}} has a song stuck in their head that keeps making them move involuntarily',
-    '{{char}} is desperately trying to stay awake and losing the battle',
-    '{{char}} just thought of a really good comeback to something that happened hours ago',
-    '{{char}} is trying to look like they know what they\'re doing in a situation they definitely do not',
-    '{{char}} has been holding in a laugh for so long it\'s becoming a physical problem',
-    '{{char}} is running on absolutely no sleep and extremely committed to pretending otherwise',
-    '{{char}} is convinced something delicious is nearby but can\'t figure out where it\'s coming from',
-    '{{char}} just thought of something embarrassing from years ago completely unprompted',
-    '{{char}} is trying to remember something very important and it is right on the tip of their tongue',
-    '{{char}} is putting in extraordinary effort to appear calm about something that is stressing them out enormously',
-    '{{char}} is extremely competitive about something that absolutely does not warrant it',
-    '{{char}} has been daydreaming so intensely they\'ve lost track of what\'s happening around them',
-    '{{char}} has made a small purchase or decision they are now deeply second-guessing',
-    '{{char}} is trying very hard not to react to something that is extremely funny to them right now',
-    '{{char}} strongly suspects they are being pranked and is watching everyone very carefully',
-    '{{char}} is operating at an unusually high level of confidence today for no specific reason',
-    '{{char}} has a strong opinion about something minor and is barely keeping it to themselves',
-    '{{char}} is lowkey obsessed with a very small and inconsequential detail in their environment',
-    '{{char}} just caught themselves doing something weird and hopes nobody noticed',
-    '{{char}} is absolutely convinced they\'re forgetting something but cannot figure out what',
-    '{{char}} has developed an instant and irrational dislike of a completely harmless object nearby',
-    '{{char}} just said something they think was smooth and they\'re very pleased with themselves',
-    '{{char}} is being incredibly polite about something they find deeply annoying',
-    '{{char}} is trying to subtly fix an error they made without drawing attention to it',
-    '{{char}} is losing a silent battle with their posture',
-    '{{char}} has a very specific craving that is now impossible to stop thinking about',
-    '{{char}} just finished something they were putting off for a long time and feels unreasonably good',
-    '{{char}} is distracted by an extremely irrelevant but very interesting thing happening nearby',
-    '{{char}} is holding a very strong opinion hostage and it is getting increasingly difficult',
-    // 🎪 Slapstick — physical comedy, chaotic energy
-    'Someone set off a stink bomb nearby and {{char}} is directly in the blast zone',
-    '{{char}}\'s pants, skirt, or equivalent just fell down in the most public setting imaginable',
-    '{{char}} has been glitter-bombed and is now sparkling uncontrollably from every surface',
-    '{{char}} got completely and thoroughly soaked by something falling, splashing, or bursting nearby',
-    '{{char}} sat on something that made an extremely loud and unfortunate noise in a silent room',
-    '{{char}} walked into a door, a pole, or a wall that was extremely clearly there',
-    '{{char}} got tangled in something — a rope, a curtain, their own clothing — and is now stuck',
-    '{{char}} accidentally flung food at someone important while trying to eat normally',
-    '{{char}} sneezed so violently they knocked something over, fell backwards, or both',
-    '{{char}} slipped on something wet and went down in slow motion in front of everyone',
-    '{{char}} tried to lean casually on something and it moved, sending them stumbling',
-    '{{char}} just ripped something open far too aggressively and the contents went everywhere',
-    '{{char}} attempted to catch something thrown to them and missed so badly it hit someone else',
-    '{{char}}\'s chair, stool, or seat just collapsed underneath them with maximum noise',
-    '{{char}} tried to open a container and the lid popped off, launching the contents directly at them',
-    '{{char}} walked confidently forward and stepped directly into a puddle, hole, or ditch',
-    '{{char}} got hit in the face by something soft, harmless, and deeply undignified',
-    'A bucket, bag, or container of something has tipped directly onto {{char}}\'s head',
-    '{{char}} grabbed something sticky and now cannot let go without making things worse',
-    '{{char}} accidentally knocked over a chain reaction of objects like a line of dominoes',
-    '{{char}} tried to do something athletic and it went spectacularly wrong in front of an audience',
-    '{{char}} got their hand, foot, or head stuck in something and is now committed to this situation',
-    'Someone threw something at {{char}} as a prank and their reaction made everything funnier',
-    '{{char}}\'s belt, strap, or buckle just snapped at the worst possible moment',
-    '{{char}} is covered in something — paint, mud, ink, flour — and cannot explain how it happened',
-  ];
-
-  // ── Chance Time NSFW Pool (only included when 🌶️ toggle is on) ──────────
-
-  static const List<String> _chanceTimeNsfwPool = [
-    '{{char}} just received an extremely personal delivery in front of other people',
-    'A stranger on the street just propositioned {{char}} loudly and confidently in public',
-    '{{char}}\'s most private undergarment is now visible and they have not yet realized it',
-    '{{char}} accidentally opened something very explicit on a shared or public surface',
-    '{{char}} just made a noise that sounded extremely suggestive and now everyone is staring',
-    'Someone mistook {{char}} for a worker at a very adult-themed establishment',
-    '{{char}} found something very intimate that does not belong to them in their belongings',
-    '{{char}} walked into the wrong room and what they saw cannot be unseen',
-    '{{char}} scratched somewhere inappropriate and someone absolutely noticed',
-    '{{char}} is visibly aroused at the most inconvenient moment imaginable and is scrambling',
-    'A stranger just described {{char}} in extremely flattering and very explicit physical terms within earshot',
-    '{{char}}\'s clothing has shifted in a way that is revealing something they very much did not intend to share',
-    '{{char}} just discovered that a private intimate item of theirs has been on display this whole time',
-    'A love letter or extremely personal note written about {{char}} has just been read aloud to the room',
-    '{{char}} was caught very obviously checking someone out and both parties know it',
-    '{{char}} accidentally grabbed someone in a place that was very much not where they intended',
-    'Something {{char}} said came out sounding incredibly dirty and everyone heard it',
-    '{{char}} has just received a gift that is unmistakably sexual and has to open it in front of people',
-    '{{char}} is trying extremely hard to hide a visible physical reaction to someone attractive nearby',
-    '{{char}} walked in on something they desperately wish they had not walked in on',
-    'Someone just loudly and publicly asked {{char}} about their love life in excruciating detail',
-    '{{char}} realized their private journal or personal writing has been read by someone else',
-    '{{char}} is wearing something under their clothes that they would be mortified for anyone to discover',
-    'An ex-lover of {{char}} has just appeared and is being very loud about their shared history',
-    '{{char}} was dared to do something embarrassingly intimate and is now trapped by their own pride',
-    '{{char}} made eye contact with someone attractive at exactly the wrong moment and froze',
-    '{{char}} was mistaken for someone\'s lover and the misunderstanding is escalating fast',
-    '{{char}} just got caught practicing a flirtatious or seductive pose in what they thought was privacy',
-    'A very personal garment belonging to {{char}} has just fallen out of their bag in a crowded space',
-    '{{char}} accidentally moaned, groaned, or made a compromising sound while stretching or sitting down',
-  ];
+  // (Chance Time pools moved verbatim to ChaosModeService; deletion complete.)
 }

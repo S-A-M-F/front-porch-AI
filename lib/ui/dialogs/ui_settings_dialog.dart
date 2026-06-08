@@ -130,7 +130,10 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
               _buildColorRow(
                 context,
                 'User Bubble',
-                _characterNotifier.value?.frontPorchExtensions?.userBubbleColor ??
+                _characterNotifier
+                        .value
+                        ?.frontPorchExtensions
+                        ?.userBubbleColor ??
                     storageService.globalUserBubbleColor,
                 (color) => _updateUserBubbleColor(context, color),
               ),
@@ -208,8 +211,7 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
 
   Widget _buildAvatarLockedToggle(BuildContext context) {
     final character = _characterNotifier.value!;
-    final locked =
-        character.frontPorchExtensions?.avatarLocked ?? false;
+    final locked = character.frontPorchExtensions?.avatarLocked ?? false;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -723,9 +725,7 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
 
     final currentExtensions =
         character.frontPorchExtensions ?? FrontPorchExtensions();
-    final updatedExtensions = currentExtensions.copyWith(
-      avatarLocked: locked,
-    );
+    final updatedExtensions = currentExtensions.copyWith(avatarLocked: locked);
     final updatedCharacter = CharacterCard(
       name: character.name,
       description: character.description,
@@ -748,10 +748,10 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       rawExtensions: character.rawExtensions != null
           ? Map<String, dynamic>.from(character.rawExtensions!)
           : null,
-        avatarImages: character.avatarImages != null
-            ? List.from(character.avatarImages!)
-            : null,
-      )..dbId = character.dbId;
+      avatarImages: character.avatarImages != null
+          ? List.from(character.avatarImages!)
+          : null,
+    )..dbId = character.dbId;
     final charRepo = Provider.of<CharacterRepository>(context, listen: false);
     await charRepo.updateCharacter(updatedCharacter);
     setState(() {

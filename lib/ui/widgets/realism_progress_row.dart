@@ -66,20 +66,17 @@ class RealismProgressRow extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Tooltip(
-          message: tooltip ??
+          message:
+              tooltip ??
               (label.toLowerCase().contains('bond')
                   ? 'Bond: Current relationship strength.'
                   : (label.toLowerCase().contains('trust')
-                      ? 'Trust: How much the character believes and relies on you.'
-                      : 'Arousal: Physical/sexual tension level.')),
+                        ? 'Trust: How much the character believes and relies on you.'
+                        : 'Arousal: Physical/sexual tension level.')),
           preferBelow: false,
           child: Row(
             children: [
-              Icon(
-                icon,
-                size: compact ? 11 : 13,
-                color: displayColor,
-              ),
+              Icon(icon, size: compact ? 11 : 13, color: displayColor),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
@@ -126,9 +123,6 @@ class RealismProgressRow extends StatelessWidget {
       return content;
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: content,
-    );
+    return Padding(padding: const EdgeInsets.only(bottom: 2), child: content);
   }
 }

@@ -338,7 +338,7 @@ class DrawThingsGrpcService {
         'prompt': prompt,
         'negative_prompt': negativePrompt,
         'config': cfg,
-        if (refImagePath != null) 'reference_image_path': refImagePath,
+        'reference_image_path': ?refImagePath,
       });
 
       // Inline CLI resolution + spawn + stdin (duplicated from other methods — required for 0 new private methods rule)

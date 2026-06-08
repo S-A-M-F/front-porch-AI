@@ -277,10 +277,24 @@ void main(List<String> args) async {
             Provider.of<StorageService>(context, listen: false),
             Provider.of<BackendManager>(context, listen: false),
           ),
-          update: (context, kobold, openRouter, pseudoRemote, storage, backend,
-                  previous) =>
-              previous ??
-              LLMProvider(kobold, openRouter, pseudoRemote, storage, backend),
+          update:
+              (
+                context,
+                kobold,
+                openRouter,
+                pseudoRemote,
+                storage,
+                backend,
+                previous,
+              ) =>
+                  previous ??
+                  LLMProvider(
+                    kobold,
+                    openRouter,
+                    pseudoRemote,
+                    storage,
+                    backend,
+                  ),
         ),
         ChangeNotifierProxyProvider4<
           KoboldService,
@@ -829,7 +843,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
     // toggles or when the async prefs load completes. AppState is kept only for selectedIndex.
     return Consumer2<StorageService, AppState>(
       builder: (context, storage, appState, child) {
-        final isDark = storage.isDark;
+        final isDark = storage.uiSettings.isDark;
         return MaterialApp(
           title: 'Front Porch AI',
           debugShowCheckedModeBanner: false,
@@ -839,9 +853,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
             scaffoldBackgroundColor: isDark
                 ? const Color(0xFF0F172A)
                 : const Color(0xFFF8F4ED), // warmer paper
-            cardColor: isDark
-                ? const Color(0xFF1E293B)
-                : Colors.white,
+            cardColor: isDark ? const Color(0xFF1E293B) : Colors.white,
             textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme)
                 .apply(
                   bodyColor: isDark ? Colors.white : Colors.black87,
@@ -932,7 +944,8 @@ class _MyAppState extends State<MyApp> with WindowListener {
               final responsiveScale = (width / 1280).clamp(0.85, 1.5);
 
               // Combine with user preference
-              final effectiveScale = responsiveScale * storage.textScale;
+              final effectiveScale =
+                  responsiveScale * storage.uiSettings.textScale;
 
               return MediaQuery(
                 data: MediaQuery.of(
@@ -1759,7 +1772,8 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
     final storage = Provider.of<StorageService>(context, listen: false);
     await storage.initialized;
-    if (!storage.cloudSyncEnabled || storage.cloudSyncProvider == 'none') {
+    if (!storage.cloudSyncSettings.cloudSyncEnabled ||
+        storage.cloudSyncSettings.cloudSyncProvider == 'none') {
       return;
     }
 
@@ -1767,7 +1781,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
     // Create and connect the appropriate provider
     CloudStorageProvider provider;
-    switch (storage.cloudSyncProvider) {
+    switch (storage.cloudSyncSettings.cloudSyncProvider) {
       case 'webdav':
         provider = WebDavProvider();
         break;
@@ -1780,9 +1794,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
     try {
       await provider.connect({
-        'url': storage.cloudSyncUrl,
-        'username': storage.cloudSyncUsername,
-        'password': storage.cloudSyncPassword,
+        'url': storage.cloudSyncSettings.cloudSyncUrl,
+        'username': storage.cloudSyncSettings.cloudSyncUsername,
+        'password': storage.cloudSyncSettings.cloudSyncPassword,
       });
       syncService.setProvider(provider);
 
@@ -1809,7 +1823,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
       // Check for schema version mismatch (e.g. newer UUID schema on another device)
       if (syncService.schemaMismatch) {
         // Disable cloud sync so it doesn't keep failing
-        await storage.setCloudSyncEnabled(false);
+        await storage.cloudSyncSettings.setCloudSyncEnabled(false);
 
         if (context.mounted) {
           showDialog(
@@ -1942,7 +1956,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
                     Navigator.of(ctx).pop();
                     try {
                       await syncService.forceUploadDatabase();
-                      await storage.setCloudSyncLastTime(
+                      await storage.cloudSyncSettings.setCloudSyncLastTime(
                         DateTime.now().toIso8601String(),
                       );
                     } catch (e) {
@@ -1963,7 +1977,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
       }
 
       if (syncService.status == SyncStatus.success) {
-        await storage.setCloudSyncLastTime(DateTime.now().toIso8601String());
+        await storage.cloudSyncSettings.setCloudSyncLastTime(
+          DateTime.now().toIso8601String(),
+        );
         // Reload characters so newly downloaded PNGs appear in the UI
         final charRepo = Provider.of<CharacterRepository>(
           context,
@@ -2022,9 +2038,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
   Future<void> _autoStartWebServer(BuildContext context) async {
     final storage = Provider.of<StorageService>(context, listen: false);
     await storage.initialized;
-    if (!storage.webServerEnabled) return;
+    if (!storage.webServerSettings.webServerEnabled) return;
 
     final webServer = Provider.of<WebServerService>(context, listen: false);
-    await webServer.start(storage.webServerPort);
+    await webServer.start(storage.webServerSettings.webServerPort);
   }
 }

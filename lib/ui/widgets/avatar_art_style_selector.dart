@@ -38,15 +38,11 @@ class AvatarArtStyleSelector extends StatelessWidget {
           selectedColor: accentColor.withValues(alpha: 0.15),
           backgroundColor: AppColors.surfaceContainerOf(context),
           labelStyle: TextStyle(
-            color: isSelected
-                ? accentColor
-                : AppColors.textSecondary(context),
+            color: isSelected ? accentColor : AppColors.textSecondary(context),
             fontSize: 13,
           ),
           side: BorderSide(
-            color: isSelected
-                ? accentColor
-                : AppColors.borderOf(context),
+            color: isSelected ? accentColor : AppColors.borderOf(context),
           ),
         );
       }).toList(),

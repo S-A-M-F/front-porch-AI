@@ -249,14 +249,16 @@ class AppTextField extends StatelessWidget {
   /// input "dialogue"/ *action* coloring) where the misspelled style would
   /// otherwise interfere. The spell check service and suggestion results
   /// remain active either way, so context menu corrections still work.
-  static SpellCheckConfiguration? platformSpellCheck({bool showMisspellings = true}) {
+  static SpellCheckConfiguration? platformSpellCheck({
+    bool showMisspellings = true,
+  }) {
     if (Platform.isMacOS || Platform.isWindows) {
       return SpellCheckConfiguration(
         spellCheckService: DesktopSpellCheckService(),
         misspelledTextStyle: showMisspellings
             ? TextStyle(
                 decoration: TextDecoration.underline,
-                decorationColor: Colors.redAccent.withOpacity(0.6),
+                decorationColor: Colors.redAccent.withValues(alpha: 0.6),
                 decorationStyle: TextDecorationStyle.wavy,
               )
             : const TextStyle(), // no visual — preserves custom coloring

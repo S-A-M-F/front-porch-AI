@@ -34,7 +34,10 @@ class DescriptionDetailChipRow extends StatelessWidget {
         if (subtitle != null) ...[
           Text(
             subtitle!,
-            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+            style: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 11,
+            ),
           ),
           const SizedBox(height: 8),
         ],

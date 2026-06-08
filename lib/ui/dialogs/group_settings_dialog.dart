@@ -211,7 +211,6 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
   // Group-level controllers / state (edited locally, applied on Save)
   late final TextEditingController _groupSystemController;
   late final TextEditingController _groupAuthorNoteController;
-  int _groupAuthorNoteStrength = 4;
 
   // Per-character editing state. Keys are live CharacterCard instances
   // (stable references from chatService.groupCharacters).
@@ -255,7 +254,6 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
       text: group?.systemPrompt ?? '',
     );
     _groupAuthorNoteController = TextEditingController(text: cs.authorNote);
-    _groupAuthorNoteStrength = cs.authorNoteStrength;
 
     // Pre-create controllers for current characters using live getters
     // (so first render has correct starting values).
@@ -395,7 +393,14 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                     ),
                     contentPadding: const EdgeInsets.all(10),
                   ),
-                  onChanged: (_) {},
+                  onChanged: (text) {
+                    final g = widget.chatService.activeGroup;
+                    if (g != null) {
+                      g.systemPrompt = text.trim();
+                      // The parent dialog listens to ChatService, so it will rebuild.
+                      // Avoid direct notifyListeners() from outside the service.
+                    }
+                  },
                 ),
 
                 const SizedBox(height: 20),
@@ -552,7 +557,9 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                 vertical: 8,
               ),
             ),
-            onChanged: (_) {},
+            onChanged: (text) {
+              widget.chatService.setAuthorNoteForGroupCharacter(c, text);
+            },
           ),
           const SizedBox(height: 8),
 
@@ -584,9 +591,18 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                     max: 10,
                     divisions: 9,
                     onChanged: (val) {
+                      final newStrength = val.round();
                       setState(() {
-                        _perCharStrengths[c] = val.round();
+                        _perCharStrengths[c] = newStrength;
                       });
+                      // Flush to service so it persists on Save / restart
+                      final currentNote =
+                          _perCharNoteControllers[c]?.text ?? '';
+                      widget.chatService.setAuthorNoteForGroupCharacter(
+                        c,
+                        currentNote,
+                        strength: newStrength,
+                      );
                     },
                   ),
                 ),
@@ -696,104 +712,12 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
                 vertical: 8,
               ),
             ),
-            onChanged: (_) {},
+            onChanged: (text) {
+              widget.chatService.setSystemPromptForGroupCharacter(c, text);
+            },
           ),
         ],
       ),
-    );
-  }
-
-  /// Builds the group-level strength control with tier labels (matches sidebar styling).
-  Widget _buildStrengthSlider({
-    required int strength,
-    required ValueChanged<int> onChanged,
-  }) {
-    Color sliderColor;
-    String tierLabel;
-    if (strength <= 3) {
-      sliderColor = Colors.blueAccent;
-      tierLabel = 'Subtle';
-    } else if (strength <= 7) {
-      sliderColor = Colors.amberAccent;
-      tierLabel = 'Moderate';
-    } else {
-      sliderColor = Colors.redAccent;
-      tierLabel = 'Strong';
-    }
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            const Tooltip(
-              message:
-                  'Controls how forcefully the author\'s note is applied.\n'
-                  'Subtle: a gentle suggestion the AI may follow.\n'
-                  'Moderate: standard injection into context.\n'
-                  'Strong: an urgent directive the AI should apply immediately.',
-              child: Text(
-                'Strength: ',
-                style: TextStyle(color: Colors.white54, fontSize: 11),
-              ),
-            ),
-            Expanded(
-              child: SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: 3,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 12,
-                  ),
-                  activeTrackColor: sliderColor,
-                  inactiveTrackColor: Colors.white12,
-                  thumbColor: sliderColor,
-                ),
-                child: Slider(
-                  value: strength.toDouble(),
-                  min: 1,
-                  max: 10,
-                  divisions: 9,
-                  label: '$strength — $tierLabel',
-                  onChanged: (val) => onChanged(val.round()),
-                ),
-              ),
-            ),
-            Text(
-              '$strength',
-              style: TextStyle(
-                color: sliderColor,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 2),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: sliderColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: sliderColor.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  tierLabel,
-                  style: TextStyle(
-                    color: sliderColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
@@ -875,23 +799,6 @@ class _MemoryRAGTabState extends State<_MemoryRAGTab> {
       _memoryBudgetPercent = 10.0;
       _charPriorities = {for (final c in _chars) c.name: 1.0};
     });
-  }
-
-  void _saveSettings() {
-    final group = widget.chatService.activeGroup;
-    if (group == null) return;
-
-    // Apply via ChatService (persists via sessions.group_realism_state)
-    widget.chatService.setGroupRAGEnabled(_groupRagEnabled);
-    widget.chatService.setGroupRetrievalCount(_retrievalCount);
-    widget.chatService.setGroupMemoryBudgetPercent(_memoryBudgetPercent);
-
-    // Per-character priorities
-    for (final entry in _charPriorities.entries) {
-      // We need stable IDs here — the tab currently uses names.
-      // For now we keep the old behavior (names as keys) until we standardize on IDs.
-      widget.chatService.setCharacterRAGPriority(entry.key, entry.value);
-    }
   }
 
   @override
@@ -1211,6 +1118,10 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
   List<CharacterCard> _chars = [];
 
+  // Per-character static preference overrides (e.g. enjoys low hygiene) for this group.
+  // These are persisted via the member's private card extensions or group default state.
+  final Map<String, bool> _enjoysLowHygiene = {};
+
   // Baseline seeding state (only bond/trust/emotion/time/day)
   final Map<String, Map<String, dynamic>> _baselineSeeds = {};
 
@@ -1231,9 +1142,9 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
     _realismEnabled = cs.realismEnabled;
     _needsSimEnabled = cs.needsSimEnabled;
-    _passageOfTimeEnabled = cs.passageOfTimeEnabled;
-    _chaosModeEnabled = cs.chaosModeEnabled;
-    _chaosNsfwEnabled = cs.chaosNsfwEnabled;
+    _passageOfTimeEnabled = cs.timeService.passageOfTimeEnabled;
+    _chaosModeEnabled = cs.chaosModeService.chaosModeEnabled;
+    _chaosNsfwEnabled = cs.chaosModeService.chaosNsfwEnabled;
 
     // Load immutable creation baseline seeds (only the allowed fields)
     _baselineSeeds.clear();
@@ -1241,6 +1152,45 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       _baselineSeeds[_getCharId(c)] = Map<String, dynamic>.from(
         cs.getBaselineSeedForGroupCharacter(c),
       );
+      final id = _getCharId(c);
+      _enjoysLowHygiene[id] = c.frontPorchExtensions?.enjoysLowHygiene ?? false;
+    }
+  }
+
+  void _updateMemberEnjoysLowHygiene(CharacterCard char, bool value) {
+    final id = _getCharId(char);
+    setState(() {
+      _enjoysLowHygiene[id] = value;
+      // Update the in-memory card extension so reads pick it up immediately
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+            enjoysLowHygiene: value,
+          );
+    });
+
+    // Persist to the group's defaultMemberRealismState so new sessions / loads pick it up.
+    // This makes the per-member static pref editable in group settings.
+    try {
+      final group = widget.chatService.activeGroup;
+      if (group != null) {
+        final map =
+            group.defaultMemberRealismState.isNotEmpty &&
+                group.defaultMemberRealismState != '{}'
+            ? (jsonDecode(group.defaultMemberRealismState)
+                      as Map<String, dynamic>? ??
+                  {})
+            : <String, dynamic>{};
+        final perChar = (map['perChar'] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        final current = (perChar[id] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        current['enjoysLowHygiene'] = value;
+        perChar[id] = current;
+        map['perChar'] = perChar;
+        group.defaultMemberRealismState = jsonEncode(map);
+      }
+    } catch (_) {
+      // Non-fatal; the in-memory card update will help for current session.
     }
   }
 
@@ -1272,21 +1222,21 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     setState(() {
       _passageOfTimeEnabled = value;
     });
-    widget.chatService.setPassageOfTimeEnabled(value);
+    widget.chatService.timeService.setPassageOfTimeEnabled(value);
   }
 
   void _updateChaosMode(bool value) {
     setState(() {
       _chaosModeEnabled = value;
     });
-    widget.chatService.setChaosModeEnabled(value);
+    widget.chatService.chaosModeService.setModeEnabled(value);
   }
 
   void _updateChaosNsfw(bool value) {
     setState(() {
       _chaosNsfwEnabled = value;
     });
-    widget.chatService.setChaosNsfwEnabled(value);
+    widget.chatService.chaosModeService.setNsfwEnabled(value);
   }
 
   void _resetAllRealismStates() {
@@ -1585,14 +1535,18 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                         Icon(
                           Icons.casino_rounded,
                           size: 14,
-                          color: _pressureColorFor(cs.chaosPressure),
+                          color: _pressureColorFor(
+                            cs.chaosModeService.chaosPressure,
+                          ),
                         ),
                         const SizedBox(width: 6),
                         Text(
                           'Pressure: ${cs.chaosPressure}%',
                           style: TextStyle(
                             fontSize: 11,
-                            color: _pressureColorFor(cs.chaosPressure),
+                            color: _pressureColorFor(
+                              cs.chaosModeService.chaosPressure,
+                            ),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -1747,6 +1701,39 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
+                            const SizedBox(height: 4),
+                            // Per-member static pref for enjoys low hygiene (group equivalent of 1:1 character setting).
+                            // Persisted to group defaultMemberRealismState per-char entry.
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Enjoys low hygiene',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: Checkbox(
+                                    value:
+                                        _enjoysLowHygiene[_getCharId(char)] ??
+                                        false,
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        _updateMemberEnjoysLowHygiene(char, v);
+                                      }
+                                    },
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -1818,10 +1805,6 @@ class _GeneralTabState extends State<_GeneralTab> {
   bool _directorModeDefault = false;
 
   bool _hasUnsavedChanges = false;
-  String _statusMessage = '';
-
-  // Snapshot of the group at load time (for reset)
-  GroupChat? _loadedGroup;
 
   @override
   void initState() {
@@ -1831,7 +1814,6 @@ class _GeneralTabState extends State<_GeneralTab> {
 
   void _loadFromActiveGroup() {
     final g = widget.chatService.activeGroup;
-    _loadedGroup = g;
 
     if (g != null) {
       _nameController = TextEditingController(text: g.name);
@@ -1850,7 +1832,6 @@ class _GeneralTabState extends State<_GeneralTab> {
     }
 
     _hasUnsavedChanges = false;
-    _statusMessage = '';
   }
 
   @override
@@ -1865,7 +1846,6 @@ class _GeneralTabState extends State<_GeneralTab> {
     if (!_hasUnsavedChanges) {
       setState(() {
         _hasUnsavedChanges = true;
-        _statusMessage = '';
       });
     }
   }
@@ -1875,7 +1855,6 @@ class _GeneralTabState extends State<_GeneralTab> {
     setState(() {
       _turnOrder = order;
       _hasUnsavedChanges = true;
-      _statusMessage = '';
     });
   }
 
@@ -1884,7 +1863,6 @@ class _GeneralTabState extends State<_GeneralTab> {
     setState(() {
       _autoAdvance = value;
       _hasUnsavedChanges = true;
-      _statusMessage = '';
     });
   }
 
@@ -1893,49 +1871,7 @@ class _GeneralTabState extends State<_GeneralTab> {
     setState(() {
       _directorModeDefault = value;
       _hasUnsavedChanges = true;
-      _statusMessage = '';
     });
-  }
-
-  void _saveSettings() {
-    final g = widget.chatService.activeGroup;
-    if (g == null) return;
-
-    // Apply all edits to the live GroupChat instance (in-memory, immediate effect)
-    g.name = _nameController.text.trim().isNotEmpty
-        ? _nameController.text.trim()
-        : 'Group Chat';
-    g.scenario = _scenarioController.text.trim();
-    g.firstMessage = _firstMessageController.text.trim();
-    g.turnOrder = _turnOrder;
-    g.autoAdvance = _autoAdvance;
-    g.directorMode = _directorModeDefault;
-
-    // Note: We mutate the live GroupChat object held by the turn manager.
-    // Core reads (turnOrder, scenario, firstMessage, flags) pick it up immediately.
-    // UI labels (e.g. sidebar header) will reflect on next rebuild of those widgets.
-    // (No notifyListeners here to avoid protected-member analyzer diagnostics.)
-
-    setState(() {
-      _hasUnsavedChanges = false;
-      _statusMessage = 'Settings applied for this session.';
-      _loadedGroup = g; // keep snapshot in sync
-    });
-
-    // Persist the GroupChat model
-    if (widget.groupRepo != null) {
-      widget.groupRepo!.save(g);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('General settings saved.'),
-          duration: Duration(seconds: 2),
-          backgroundColor: Color(0xFF10B981),
-        ),
-      );
-    }
   }
 
   @override
@@ -2321,29 +2257,7 @@ class _GeneralTabState extends State<_GeneralTab> {
             border: Border(top: BorderSide(color: AppColors.borderOf(context))),
             color: AppColors.surfaceContainerOf(context),
           ),
-          child: Row(
-            children: [
-              if (false) // TODO: removed per-tab save logic
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'UNSAVED',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.amber,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          child: Row(children: []),
         ),
       ],
     );
@@ -2489,31 +2403,6 @@ class _LorebookWorldsTabState extends State<_LorebookWorldsTab> {
       _allWorlds = [];
     }
     setState(() {});
-  }
-
-  void _saveSettings() {
-    final g = widget.chatService.activeGroup;
-    if (g == null) return;
-
-    g.inheritCharacterLorebooks = _inheritCharacterLorebooks;
-    g.worldIds = List<String>.from(_worldIds);
-
-    final lb = Lorebook(entries: _groupLoreEntries);
-    g.groupLorebook = jsonEncode(lb.toJson());
-
-    if (widget.groupRepo != null) {
-      widget.groupRepo!.save(g);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Group lorebook settings saved.'),
-          duration: Duration(seconds: 2),
-          backgroundColor: Color(0xFF10B981),
-        ),
-      );
-    }
   }
 
   Future<void> _showEntryEditor({LorebookEntry? existing, int? index}) async {

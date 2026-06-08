@@ -62,7 +62,7 @@ void main() {
       await file.writeAsBytes([]);
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
       expect(result, isNull);
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('returns null for file without GGUF magic', () async {
@@ -70,7 +70,7 @@ void main() {
       await file.writeAsBytes(utf8.encode('not a gguf file'));
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
       expect(result, isNull);
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('returns null for truncated GGUF header', () async {
@@ -80,7 +80,7 @@ void main() {
       await file.writeAsBytes(Uint8List(2));
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
       expect(result, isNull);
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('parses valid GGUF file with llama architecture', () async {
@@ -101,7 +101,7 @@ void main() {
       // bytesPerToken = 4 * 32 * 8 * 128 = 131072
       expect(result, equals(131072));
 
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('parses GGUF with mistral architecture', () async {
@@ -120,7 +120,7 @@ void main() {
 
       expect(result, equals(131072));
 
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('parses GGUF with qwen architecture', () async {
@@ -142,7 +142,7 @@ void main() {
       expect(result, isNotNull);
       expect(result!, greaterThan(0));
 
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('returns null when head_count is zero', () async {
@@ -162,7 +162,7 @@ void main() {
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
       expect(result, isNull);
 
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test(
@@ -186,7 +186,7 @@ void main() {
         // bytesPerToken = 4 * 32 * 32 * 128 = 524288
         expect(result, equals(524288));
 
-        await file.delete();
+        if (await file.exists()) await file.delete();
       },
     );
 
@@ -203,7 +203,7 @@ void main() {
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
       expect(result, isNull);
 
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('returns null when kv_count is zero', () async {
@@ -219,7 +219,7 @@ void main() {
       final result = await GGUFParser.getKvCacheBytesPerToken(file.path);
       expect(result, isNull);
 
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('handles large model parameters', () async {
@@ -240,7 +240,7 @@ void main() {
       // bytesPerToken = 4 * 96 * 8 * 128 = 393216
       expect(result, equals(393216));
 
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
 
     test('uses head_count_kv default to head_count when missing', () async {
@@ -263,7 +263,7 @@ void main() {
       // bytesPerToken = 4 * 32 * 32 * 128 = 524288
       expect(result, equals(524288));
 
-      await file.delete();
+      if (await file.exists()) await file.delete();
     });
   });
 }

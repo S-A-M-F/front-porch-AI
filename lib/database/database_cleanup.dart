@@ -67,20 +67,29 @@ class DatabaseCleanup {
     final brokenRefCounts = <String, int>{};
 
     orphanCounts['avatar_images'] = await _countOrphanRows(
-      db, 'avatar_images', 'character_id');
+      db,
+      'avatar_images',
+      'character_id',
+    );
     orphanCounts['objectives'] = await _countOrphanRows(
-      db, 'objectives', 'character_id');
+      db,
+      'objectives',
+      'character_id',
+    );
     orphanCounts['data_bank_entries'] = await _countOrphanRows(
-      db, 'data_bank_entries', 'character_id');
-    orphanCounts['message_embeddings'] =
-        await _countOrphanMessageEmbeddings(db);
+      db,
+      'data_bank_entries',
+      'character_id',
+    );
+    orphanCounts['message_embeddings'] = await _countOrphanMessageEmbeddings(
+      db,
+    );
     orphanCounts['sessions'] = await _countOrphanSessions(db);
     orphanCounts['group_orphan_sessions'] = await _countOrphanGroupSessions(db);
     orphanCounts['messages'] = await _countOrphanMessages(db);
 
     brokenRefCounts['memory_sources'] = await _countBrokenMemorySources(db);
-    brokenRefCounts['group_character_ids'] =
-        await _countBrokenGroupCharIds(db);
+    brokenRefCounts['group_character_ids'] = await _countBrokenGroupCharIds(db);
     brokenRefCounts['group_world_ids'] = await _countBrokenGroupWorldIds(db);
 
     return OrphanReport(
@@ -95,15 +104,26 @@ class DatabaseCleanup {
     final fixedRefCounts = <String, int>{};
 
     removedCounts['avatar_images'] = await _deleteOrphanRows(
-      db, 'avatar_images', 'character_id');
+      db,
+      'avatar_images',
+      'character_id',
+    );
     removedCounts['data_bank_entries'] = await _deleteOrphanRows(
-      db, 'data_bank_entries', 'character_id');
+      db,
+      'data_bank_entries',
+      'character_id',
+    );
     removedCounts['objectives'] = await _deleteOrphanRows(
-      db, 'objectives', 'character_id');
-    removedCounts['message_embeddings'] =
-        await _deleteOrphanMessageEmbeddings(db);
+      db,
+      'objectives',
+      'character_id',
+    );
+    removedCounts['message_embeddings'] = await _deleteOrphanMessageEmbeddings(
+      db,
+    );
     removedCounts['sessions'] = await _deleteOrphanSessionsCascade(db);
-    removedCounts['group_orphan_sessions'] = await _deleteOrphanGroupSessionsCascade(db);
+    removedCounts['group_orphan_sessions'] =
+        await _deleteOrphanGroupSessionsCascade(db);
     removedCounts['messages'] = await _deleteOrphanMessages(db);
 
     fixedRefCounts['memory_sources'] = await _fixBrokenMemorySources(db);
@@ -224,7 +244,8 @@ class DatabaseCleanup {
         if (ids.any((id) => !validIds.contains(id))) broken++;
       } catch (e) {
         debugPrint(
-          '[DB Cleanup] Failed to parse $column in $table row $rowId: $e');
+          '[DB Cleanup] Failed to parse $column in $table row $rowId: $e',
+        );
       }
     }
     return broken;
@@ -343,7 +364,8 @@ class DatabaseCleanup {
         }
       } catch (e) {
         debugPrint(
-          '[DB Cleanup] Failed to parse memory_sources for character $charId: $e');
+          '[DB Cleanup] Failed to parse memory_sources for character $charId: $e',
+        );
       }
     }
     return fixed;
@@ -387,7 +409,8 @@ class DatabaseCleanup {
         }
       } catch (e) {
         debugPrint(
-          '[DB Cleanup] Failed to parse $column in $table row $groupId: $e');
+          '[DB Cleanup] Failed to parse $column in $table row $groupId: $e',
+        );
       }
     }
     return fixed;
@@ -408,5 +431,4 @@ class DatabaseCleanup {
     ''').get();
     return rows.map((r) => r.data['id'] as String).toSet();
   }
-
 }

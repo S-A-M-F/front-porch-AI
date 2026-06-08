@@ -207,7 +207,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Icon(Icons.edit_note, color: AppColors.iconSecondary(ctx), size: 22),
+                    Icon(
+                      Icons.edit_note,
+                      color: AppColors.iconSecondary(ctx),
+                      size: 22,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       title,
@@ -552,7 +556,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                           : 'Keywords (comma separated)',
                       filled: true,
                       fillColor: isConstant
-                          ? AppColors.surfaceContainerOf(context).withValues(alpha: 0.5)
+                          ? AppColors.surfaceContainerOf(
+                              context,
+                            ).withValues(alpha: 0.5)
                           : AppColors.surfaceContainerOf(context),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -634,7 +640,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: AppColors.borderOf(context))),
+                border: Border(
+                  bottom: BorderSide(color: AppColors.borderOf(context)),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -648,7 +656,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: AppColors.iconSecondary(context)),
+                    icon: Icon(
+                      Icons.close,
+                      color: AppColors.iconSecondary(context),
+                    ),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -687,7 +698,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.borderOf(context))),
+                border: Border(
+                  top: BorderSide(color: AppColors.borderOf(context)),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -771,7 +784,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
           const SizedBox(height: 8),
           Text(
             'Tap to change avatar',
-            style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context)),
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary(context),
+            ),
           ),
           const SizedBox(height: 16),
           _buildTextField(controller: _nameController, label: 'Name'),
@@ -931,7 +947,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
               Expanded(
                 child: TextField(
                   controller: _tagInputController,
-                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontSize: 13,
+                  ),
                   decoration: InputDecoration(
                     hintText: 'Add a tag...',
                     hintStyle: TextStyle(
@@ -1058,7 +1077,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
         children: [
           Text(
             label,
-            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 13),
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 13,
+            ),
           ),
           const Spacer(),
           Container(
@@ -1070,7 +1092,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
               border: Border.all(color: AppColors.borderOf(context), width: 1),
             ),
             child: IconButton(
-              icon: Icon(Icons.color_lens, size: 20, color: AppColors.iconPrimary(context)),
+              icon: Icon(
+                Icons.color_lens,
+                size: 20,
+                color: AppColors.iconPrimary(context),
+              ),
               onPressed: () => _showColorPicker(context, color, onChanged),
             ),
           ),
@@ -1102,7 +1128,10 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     const SizedBox(height: 2),
                     Text(
                       'World lore entries inject context when keywords are detected.',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary(context)),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary(context),
+                      ),
                     ),
                   ],
                 ),
@@ -1151,7 +1180,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
               decoration: BoxDecoration(
                 color: AppColors.cardOf(context),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.borderOf(context).withValues(alpha: 0.5)),
+                border: Border.all(
+                  color: AppColors.borderOf(context).withValues(alpha: 0.5),
+                ),
               ),
               child: Center(
                 child: Column(
@@ -1164,12 +1195,18 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     const SizedBox(height: 10),
                     Text(
                       'No lorebook entries yet',
-                      style: TextStyle(color: AppColors.textTertiary(context), fontSize: 13),
+                      style: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Add entries manually or import a JSON lorebook.',
-                      style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                      style: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -1222,7 +1259,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 child: Text(
                   entry.displayName,
                   style: TextStyle(
-                    color: entry.enabled ? AppColors.textPrimary(context) : AppColors.textSecondary(context),
+                    color: entry.enabled
+                        ? AppColors.textPrimary(context)
+                        : AppColors.textSecondary(context),
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -1338,7 +1377,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             entry.content,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11, height: 1.4),
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 11,
+              height: 1.4,
+            ),
           ),
         ],
       ),

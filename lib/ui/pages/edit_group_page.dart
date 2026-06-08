@@ -111,7 +111,12 @@ class _EditGroupPageState extends State<EditGroupPage>
       final memberRows = await groupRepo.getMembersForGroup(g.id);
       for (final m in memberRows) {
         if (m.avatarFilename != null) {
-          final avatarPath = p.join(storage.groupsDir.path, g.id, 'avatars', m.avatarFilename!);
+          final avatarPath = p.join(
+            storage.groupsDir.path,
+            g.id,
+            'avatars',
+            m.avatarFilename!,
+          );
           if (await File(avatarPath).exists()) {
             if (mounted) {
               setState(() {

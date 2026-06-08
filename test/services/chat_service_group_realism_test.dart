@@ -8,16 +8,24 @@
 // Pattern matches the rest of the realism test suite: we use a focused stub
 // that replicates the relevant logic from ChatService so tests are fast,
 // isolated, and don't require the full service + LLM + DB stack.
+//
+// aug exercising only passive/qualified (no realism-evals-specific aug file edits;
+// full in dedicated realism_evals_test + manual; exercised via god thins
+// _evaluate*Call ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no summary-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeUpdateSummary/force/generate ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no evolution-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_triggerCharacterEvolution ; qualified notes only in dedicated header + god + MD per precedent).
 
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Stub that replicates the group inter-character realism logic from ChatService.
+/// LEGACY STUB duplicating extracted logic (real coverage now in relationship_service_test.dart +
+/// chat_service_realism_engine_test.dart using RelationshipService). Retained for 4-char cap smoke.
 /// Focuses on the public + internal methods added for Phase 2/3:
 /// - getInterCharacterRelationships
 /// - updateInterCharacterRelationship
-/// - _ensureInterCharacterRelationshipsSeeded (exposed for testing)
+/// - ensureInterCharacterRelationshipsSeeded (via RelationshipService; legacy stub here)
 /// - 4-character hard cap behavior
 /// - Checkpoint serialization round-tripping of the 'relationships' key
 class _GroupRealismStub {
@@ -327,4 +335,7 @@ void main() {
       },
     );
   });
+
+  // Expression + time reset sites exercised passively via pre-existing startNew/setActive/group loads (time is chat-scoped shared across members).
+  // (Note qualified per review: "reset sites passively hit by pre-existing...; full time advance/nudge/OOC/narrative/resolve only in dedicated time_service_test + manual"; ambient group loads hit time load/seed for parity).
 }

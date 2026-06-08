@@ -53,16 +53,20 @@ class ModelSelector extends StatelessWidget {
 
     final items = <DropdownMenuItem<String>>[];
     if (showManagedByKcpps) {
-      items.add(DropdownMenuItem<String>(
-        value: _managedSentinel,
-        child: const Text('None (Managed by kcpps)'),
-      ));
+      items.add(
+        DropdownMenuItem<String>(
+          value: _managedSentinel,
+          child: const Text('None (Managed by kcpps)'),
+        ),
+      );
     }
     for (final p in rawPaths) {
-      items.add(DropdownMenuItem<String>(
-        value: p,
-        child: Text(p.split(Platform.pathSeparator).last),
-      ));
+      items.add(
+        DropdownMenuItem<String>(
+          value: p,
+          child: Text(p.split(Platform.pathSeparator).last),
+        ),
+      );
     }
 
     String currentValue;
@@ -88,11 +92,15 @@ class ModelSelector extends StatelessWidget {
           value: currentValue,
           isExpanded: true,
           dropdownColor: colors,
-          style: textTheme.bodyMedium?.apply(
-            color: AppColors.textPrimary(context),
-          ) ?? const TextStyle(color: Colors.black87),
-          icon: Icon(Icons.arrow_drop_down,
-              color: AppColors.textSecondary(context)),
+          style:
+              textTheme.bodyMedium?.apply(
+                color: AppColors.textPrimary(context),
+              ) ??
+              const TextStyle(color: Colors.black87),
+          icon: Icon(
+            Icons.arrow_drop_down,
+            color: AppColors.textSecondary(context),
+          ),
           items: items,
           onChanged: (val) {
             if (val == _managedSentinel) {

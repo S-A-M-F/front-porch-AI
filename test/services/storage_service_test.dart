@@ -167,6 +167,29 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getInt('kv_quantization_level'), 2);
     });
+
+    // Coverage for compat thins / legacy shim / backend fields (per review Issue 10; minimal addition to existing group)
+    test(
+      'loadSavedPrompt legacy 1-arg + immediate read + kv/callBuffer thins + backend fields',
+      () async {
+        final svc = await createStorageService({
+          'saved_prompts': '[{"name":"TestPrompt","content":"Hello {{char}}"}]',
+        });
+        // 1-arg legacy shim (side effect + immediate read)
+        svc.loadSavedPrompt('TestPrompt');
+        expect(
+          svc.systemPrompt,
+          contains('Hello {{char}}'),
+        ); // via side-effect set
+        // thins
+        expect(svc.kvQuantizationLevel, isA<int>());
+        expect(svc.callBufferSentences, isA<int>());
+        // direct backend
+        await svc.backendSettings.setKvQuantizationLevel(3);
+        expect(svc.backendSettings.kvQuantizationLevel, 3);
+        expect(svc.kvQuantizationLevel, 3); // via thin
+      },
+    );
   });
 
   // ─── Model Selection (Bug 1 target) ───────────────────────────────

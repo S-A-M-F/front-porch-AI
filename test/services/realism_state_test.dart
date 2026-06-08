@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 
 /// Minimal stub that replicates the Realism Engine state fields and seeding/reset
 /// logic from ChatService. This enables unit testing of the state transitions
@@ -38,25 +39,14 @@ class _RealismStateStub {
 
   // Canonical constants for the Sims/Needs simulation (duplicated in stub
   // for isolated, fast unit tests without ChatService dependency).
-  static const List<String> _needKeys = [
-    'hunger',
-    'bladder',
-    'energy',
-    'social',
-    'fun',
-    'hygiene',
-    'comfort',
-  ];
+  // Reuses NeedsSimulation for keys/defaults/restore (match); decay rates kept local as they
+  // intentionally differ (hunger 8 vs NeedsSimulation 4) to preserve this stub's historical test math.
+  // TODO (post-extraction, later Stage 3 step): delegate vector/tick/serialize to a NeedsSimulation
+  // instance inside the stub (or delete the needs group here if dedicated needs_simulation_test +
+  // integrations suffice). See grok-review Issues 4/12.
+  static const List<String> _needKeys = NeedsSimulation.needKeys;
 
-  static const Map<String, int> _needDefaults = {
-    'hunger': 75,
-    'bladder': 80,
-    'energy': 80,
-    'social': 65,
-    'fun': 65,
-    'hygiene': 75,
-    'comfort': 70,
-  };
+  static const Map<String, int> _needDefaults = NeedsSimulation.needDefaults;
 
   // Base decay per tick (when no time-of-day variant applies).
   static const Map<String, int> _needDecay = {
@@ -75,17 +65,9 @@ class _RealismStateStub {
   // Night-specific overrides (energy drains faster at night).
   static const Map<String, int> _needDecayNight = {'energy': 10};
 
-  static const Map<String, int> _needRestore = {
-    'hunger': 50,
-    'bladder': 70,
-    'energy': 40,
-    'social': 45,
-    'fun': 40,
-    'hygiene': 35,
-    'comfort': 35,
-  };
+  static const Map<String, int> _needRestore = NeedsSimulation.needRestore;
 
-  static const int _needRestoreDefault = 30;
+  static const int _needRestoreDefault = NeedsSimulation.needRestoreDefault;
 
   // ── Simulated storage service flag ─────────────────────────────────
   bool passageOfTimeDefault = true;

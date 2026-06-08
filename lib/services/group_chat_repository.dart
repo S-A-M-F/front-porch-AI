@@ -61,7 +61,9 @@ class GroupChatRepository extends ChangeNotifier {
         try {
           final decoded = jsonDecode(g.characterSystemPrompts);
           if (decoded is Map) {
-            charPrompts = decoded.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
+            charPrompts = decoded.map(
+              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+            );
           }
         } catch (_) {}
 
@@ -149,7 +151,9 @@ class GroupChatRepository extends ChangeNotifier {
         GroupsCompanion.insert(
           id: group.id,
           name: group.name,
-          characterIds: const Value('[]'), // legacy dead column (decoupled members in group_members)
+          characterIds: const Value(
+            '[]',
+          ), // legacy dead column (decoupled members in group_members)
           turnOrder: Value(group.turnOrder.name),
           autoAdvance: Value(group.autoAdvance),
           directorMode: Value(group.directorMode),
@@ -157,7 +161,9 @@ class GroupChatRepository extends ChangeNotifier {
           scenario: Value(group.scenario),
           systemPrompt: Value(group.systemPrompt),
           defaultMemberRealismState: Value(group.defaultMemberRealismState),
-          characterSystemPrompts: Value(jsonEncode(group.characterSystemPrompts)),
+          characterSystemPrompts: Value(
+            jsonEncode(group.characterSystemPrompts),
+          ),
           chaosModeEnabled: Value(group.chaosModeEnabled),
           chaosNsfwEnabled: Value(group.chaosNsfwEnabled),
           groupLorebook: Value(group.groupLorebook),
@@ -204,12 +210,16 @@ class GroupChatRepository extends ChangeNotifier {
     // Orphans prevented per plan + security review.
     // (No groupDir helper added per strict "no new methods" rule; inline safe construction.)
     try {
-      final gDir = Directory(path.join(_storageService.groupsDir.path, groupId));
+      final gDir = Directory(
+        path.join(_storageService.groupsDir.path, groupId),
+      );
       if (await gDir.exists()) {
         await gDir.delete(recursive: true);
       }
     } catch (e) {
-      debugPrint('[GroupRepo] Best-effort delete of private group dir $groupId failed (non-fatal): $e');
+      debugPrint(
+        '[GroupRepo] Best-effort delete of private group dir $groupId failed (non-fatal): $e',
+      );
     }
 
     notifyListeners();

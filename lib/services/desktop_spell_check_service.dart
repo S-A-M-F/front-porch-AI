@@ -64,5 +64,3 @@ class DesktopSpellCheckService implements SpellCheckService {
     }
   }
 }
-
-

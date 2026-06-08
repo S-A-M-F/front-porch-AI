@@ -130,24 +130,26 @@ class ImageGenService extends ChangeNotifier {
 
   /// Whether image gen is configured and ready to use.
   bool get isConfigured {
-    if (!_storage.imageGenEnabled) return false;
-    final backend = ImageGenBackend.fromKey(_storage.imageGenBackend);
+    if (!_storage.imageGenSettings.imageGenEnabled) return false;
+    final backend = ImageGenBackend.fromKey(
+      _storage.imageGenSettings.imageGenBackend,
+    );
     switch (backend) {
       case ImageGenBackend.remote:
-        return _storage.remoteApiKey.isNotEmpty &&
-            _storage.imageGenModel.isNotEmpty;
+        return _storage.backendSettings.remoteApiKey.isNotEmpty &&
+            _storage.imageGenSettings.imageGenModel.isNotEmpty;
       case ImageGenBackend.a1111:
-        return _storage.localImageGenUrl.isNotEmpty;
+        return _storage.imageGenSettings.localImageGenUrl.isNotEmpty;
       case ImageGenBackend.drawThings:
-        return _storage.drawThingsGrpcHost.isNotEmpty;
+        return _storage.imageGenSettings.drawThingsGrpcHost.isNotEmpty;
     }
   }
 
   DrawThingsGrpcService? _drawThingsGrpc;
 
   DrawThingsGrpcService get _ensureDrawThingsGrpc {
-    final h = _storage.drawThingsGrpcHost;
-    final p = _storage.drawThingsGrpcPort;
+    final h = _storage.imageGenSettings.drawThingsGrpcHost;
+    final p = _storage.imageGenSettings.drawThingsGrpcPort;
     // Recreate if host/port changed since last use (cheap; keeps things in sync with settings)
     if (_drawThingsGrpc == null ||
         _drawThingsGrpc!.host != h ||
@@ -172,7 +174,8 @@ class ImageGenService extends ChangeNotifier {
     required String prompt,
     String negativePrompt = '',
     String? size,
-    Uint8List? referenceImage, // for img2img / reference conditioning (wired for Draw Things; ignored by others for now)
+    Uint8List?
+    referenceImage, // for img2img / reference conditioning (wired for Draw Things; ignored by others for now)
     String? model,
     bool isPortrait = false,
   }) async {
@@ -185,18 +188,22 @@ class ImageGenService extends ChangeNotifier {
     try {
       Uint8List imageBytes;
 
-      final backend = ImageGenBackend.fromKey(_storage.imageGenBackend);
+      final backend = ImageGenBackend.fromKey(
+        _storage.imageGenSettings.imageGenBackend,
+      );
 
       if (backend == ImageGenBackend.a1111 ||
           backend == ImageGenBackend.drawThings) {
-        final isDrawThings = _storage.imageGenBackend == 'drawthings';
+        final isDrawThings =
+            _storage.imageGenSettings.imageGenBackend == 'drawthings';
 
         if (isDrawThings) {
           // Use gRPC for Draw Things (Python client bridge)
           _statusMessage = 'Connecting to Draw Things...';
           notifyListeners();
 
-          final modelCheckpoint = model ?? _storage.imageGenModel;
+          final modelCheckpoint =
+              model ?? _storage.imageGenSettings.imageGenModel;
           // Relaxed .ckpt check: gRPC file list returns the actual filenames Draw Things knows about
           // (may be .ckpt, .safetensors, or bare names). Empty is allowed (uses current in DT).
           if (modelCheckpoint.isNotEmpty &&
@@ -206,16 +213,16 @@ class ImageGenService extends ChangeNotifier {
 
           try {
             final grpcService = _ensureDrawThingsGrpc;
-            final imageSize = size ?? _storage.imageGenSize;
+            final imageSize = size ?? _storage.imageGenSettings.imageGenSize;
             final (width, height) = _parseSize(imageSize);
-            final steps = _storage.imageGenSteps;
-            final cfgScale = _storage.imageGenCfgScale;
-            final seed = _storage.imageGenSeed;
+            final steps = _storage.imageGenSettings.imageGenSteps;
+            final cfgScale = _storage.imageGenSettings.imageGenCfgScale;
+            final seed = _storage.imageGenSettings.imageGenSeed;
 
             // DT-native advanced knobs (shared sliders still used for steps/cfg/seed/size)
-            final sampler = _storage.drawThingsSampler;
-            final shift = _storage.drawThingsShift;
-            final strength = _storage.drawThingsStrength;
+            final sampler = _storage.imageGenSettings.drawThingsSampler;
+            final shift = _storage.imageGenSettings.drawThingsShift;
+            final strength = _storage.imageGenSettings.drawThingsStrength;
             final seedMode = _storage.drawThingsSeedMode;
             final teaCache = _storage.drawThingsTeaCache;
             final cfgZeroStar = _storage.drawThingsCfgZeroStar;
@@ -252,15 +259,16 @@ class ImageGenService extends ChangeNotifier {
           }
         } else {
           // Use HTTP for A1111
-          final localUrl = _storage.localImageGenUrl;
+          final localUrl = _storage.imageGenSettings.localImageGenUrl;
           if (localUrl.isEmpty) {
             _statusMessage = 'No local server URL configured.';
             _isGenerating = false;
             notifyListeners();
             return null;
           }
-          final imageSize = size ?? _storage.imageGenSize;
-          final modelCheckpoint = model ?? _storage.imageGenModel;
+          final imageSize = size ?? _storage.imageGenSettings.imageGenSize;
+          final modelCheckpoint =
+              model ?? _storage.imageGenSettings.imageGenModel;
           imageBytes = await _generateViaA1111(
             baseUrl: localUrl,
             prompt: prompt,
@@ -268,24 +276,24 @@ class ImageGenService extends ChangeNotifier {
             size: imageSize,
             modelCheckpoint: modelCheckpoint,
             switchModelFirst: modelCheckpoint.isNotEmpty,
-            loraName: _storage.imageGenLora,
-            loraWeight: _storage.imageGenLoraWeight,
-            steps: _storage.imageGenSteps,
-            cfgScale: _storage.imageGenCfgScale,
-            samplerName: _storage.imageGenSampler,
-            seed: _storage.imageGenSeed,
+            loraName: _storage.imageGenSettings.imageGenLora,
+            loraWeight: _storage.imageGenSettings.imageGenLoraWeight,
+            steps: _storage.imageGenSettings.imageGenSteps,
+            cfgScale: _storage.imageGenSettings.imageGenCfgScale,
+            samplerName: _storage.imageGenSettings.imageGenSampler,
+            seed: _storage.imageGenSettings.imageGenSeed,
           );
         }
       } else {
         // ── Remote API ─────────────────────────────────────────────────
-        if (_storage.remoteApiKey.isEmpty) {
+        if (_storage.backendSettings.remoteApiKey.isEmpty) {
           _statusMessage = 'No API key configured.';
           _isGenerating = false;
           notifyListeners();
           return null;
         }
 
-        final imageModel = model ?? _storage.imageGenModel;
+        final imageModel = model ?? _storage.imageGenSettings.imageGenModel;
         if (imageModel.isEmpty) {
           _statusMessage = 'No image model selected.';
           _isGenerating = false;
@@ -293,9 +301,9 @@ class ImageGenService extends ChangeNotifier {
           return null;
         }
 
-        final imageSize = size ?? _storage.imageGenSize;
-        final apiUrl = _storage.remoteApiUrl;
-        final apiKey = _storage.remoteApiKey;
+        final imageSize = size ?? _storage.imageGenSettings.imageGenSize;
+        final apiUrl = _storage.backendSettings.remoteApiUrl;
+        final apiKey = _storage.backendSettings.remoteApiKey;
 
         if (_isOpenRouterStyle(apiUrl)) {
           imageBytes = await _generateViaOpenRouter(
@@ -484,8 +492,8 @@ class ImageGenService extends ChangeNotifier {
   /// - Returns the curated list of known image models (Nano-GPT's /models
   ///   endpoint only returns text models; there is no image-specific listing API)
   Future<List<ImageModelInfo>> fetchImageModels() async {
-    final apiUrl = _storage.remoteApiUrl;
-    final apiKey = _storage.remoteApiKey;
+    final apiUrl = _storage.backendSettings.remoteApiUrl;
+    final apiKey = _storage.backendSettings.remoteApiKey;
     if (apiUrl.isEmpty || apiKey.isEmpty) return List.from(_commonImageModels);
 
     // Detect if this is OpenRouter
@@ -650,7 +658,8 @@ class ImageGenService extends ChangeNotifier {
     String? personaText,
     List<String>? recentMessages,
   }) async {
-    final paradigm = _storage.imageGenPromptParadigm; // 'natural' or 'tags'
+    final paradigm =
+        _storage.imageGenSettings.imageGenPromptParadigm; // 'natural' or 'tags'
     final modifiers = paradigm == 'tags'
         ? legacyStyleModifiers
         : styleModifiers;
@@ -970,7 +979,8 @@ class ImageGenService extends ChangeNotifier {
   ///
   /// For Draw Things, uses gRPC. For A1111, uses HTTP.
   Future<bool> testLocalConnection(String baseUrl) async {
-    final isDrawThings = _storage.imageGenBackend == 'drawthings';
+    final isDrawThings =
+        _storage.imageGenSettings.imageGenBackend == 'drawthings';
 
     if (isDrawThings) {
       try {
@@ -1000,7 +1010,8 @@ class ImageGenService extends ChangeNotifier {
   ///
   /// For Draw Things, uses gRPC. For A1111, uses HTTP.
   Future<List<String>> fetchA1111Models(String baseUrl) async {
-    final isDrawThings = _storage.imageGenBackend == 'drawthings';
+    final isDrawThings =
+        _storage.imageGenSettings.imageGenBackend == 'drawthings';
 
     if (isDrawThings) {
       try {

@@ -275,7 +275,7 @@ class Groups extends Table {
       text().withDefault(const Constant('{}'))();
 
   /// Per-character system prompt overrides scoped to this group.
-  /// Stored as a first-class JSON column (Map<String, String> keyed by stable charId).
+  /// Stored as a first-class JSON column (Map&lt;String, String&gt; keyed by stable charId).
   ///
   /// This was previously the last remaining "Path B" transitional hack stored inside
   /// the defaultMemberRealismState JSON blob. As of v32 it has its own proper column.
@@ -431,7 +431,7 @@ class StoryProjects extends Table {
 /// Group-owned characters (decoupled from the singular CharacterRepository / library).
 ///
 /// Per the clean-break architecture (2026-05): group members are fully separate entities.
-/// They live only in this table + private files under StorageService.groupsDir/<groupId>/avatars/.
+/// They live only in this table + private files under StorageService.groupsDir/&lt;groupId&gt;/avatars/.
 /// There is NO reference to library characters, no shared stable IDs, no automatic population,
 /// and no JSON blob for the card definition itself — all fields are typed columns.
 ///
@@ -441,7 +441,7 @@ class StoryProjects extends Table {
 ///   explicitly not supported for groups.
 /// - The only path from a group member into the user's singular library is the explicit
 ///   user-initiated "Separate to my library" (extract) action.
-/// - On group delete, the row(s) and the entire groups/<groupId>/ tree are removed (best effort).
+/// - On group delete, the row(s) and the entire groups/&lt;groupId&gt;/ tree are removed (best effort).
 ///
 /// External companion tools writing groups must not assume members; they write to this
 /// table for group card fidelity. The human will notify such tools after this feature is

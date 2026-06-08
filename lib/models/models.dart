@@ -30,6 +30,7 @@
 export 'avatar_image.dart';
 export 'character_card.dart';
 export 'chat_generation_settings.dart';
+export 'chat_message.dart';
 export 'download_task.dart';
 export 'group_chat.dart';
 export 'group_card.dart';
@@ -39,3 +40,4 @@ export 'local_model_info.dart';
 export 'lorebook.dart';
 export 'story_project.dart';
 export 'world.dart';
+export 'needs_impact.dart';

@@ -47,6 +47,10 @@ export 'backend_manager.dart';
 export 'pseudo_remote_service.dart';
 export 'open_router_service.dart';
 
+// Chat domain leaves (curated high-freq per extraction policy; needs impact evaluator
+// for the consolidated eval/impact layer; direct import also supported).
+export 'chat/needs_impact_evaluator.dart';
+
 // TTS / STT / media
 export 'tts_service.dart';
 export 'tts_voice_info.dart';

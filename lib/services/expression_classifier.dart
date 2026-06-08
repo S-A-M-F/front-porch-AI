@@ -530,7 +530,7 @@ class ExpressionClassifierService extends ChangeNotifier {
     required String Function() getCurrentEmotion,
     required Future<String> Function(String unknownEmotion) reclassify,
   }) async {
-    final mode = _storage.expressionClassificationMode;
+    final mode = _storage.expressionSettings.expressionClassificationMode;
     if (mode == _activeMode && _activeClassifier != null) return;
 
     debugPrint(

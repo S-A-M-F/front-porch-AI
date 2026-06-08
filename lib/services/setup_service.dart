@@ -10,7 +10,7 @@ enum SetupStep {
   downloadingBackend,
   startingBackend,
   complete,
-  error
+  error,
 }
 
 class SetupService extends ChangeNotifier {
@@ -33,7 +33,9 @@ class SetupService extends ChangeNotifier {
   );
 
   Future<void> runAutoSetup() async {
-    if (_currentStep != SetupStep.idle && _currentStep != SetupStep.error) return;
+    if (_currentStep != SetupStep.idle && _currentStep != SetupStep.error) {
+      return;
+    }
 
     // Intel Macs cannot run KoboldCpp — skip download and autostart entirely
     if (_backendManager.isIntelMac) {
@@ -88,7 +90,8 @@ class SetupService extends ChangeNotifier {
         }
       } else if (_storageService.backendType != 'openRouter') {
         // kobold local backend
-        if (_storageService.autostartBackend && _storageService.lastUsedModelPath != null) {
+        if (_storageService.autostartBackend &&
+            _storageService.lastUsedModelPath != null) {
           _currentStep = SetupStep.startingBackend;
           notifyListeners();
 

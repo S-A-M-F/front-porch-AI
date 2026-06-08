@@ -303,19 +303,21 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                                     ),
                                     child: DropdownButtonHideUnderline(
                                       child: DropdownButton<String>(
-                                        value: _gen.remoteModelName ??
+                                        value:
+                                            _gen.remoteModelName ??
                                             storage.remoteModelName,
-                                        dropdownColor:
-                                            const Color(0xFF374151),
+                                        dropdownColor: const Color(0xFF374151),
                                         style: const TextStyle(
                                           color: Colors.white,
                                         ),
                                         isExpanded: true,
                                         items: _omlxModels
-                                            .map((m) => DropdownMenuItem(
-                                                  value: m.id,
-                                                  child: Text(m.id),
-                                                ))
+                                            .map(
+                                              (m) => DropdownMenuItem(
+                                                value: m.id,
+                                                child: Text(m.id),
+                                              ),
+                                            )
                                             .toList(),
                                         onChanged: (val) {
                                           if (val != null) {
@@ -353,15 +355,15 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                                     );
                                     final openRouter =
                                         Provider.of<OpenRouterService>(
-                                      context,
-                                      listen: false,
-                                    );
+                                          context,
+                                          listen: false,
+                                        );
                                     openRouter.configure(
                                       apiUrl: 'http://localhost:8000/v1',
                                       apiKey: storage.remoteApiKey,
                                     );
-                                    final models =
-                                        await openRouter.fetchAvailableModels();
+                                    final models = await openRouter
+                                        .fetchAvailableModels();
                                     if (mounted) {
                                       setState(() {
                                         _omlxModels = models;

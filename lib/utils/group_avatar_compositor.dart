@@ -95,9 +95,9 @@ Future<Uint8List> createGroupAvatarCollage(
 (int, int, int) _getCanvasDimensions(int count) {
   switch (count) {
     case 1:
-      return (768, 960, 620);           // Nice portrait for singles
+      return (768, 960, 620); // Nice portrait for singles
     case 2:
-      return (1400, 820, 480);          // Proper high-res wide for two characters
+      return (1400, 820, 480); // Proper high-res wide for two characters
     case 3:
       return (1280, 820, 380);
     case 4:
@@ -127,10 +127,20 @@ img.Image _prepareBustThumbnail(img.Image src, int targetSize) {
   var resized = img.copyResize(src, width: newW, height: newH);
 
   // Center crop to square (biased toward upper part for character portraits)
-  final cropX = ((resized.width - targetSize) / 2).clamp(0, resized.width - targetSize).toInt();
-  int cropY = ((resized.height - targetSize) * 0.15).clamp(0, resized.height - targetSize).toInt(); // bias upward
+  final cropX = ((resized.width - targetSize) / 2)
+      .clamp(0, resized.width - targetSize)
+      .toInt();
+  int cropY = ((resized.height - targetSize) * 0.15)
+      .clamp(0, resized.height - targetSize)
+      .toInt(); // bias upward
 
-  return img.copyCrop(resized, x: cropX, y: cropY, width: targetSize, height: targetSize);
+  return img.copyCrop(
+    resized,
+    x: cropX,
+    y: cropY,
+    width: targetSize,
+    height: targetSize,
+  );
 }
 
 class _Pos {
@@ -152,10 +162,7 @@ List<_Pos> _computePositions(int count, int canvasW, int canvasH, int thumb) {
       final left = (canvasW ~/ 2 - thumb) + (overlap ~/ 2) - 30;
       final right = (canvasW ~/ 2 - overlap ~/ 2) + 10;
       final y = (canvasH - thumb) ~/ 2 - 20;
-      return [
-        _Pos(left, y),
-        _Pos(right, y),
-      ];
+      return [_Pos(left, y), _Pos(right, y)];
 
     case 3:
       final top = (canvasH - thumb) ~/ 2 - (thumb * 0.45).round();
@@ -189,10 +196,9 @@ List<_Pos> _computePositions(int count, int canvasW, int canvasH, int thumb) {
       int idx = 0;
       for (int r = 0; r < rows && idx < count; r++) {
         for (int c = 0; c < cols && idx < count; c++) {
-          positions.add(_Pos(
-            startX + c * (thumb + 12),
-            startY + r * (thumb + 12),
-          ));
+          positions.add(
+            _Pos(startX + c * (thumb + 12), startY + r * (thumb + 12)),
+          );
           idx++;
         }
       }
@@ -203,9 +209,25 @@ List<_Pos> _computePositions(int count, int canvasW, int canvasH, int thumb) {
 /// Nicer layered border with purple accent (works with rectangular canvases)
 void _drawNiceBorder(img.Image canvas, int x, int y, int size) {
   // Dark outer
-  _drawRectBorder(canvas, x - 4, y - 4, size + 8, size + 8, img.ColorRgb8(35, 33, 48), 2);
+  _drawRectBorder(
+    canvas,
+    x - 4,
+    y - 4,
+    size + 8,
+    size + 8,
+    img.ColorRgb8(35, 33, 48),
+    2,
+  );
   // Purple accent
-  _drawRectBorder(canvas, x - 2, y - 2, size + 4, size + 4, img.ColorRgb8(168, 105, 255), 3);
+  _drawRectBorder(
+    canvas,
+    x - 2,
+    y - 2,
+    size + 4,
+    size + 4,
+    img.ColorRgb8(168, 105, 255),
+    3,
+  );
 }
 
 /// Simple drop shadow
@@ -231,15 +253,51 @@ void _drawOuterFrame(img.Image canvas, int w, int h) {
   _drawRectBorder(canvas, 9, 9, w - 18, h - 18, img.ColorRgb8(32, 30, 46), 1);
 }
 
-void _drawRectBorder(img.Image canvas, int x, int y, int w, int h, img.Color color, int thickness) {
+void _drawRectBorder(
+  img.Image canvas,
+  int x,
+  int y,
+  int w,
+  int h,
+  img.Color color,
+  int thickness,
+) {
   for (int t = 0; t < thickness; t++) {
     // Top
-    img.fillRect(canvas, x1: x - t, y1: y - t, x2: x + w + t, y2: y - t + 1, color: color);
+    img.fillRect(
+      canvas,
+      x1: x - t,
+      y1: y - t,
+      x2: x + w + t,
+      y2: y - t + 1,
+      color: color,
+    );
     // Bottom
-    img.fillRect(canvas, x1: x - t, y1: y + h + t - 1, x2: x + w + t, y2: y + h + t, color: color);
+    img.fillRect(
+      canvas,
+      x1: x - t,
+      y1: y + h + t - 1,
+      x2: x + w + t,
+      y2: y + h + t,
+      color: color,
+    );
     // Left
-    img.fillRect(canvas, x1: x - t, y1: y - t, x2: x - t + 1, y2: y + h + t, color: color);
+    img.fillRect(
+      canvas,
+      x1: x - t,
+      y1: y - t,
+      x2: x - t + 1,
+      y2: y + h + t,
+      color: color,
+    );
     // Right
-    img.fillRect(canvas, x1: x + w + t - 1, y1: y - t, x2: x + w + t, y2: y + h + t, color: color);
+    img.fillRect(
+      canvas,
+      x1: x + w + t - 1,
+      y1: y - t,
+      x2: x + w + t,
+      y2: y + h + t,
+      color: color,
+    );
   }
 }

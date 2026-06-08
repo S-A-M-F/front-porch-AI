@@ -41,7 +41,9 @@ class FixationChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lifespanText = (lifespan != null && lifespan! > 0) ? ' · ${lifespan}t' : '';
+    final lifespanText = (lifespan != null && lifespan! > 0)
+        ? ' · ${lifespan}t'
+        : '';
 
     if (compact) {
       return Container(
@@ -67,7 +69,11 @@ class FixationChip extends StatelessWidget {
             Icon(
               Icons.psychology,
               size: 11,
-              color: AppColors.resolve(context, Colors.purpleAccent, Colors.purple.shade700),
+              color: AppColors.resolve(
+                context,
+                Colors.purpleAccent,
+                Colors.purple.shade700,
+              ),
             ),
             const SizedBox(width: 3),
             Flexible(
@@ -75,7 +81,11 @@ class FixationChip extends StatelessWidget {
                 'Fixated: $topic$lifespanText',
                 style: TextStyle(
                   fontSize: 9,
-                  color: AppColors.resolve(context, Colors.purpleAccent, Colors.purple.shade700),
+                  color: AppColors.resolve(
+                    context,
+                    Colors.purpleAccent,
+                    Colors.purple.shade700,
+                  ),
                   fontStyle: FontStyle.italic,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -109,7 +119,11 @@ class FixationChip extends StatelessWidget {
           Icon(
             Icons.psychology,
             size: 16,
-            color: AppColors.resolve(context, Colors.purpleAccent, Colors.purple.shade700),
+            color: AppColors.resolve(
+              context,
+              Colors.purpleAccent,
+              Colors.purple.shade700,
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -121,7 +135,11 @@ class FixationChip extends StatelessWidget {
                   'CURRENT FIXATION',
                   style: TextStyle(
                     fontSize: 9,
-                    color: AppColors.resolve(context, Colors.purpleAccent, Colors.purple.shade700),
+                    color: AppColors.resolve(
+                      context,
+                      Colors.purpleAccent,
+                      Colors.purple.shade700,
+                    ),
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1.2,
                   ),

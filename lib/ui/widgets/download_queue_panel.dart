@@ -127,9 +127,7 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
             color: AppColors.isLight(context)
                 ? AppColors.surfaceContainerOf(context)
                 : Colors.indigo.withValues(alpha: 0.1),
-            border: Border(
-              top: BorderSide(color: AppColors.borderOf(context)),
-            ),
+            border: Border(top: BorderSide(color: AppColors.borderOf(context))),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -286,7 +284,9 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
               // Status icon
               Icon(
                 _getStatusIcon(task.state),
-                color: (task.state == DownloadTaskState.pending || task.state == DownloadTaskState.cancelled)
+                color:
+                    (task.state == DownloadTaskState.pending ||
+                        task.state == DownloadTaskState.cancelled)
                     ? AppColors.iconSecondary(context)
                     : _getStatusColor(task.state),
                 size: 16,
@@ -312,9 +312,13 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
                     Text(
                       task.statusString,
                       style: TextStyle(
-                        color: (task.state == DownloadTaskState.pending || task.state == DownloadTaskState.cancelled)
+                        color:
+                            (task.state == DownloadTaskState.pending ||
+                                task.state == DownloadTaskState.cancelled)
                             ? AppColors.textTertiary(context)
-                            : _getStatusColor(task.state).withValues(alpha: 0.7),
+                            : _getStatusColor(
+                                task.state,
+                              ).withValues(alpha: 0.7),
                         fontSize: 10,
                       ),
                     ),

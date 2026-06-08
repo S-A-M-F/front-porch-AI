@@ -82,7 +82,11 @@ class Sidebar extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.psychology,
-                    color: AppColors.resolve(context, Colors.amberAccent, Colors.amber.shade700),
+                    color: AppColors.resolve(
+                      context,
+                      Colors.amberAccent,
+                      Colors.amber.shade700,
+                    ),
                     size: 22,
                   ),
                   const SizedBox(width: 12),
@@ -90,7 +94,11 @@ class Sidebar extends StatelessWidget {
                     child: Text(
                       'AI Character Creator',
                       style: TextStyle(
-                        color: AppColors.resolve(context, Colors.amberAccent, Colors.amber.shade700),
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amberAccent,
+                          Colors.amber.shade700,
+                        ),
                         fontWeight: FontWeight.w600,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -201,7 +209,9 @@ class Sidebar extends StatelessWidget {
                     Flexible(
                       child: Text(
                         'Buy Me a Coffee ☕',
-                        style: TextStyle(color: AppColors.textSecondary(context)),
+                        style: TextStyle(
+                          color: AppColors.textSecondary(context),
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),

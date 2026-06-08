@@ -73,7 +73,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     _apiUrlController.text = storage.remoteApiUrl;
     _apiKeyController.text = storage.remoteApiKey;
     _modelNameController.text = storage.remoteModelName;
-    
+
     _scanLocalPresets();
   }
 
@@ -87,7 +87,8 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   /// Check whether a .kcpps preset is currently active.
   bool _isPresetActive(BuildContext ctx) {
     final storage = Provider.of<StorageService>(ctx, listen: false);
-    return storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty;
+    return storage.activeKcppsPath != null &&
+        storage.activeKcppsPath!.isNotEmpty;
   }
 
   @override
@@ -101,9 +102,14 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   }
 
   void _applyAutoConfiguration() {
-    final hardware = Provider.of<HardwareService>(context, listen: false).hardwareInfo;
+    final hardware = Provider.of<HardwareService>(
+      context,
+      listen: false,
+    ).hardwareInfo;
     if (hardware == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hardware not detected yet.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hardware not detected yet.')),
+      );
       return;
     }
 
@@ -128,8 +134,11 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     int? kvBytesPerToken;
     if (_selectedModelPath != null) {
       final modelManager = Provider.of<ModelManager>(context, listen: false);
-      kvBytesPerToken = modelManager.getCachedModelArchitectureInfo(_selectedModelPath!)?.kvBytesPerToken
-          ?? modelManager.getCachedKvBytesPerToken(_selectedModelPath!);
+      kvBytesPerToken =
+          modelManager
+              .getCachedModelArchitectureInfo(_selectedModelPath!)
+              ?.kvBytesPerToken ??
+          modelManager.getCachedKvBytesPerToken(_selectedModelPath!);
     }
 
     final suggestion = OptimizationService.calculateSettings(
@@ -143,7 +152,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     setState(() {
       _gpuLayersController.text = suggestion.gpuLayers.toString();
       _contextSizeController.text = suggestion.contextSize.toString();
-      
+
       if (Platform.isMacOS) {
         _useMetal = true;
         _useVulkan = false;
@@ -154,7 +163,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         _useVulkan = false;
         _useMetal = false;
         _useRocm = false;
-      } else if (hardware.vendor == 'AMD' && Platform.isLinux && hardware.hasRocm) {
+      } else if (hardware.vendor == 'AMD' &&
+          Platform.isLinux &&
+          hardware.hasRocm) {
         _useRocm = true;
         _useVulkan = false;
         _useCublas = false;
@@ -167,7 +178,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
       }
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(suggestion.reasoning)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(suggestion.reasoning)));
   }
 
   Future<void> _restartBackend() async {
@@ -175,7 +188,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     final backendManager = Provider.of<BackendManager>(context, listen: false);
 
     if (backendManager.backendPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backend not found.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Backend not found.')));
       return;
     }
 
@@ -183,17 +198,22 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
 
     // Case A — preset owns a valid model file: skip model-path checks.
     // Case B — no preset / preset has no model / model file missing: user must pick one.
-    final presetOwnsModel = storage.kcppsHasModel && storage.kcppsModelFileExists;
+    final presetOwnsModel =
+        storage.kcppsHasModel && storage.kcppsModelFileExists;
 
     if (!presetOwnsModel) {
-      if (_selectedModelPath == null || !File(_selectedModelPath!).existsSync()) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Valid model not selected.')));
+      if (_selectedModelPath == null ||
+          !File(_selectedModelPath!).existsSync()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Valid model not selected.')),
+        );
         return;
       }
     }
 
     // Validate preset file exists if one is active
-    if (storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty) {
+    if (storage.activeKcppsPath != null &&
+        storage.activeKcppsPath!.isNotEmpty) {
       if (!File(storage.activeKcppsPath!).existsSync()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -247,7 +267,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
       useRocm: _useRocm,
     );
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Restarting backend with new settings...')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Restarting backend with new settings...')),
+    );
   }
 
   void _saveRemoteSettings() {
@@ -259,13 +281,16 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     }
     storage.setRemoteApiKey(_apiKeyController.text.trim());
     storage.setRemoteModelName(_modelNameController.text.trim());
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API settings saved.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('API settings saved.')));
   }
 
   Future<void> _testConnection() async {
-    setState(() { _isTesting = true; _connectionStatus = null; });
+    setState(() {
+      _isTesting = true;
+      _connectionStatus = null;
+    });
     _saveRemoteSettings();
     final openRouter = Provider.of<OpenRouterService>(context, listen: false);
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
@@ -281,7 +306,10 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     );
     final result = await openRouter.testConnection();
     if (mounted) {
-      setState(() { _isTesting = false; _connectionStatus = result; });
+      setState(() {
+        _isTesting = false;
+        _connectionStatus = result;
+      });
     }
   }
 
@@ -313,9 +341,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // dismiss loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to fetch models: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to fetch models: $e')));
       }
       return;
     }
@@ -325,7 +353,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
 
     if (models.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No models available. Check your API URL and key.')),
+        const SnackBar(
+          content: Text('No models available. Check your API URL and key.'),
+        ),
       );
       return;
     }
@@ -339,27 +369,57 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           builder: (ctx, setDialogState) {
             final filtered = searchQuery.isEmpty
                 ? models
-                : models.where((m) => m.id.toLowerCase().contains(searchQuery.toLowerCase())).toList();
+                : models
+                      .where(
+                        (m) => m.id.toLowerCase().contains(
+                          searchQuery.toLowerCase(),
+                        ),
+                      )
+                      .toList();
 
             return AlertDialog(
               backgroundColor: AppColors.cardOf(context),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Select Model', style: TextStyle(color: AppColors.textPrimary(context), fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text(
+                    'Select Model',
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     autofocus: true,
-                    style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 13,
+                    ),
                     decoration: InputDecoration(
                       hintText: 'Search models...',
-                      hintStyle: TextStyle(color: AppColors.textTertiary(context)),
-                      prefixIcon: Icon(Icons.search, color: AppColors.iconSecondary(context), size: 18),
+                      hintStyle: TextStyle(
+                        color: AppColors.textTertiary(context),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: AppColors.iconSecondary(context),
+                        size: 18,
+                      ),
                       filled: true,
                       fillColor: AppColors.surfaceContainerOf(context),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       isDense: true,
                     ),
                     onChanged: (val) => setDialogState(() => searchQuery = val),
@@ -370,22 +430,39 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                 width: 480,
                 height: 400,
                 child: filtered.isEmpty
-                    ? Center(child: Text('No models match "$searchQuery"', style: TextStyle(color: AppColors.textTertiary(context))))
+                    ? Center(
+                        child: Text(
+                          'No models match "$searchQuery"',
+                          style: TextStyle(
+                            color: AppColors.textTertiary(context),
+                          ),
+                        ),
+                      )
                     : ListView.builder(
                         itemCount: filtered.length,
                         itemBuilder: (ctx, index) {
                           final model = filtered[index];
-                          final isSelected = model.id == _modelNameController.text;
+                          final isSelected =
+                              model.id == _modelNameController.text;
                           return ListTile(
                             dense: true,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             title: Text(
                               model.id,
                               style: TextStyle(
-                                color: isSelected ? Colors.blueAccent : AppColors.textPrimary(context),
+                                color: isSelected
+                                    ? Colors.blueAccent
+                                    : AppColors.textPrimary(context),
                                 fontSize: 13,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -394,24 +471,43 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                                 if (model.isFree)
                                   Container(
                                     margin: const EdgeInsets.only(right: 6),
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 1,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: Colors.green.withValues(alpha: 0.2),
+                                      color: Colors.green.withValues(
+                                        alpha: 0.2,
+                                      ),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: const Text('FREE', style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                                    child: const Text(
+                                      'FREE',
+                                      style: TextStyle(
+                                        color: Colors.greenAccent,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ),
                                 Flexible(
                                   child: Text(
                                     model.pricingLabel,
-                                    style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                                    style: TextStyle(
+                                      color: AppColors.textTertiary(context),
+                                      fontSize: 11,
+                                    ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
                             ),
                             trailing: isSelected
-                                ? const Icon(Icons.check_circle, color: Colors.blueAccent, size: 18)
+                                ? const Icon(
+                                    Icons.check_circle,
+                                    color: Colors.blueAccent,
+                                    size: 18,
+                                  )
                                 : null,
                             onTap: () => Navigator.pop(ctx, model.id),
                           );
@@ -421,7 +517,10 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary(context))),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: AppColors.textSecondary(context)),
+                  ),
                 ),
               ],
             );
@@ -444,84 +543,102 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
     final backend = llmProvider.activeBackend;
 
     return Dialog(
-       backgroundColor: AppColors.surfaceOf(context),
-       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-       child: Container(
-         width: 500,
-         constraints: const BoxConstraints(maxHeight: 600),
-         padding: const EdgeInsets.all(24),
-         child: Column(
-           mainAxisSize: MainAxisSize.min,
-           crossAxisAlignment: CrossAxisAlignment.start,
-           children: [
-             Row(
-               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-               children: [
-                 Text('Model Settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary(context))),
-                 IconButton(icon: Icon(Icons.close, color: AppColors.textSecondary(context)), onPressed: () => Navigator.pop(context)),
-               ],
-             ),
-             const SizedBox(height: 16),
+      backgroundColor: AppColors.surfaceOf(context),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        width: 500,
+        constraints: const BoxConstraints(maxHeight: 600),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Model Settings',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary(context),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.close,
+                    color: AppColors.textSecondary(context),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
 
-             // Backend toggle
-             Container(
-               decoration: BoxDecoration(
-                 color: AppColors.surfaceContainerOf(context),
-                 borderRadius: BorderRadius.circular(8),
-               ),
-               child: Row(
-                 children: [
-                   Expanded(
-                     child: _buildToggleButton(
-                       label: 'Local',
-                       icon: Icons.computer,
-                       isSelected: backend == BackendType.kobold,
-                       onTap: () => llmProvider.setActiveBackend(BackendType.kobold),
-                     ),
-                   ),
-                   Expanded(
-                     child: _buildToggleButton(
-                       label: 'Pseudo-Remote',
-                       icon: Icons.laptop,
-                       isSelected: backend == BackendType.pseudoRemote,
-                       onTap: () => llmProvider.setActiveBackend(BackendType.pseudoRemote),
-                     ),
-                   ),
-                   Expanded(
-                     child: _buildToggleButton(
-                       label: 'Remote API',
-                       icon: Icons.cloud,
-                       isSelected: backend == BackendType.openRouter,
-                       onTap: () => llmProvider.setActiveBackend(BackendType.openRouter),
-                     ),
-                   ),
-                   if (Platform.isMacOS)
-                     Expanded(
-                       child: _buildToggleButton(
-                         label: 'oMLX',
-                         icon: Icons.apple,
-                         isSelected: backend == BackendType.omlx,
-                         onTap: () => llmProvider.setActiveBackend(BackendType.omlx),
-                       ),
-                     ),
-                 ],
-               ),
-             ),
-             const SizedBox(height: 16),
+            // Backend toggle
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceContainerOf(context),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildToggleButton(
+                      label: 'Local',
+                      icon: Icons.computer,
+                      isSelected: backend == BackendType.kobold,
+                      onTap: () =>
+                          llmProvider.setActiveBackend(BackendType.kobold),
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildToggleButton(
+                      label: 'Pseudo-Remote',
+                      icon: Icons.laptop,
+                      isSelected: backend == BackendType.pseudoRemote,
+                      onTap: () => llmProvider.setActiveBackend(
+                        BackendType.pseudoRemote,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildToggleButton(
+                      label: 'Remote API',
+                      icon: Icons.cloud,
+                      isSelected: backend == BackendType.openRouter,
+                      onTap: () =>
+                          llmProvider.setActiveBackend(BackendType.openRouter),
+                    ),
+                  ),
+                  if (Platform.isMacOS)
+                    Expanded(
+                      child: _buildToggleButton(
+                        label: 'oMLX',
+                        icon: Icons.apple,
+                        isSelected: backend == BackendType.omlx,
+                        onTap: () =>
+                            llmProvider.setActiveBackend(BackendType.omlx),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
 
-             // Content area
-             Flexible(
-               child: SingleChildScrollView(
-                 child: backend == BackendType.kobold
-                     ? _buildLocalSettings()
-                     : backend == BackendType.pseudoRemote
-                         ? _buildPseudoRemoteSettings()
-                         : _buildRemoteSettings(isOmLx: backend == BackendType.omlx),
-               ),
-             ),
-           ],
-         ),
-       ),
+            // Content area
+            Flexible(
+              child: SingleChildScrollView(
+                child: backend == BackendType.kobold
+                    ? _buildLocalSettings()
+                    : backend == BackendType.pseudoRemote
+                    ? _buildPseudoRemoteSettings()
+                    : _buildRemoteSettings(isOmLx: backend == BackendType.omlx),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -542,12 +659,20 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 14, color: isSelected ? Colors.white : AppColors.textSecondary(context)),
+            Icon(
+              icon,
+              size: 14,
+              color: isSelected
+                  ? Colors.white
+                  : AppColors.textSecondary(context),
+            ),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textSecondary(context),
+                color: isSelected
+                    ? Colors.white
+                    : AppColors.textSecondary(context),
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 fontSize: 12,
               ),
@@ -566,7 +691,8 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
 
     // Auto-select first model if none selected and models exist.
     // Skip when a kcpps preset with a valid model is active (use "Managed by kcpps")
-    if (_selectedModelPath == null && modelManager.models.isNotEmpty &&
+    if (_selectedModelPath == null &&
+        modelManager.models.isNotEmpty &&
         !(storage.kcppsHasModel && storage.kcppsModelFileExists)) {
       _selectedModelPath = modelManager.models.first.path;
     }
@@ -578,12 +704,17 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         ModelSelector(
           models: modelManager.models,
           selectedModelPath: _selectedModelPath,
-          showManagedByKcpps: storage.kcppsHasModel && storage.kcppsModelFileExists,
+          showManagedByKcpps:
+              storage.kcppsHasModel && storage.kcppsModelFileExists,
           onChanged: (val) {
             if (val == null) {
-              setState(() { _selectedModelPath = null; });
+              setState(() {
+                _selectedModelPath = null;
+              });
             } else {
-              setState(() { _selectedModelPath = val; });
+              setState(() {
+                _selectedModelPath = val;
+              });
               storage.setLastUsedModelPath(val);
               final savedPreset = storage.modelPresetMap[val];
               if (savedPreset != null &&
@@ -599,15 +730,23 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         ),
 
         const SizedBox(height: 16),
-          
+
         // Preset selection
         Consumer<StorageService>(
           builder: (context, storage, _) {
-            final isPresetActive = storage.activeKcppsPath != null && storage.activeKcppsPath!.isNotEmpty;
+            final isPresetActive =
+                storage.activeKcppsPath != null &&
+                storage.activeKcppsPath!.isNotEmpty;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Configuration Preset', style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context))),
+                Text(
+                  'Configuration Preset',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary(context),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 KcppsSelector(
                   storage: storage,
@@ -620,8 +759,12 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     } else if (_selectedModelPath != null && val == null) {
                       storage.setModelPreset(_selectedModelPath!, '');
                     }
-                    if (val != null && storage.kcppsHasModel && storage.kcppsModelFileExists) {
-                      setState(() { _selectedModelPath = null; });
+                    if (val != null &&
+                        storage.kcppsHasModel &&
+                        storage.kcppsModelFileExists) {
+                      setState(() {
+                        _selectedModelPath = null;
+                      });
                     }
                   },
                   onExternalClear: () {
@@ -636,7 +779,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     }
                     _scanLocalPresets();
                     if (storage.kcppsHasModel && storage.kcppsModelFileExists) {
-                      setState(() { _selectedModelPath = null; });
+                      setState(() {
+                        _selectedModelPath = null;
+                      });
                     }
                   },
                   onModelStatusChanged: (_) {
@@ -644,7 +789,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                   },
                 ),
                 const SizedBox(height: 16),
-                
+
                 // When a preset is active, show a clear label instead of just fading
                 // the fields. Users need to know these controls are overridden.
                 if (isPresetActive)
@@ -654,17 +799,26 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
                       color: Colors.amber.withValues(alpha: 0.1),
-                      border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.amber.withValues(alpha: 0.3),
+                      ),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline, color: Colors.amber, size: 18),
+                        const Icon(
+                          Icons.info_outline,
+                          color: Colors.amber,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'Controlled by preset: ${path_lib.basename(storage.activeKcppsPath!)}',
-                            style: const TextStyle(color: Colors.amber, fontSize: 12),
+                            style: const TextStyle(
+                              color: Colors.amber,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ],
@@ -678,99 +832,138 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Hardware Info
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceContainerOf(context),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: hardwareService.isDetecting
-            ? const Center(child: CircularProgressIndicator())
-            : hardwareService.hardwareInfo == null
-              ? const Text('Hardware not detected.', style: TextStyle(color: Colors.redAccent))
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildInfoRow('GPU', hardwareService.hardwareInfo!.gpuName),
-                    _buildInfoRow('VRAM', '${hardwareService.hardwareInfo!.vramMb} MB${hardwareService.hardwareInfo!.isSharedMemory ? ' (Shared)' : ''}'),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 16),
-         
-        Row(
-          children: [
-            Expanded(
-              child: _buildTextField(
-                label: 'GPU Layers',
-                controller: _gpuLayersController,
-                isNumber: true,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: IgnorePointer(
-                ignoring: _isPresetActive(context),
-                child: Opacity(
-                  opacity: _isPresetActive(context) ? 0.5 : 1.0,
-                  child: _isPresetActive(context)
-                      ? Tooltip(
-                          message:
-                              'Context size is controlled by the active .kcpps preset and cannot be edited here.',
-                          child: _buildTextField(
-                            label: 'Context Size',
-                            controller: _contextSizeController,
-                            isNumber: true,
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceContainerOf(context),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        )
-                      : _buildTextField(
-                          label: 'Context Size',
-                          controller: _contextSizeController,
-                          isNumber: true,
+                          child: hardwareService.isDetecting
+                              ? const Center(child: CircularProgressIndicator())
+                              : hardwareService.hardwareInfo == null
+                              ? const Text(
+                                  'Hardware not detected.',
+                                  style: TextStyle(color: Colors.redAccent),
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildInfoRow(
+                                      'GPU',
+                                      hardwareService.hardwareInfo!.gpuName,
+                                    ),
+                                    _buildInfoRow(
+                                      'VRAM',
+                                      '${hardwareService.hardwareInfo!.vramMb} MB${hardwareService.hardwareInfo!.isSharedMemory ? ' (Shared)' : ''}',
+                                    ),
+                                  ],
+                                ),
                         ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Text('KV Quantization:', style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context))),
-            const SizedBox(width: 12),
-            Expanded(
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: Provider.of<StorageService>(context).kvQuantizationLevel,
-                  isExpanded: true,
-                  dropdownColor: AppColors.surfaceContainerOf(context),
-                  style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
-                  onChanged: (val) {
-                    if (val != null) {
-                      Provider.of<StorageService>(context, listen: false).setKvQuantizationLevel(val);
-                      setState(() {});
-                    }
-                  },
-                  items: const [
-                    DropdownMenuItem(value: 0, child: Text('0 - None (FP16)')),
-                    DropdownMenuItem(value: 1, child: Text('1 - 8-Bit Q8')),
-                    DropdownMenuItem(value: 2, child: Text('2 - 4-Bit Q4')),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Quantizes the context window to save significant VRAM with minimal quality loss. Note: KoboldCPP dynamically disables Context Shifting when this is active.',
-              child: Icon(Icons.info_outline, size: 16, color: AppColors.iconSecondary(context)),
-            ),
-          ],
-        ),
+                        const SizedBox(height: 16),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                label: 'GPU Layers',
+                                controller: _gpuLayersController,
+                                isNumber: true,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: IgnorePointer(
+                                ignoring: _isPresetActive(context),
+                                child: Opacity(
+                                  opacity: _isPresetActive(context) ? 0.5 : 1.0,
+                                  child: _isPresetActive(context)
+                                      ? Tooltip(
+                                          message:
+                                              'Context size is controlled by the active .kcpps preset and cannot be edited here.',
+                                          child: _buildTextField(
+                                            label: 'Context Size',
+                                            controller: _contextSizeController,
+                                            isNumber: true,
+                                          ),
+                                        )
+                                      : _buildTextField(
+                                          label: 'Context Size',
+                                          controller: _contextSizeController,
+                                          isNumber: true,
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Text(
+                              'KV Quantization:',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary(context),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<int>(
+                                  value: Provider.of<StorageService>(
+                                    context,
+                                  ).kvQuantizationLevel,
+                                  isExpanded: true,
+                                  dropdownColor: AppColors.surfaceContainerOf(
+                                    context,
+                                  ),
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary(context),
+                                    fontSize: 13,
+                                  ),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      Provider.of<StorageService>(
+                                        context,
+                                        listen: false,
+                                      ).setKvQuantizationLevel(val);
+                                      setState(() {});
+                                    }
+                                  },
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 0,
+                                      child: Text('0 - None (FP16)'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 1,
+                                      child: Text('1 - 8-Bit Q8'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 2,
+                                      child: Text('2 - 4-Bit Q4'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Tooltip(
+                              message:
+                                  'Quantizes the context window to save significant VRAM with minimal quality loss. Note: KoboldCPP dynamically disables Context Shifting when this is active.',
+                              child: Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: AppColors.iconSecondary(context),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
                 ),
-                
+
                 IgnorePointer(
                   ignoring: isPresetActive,
                   child: Opacity(
@@ -778,16 +971,22 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            TextButton.icon(
-              onPressed: _applyAutoConfiguration,
-              icon: const Icon(Icons.auto_fix_high, color: Colors.amber),
-              label: const Text('Auto-Configure', style: TextStyle(color: Colors.amber)),
-            ),
-          ],
-        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            TextButton.icon(
+                              onPressed: _applyAutoConfiguration,
+                              icon: const Icon(
+                                Icons.auto_fix_high,
+                                color: Colors.amber,
+                              ),
+                              label: const Text(
+                                'Auto-Configure',
+                                style: TextStyle(color: Colors.amber),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -796,7 +995,7 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             );
           },
         ),
-         
+
         const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
@@ -805,8 +1004,12 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             icon: const Icon(Icons.refresh),
             label: Text(
               _isPresetActive(context)
-                  ? (koboldService.isRunning ? 'Restart with Preset' : 'Start with Preset')
-                  : (koboldService.isRunning ? 'Restart Backend' : 'Start Backend'),
+                  ? (koboldService.isRunning
+                        ? 'Restart with Preset'
+                        : 'Start with Preset')
+                  : (koboldService.isRunning
+                        ? 'Restart Backend'
+                        : 'Start Backend'),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blueAccent,
@@ -852,7 +1055,11 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           _buildTextField(label: 'API URL', controller: _apiUrlController),
         if (!isOmLx) const SizedBox(height: 12),
         if (!isOmLx)
-          _buildTextField(label: 'API Key', controller: _apiKeyController, isObscured: true),
+          _buildTextField(
+            label: 'API Key',
+            controller: _apiKeyController,
+            isObscured: true,
+          ),
         if (!isOmLx) const SizedBox(height: 12),
         // Model selector — tappable chip that opens a model picker dialog
         InkWell(
@@ -873,13 +1080,20 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     children: [
                       Text(
                         'Model',
-                        style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
+                        style: TextStyle(
+                          color: AppColors.textTertiary(context),
+                          fontSize: 11,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _modelNameController.text.isEmpty ? 'Tap to select a model...' : _modelNameController.text,
+                        _modelNameController.text.isEmpty
+                            ? 'Tap to select a model...'
+                            : _modelNameController.text,
                         style: TextStyle(
-                          color: _modelNameController.text.isEmpty ? AppColors.textTertiary(context) : AppColors.textPrimary(context),
+                          color: _modelNameController.text.isEmpty
+                              ? AppColors.textTertiary(context)
+                              : AppColors.textPrimary(context),
                           fontSize: 14,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -887,7 +1101,10 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
                     ],
                   ),
                 ),
-                Icon(Icons.arrow_drop_down, color: AppColors.iconSecondary(context)),
+                Icon(
+                  Icons.arrow_drop_down,
+                  color: AppColors.iconSecondary(context),
+                ),
               ],
             ),
           ),
@@ -914,7 +1131,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             child: Text(
               _connectionStatus!,
               style: TextStyle(
-                color: _connectionStatus!.contains('successful') ? Colors.greenAccent : Colors.redAccent,
+                color: _connectionStatus!.contains('successful')
+                    ? Colors.greenAccent
+                    : Colors.redAccent,
                 fontSize: 13,
               ),
             ),
@@ -926,7 +1145,14 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
               child: ElevatedButton.icon(
                 onPressed: _isTesting ? null : _testConnection,
                 icon: _isTesting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.wifi_tethering),
                 label: Text(_isTesting ? 'Testing...' : 'Test Connection'),
                 style: ElevatedButton.styleFrom(
@@ -968,7 +1194,10 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
       children: [
         Text(
           'Configuration Preset (.kcpps)',
-          style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context)),
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary(context),
+          ),
         ),
         const SizedBox(height: 8),
         KcppsSelector(
@@ -977,8 +1206,12 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           hint: 'Required — select a .kcpps preset',
           onChanged: (val) {
             storage.setActiveKcppsPath(val);
-            if (val != null && storage.kcppsHasModel && storage.kcppsModelFileExists) {
-              setState(() { _selectedModelPath = null; });
+            if (val != null &&
+                storage.kcppsHasModel &&
+                storage.kcppsModelFileExists) {
+              setState(() {
+                _selectedModelPath = null;
+              });
             }
           },
           onExternalClear: () {
@@ -986,7 +1219,9 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
           },
           onBrowsePicked: (_) {
             if (storage.kcppsHasModel && storage.kcppsModelFileExists) {
-              setState(() { _selectedModelPath = null; });
+              setState(() {
+                _selectedModelPath = null;
+              });
             }
           },
           onModelStatusChanged: (_) {
@@ -998,12 +1233,17 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         ModelSelector(
           models: modelManager.models,
           selectedModelPath: _selectedModelPath,
-          showManagedByKcpps: storage.kcppsHasModel && storage.kcppsModelFileExists,
+          showManagedByKcpps:
+              storage.kcppsHasModel && storage.kcppsModelFileExists,
           onChanged: (val) {
             if (val == null) {
-              setState(() { _selectedModelPath = null; });
+              setState(() {
+                _selectedModelPath = null;
+              });
             } else {
-              setState(() { _selectedModelPath = val; });
+              setState(() {
+                _selectedModelPath = val;
+              });
               storage.setLastUsedModelPath(val);
               final savedPreset = storage.modelPresetMap[val];
               if (savedPreset != null &&
@@ -1024,18 +1264,18 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
             onPressed: anyRunning
                 ? () => _stopManagedBackend(context)
                 : (storage.activeKcppsPath == null ||
-                        storage.activeKcppsPath!.isEmpty ||
-                        !(storage.kcppsHasModel &&
-                            storage.kcppsModelFileExists) &&
-                            _selectedModelPath == null)
-                    ? null
-                    : () => _startPseudoRemote(context),
+                      storage.activeKcppsPath!.isEmpty ||
+                      !(storage.kcppsHasModel &&
+                              storage.kcppsModelFileExists) &&
+                          _selectedModelPath == null)
+                ? null
+                : () => _startPseudoRemote(context),
             icon: Icon(anyRunning ? Icons.stop : Icons.play_arrow),
-            label: Text(
-              anyRunning ? 'Stop Backend' : 'Start Pseudo-Remote',
-            ),
+            label: Text(anyRunning ? 'Stop Backend' : 'Start Pseudo-Remote'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: anyRunning ? Colors.redAccent : Colors.greenAccent,
+              backgroundColor: anyRunning
+                  ? Colors.redAccent
+                  : Colors.greenAccent,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
@@ -1044,7 +1284,10 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
         const SizedBox(height: 16),
         Text(
           'Process Logs',
-          style: TextStyle(fontSize: 13, color: AppColors.textSecondary(context)),
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary(context),
+          ),
         ),
         const SizedBox(height: 8),
         LogView(logs: pseudoRemote.logs),
@@ -1059,25 +1302,27 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
   Future<void> _startPseudoRemote(BuildContext context) async {
     final storage = Provider.of<StorageService>(context, listen: false);
     final backendManager = Provider.of<BackendManager>(context, listen: false);
-    final pseudoRemote = Provider.of<PseudoRemoteService>(context, listen: false);
+    final pseudoRemote = Provider.of<PseudoRemoteService>(
+      context,
+      listen: false,
+    );
 
     if (backendManager.backendPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Backend not found.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Backend not found.')));
       return;
     }
     if (storage.activeKcppsPath == null || storage.activeKcppsPath!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a .kcpps preset first.'),
-        ),
+        const SnackBar(content: Text('Please select a .kcpps preset first.')),
       );
       return;
     }
 
     // If the preset has no valid model, the user must have selected one manually
-    final overrideModel = (storage.kcppsHasModel && storage.kcppsModelFileExists)
+    final overrideModel =
+        (storage.kcppsHasModel && storage.kcppsModelFileExists)
         ? null
         : _selectedModelPath;
 
@@ -1093,12 +1338,21 @@ class _ModelSettingsDialogState extends State<ModelSettingsDialog> {
       padding: const EdgeInsets.only(bottom: 4.0),
       child: Row(
         children: [
-          Text(label, style: TextStyle(color: AppColors.textTertiary(context), fontSize: 12)),
+          Text(
+            label,
+            style: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 12,
+            ),
+          ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
               value,
-              style: TextStyle(color: AppColors.textPrimary(context), fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
+                fontWeight: FontWeight.bold,
+              ),
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
             ),

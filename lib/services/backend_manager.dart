@@ -76,7 +76,7 @@ class BackendManager extends ChangeNotifier {
         print('AG_DEBUG: CUDA not found (nvidia-smi not available)');
       }
       // Check for AMD/ROCm — user preference overrides auto-detection
-      final userRocmPref = _storageService.useRocm;
+      final userRocmPref = _storageService.backendSettings.useRocm;
       if (userRocmPref != null) {
         _useRocm = userRocmPref;
         print('AG_DEBUG: ROCm set by user preference: $_useRocm');

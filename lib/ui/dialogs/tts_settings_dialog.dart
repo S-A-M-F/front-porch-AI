@@ -202,7 +202,8 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                           divisions: 15,
                           activeColor: Colors.blueAccent,
                           inactiveColor: Colors.white12,
-                          onChanged: (val) => setState(() => _dragTtsSpeechRate = val),
+                          onChanged: (val) =>
+                              setState(() => _dragTtsSpeechRate = val),
                           onChangeEnd: (val) {
                             _dragTtsSpeechRate = null;
                             storage.setTtsSpeechRate(val);
@@ -284,13 +285,16 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                             ],
                           ),
                           Slider(
-                            value: _dragTtsConcurrency ?? storage.ttsConcurrency.toDouble(),
+                            value:
+                                _dragTtsConcurrency ??
+                                storage.ttsConcurrency.toDouble(),
                             min: 1,
                             max: 8,
                             divisions: 7,
                             activeColor: Colors.blueAccent,
                             inactiveColor: Colors.white12,
-                            onChanged: (val) => setState(() => _dragTtsConcurrency = val),
+                            onChanged: (val) =>
+                                setState(() => _dragTtsConcurrency = val),
                             onChangeEnd: (val) {
                               _dragTtsConcurrency = null;
                               storage.setTtsConcurrency(val.round());
@@ -1266,7 +1270,8 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
           ),
           const Spacer(),
           Text(
-            (_dragElevenlabsStability ?? storage.elevenlabsStability).toStringAsFixed(2),
+            (_dragElevenlabsStability ?? storage.elevenlabsStability)
+                .toStringAsFixed(2),
             style: const TextStyle(
               color: Colors.blueAccent,
               fontSize: 12,
@@ -1283,15 +1288,15 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
         activeColor: Colors.blueAccent,
         inactiveColor: Colors.white12,
         onChanged: (val) => setState(() => _dragElevenlabsStability = val),
-          onChangeEnd: (val) {
-            _dragElevenlabsStability = null;
-            storage.setElevenlabsStability(val);
-          },
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        onChangeEnd: (val) {
+          _dragElevenlabsStability = null;
+          storage.setElevenlabsStability(val);
+        },
+      ),
+      Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               'Expressive',
@@ -1316,7 +1321,8 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
           ),
           const Spacer(),
           Text(
-            (_dragElevenlabsSimilarity ?? storage.elevenlabsSimilarity).toStringAsFixed(2),
+            (_dragElevenlabsSimilarity ?? storage.elevenlabsSimilarity)
+                .toStringAsFixed(2),
             style: const TextStyle(
               color: Colors.blueAccent,
               fontSize: 12,
@@ -1333,15 +1339,15 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
         activeColor: Colors.blueAccent,
         inactiveColor: Colors.white12,
         onChanged: (val) => setState(() => _dragElevenlabsSimilarity = val),
-          onChangeEnd: (val) {
-            _dragElevenlabsSimilarity = null;
-            storage.setElevenlabsSimilarity(val);
-          },
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        onChangeEnd: (val) {
+          _dragElevenlabsSimilarity = null;
+          storage.setElevenlabsSimilarity(val);
+        },
+      ),
+      Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               'Creative',
@@ -1366,7 +1372,9 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
           ),
           const Spacer(),
           Text(
-            (_dragElevenlabsStyle ?? storage.elevenlabsStyle).toStringAsFixed(2),
+            (_dragElevenlabsStyle ?? storage.elevenlabsStyle).toStringAsFixed(
+              2,
+            ),
             style: const TextStyle(
               color: Colors.blueAccent,
               fontSize: 12,
@@ -1383,15 +1391,15 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
         activeColor: Colors.blueAccent,
         inactiveColor: Colors.white12,
         onChanged: (val) => setState(() => _dragElevenlabsStyle = val),
-          onChangeEnd: (val) {
-            _dragElevenlabsStyle = null;
-            storage.setElevenlabsStyle(val);
-          },
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        onChangeEnd: (val) {
+          _dragElevenlabsStyle = null;
+          storage.setElevenlabsStyle(val);
+        },
+      ),
+      Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               'Subtle',

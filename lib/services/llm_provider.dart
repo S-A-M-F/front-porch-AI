@@ -98,7 +98,8 @@ class LLMProvider extends ChangeNotifier {
       if (_activeBackend == BackendType.kobold) {
         final modelPath = _storageService.lastUsedModelPath;
         final hasPresetWithModel =
-            _storageService.kcppsHasModel && _storageService.kcppsModelFileExists;
+            _storageService.kcppsHasModel &&
+            _storageService.kcppsModelFileExists;
 
         if (modelPath != null || hasPresetWithModel) {
           await _koboldService.startKobold(

@@ -678,7 +678,7 @@ Respond with ONLY the JSON:''';
   }
 
   /// Generate example dialogue as a dedicated step using the interview transcript.
-  /// Outputs raw text in <START> format — not JSON — to avoid parsing issues
+  /// Outputs raw text in `<START>` format — not JSON — to avoid parsing issues
   /// that plagued the old bundled approach.
   Future<void> _generateExampleDialogue({
     required CharacterCard card,
@@ -1974,7 +1974,7 @@ $greeting''';
     return '';
   }
 
-  /// Safely extract a List<String> from a JSON map.
+  /// Safely extract a `List<String>` from a JSON map.
   /// Strips whitespace and newlines from each element.
   List<String> _getStringList(Map<String, dynamic> data, String key) {
     final val = data[key];

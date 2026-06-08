@@ -136,7 +136,7 @@ class StoryPipelineService extends ChangeNotifier {
 
   // ── JSON UTILITIES ──────────────────────────────────────────────────
 
-  /// Strip <think>...</think> blocks from reasoning-model output.
+  /// Strip `<think>...</think>` blocks from reasoning-model output.
   static String _stripThinkTags(String text) {
     // Handle both complete and unclosed think tags
     // Complete: <think>...</think> (including multiple blocks)

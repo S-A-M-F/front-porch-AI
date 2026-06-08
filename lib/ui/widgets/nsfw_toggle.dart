@@ -52,7 +52,9 @@ class NsfwToggle extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    color: value ? accentColor : AppColors.textSecondary(context),
+                    color: value
+                        ? accentColor
+                        : AppColors.textSecondary(context),
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),

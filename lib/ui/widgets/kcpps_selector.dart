@@ -10,13 +10,18 @@ import 'package:front_porch_ai/services/storage_service.dart';
 List<File> scanKcppsPresets(Directory binDir) {
   if (!binDir.existsSync()) return [];
   try {
-    final files = binDir
-        .listSync()
-        .whereType<File>()
-        .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
-        .toList()
-      ..sort((a, b) => p.basename(a.path).toLowerCase().compareTo(
-          p.basename(b.path).toLowerCase()));
+    final files =
+        binDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.toLowerCase().endsWith('.kcpps'))
+            .toList()
+          ..sort(
+            (a, b) => p
+                .basename(a.path)
+                .toLowerCase()
+                .compareTo(p.basename(b.path).toLowerCase()),
+          );
     return files;
   } catch (_) {
     return [];
@@ -86,7 +91,8 @@ class _KcppsSelectorState extends State<KcppsSelector> {
   /// Compute whether the active preset has a valid model and fire callback
   /// if the value changed since last report.
   void _reportStatus() {
-    final valid = widget.storage.kcppsHasModel && widget.storage.kcppsModelFileExists;
+    final valid =
+        widget.storage.kcppsHasModel && widget.storage.kcppsModelFileExists;
     if (valid != _lastValidModel) {
       _lastValidModel = valid;
       widget.onModelStatusChanged?.call(valid);
@@ -96,8 +102,10 @@ class _KcppsSelectorState extends State<KcppsSelector> {
   @override
   Widget build(BuildContext context) {
     final activePath = widget.storage.activeKcppsPath;
-    final bgColor = widget.backgroundColor ?? AppColors.surfaceContainerOf(context);
-    final isExternal = activePath != null &&
+    final bgColor =
+        widget.backgroundColor ?? AppColors.surfaceContainerOf(context);
+    final isExternal =
+        activePath != null &&
         activePath.isNotEmpty &&
         !widget.localPresets.any((f) => f.path == activePath);
 
@@ -137,9 +145,10 @@ class _KcppsSelectorState extends State<KcppsSelector> {
       color = Colors.greenAccent;
       final parsed = _parseKcppsFile(widget.storage.activeKcppsPath);
       final modelPath = parsed != null
-          ? (parsed['model_param'] is String && (parsed['model_param'] as String).isNotEmpty
-              ? parsed['model_param'] as String
-              : parsed['model'] as String? ?? '')
+          ? (parsed['model_param'] is String &&
+                    (parsed['model_param'] as String).isNotEmpty
+                ? parsed['model_param'] as String
+                : parsed['model'] as String? ?? '')
           : '';
       text = 'Model: ${p.basename(modelPath)}';
     } else if (hasModel) {
@@ -219,27 +228,46 @@ class _KcppsSelectorState extends State<KcppsSelector> {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: activePath != null &&
+          value:
+              activePath != null &&
                   widget.localPresets.any((f) => f.path == activePath)
               ? activePath
               : null,
           isExpanded: true,
-          hint: Text(widget.hint,
-              style: TextStyle(fontSize: 13, color: AppColors.textTertiary(context))),
+          hint: Text(
+            widget.hint,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textTertiary(context),
+            ),
+          ),
           dropdownColor: bgColor,
           style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13),
-          icon: Icon(Icons.arrow_drop_down, color: AppColors.iconSecondary(context)),
+          icon: Icon(
+            Icons.arrow_drop_down,
+            color: AppColors.iconSecondary(context),
+          ),
           items: [
             DropdownMenuItem<String>(
               value: null,
-              child: Text('None (Use App Settings)',
-                  style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
+              child: Text(
+                'None (Use App Settings)',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textPrimary(context),
+                ),
+              ),
             ),
             ...widget.localPresets.map((file) {
               return DropdownMenuItem<String>(
                 value: file.path,
-                child: Text(p.basename(file.path),
-                    style: TextStyle(fontSize: 13, color: AppColors.textPrimary(context))),
+                child: Text(
+                  p.basename(file.path),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textPrimary(context),
+                  ),
+                ),
               );
             }),
           ],
@@ -289,9 +317,7 @@ class _KcppsSelectorState extends State<KcppsSelector> {
     try {
       final file = File(kcppsPath);
       if (!file.existsSync()) return null;
-      return Map<String, dynamic>.from(
-        jsonDecode(file.readAsStringSync()),
-      );
+      return Map<String, dynamic>.from(jsonDecode(file.readAsStringSync()));
     } catch (_) {
       return null;
     }

@@ -662,7 +662,11 @@ void main() {
         ];
         // In real export we have the GroupMember rows; here we fake stable UUIDs
         // that would have been used as fallback for the avatar-less case.
-        final fakeMemberIds = ['uuid-real-1', 'uuid-real-2', 'uuid-no-avatar-3'];
+        final fakeMemberIds = [
+          'uuid-real-1',
+          'uuid-real-2',
+          'uuid-no-avatar-3',
+        ];
 
         // Replicate the exact raw-building logic from the fixed export:
         final rawMembersWithAvatars = <Map<String, dynamic>>[];
@@ -695,7 +699,10 @@ void main() {
         expect(rawMembersWithAvatars.length, 3);
         expect(rawMembersWithAvatars[2]['name'], 'NoAvatarAtExport');
         expect(rawMembersWithAvatars[2]['avatar_base64'], isNotEmpty);
-        expect(rawMembersWithAvatars[2]['_original_stable_id'], 'uuid-no-avatar-3');
+        expect(
+          rawMembersWithAvatars[2]['_original_stable_id'],
+          'uuid-no-avatar-3',
+        );
 
         // Now prove the Group Card containing this raw data round-trips fully
         // (what the recipient will see after import of the .group.png).
@@ -714,7 +721,12 @@ void main() {
 
         final loaded = await service.loadGroupCardFromPng(tmpPath);
         expect(loaded, isNotNull);
-        expect(loaded!.rawMemberData.length, 3, reason: 'All 3 members must survive export/import even when one had no avatar at export time');
+        expect(
+          loaded!.rawMemberData.length,
+          3,
+          reason:
+              'All 3 members must survive export/import even when one had no avatar at export time',
+        );
 
         // Every raw entry (including the synthesized one) must have a usable avatar_base64
         for (int i = 0; i < 3; i++) {
@@ -725,10 +737,19 @@ void main() {
 
           // The bytes must decode to a real PNG containing the chara chunk with the correct name
           final pngBytes = base64Decode(b64);
-          final decodedImg = img.decodePng(pngBytes) ?? img.decodeImage(pngBytes);
-          expect(decodedImg, isNotNull, reason: 'avatar_base64 for member $i must be valid PNG');
+          final decodedImg =
+              img.decodePng(pngBytes) ?? img.decodeImage(pngBytes);
+          expect(
+            decodedImg,
+            isNotNull,
+            reason: 'avatar_base64 for member $i must be valid PNG',
+          );
           final chara = decodedImg?.textData?['chara'];
-          expect(chara, isNotNull, reason: 'PNG for member $i must embed chara metadata');
+          expect(
+            chara,
+            isNotNull,
+            reason: 'PNG for member $i must embed chara metadata',
+          );
           final charaJson = jsonDecode(utf8.decode(base64Decode(chara!)));
           final data = charaJson['data'] ?? charaJson;
           expect(data['name'], raw['name']);
