@@ -10,6 +10,29 @@
 - **Commit**: will be filled after `git commit`.
 - All per project rules (no new god privs or god changes here — this was purely a UI rendering guard in the bubble; AppColors already used; smallest targeted fix; no skeletons).
 
+## 2026-06-09 (clarify needs delta strength semantics + remove double-multiply risk with Director)
+
+- The "Needs delta strength: Nx" slider (shown when Needs Simulation + the "Director authority on needs deltas" toggle are active) had ambiguous UI text: "(1x baseline; 5x = 5× larger swings from model/Director)". This left open whether the multiplier was applied as a prompt instruction on the first model call, or as a post-processing step that could compound with Director corrections.
+- **Desired contract** (per user report with screenshot + explicit example): baseline model thought -3 bladder at 1x; at 5x the *first run* (the needs impact LLM call) must be instructed to emit ~-15. If Director authority is on, the Director must be told the strength and must correct in the already-scaled space. The Director must **never** be given an already-multiplied value and then multiply it again (e.g. -15 → -75).
+- **Changes**:
+  - Removed the unconditional post-`strength` multiplication in `NeedsImpactEvaluator.evaluateAndApply` (the "final guarantee" block that ran on both model and Director-corrected `effectiveText`). The comment now explicitly calls out the double-scaling hazard and the new contract.
+  - Updated the slider label in `realism_form_section.dart` (and the parallel comment in the edit dialog) to: "5x — model (and Director if authority on) instructed to emit at this magnitude on first pass. ... No second multiply after Director." (with the -3 → -15 example).
+  - Updated stale comments in `character_card.dart`, `llm_eval_engine.dart` (the `evaluateNeedsImpactCall` signature + the strength paragraph in the prompt), the form section header, and the edit dialog local state.
+  - The first-pass prompt (in the engine) and the `promptText` passed to the verifier already correctly told both parties the scale ("emit/correct deltas at this magnitude"); that contract is now honored end-to-end with no extra multiply.
+- **Result**: 5x means the generators are asked for 5x-sized numbers on the first pass. Director (when enabled) reviews/corrects those numbers at that scale. What comes out of effectiveText is applied directly. UI text now matches the behavior.
+- Targeted `flutter analyze` on the 5 touched files: clean (0 issues).
+- Also added friendly user note to `docs/Rawhide.md` (right after the previous crash fix bullet) so the in-app "What's New" dialog will surface the clarification for Rawhide users.
+
+## 2026-06-09 (UX: move Needs delta strength slider under Needs Simulation)
+
+- Per user request (after the double-multiply + text clarification): moved the "Needs delta strength" slider + label from after the "Director authority on needs deltas" toggle to directly under the Needs Simulation settings (right after the "Enjoys low hygiene" toggle, inside the existing `if (needsSimEnabled)` block in `realism_form_section.dart`).
+- This is better UX: the strength/magnitude is a fundamental control for the Needs Simulation feature itself ("how strongly do needs move?"). The Director authority toggle + its "let the Director steer the needs deltas" description is a separate, optional meta-feature that only applies when both Needs + Verification are enabled.
+- The slider visibility is still controlled by the `onNeedsSimStrengthChanged` callback passed from the various creator/edit/group pages (same as before).
+- No behavior change, just reordering in the form for clarity.
+- Updated `docs/Rawhide.md` with a short note under the prior strength bullet.
+- `flutter analyze` clean on the file.
+- Will be included in the same commit as the move + push.
+
 ## 2026-06 (trust delta robustness in relationship path + Needs delta strength 1x-5x exponent control)
 
 - Trust deltas from the dedicated relationship eval (and verifier "accepted" path) are now always recorded in pending/metadata/attachment (even when 0) if the eval produced a non-"none" trust_reason. The previous "if (trustDelta != 0)" guards in _parseAndApplyRelationshipDeltas were the direct cause of "trust delta somehow got dropped" (null in synthesis/pending logs, absent from chips/revert, only bond surfaced) on scenes where the model or Director legitimately gave 0 + explanatory reason. Bond/arousal/other nonzero behavior unchanged.

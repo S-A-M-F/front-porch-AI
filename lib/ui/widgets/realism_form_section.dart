@@ -69,8 +69,10 @@ class RealismFormSection extends StatelessWidget {
   final bool realismNeedsDirectorAuthority;
   final ValueChanged<bool> onRealismNeedsDirectorAuthorityChanged;
 
-  // Needs delta strength exponent (1-5). Injected to first-pass needs eval + Director so model/Director emit at user-requested magnitude.
-  // Slider in Optional Features (Details right-click). Affects baseline + model + Director deltas (raw * strength).
+  // Needs delta strength (1-5). Injected to the first needs-impact model call (and to Director when authority
+  // is on) so they emit/correct at the requested magnitude on the first pass. The evaluator applies what comes
+  // back directly (no post-multiply after Director, to avoid scaling an already-scaled value a second time).
+  // Slider shown in Optional Features (Details / right-click edit).
   final int needsSimStrength;
   final ValueChanged<int>? onNeedsSimStrengthChanged;
 
@@ -643,6 +645,28 @@ class RealismFormSection extends StatelessWidget {
                     onChanged: onEnjoysLowHygieneChanged,
                     context: context,
                   ),
+
+                  // Needs delta strength slider lives directly under Needs Simulation (not under
+                  // the Director authority toggle). It controls the magnitude requested from the
+                  // first needs-impact model call (and Director when authority is enabled).
+                  if (onNeedsSimStrengthChanged != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Needs delta strength: ${needsSimStrength}x — model (and Director if authority on) instructed to emit at this magnitude on first pass. 1x = normal baseline; 5x = ~5× larger swings (e.g. -3 → -15). No second multiply after Director.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary(context),
+                        fontSize: 11,
+                      ),
+                    ),
+                    Slider(
+                      value: needsSimStrength.toDouble(),
+                      min: 1,
+                      max: 5,
+                      divisions: 4,
+                      label: '${needsSimStrength}x',
+                      onChanged: (d) => onNeedsSimStrengthChanged?.call(d.round()),
+                    ),
+                  ],
                 ],
 
                 // Realism Verification toggle (last optional; independent of needs).
@@ -717,28 +741,6 @@ class RealismFormSection extends StatelessWidget {
                     value: realismNeedsDirectorAuthority,
                     onChanged: onRealismNeedsDirectorAuthorityChanged,
                     context: context,
-                  ),
-                ],
-
-                // Needs delta strength (1-5 exponent). Rendered when needs enabled. Model + Director are told this value
-                // on first pass so they can emit appropriately scaled deltas. Final deltas = raw * strength.
-                // AppColors exclusive; comments "per re-grep" for hygiene (no raw color literals in executable new authority/Optional/verif code).
-                if (onNeedsSimStrengthChanged != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    'Needs delta strength: ${needsSimStrength}x (1x baseline; 5x = 5× larger swings from model/Director)',
-                    style: TextStyle(
-                      color: AppColors.textSecondary(context),
-                      fontSize: 11,
-                    ),
-                  ),
-                  Slider(
-                    value: needsSimStrength.toDouble(),
-                    min: 1,
-                    max: 5,
-                    divisions: 4,
-                    label: '${needsSimStrength}x',
-                    onChanged: (d) => onNeedsSimStrengthChanged?.call(d.round()),
                   ),
                 ],
               ],
