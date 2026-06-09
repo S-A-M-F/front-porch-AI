@@ -14,6 +14,7 @@
 // aug (realism_engine_test, group_realism_test, chat_service_session_test etc.) receive *only*
 // qualified passive notes in headers/comments (no realism-evals-specific aug file logic edits;
 // full in dedicated + manual; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no realism-verification-specific aug file edits; full in dedicated + manual; exercised via god thins + leaf verify cb ; qualified notes only in dedicated header + god + MD per precedent).
 // 1:1 vs group + oneShot vs normal + Realism/Needs/Objectives parity 1:1 equivalent deltas/behavior
 // qualified (dispatch via cbs + impersonation).
 // Dispatch preserved. All per plan + "because user cannot review" rules (deletion part of task,
@@ -27,6 +28,7 @@ import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/chat/realism_evals.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
+import 'package:front_porch_ai/services/chat/realism_verification.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 
@@ -63,6 +65,20 @@ RealismEvals createTestRealismEvals({
   String Function(String)? stripFn,
   int? Function(String, String)? intFn,
   bool? Function(String, String)? boolFn,
+  Future<VerificationResult> Function({
+    required String evalKind,
+    required String rawOutput,
+    required String sceneResponse,
+    Map<String, dynamic>? preState,
+    CharacterCard? activeChar,
+    GroupChat? activeGroup,
+    List<ChatMessage>? recentMessages,
+    String? promptText,
+    Map<String, String>? injections,
+    int? strictnessOverride,
+    int? maxPassesOverride,
+  })?
+  verifyFn,
 }) {
   final n = notifies ?? <String>[];
   final s = saves ?? <String>[];
@@ -157,6 +173,7 @@ RealismEvals createTestRealismEvals({
     setObjective:
         setObjFn ??
         (text, {isPrimary = false, autoGenerateTasks = false}) async {},
+    verifyRealismOutput: verifyFn,
   );
 }
 

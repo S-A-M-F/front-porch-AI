@@ -12,6 +12,8 @@
 // aug exercising only passive/qualified (no summary-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeUpdateSummary/force/generate ; qualified notes only in dedicated header + god + MD per precedent).
 // aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent).
 // aug exercising only passive/qualified (no evolution-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_triggerCharacterEvolution ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no realism-verification-specific aug file edits; full in dedicated + manual; exercised via god thins + leaf verify cb ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no needs-spaghetti-removal-specific aug file edits; full in dedicated + manual; exercised via god thins + evaluator thin path ; qualified notes only in dedicated header + god + MD per precedent).
 //
 // Note: Full dynamic one-shot vs multi-call *parity of deltas during sendMessage*
 // is exercised via the controlled multi-turn path (default mode) + a construction
@@ -496,10 +498,10 @@ void main() {
 
         final hungerBefore = chat.needsSimulation.vector['hunger'] ?? 100;
 
-        // Buffers/pending should be clean (no sexual yet in this decay-only sequence).
+        // Buffers/afterglow/crash removed with expunge (thinned API); pendingCatastrophe still on sim. aug qualified passive (no needs-spaghetti aug edits; full in dedicated+manual; qualified only in header+god+MD).
         expect(chat.needsSimulation.pendingCatastrophe, isNull);
-        expect(chat.needsArousalSuppressionTurnsRemaining, 0);
-        expect(chat.needsPostClimaxCrashTurnsRemaining, 0);
+        // expect(chat.needsArousalSuppressionTurnsRemaining, 0); // removed post-buffer
+        // expect(chat.needsPostClimaxCrashTurnsRemaining, 0); // removed
 
         // The next send triggers post-gen _runPostGenNeedsChecks thin → _needsImpactEvaluator consolidated "needs impact" (with fulfillment map from fake) → sim applySceneImpact restore.
         // Fake supplies "fulfillment": {"hunger": true, ...} in the impact JSON (see needs-impact branch); old _verify path excised.

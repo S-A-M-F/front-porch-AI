@@ -183,6 +183,35 @@ void main() {
       expect(json1, json2);
     });
 
+    test('roundtrip serialization + copyWith + ctor for realismNeedsDirectorAuthority (Director authority on needs deltas flag; covers model + all seed/reset/copyWith/json sites in creators/editors/dialogs/creator_state/realism_step/group per-member)', () {
+      final original = FrontPorchExtensions(
+        realismEnabled: true,
+        needsSimEnabled: true,
+        realismVerificationEnabled: true,
+        realismNeedsDirectorAuthority: true,
+      );
+      expect(original.realismNeedsDirectorAuthority, true);
+      final json1 = original.toJson();
+      final engine = json1['realism_engine'] as Map<String, dynamic>;
+      expect(engine['realism_needs_director_authority'], true);
+      final restored = FrontPorchExtensions.fromJson(json1);
+      expect(restored.realismNeedsDirectorAuthority, true);
+      final json2 = restored.toJson();
+      expect(json1, json2);
+      final copy = original.copyWith(realismNeedsDirectorAuthority: false);
+      expect(copy.realismNeedsDirectorAuthority, false);
+      expect(copy.realismEnabled, true); // other fields preserved
+      final def = FrontPorchExtensions();
+      expect(def.realismNeedsDirectorAuthority, false);
+      // also via CharacterCard frontPorch
+      final card = CharacterCard(name: 't', frontPorchExtensions: original);
+      final cardJson = card.toJson();
+      expect(
+        cardJson['extensions']['front_porch']['realism_engine']['realism_needs_director_authority'],
+        true,
+      );
+    });
+
     test('copyWith creates deep copy', () {
       final ext = FrontPorchExtensions(realismEnabled: true, shortTermBond: 50);
       final copy = ext.copyWith();

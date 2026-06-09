@@ -183,4 +183,29 @@ class AppColors {
     Color(0xFF06B6D4), // Cyan
     Color(0xFF84CC16), // Lime
   ];
+
+  // ---------------------------------------------------------------------------
+  // Realism form / optional accents (semantic for exclusive AppColors use in
+  // refactored creator/edit/group surfaces incl. authority/verif toggles,
+  // section headers, bond/trust/need sliders, master containers).
+  // All literals confined here; UI code uses only AppColors.*Of / consts.
+  // ---------------------------------------------------------------------------
+
+  static const Color verifiedAccent = Color(0xFF009688);
+  static const Color verifiedAccentLight = Color(0xFF009688);
+  static Color verifiedAccentOf(BuildContext context) =>
+      resolve(context, verifiedAccent, verifiedAccentLight);
+
+  static const Color bondHigh = Colors.greenAccent;
+  static const Color bondMid = Colors.blueAccent;
+  static const Color bondLow = Colors.orangeAccent;
+  static const Color bondNeg = Colors.redAccent;
+
+  static const Color trustHigh = Colors.tealAccent;
+  static const Color formMasterAccent = Colors.blueAccent;
+  static const Color relationshipAccent = Colors.pinkAccent;
+  static const Color emotionAccent = Colors.purpleAccent;
+  static const Color optionalAccent = Colors.tealAccent;
+  static const Color timeDayAccent = Colors.amberAccent;
+  static const Color taskAccent = Colors.orangeAccent;
 }

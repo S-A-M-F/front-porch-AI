@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/chat/realism_verification.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
@@ -972,6 +973,14 @@ class _MessageBubbleState extends State<MessageBubble> {
     final timeReversal = metadata['time_reversal'] as bool? ?? false;
     final needsDeltas = metadata['needs_deltas'] as Map<String, dynamic>?;
 
+    // Verifier result (attached by realism_verification leaf when feature active for the turn).
+    // status: 'accepted' | 'corrected'; passes: reprocess count; reason optional for tooltip.
+    final verifData =
+        metadata[RealismVerification.kMetaKey] as Map<String, dynamic>?;
+    final verifStatus = (verifData?['status'] as String? ?? '').trim();
+    final verifPasses = (verifData?['passes'] as num?)?.toInt() ?? 0;
+    final verifReason = (verifData?['reason'] as String? ?? '').trim();
+
     if ((needsDeltas == null || needsDeltas.isEmpty) &&
         bondDelta == 0 &&
         emotionLabel.isEmpty &&
@@ -979,7 +988,8 @@ class _MessageBubbleState extends State<MessageBubble> {
         trustDelta == 0 &&
         timeSkipTo.isEmpty &&
         chanceTimeEvent.isEmpty &&
-        !timeReversal) {
+        !timeReversal &&
+        verifStatus.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -1320,6 +1330,41 @@ class _MessageBubbleState extends State<MessageBubble> {
               ),
             ],
           ),
+        ),
+      );
+    }
+
+    // Verifier (Director) status chip — only when present (feature was on for this speaker/turn).
+    // Reuses the chip row style + maybeTooltip. Data from ChatMessage metadata set by god/leaf after verify.
+    // Status + passes; reason in tooltip if provided. Uses AppColors for new/refactored parts.
+    if (verifStatus.isNotEmpty) {
+      final isAccepted = verifStatus == 'accepted';
+      final label = isAccepted
+          ? '✓ Director accepted'
+          : '🕵️ Director corrected ($verifPasses reprocess${verifPasses == 1 ? '' : 'es'})';
+      final icon = isAccepted ? Icons.verified : Icons.fact_check;
+      final chipColor = isAccepted
+          ? AppColors.resolve(context, Colors.greenAccent, Colors.green)
+          : AppColors.resolve(context, Colors.orangeAccent, Colors.deepOrange);
+      final chip = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: chipColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: chipColor,
+            ),
+          ),
+        ],
+      );
+      chips.add(
+        maybeTooltip(
+          chip,
+          verifReason.isNotEmpty ? verifReason : 'Realism Verification result',
         ),
       );
     }

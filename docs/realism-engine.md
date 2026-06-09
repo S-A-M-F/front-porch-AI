@@ -297,6 +297,96 @@ Most users leave it off for maximum fidelity and only enable it when they need m
 
 ---
 
+## Optional Realism Verification (Director/Verifier)
+
+An optional per-character "director thread" that validates the JSON deltas and activities coming out of the Realism Engine and Needs simulation.
+
+- **Toggle + tuning:** Right-click character → Edit → Details tab (or in the full character creator / edit page under Optional Features). "Realism Verification (Director/Verifier)" toggle (off by default for zero cost). When on, two sliders appear in the Details Optional Features block:
+  - Max reprocess passes (1–5).
+  - Verifier strictness (1–5; higher = stricter rules + "reject unless explicitly supported" tone in any reprocess prompt; 3 = Balanced).
+- **What it receives:** The complete latent decision context the engine had at fire time — the exact prompt, every injected realism/needs/relationship/emotion/time/chaos/objective block, the pre-turn full scalars (bond/trust/arousal/emotion/fixation/spatial + complete needs vector), recent messages, the active speaker's CharacterCard (name + personality/scenario + current frontPorch values), group context if any, the specific eval kind + success criteria, and the raw model output.
+- **Behavior:** Rule-based checks first (range using the authoritative kMin*/kMax* clamps — corrections are allowed to swing the full per-eval limit, e.g. relationship ±15). Logical/narrative consistency using the latent (no large hunger without eating in scene, arousal sign consistent with cooldown/text, inertia respect, time plausibility, activity+delta contradictions, etc.). Strictness modulates thresholds and reprocess prompt tone.
+- **On pass:** Zero-overhead passthrough; generation continues.
+- **On fail:** Explicit human-readable reason + a corrected delta bundle (within full clamps). If passes remain, the latent + critique + suggested correction is re-fed to the eval LLM for self-correction (reprocess). Max attempts bounded by the slider.
+- **Visuals (non-negotiable):** While verifying/reprocessing, the existing Realism processing overlay (realism_processing_overlay + eval_pills + generation bar) shows header "🕵️ Verifying Realism output (pass X/Y)" with identical layout, colors, animation, and positioning — only the label changes. After the turn, the AI message bubble's realism indicator row (same area as needs chips / bond/trust/emotion pills) shows a small status chip: "✓ Director accepted" or "🕵️ Director corrected (N reprocesses)". Data comes from ChatMessage metadata['realism_verification'].
+- **Cost:** Off = zero extra calls. On with max=1 + lenient = at most the normal evals + one fast rule pass (reprocess only on clear fail). Higher max/strict on weak models = visible extra passes in overlay + chip.
+- **Parity:** 1:1 vs group, oneShot vs normal, Realism vs Needs all preserved exactly (dispatch via the same cbs + god impersonation dance; verifier always sees the correct speaker's card + pre-decay snapshot).
+- **Recommendation:** Enable on strong models when you want higher fidelity "living character" deltas and are willing to pay the occasional extra eval. Defaults safe for old cards (off, 1 pass, balanced).
+
+The implementation follows the same plain-leaf extraction pattern as the prior 14 realism/ chat domain services (realism_verification.dart <500 LOC, granular cbs, late final in god, thins at every call site, dedicated test with factory + 15+ bodies post dead deletion, aug tests only qualified passive notes, 0 new god void _ privates, keep-reset blocks expanded at all sites + both startNew with " + realism_verification (stateless or prompt-only; no reset calls needed)", AppColors for all UI, full gates + manual 1:1+group smoke).
+
+---
+
+## Diagnosis from the Director (real 1:1 log): Making Needs Simulation Usable and Correct — A Simpler Path
+
+**The problem the Director exposed (human-readable case study from actual terminal logs, 1:1 chat):**
+
+A complex physical scene with unambiguous acts: intense intercourse including internal creampie + the character actively urinating during the act. Pre-turn hints: low energy (~7), moderate bladder (~38). Needs Simulation + Realism + the new Director/Verifier were all enabled.
+
+- The post-gen consolidated needs impact (via the thin `_runPostGenNeedsChecks` → evaluator) produced JSON the verifier repeatedly rejected across the full configured max passes (5).
+- Repeated log: `[Realism:Verifier] Reprocess pass X/5 ... reason=model JSON claims sexual_climax but provides zero deltas (common weak output); applying expected post-climax effects`
+- Final applied after all corrections + `applySceneImpact` / `applyNeedsDeltas`: small contradictory deltas such as bladder +2 (while actively urinating), hygiene only -2 (despite creampie + fluids + urine described), energy -2, hunger -1, social/fun small positives, comfort 0; `startAfterglow: false` yet "Post-climax crash set".
+- User: "I disagree that these actions should give the delta's that were emmited however." and "I think the director/verifier is exposing a glaring issue with the needs sim. besides the fact the code is a tangled mess of if/then."
+
+**Why so many if/then gates accumulated (plain English):**
+
+The LLM is unreliable at the *structured* part even when the narrative it wrote is clear. Defenses layered on:
+
+1. Prompt already has many rules ("ONLY unambiguous *act*", "pure romantic/sexual without explicit eat... energy/hunger neutral or small negative", "Hygiene negative *only* on explicit mess or high-int + exposed stance").
+2. After model JSON: parse for flags (sexual_climax, ate, bathed...), look for `*_delta`, fall back to fixed "Proposal A" lookup table (if sexual_climax then fun +16 / social +9 / hygiene -18 / energy 0 / hunger -2 / start afterglow 4 / crash 3 scaled... and similar rows for non-climax sex / ate / slept / bathed).
+3. Then 6+ ordered modifier passes: force energy/hunger zero/neg for pure sex/romance (no "replenish from intimacy"), zero hygiene unless explicit mess words *or* high int + exposed (bed/floor not shower), halve hygiene gains for "enjoys low hygiene", scale most deltas by intensity (not hunger/energy), arousal buffer damp, time-of-day light effects.
+4. The result + explicit buffer flags handed to sim core (apply deltas, start afterglow/suppression/crash counters, fulfillments, later decay with afterglow halving / post-crash boosting / catas at 0 / enjoys inversion / cross-need boosts).
+5. Separate logic picks chip "reason" strings ("Afterglow buffer", "Post-orgasm exhaustion", "Scene action", "Natural decay").
+6. On top: the Director (full latent bundle + 5 reprocess + explicit correction suggestions) now also judges "is this impact reasonable for the text?" and supplies fixes or re-prompts.
+
+Even with all that defense-in-depth, the numbers reaching chips/sidebar/injections were not what a human reading the model's own narrative would call correct or usable. The gates were fighting the story after the fact.
+
+**Direct answer to "should we remove the gates and let the model 'take the wheel' or ...??"**
+
+Largely yes for the *quantitative deltas and buffer recommendations*, under Director supervision + a small number of hard invariants (0-100 clamps, the mechanical decay/buffer/catas state machine in the sim core, the per-char "enjoys low hygiene" user preference, and a few "physically/narratively impossible" rules that stay visible in the Director reason).
+
+The checks move primarily into one place (the Director with the rich bundle the user originally asked for) instead of being distributed across prompt + table + six Dart modifier fns + parse ifs + apply ifs + chip reason ifs whose interactions are hard to hold in your head on an unusual scene like the logged one. The reprocess loop is already the self-correction mechanism. The visible "🕵️ Director corrected (N)" chip (already wired for needs_impact via the shared metadata) now becomes a reliable signal that the numbers you see came from the Director's judgment of the actual scene text rather than an invisible chain of gates that partially cancelled.
+
+**Concrete non-coder-actionable path (the control surface):**
+
+- Same "Optional Features" block you already use for the three verifier controls (toggle + Max reprocess passes 1-5 + Strictness 1-5 / Strict-Balanced-Lenient).
+- New (or re-used via strictness) per-char toggle/setting: "Director authority on needs deltas" (off by default — current conservative gated behavior unchanged for everyone who doesn't opt in; safe default for weak local models).
+- When Director/Verifier is on *and* the new authority control is on for that speaker: the thin path in the evaluator trusts the (verified or reprocessed) model's `*_delta` keys + explicit `is_climax` / `recommend_afterglow` / `recommend_crash_turns` / `buffer_reason` / etc from the effective/corrected text, with higher precedence. The activityEffects table is demoted to advisory/fallback (only when verified output gives literally nothing usable after max passes). The 6 modifier methods become advisory or no-op under authority mode. Legacy full table + modifiers + intensity scaling path is kept *exactly* when the flag is off (or verifier off).
+- Prompt lightly strengthened (still "ONLY unambiguous act", pure-romance guidance, hygiene-only-on-explicit-mess) but now also asks for net signed effects after the scene + explicit buffer recommendations, with language "the Director will correct you if you violate scene support."
+- Needs sim lightly updated so chip reasons can prefer a Director/model supplied reason when present (better "why" text on the Fun +7 / Bladder 0 rows).
+- All god orchestration, pre/post snapshots, group impersonation dance for per-speaker (correct scalars + correct _activeCharacter for prompt name/personality), _saveScalarsIntoGroupRealism, chip attachment from preTurn, regen/swipe/history restore, onClimax cb, "enjoys low hygiene", 1:1 vs group observable deltas, oneShot vs normal parity — *unchanged*. The authority mode only changes *which numbers* come out of the evaluator before those mechanisms apply/persist/restore/display them.
+- When authority is off (or Director off): 100% identical behavior to before the change. No user is forced onto the thinner path.
+
+**What this feels like day-to-day (the human non-coder benefit):**
+
+- More "🕵️ Director corrected (N reprocesses)" chips with grounded reasons on complex scenes ("Director supplied post-climax hygiene and buffer corrections after model gave near-zero deltas despite clear creampie + fluids in scene").
+- Chips and sidebar numbers more often match what a human reading the model's own narrative would expect (big hygiene hit + bladder relief + afterglow + crash + energy cost on low pre for the logged-style scene, instead of bladder +2 while peeing and hygiene -2 for a fluids-heavy act).
+- Fewer surprising tiny or wrong-sign movements.
+- Conservative gated behavior remains the safe, zero-surprise default when you leave Director off or the new authority toggle off.
+- The same per-char Optional Features surface you already know; old cards default false (unchanged experience).
+
+**Parity & safety guarantees (stated plainly):**
+
+- 1:1 vs group per-speaker observable behavior (bond/trust/emotion/arousal/fixation deltas, needs deltas/buffers/fulfill/crash, chips, sidebar, injection) remains equivalent at all times. The god impersonation dance + load/save scalars + pre/post snapshots already handle this; authority just changes the proposed numbers upstream.
+- Regen/swipe/history/"preTurn restore then re-apply" continue to produce coherent deltas (the preTurnNeeds vector and realism_state['needs'] snapshot paths are untouched).
+- "Enjoys low hygiene" still affects final numbers and injection text exactly as today (when the legacy path is active; when authority is on the Director sees the pref via the card and can account for it in corrections).
+- The decay, catastrophe, afterglow tick-down, and injection step/damp logic in the sim core are mechanics, not interpretation gates — they stay (and can become cleaner once upstream numbers are more trustworthy).
+- All the existing "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" sites (~15+ places + both startNew branches) were expanded to list the new flag as "card config like the 3 verifier fields; live frontPorch read under impersonation; no extra mutable god scalar or reset call needed".
+- 0 new god private void _ methods (only thins + late final + comment hygiene; live grep stayed exactly at baseline 15 after every edit + final).
+- Dedicated test (extended needs_impact_evaluator_test with factory using live cbs over group maps + authority + verifier) covers legacy unchanged, authority+verifier trusts corrected deltas/buffers and skips table/modifiers, group per-speaker, "none"/error/after-max-passes fallback, 1:1 vs group parity, chip reason preference, impersonation. 15-25+ test() bodies post mandatory dead/vestigial deletion as part of task. aug/integration tests received *only* the exact qualified passive note phrasing in headers (no leaf-specific logic edits).
+- Full mechanical gates (analyze 0 new warnings on changed surfaces, format, dart fix, live greps for flag/void_/test counts vs on-disk, re-reads of abs paths with "0 open", build smoke) + manual interactive 1:1 + group smoke with authority on for complex physical scenes (creampie+fluids+urination style or equivalent multi-effect) + Director overlay + correction chips + chips/sidebar reflecting Director-supplied numbers.
+- Barrel policy: no export (internal like most realism optionals; "unless used from 3+ locations").
+- Cross-platform: no path/fs changes; StorageService / providers patterns followed where relevant (none needed here).
+- File size: focused changes + virulent thinning of dead/vestigial/obsolete/duplicate (old god _check* comment attributions cleaned, obsolete "step N" phrasing, unused test helpers/comments, dupe logic comments) kept net growth small.
+
+The Director is now the recommended lever for improving Needs fidelity on strong models. The verification path was already wired for needs_impact (corrected status/reasons already flow to the bubble chip via the shared kMetaKey); this change gives that wiring real authority instead of having its corrections fought or diluted downstream.
+
+A companion 1x–5x "Needs delta strength" control (same Details → Optional Features block) lets the user tell both the first-pass needs eval prompt and the Director the desired magnitude up front. The model and any Director corrections emit at that scale (final deltas = raw × strength). Default 1x = identical to before. This is the "small lever" for users who want weak (-3) or dramatic (-15 at 5x) swings on the same scene without more invisible Dart gates.
+
+Users who want maximum "model + Director take the wheel" (with visible feedback) flip the control on; everyone else (and weak-model users) sees zero change.
+
+---
+
 ## Sims/Needs Simulation
 
 **(Experimental / Bleeding Edge)**

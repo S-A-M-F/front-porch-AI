@@ -27,6 +27,7 @@ import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
+import 'package:front_porch_ai/services/chat/realism_verification.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 
 /// Per-eval delta limits for the realism LLM calls (relationship, emotional state,
@@ -143,6 +144,25 @@ class RealismEvals {
   // Realism flag
   final bool Function() getRealismEnabled;
 
+  // Optional verifier (director) thread. When the per-char flag is on, called after fire+strip
+  // with the *full* latent decision context so it can validate + correct or reprocess.
+  // Provided by god (late final RealismVerification instance or thin wrapper); passthrough when off.
+  // 1:1/group/oneShot parity via the same cbs + impersonation dance used for the 5 evals.
+  final Future<VerificationResult> Function({
+    required String evalKind,
+    required String rawOutput,
+    required String sceneResponse,
+    Map<String, dynamic>? preState,
+    CharacterCard? activeChar,
+    GroupChat? activeGroup,
+    List<ChatMessage>? recentMessages,
+    String? promptText,
+    Map<String, String>? injections,
+    int? strictnessOverride,
+    int? maxPassesOverride,
+  })?
+  verifyRealismOutput;
+
   // Messages for recent context in evals
   final List<ChatMessage> Function() getMessages;
 
@@ -201,7 +221,52 @@ class RealismEvals {
     required this.getPrimaryObjective,
     required this.getActiveObjectives,
     required this.setObjective,
+    this.verifyRealismOutput,
   });
+
+  /// Shared post-fire verifier wrapper (used by all 5 realism paths + oneShot).
+  /// Assembles the rich latent bundle from what this leaf just used (prompt, pre via capture cb,
+  /// active char, messages, scene from recent or passed response context) and calls the verify cb if present.
+  /// Returns the (possibly corrected) text for downstream parse/apply, and attaches verification
+  /// metadata to pending for the message bubble chip.
+  /// 1:1/group dispatch and pre state are handled by the cbs (god impersonation dance ensures correct card + pre-decay snapshot).
+  Future<String> _verifyAndApply({
+    required String evalKind,
+    required String textAfterStrip,
+    required String promptUsed,
+    required String sceneForContext,
+    Map<String, String>? injections,
+  }) async {
+    if (verifyRealismOutput == null) return textAfterStrip;
+    try {
+      final vres = await verifyRealismOutput!(
+        evalKind: evalKind,
+        rawOutput: textAfterStrip,
+        sceneResponse: sceneForContext,
+        preState: captureRealismState(),
+        activeChar: getActiveCharacter(),
+        activeGroup: getActiveGroup(),
+        recentMessages: getMessages(),
+        promptText: promptUsed,
+        injections: injections ?? const <String, String>{},
+        strictnessOverride: null, // leaf uses live cb inside verifier
+        maxPassesOverride: null,
+      );
+      if (vres.status.isNotEmpty) {
+        // Attach for bubble chip (and any sidebar notes). God will also stamp on the final ChatMessage.
+        final current = (getPendingRealismMetadata() ?? <String, dynamic>{});
+        current[RealismVerification.kMetaKey] = vres.toMetadata();
+        setPendingRealismMetadata(current);
+        debugPrint(
+          '[Realism:Verifier] Attached to pending for kind=$evalKind status=${vres.status} passes=${vres.passes}',
+        );
+      }
+      return vres.correctedRaw ?? textAfterStrip;
+    } catch (e) {
+      debugPrint('[Realism:Verifier] Wrapper error (passthrough): $e');
+      return textAfterStrip;
+    }
+  }
 
   /// Parses relationship/trust (+ best-effort or requested arousal) fields from
   /// an eval JSON text, applies the side effects (score/trust deltas to services,
@@ -218,7 +283,8 @@ class RealismEvals {
     int arousalDelta,
     String bondReason,
     String trustReason,
-  }) _parseAndApplyRelationshipDeltas(String text) {
+  })
+  _parseAndApplyRelationshipDeltas(String text) {
     // Bond / relationship delta (per prompt range)
     final relDelta = extractJsonInt(text, 'relationship_delta');
     int bondDelta = 0;
@@ -253,11 +319,21 @@ class RealismEvals {
 
     // Nonzero deltas → pending (for chips + message metadata). Only record
     // nonzero so UI and revert logic stay uncluttered (0s are the default).
+    // Exception for trust: always record the trust_delta and trust_reason from the
+    // relationship eval (even 0) if the eval produced a non-"none" reason. This makes
+    // "Trust: 0 (He embraced my filth without judgment — that built something real)"
+    // visible and revertible, fixing cases where trust movement was "dropped" from
+    // metadata/synthesis/attachment/logs on accepted verifier output for deep
+    // acceptance scenes.
     if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
       var pending = getPendingRealismMetadata() ?? {};
       if (bondDelta != 0) pending['bond_delta'] = bondDelta;
       if (arousalDelta != 0) pending['arousal_delta'] = arousalDelta;
-      if (trustDelta != 0) pending['trust_delta'] = trustDelta;
+      // Always record trust_delta from the relationship eval (even 0) so that
+      // "Trust: 0 (reason)" from deep acceptance scenes is carried to metadata,
+      // synthesis, attachment, chips, and revert. The previous !=0 guard was
+      // the direct cause of "trust delta dropped" in logs and pending.
+      pending['trust_delta'] = trustDelta;
       setPendingRealismMetadata(pending);
     }
 
@@ -267,8 +343,9 @@ class RealismEvals {
       r'"bond_reason"\s*:\s*"([^"]*)"',
     ).firstMatch(text);
     final rawBondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-    final bondReason =
-        rawBondReason.toLowerCase() == 'none' ? '' : rawBondReason;
+    final bondReason = rawBondReason.toLowerCase() == 'none'
+        ? ''
+        : rawBondReason;
     if (bondReason.isNotEmpty) {
       var pending = getPendingRealismMetadata() ?? {};
       pending['bond_reason'] = bondReason;
@@ -279,8 +356,9 @@ class RealismEvals {
       r'"trust_reason"\s*:\s*"([^"]*)"',
     ).firstMatch(text);
     final rawTrustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-    final trustReason =
-        rawTrustReason.toLowerCase() == 'none' ? '' : rawTrustReason;
+    final trustReason = rawTrustReason.toLowerCase() == 'none'
+        ? ''
+        : rawTrustReason;
     if (trustReason.isNotEmpty) {
       var pending = getPendingRealismMetadata() ?? {};
       pending['trust_reason'] = trustReason;
@@ -336,7 +414,9 @@ class RealismEvals {
         'IMPORTANT: Reactions are entirely subjective based on $charName\'s personality. '
         'Most normal interactions should score 0 or slightly positive. '
         'Reserve negative scores ONLY for clear rudeness, hostility, manipulation, or betrayal.\n\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (' "$kMinRelationshipDelta to +$kMaxRelationshipDelta" ')\n'
+        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? ('
+        "$kMinRelationshipDelta to +$kMaxRelationshipDelta"
+        ')\n'
         '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
         '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
         '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
@@ -349,7 +429,9 @@ class RealismEvals {
         '   -15: Devastating betrayal — a relationship-destroying act\n'
         '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
         '2. "bond_reason": One brief in-character thought from $charName explaining the tension shift, e.g. "His warmth made me feel safe." or "That dismissal stung." Use "none" if delta is 0.\n'
-        '3. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (' "$kMinTrustDelta to +$kMaxTrustDelta" ')\n'
+        '3. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? ('
+        "$kMinTrustDelta to +$kMaxTrustDelta"
+        ')\n'
         '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
         '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
         '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
@@ -369,10 +451,20 @@ class RealismEvals {
       final searchText = stripThinkBlocks(raw);
       final text = searchText.isNotEmpty ? searchText : raw;
 
+      // Verifier (if wired and per-char enabled): receives full latent (prompt + pre + char + *all* injections at fire + scene + kind).
+      // Effective text (original or corrected) used for parse/apply/side effects + metadata for chip.
+      final effectiveText = await _verifyAndApply(
+        evalKind: 'relationship',
+        textAfterStrip: text,
+        promptUsed: prompt,
+        sceneForContext: recent,
+        injections: {'personality': personalityInjection},
+      );
+
       // Unified parse/apply (also used by one-shot). The relationship path passes
       // arousal parsing through even though its prompt does not request the field
       // (best-effort extraction preserved exactly).
-      final res = _parseAndApplyRelationshipDeltas(text);
+      final res = _parseAndApplyRelationshipDeltas(effectiveText);
 
       debugPrint(
         '[Realism:Relationship] Bond: ${res.bondDelta} (${res.bondReason.isNotEmpty ? res.bondReason : 'no reason'}) | Trust: ${res.trustDelta} (${res.trustReason.isNotEmpty ? res.trustReason : 'no reason'})',
@@ -422,7 +514,9 @@ class RealismEvals {
         ? ", \"arousal_delta\": <number $kMinArousalDelta to +$kMaxArousalDelta>"
         : '';
     final arousalInstr = nsfwService.nsfwCooldownEnabled
-        ? '3. "arousal_delta": Physical arousal shift this turn. (' "$kMinArousalDelta to +$kMaxArousalDelta" ')\n'
+        ? '3. "arousal_delta": Physical arousal shift this turn. ('
+              "$kMinArousalDelta to +$kMaxArousalDelta"
+              ')\n'
               '   Current arousal: ${nsfwService.arousalLevel}/100. '
               'Arousal measures DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   Be bold with arousal deltas — intimate moments should produce significant shifts (+10 to +20).\n'
@@ -454,7 +548,20 @@ class RealismEvals {
       if (raw == null) return;
 
       final searchText = stripThinkBlocks(raw);
-      final text = searchText.isNotEmpty ? searchText : raw;
+      var text = searchText.isNotEmpty ? searchText : raw;
+
+      final effectiveText = await _verifyAndApply(
+        evalKind: 'emotional_state',
+        textAfterStrip: text,
+        promptUsed: prompt,
+        sceneForContext: recent,
+        injections: {
+          'personality': personalityInjection,
+          'relationship': relationshipCtx,
+          'arousal': arousalField,
+        },
+      );
+      text = effectiveText; // rebind (var allows)
 
       final emotionMatch = RegExp(
         r'"emotion"\s*:\s*"([^"]+)"',
@@ -473,7 +580,10 @@ class RealismEvals {
       if (nsfwService.nsfwCooldownEnabled) {
         final arDelta = extractJsonInt(text, 'arousal_delta');
         if (arDelta != null) {
-          final arousalDelta = arDelta.clamp(kMinArousalDelta, kMaxArousalDelta);
+          final arousalDelta = arDelta.clamp(
+            kMinArousalDelta,
+            kMaxArousalDelta,
+          );
           nsfwService.setArousalLevel(
             (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
           );
@@ -567,9 +677,15 @@ class RealismEvals {
     try {
       final raw = await fireLLMEval(prompt, onChunk: onChunk);
       if (raw == null) return;
-      final text = stripThinkBlocks(raw).isNotEmpty
-          ? stripThinkBlocks(raw)
-          : raw;
+      var text = stripThinkBlocks(raw).isNotEmpty ? stripThinkBlocks(raw) : raw;
+      final effectiveText = await _verifyAndApply(
+        evalKind: 'narrative',
+        textAfterStrip: text,
+        promptUsed: prompt,
+        sceneForContext: recent,
+        injections: {'objective_proposal': oPrompt},
+      );
+      text = effectiveText; // rebind for downstream (no other code change)
 
       relationshipService.updateFixationFromEvalResult(
         (RegExp(
@@ -665,7 +781,9 @@ class RealismEvals {
         : '';
     // Arousal is field 8 (after posture), objective is 9, fixation 10, reason 11
     final arousalInstr = nsfwService.nsfwCooldownEnabled
-        ? '8. "arousal_delta": Physical arousal shift this turn. (' "$kMinArousalDelta to +$kMaxArousalDelta" ')\n'
+        ? '8. "arousal_delta": Physical arousal shift this turn. ('
+              "$kMinArousalDelta to +$kMaxArousalDelta"
+              ')\n'
               '   Current arousal: ${nsfwService.arousalLevel}/100. '
               'Arousal = DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   Be bold — intimate moments should produce significant shifts (+10 to +20).\n'
@@ -686,7 +804,9 @@ class RealismEvals {
         '$relationshipCtx'
         'Reactions are subjective! Evaluate ALL changes through $charName\'s specific personality.\n\n'
         'Evaluate ALL of the following at once:\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (' "$kMinRelationshipDelta to +$kMaxRelationshipDelta" ')\n'
+        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? ('
+        "$kMinRelationshipDelta to +$kMaxRelationshipDelta"
+        ')\n'
         '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
         '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
         '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
@@ -698,7 +818,9 @@ class RealismEvals {
         '   -10: Devastated — a severe betrayal of emotional trust\n'
         '   -15: Devastating betrayal — a relationship-destroying act\n'
         '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
-        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (' "$kMinTrustDelta to +$kMaxTrustDelta" ')\n'
+        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? ('
+        "$kMinTrustDelta to +$kMaxTrustDelta"
+        ')\n'
         '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
         '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
         '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
@@ -734,8 +856,21 @@ class RealismEvals {
       final searchText = stripThinkBlocks(raw);
       final text = searchText.isNotEmpty ? searchText : raw;
 
+      final effectiveText = await _verifyAndApply(
+        evalKind: 'oneShot',
+        textAfterStrip: text,
+        promptUsed: prompt,
+        sceneForContext: recent,
+        injections: {
+          'arousal': arousalInstr,
+          'objective': (primary != null ? '$objNum. ...' : '$objNum. ...'),
+          'fixation': '$fixNum. ...',
+        },
+      );
+      final textForOneShot = effectiveText; // rebind
+
       // ── Relationship / trust / arousal (unified with multi-call path) ──
-      _parseAndApplyRelationshipDeltas(text);
+      _parseAndApplyRelationshipDeltas(textForOneShot);
 
       // ── Autonomous Objective ──
       final objectiveMatch = RegExp(

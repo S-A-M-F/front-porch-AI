@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 
 /// Realism initial state step (lifted).
 class RealismStep extends StatelessWidget {
@@ -36,13 +37,64 @@ class RealismStep extends StatelessWidget {
                 style: TextStyle(color: AppColors.textSecondary(context)),
               ),
               const SizedBox(height: 16),
-              // In full: the RealismFormSection + all the _realism* fields from state (if extended) or direct card extensions.
-              Text(
-                '(Complete realism config UI here in extraction — matches create_character_page pattern for consistency.)',
-                style: TextStyle(
-                  color: AppColors.textTertiary(context),
-                  fontSize: 11,
-                ),
+              // Threaded verif controls (3: toggle + 2 sliders) per approved plan "wire in all current form users" + realism_step.
+              // Other realism seeds (bond etc) are stub in creator_state; dummies here for required form props.
+              RealismFormSection(
+                enabled: false,
+                onEnabledChanged: (_) {},
+                timeOfDay: 'morning',
+                onTimeOfDayChanged: (_) {},
+                dayCount: 1,
+                onDayCountChanged: (_) {},
+                shortTermBond: 0,
+                onShortTermBondChanged: (_) {},
+                longTermBond: 0,
+                onLongTermBondChanged: (_) {},
+                trustLevel: 0,
+                onTrustLevelChanged: (_) {},
+                emotion: 'neutral',
+                onEmotionChanged: (_) {},
+                emotionIntensity: 'mild',
+                onEmotionIntensityChanged: (_) {},
+                nsfwCooldownEnabled: false,
+                onNsfwCooldownChanged: (_) {},
+                chaosModeEnabled: false,
+                onChaosModeChanged: (_) {},
+                needsSimEnabled: false,
+                onNeedsSimChanged: (_) {},
+                enjoysLowHygiene: false,
+                onEnjoysLowHygieneChanged: (_) {},
+                currentTask: '',
+                onCurrentTaskChanged: (_) {},
+                realismVerificationEnabled: state.realismVerificationEnabled,
+                onRealismVerificationChanged: (v) {
+                  state.realismVerificationEnabled = v;
+                  state.notify();
+                },
+                realismVerificationMaxReprocesses:
+                    state.realismVerificationMaxReprocesses,
+                onRealismVerificationMaxReprocessesChanged: (v) {
+                  state.realismVerificationMaxReprocesses = v;
+                  state.notify();
+                },
+                realismVerificationStrictness:
+                    state.realismVerificationStrictness,
+                onRealismVerificationStrictnessChanged: (v) {
+                  state.realismVerificationStrictness = v;
+                  state.notify();
+                },
+                realismNeedsDirectorAuthority:
+                    state.realismNeedsDirectorAuthority,
+                onRealismNeedsDirectorAuthorityChanged: (v) {
+                  state.realismNeedsDirectorAuthority = v;
+                  state.notify();
+                },
+                showVerificationToggle: true,
+                showNsfwCooldownToggle: false,
+                showChaosToggle: false,
+                showNeedsToggle: false,
+                showTimeAndDay: false,
+                showMasterEnabledToggle: false,
               ),
             ],
           ),

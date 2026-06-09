@@ -52,6 +52,28 @@ class RealismFormSection extends StatelessWidget {
   final String currentTask;
   final ValueChanged<String> onCurrentTaskChanged;
 
+  // Realism Verification (Director/Verifier) toggle — shown under Optional Features like other optionals.
+  // Sliders for max reprocesses + strictness live in the Details dialog (right-click edit); form surfaces the toggle for creator/edit flows.
+  final bool realismVerificationEnabled;
+  final ValueChanged<bool> onRealismVerificationChanged;
+  final bool showVerificationToggle;
+
+  // Optional verif tunables (1-5); rendered as compact sliders after the toggle when showVerificationToggle.
+  // Allows 3 controls in group per-member expanders + main forms (dialog also has independent for right-click).
+  final int realismVerificationMaxReprocesses;
+  final ValueChanged<int>? onRealismVerificationMaxReprocessesChanged;
+  final int realismVerificationStrictness;
+  final ValueChanged<int>? onRealismVerificationStrictnessChanged;
+
+  // Director authority on needs deltas (new toggle in Optional Features; uses AppColors exclusively via buildToggleRow (shared with edit dialog for DRY); AppColors exclusive in new authority/Optional/verif surfaces per re-grep (withValues(alpha) only on resolved AppColors values like formMasterAccent/verifiedAccentOf/borderOf; no raw color literals (Colors or hex 0x) in authority/Optional/verif *executable* code; comments filtered from hygiene greps).
+  final bool realismNeedsDirectorAuthority;
+  final ValueChanged<bool> onRealismNeedsDirectorAuthorityChanged;
+
+  // Needs delta strength exponent (1-5). Injected to first-pass needs eval + Director so model/Director emit at user-requested magnitude.
+  // Slider in Optional Features (Details right-click). Affects baseline + model + Director deltas (raw * strength).
+  final int needsSimStrength;
+  final ValueChanged<int>? onNeedsSimStrengthChanged;
+
   // Visibility controls (for group creator where some features are global only)
   final bool showNsfwCooldownToggle;
   final bool showChaosToggle;
@@ -87,6 +109,20 @@ class RealismFormSection extends StatelessWidget {
     required this.onEnjoysLowHygieneChanged,
     required this.currentTask,
     required this.onCurrentTaskChanged,
+    required this.realismVerificationEnabled,
+    required this.onRealismVerificationChanged,
+    this.showVerificationToggle = true,
+    this.realismVerificationMaxReprocesses = 1,
+    this.onRealismVerificationMaxReprocessesChanged,
+    this.realismVerificationStrictness = 3,
+    this.onRealismVerificationStrictnessChanged,
+    // Director authority on needs deltas (simple model+Director; default off)
+    this.realismNeedsDirectorAuthority = false,
+    required this.onRealismNeedsDirectorAuthorityChanged,
+
+    // Needs strength 1-5 (exponent); default 1. onChanged optional for read-only cases.
+    this.needsSimStrength = 1,
+    this.onNeedsSimStrengthChanged,
     this.showNsfwCooldownToggle = true,
     this.showChaosToggle = true,
     this.showNeedsToggle = true,
@@ -149,17 +185,17 @@ class RealismFormSection extends StatelessWidget {
   }
 
   Color _bondColor(int score) {
-    if (score >= 20) return Colors.greenAccent;
-    if (score >= 0) return Colors.blueAccent;
-    if (score >= -19) return Colors.orangeAccent;
-    return Colors.redAccent;
+    if (score >= 20) return AppColors.bondHigh;
+    if (score >= 0) return AppColors.bondMid;
+    if (score >= -19) return AppColors.bondLow;
+    return AppColors.bondNeg;
   }
 
   Color _trustColor(int level) {
-    if (level >= 20) return Colors.tealAccent;
-    if (level >= 0) return Colors.blueAccent;
-    if (level >= -19) return Colors.orangeAccent;
-    return Colors.redAccent;
+    if (level >= 20) return AppColors.trustHigh;
+    if (level >= 0) return AppColors.bondMid;
+    if (level >= -19) return AppColors.bondLow;
+    return AppColors.bondNeg;
   }
 
   @override
@@ -183,7 +219,7 @@ class RealismFormSection extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: enabled
-                    ? Colors.blueAccent.withValues(alpha: 0.4)
+                    ? AppColors.formMasterAccent.withValues(alpha: 0.4)
                     : AppColors.borderOf(context),
               ),
             ),
@@ -194,7 +230,7 @@ class RealismFormSection extends StatelessWidget {
                   height: 44,
                   decoration: BoxDecoration(
                     color: enabled
-                        ? Colors.blueAccent.withValues(alpha: 0.2)
+                        ? AppColors.formMasterAccent.withValues(alpha: 0.2)
                         : AppColors.surfaceContainerOf(
                             context,
                           ).withValues(alpha: 0.6),
@@ -203,7 +239,7 @@ class RealismFormSection extends StatelessWidget {
                   child: Icon(
                     Icons.psychology,
                     color: enabled
-                        ? Colors.blueAccent
+                        ? AppColors.formMasterAccent
                         : AppColors.iconSecondary(context),
                     size: 24,
                   ),
@@ -228,7 +264,7 @@ class RealismFormSection extends StatelessWidget {
                             : 'Realism Engine will use default values',
                         style: TextStyle(
                           color: enabled
-                              ? Colors.blueAccent
+                              ? AppColors.formMasterAccent
                               : AppColors.textTertiary(context),
                           fontSize: 12,
                         ),
@@ -239,8 +275,10 @@ class RealismFormSection extends StatelessWidget {
                 Switch(
                   value: enabled,
                   onChanged: onEnabledChanged,
-                  activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
-                  activeThumbColor: Colors.blueAccent,
+                  activeTrackColor: AppColors.formMasterAccent.withValues(
+                    alpha: 0.5,
+                  ),
+                  activeThumbColor: AppColors.formMasterAccent,
                 ),
               ],
             ),
@@ -252,7 +290,11 @@ class RealismFormSection extends StatelessWidget {
 
           if (showTimeAndDay) ...[
             // Time & Day Section
-            _sectionHeader(Icons.schedule, 'Time & Day', Colors.amberAccent),
+            _sectionHeader(
+              Icons.schedule,
+              'Time & Day',
+              AppColors.timeDayAccent,
+            ),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
@@ -362,7 +404,11 @@ class RealismFormSection extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Relationship Section
-          _sectionHeader(Icons.favorite, 'Relationship', Colors.pinkAccent),
+          _sectionHeader(
+            Icons.favorite,
+            'Relationship',
+            AppColors.relationshipAccent,
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
@@ -414,7 +460,11 @@ class RealismFormSection extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Emotion Section
-          _sectionHeader(Icons.mood, 'Starting Emotion', Colors.purpleAccent),
+          _sectionHeader(
+            Icons.mood,
+            'Starting Emotion',
+            AppColors.emotionAccent,
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
@@ -520,7 +570,11 @@ class RealismFormSection extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Optional Toggles
-          _sectionHeader(Icons.tune, 'Optional Features', Colors.tealAccent),
+          _sectionHeader(
+            Icons.tune,
+            'Optional Features',
+            AppColors.optionalAccent,
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
@@ -532,7 +586,7 @@ class RealismFormSection extends StatelessWidget {
             child: Column(
               children: [
                 if (showNsfwCooldownToggle) ...[
-                  _toggleRow(
+                  buildToggleRow(
                     icon: Icons.thermostat,
                     label: 'NSFW Cooldown System',
                     subtitle: 'Realistic arousal/refractory mechanics',
@@ -547,7 +601,7 @@ class RealismFormSection extends StatelessWidget {
                     ),
                 ],
                 if (showChaosToggle) ...[
-                  _toggleRow(
+                  buildToggleRow(
                     icon: Icons.casino,
                     label: 'Chaos Mode (Chance Time)',
                     subtitle: 'Random narrative events during roleplay',
@@ -562,7 +616,7 @@ class RealismFormSection extends StatelessWidget {
                     ),
                 ],
                 if (showNeedsToggle) ...[
-                  _toggleRow(
+                  buildToggleRow(
                     icon: Icons.battery_std,
                     label: 'Needs Simulation',
                     subtitle:
@@ -580,7 +634,7 @@ class RealismFormSection extends StatelessWidget {
                 //   (because the master Needs toggle is suppressed at the group level).
                 if (needsSimEnabled) ...[
                   if (showNeedsToggle) const SizedBox(height: 8),
-                  _toggleRow(
+                  buildToggleRow(
                     icon: Icons.water_drop_outlined,
                     label: 'Enjoys low hygiene',
                     subtitle:
@@ -588,6 +642,103 @@ class RealismFormSection extends StatelessWidget {
                     value: enjoysLowHygiene,
                     onChanged: onEnjoysLowHygieneChanged,
                     context: context,
+                  ),
+                ],
+
+                // Realism Verification toggle (last optional; independent of needs).
+                // Uses same _toggleRow + card styling. Sliders for passes/strictness are in Details dialog per spec.
+                if (showVerificationToggle) ...[
+                  if (needsSimEnabled ||
+                      showNeedsToggle ||
+                      showChaosToggle ||
+                      showNsfwCooldownToggle)
+                    Divider(
+                      color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                      height: 24,
+                    ),
+                  buildToggleRow(
+                    icon: Icons.verified_user,
+                    label: 'Realism Verification (Director/Verifier)',
+                    subtitle:
+                        'Optional director thread validates realism deltas + needs JSON; supplies corrections + reason or re-feeds for reprocessing (extra eval cost; strong models recommended)',
+                    value: realismVerificationEnabled,
+                    onChanged: onRealismVerificationChanged,
+                    context: context,
+                  ),
+                  // Compact sliders for the 2 tunables (shown in forms including group per-member when toggle visible).
+                  // 1-5 range; onChanged provided by caller (pages, group seed); defaults safe if not.
+                  const SizedBox(height: 8),
+                  Text(
+                    'Max reprocess passes: $realismVerificationMaxReprocesses',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 11,
+                    ),
+                  ),
+                  Slider(
+                    value: realismVerificationMaxReprocesses.toDouble(),
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    label: '$realismVerificationMaxReprocesses',
+                    onChanged: (d) => onRealismVerificationMaxReprocessesChanged
+                        ?.call(d.round()),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Strictness (1=lenient … 5=strict): $realismVerificationStrictness',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 11,
+                    ),
+                  ),
+                  Slider(
+                    value: realismVerificationStrictness.toDouble(),
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    label: '$realismVerificationStrictness',
+                    onChanged: (d) =>
+                        onRealismVerificationStrictnessChanged?.call(d.round()),
+                  ),
+                ],
+
+                // Director authority on needs deltas toggle (under same Optional Features card; uses shared buildToggleRow (AppColors.verifiedAccentOf exclusively; AppColors exclusive in new authority/Optional/verif surfaces per re-grep (withValues only on resolved; no raw color literals in authority/Optional/verif *executable* code; comments filtered from hygiene greps)).
+                if (needsSimEnabled) ...[
+                  Divider(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                    height: 24,
+                  ),
+                  buildToggleRow(
+                    icon: Icons.verified,
+                    label: 'Director authority on needs deltas',
+                    subtitle:
+                        'When Realism Verification is on, Director corrections have authority over model needs deltas (simple decay + model + director review loop; stronger critique changes applied deltas)',
+                    value: realismNeedsDirectorAuthority,
+                    onChanged: onRealismNeedsDirectorAuthorityChanged,
+                    context: context,
+                  ),
+                ],
+
+                // Needs delta strength (1-5 exponent). Rendered when needs enabled. Model + Director are told this value
+                // on first pass so they can emit appropriately scaled deltas. Final deltas = raw * strength.
+                // AppColors exclusive; comments "per re-grep" for hygiene (no raw color literals in executable new authority/Optional/verif code).
+                if (onNeedsSimStrengthChanged != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Needs delta strength: ${needsSimStrength}x (1x baseline; 5x = 5× larger swings from model/Director)',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 11,
+                    ),
+                  ),
+                  Slider(
+                    value: needsSimStrength.toDouble(),
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    label: '${needsSimStrength}x',
+                    onChanged: (d) => onNeedsSimStrengthChanged?.call(d.round()),
                   ),
                 ],
               ],
@@ -599,7 +750,7 @@ class RealismFormSection extends StatelessWidget {
           _sectionHeader(
             Icons.flag,
             'Current Task / Quest',
-            Colors.orangeAccent,
+            AppColors.taskAccent,
           ),
           const SizedBox(height: 12),
           Container(
@@ -749,19 +900,22 @@ class RealismFormSection extends StatelessWidget {
     );
   }
 
-  Widget _toggleRow({
+  /// Shared (public static for DRY across form + edit dialog manual rows).
+  /// AppColors exclusive in new authority/Optional/verif surfaces per re-grep (verifiedAccentOf for on-state + resolve/helpers; withValues(alpha) only on resolved AppColors values; no raw color literals (Colors or hex) in authority/Optional/verif *executable* code; comments filtered from hygiene greps).
+  static Widget buildToggleRow({
     required IconData icon,
     required String label,
-    required String subtitle,
+    String subtitle = '',
     required bool value,
     required ValueChanged<bool> onChanged,
     required BuildContext context,
   }) {
+    final onColor = AppColors.verifiedAccentOf(context);
     return Row(
       children: [
         Icon(
           icon,
-          color: value ? Colors.tealAccent : AppColors.iconSecondary(context),
+          color: value ? onColor : AppColors.iconSecondary(context),
           size: 20,
         ),
         const SizedBox(width: 12),
@@ -779,21 +933,22 @@ class RealismFormSection extends StatelessWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: AppColors.textTertiary(context),
-                  fontSize: 11,
+              if (subtitle.isNotEmpty)
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 11,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
         Switch(
           value: value,
           onChanged: onChanged,
-          activeTrackColor: Colors.tealAccent.withValues(alpha: 0.5),
-          activeThumbColor: Colors.tealAccent,
+          activeTrackColor: onColor.withValues(alpha: 0.5),
+          activeThumbColor: onColor,
         ),
       ],
     );

@@ -45,7 +45,9 @@ import 'package:front_porch_ai/models/group_chat.dart';
 /// Extracted as step 9 (immediately after prompt_injection step 8 per the
 /// 15-step leaf-first order in docs/refactoring-guide.md).
 /// + needs impact support (evaluateNeedsImpactCall + consolidated prompt for
-/// the needs_impact_evaluator sibling leaf in the needs domain rework).
+/// the needs_impact_evaluator sibling leaf in the needs domain rework; prompt
+/// lightly strengthened for net signed deltas + explicit recommend_afterglow /
+/// recommend_crash / buffer_reason to support authority thin path).
 /// + step 10 sibling realism_evals uses this engine's fire/strip/extract for the
 /// 5 realism calls (granular cbs; prompt builders full in leaf).
 /// + step 11 sibling objective_proposal uses this engine's strip (for central
@@ -393,6 +395,7 @@ class LlmEvalEngine {
   Future<String?> evaluateNeedsImpactCall(
     String responseText, {
     void Function(String)? onChunk,
+    int strength = 1, // 1-5 exponent; injected so model emits at user-requested magnitude (e.g. 5x larger swings)
   }) async {
     if (!getRealismEnabled()) return null;
     if (getActiveCharacter() == null && getActiveGroup() == null) return null;
@@ -431,6 +434,10 @@ class LlmEvalEngine {
         'Do NOT trigger on metaphors ("devoured her lips", "sated by your touch", "waves of pleasure washed over" alone do not count as ate/slept/sexual for positives). '
         'For pure romantic/sexual scenes without explicit eat/drink/sleep/bath words: energy and hunger deltas must be neutral or small negative (no replenish from intimacy). '
         'Hygiene negative only on explicit mess (creampie, cum on face/tits/stomach/sheets, fluids, messy, internal) or high intensity + stance shows exposure (not contained in shower/bath).\n\n'
+        'Report *net signed effects* on each need after the full scene (the deltas the character actually experiences). '
+        'Report *net signed effects* (deltas) on each need caused by the events in the scene (on top of normal decay). The optional Director will correct contradictions. '
+        'The Director/Verifier (when enabled with authority on needs) will correct you if your structured output does not match the unambiguous narrative you just wrote; prefer scene-faithful numbers.\n\n'
+        'User has set Needs delta strength to ' + strength.toString() + 'x. Emit deltas with magnitude scaled by this factor so the final applied swings match the user setting (example: a hygiene hit you would normally call -3 at 1x should be around -15 at 5x; small effects stay small at 1x). The Director (if reviewing) also receives this strength and will correct at the requested scale.\n\n'
         'Respond with ONLY a flat JSON object:\n'
         '{"activities": ["sexual_climax" or "sexual_nonclimax" or "ate" or "slept" or "bathed"], '
         '"intensity": 1-10, '
@@ -438,7 +445,8 @@ class LlmEvalEngine {
         '"fulfillment": {"hunger": true/false, "energy": ..., ... for any low needs in context}, '
         '"reason": "<brief grounded reason>", '
         '"refractory_turns": <1-8 or omit>, "orgasm_intensity": <1-10 or omit>, '
-        '"is_climax": true/false }\n'
+        '"is_climax": true/false, '
+        '"recommend_afterglow": true/false, "recommend_crash_turns": <int or omit>, "buffer_reason": "<string or omit>" }\n'
         'If no clear completed act matching the rules, return {"activities": [], "intensity": 0, ... all deltas 0, "reason": "none"}.';
 
     try {

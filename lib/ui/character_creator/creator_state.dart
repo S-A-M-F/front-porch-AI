@@ -72,6 +72,12 @@ class CreatorState extends ChangeNotifier {
   bool reasoningEnabled = false;
   String generationDetail = 'Standard';
 
+  // Realism Verification (Director/Verifier) — threaded per plan for creator wizard consistency (stub realism_step now wires).
+  bool realismVerificationEnabled = false;
+  int realismVerificationMaxReprocesses = 1;
+  int realismVerificationStrictness = 3;
+  bool realismNeedsDirectorAuthority = false;
+
   // SFW Appearance
   String race = '';
   final customRaceController = TextEditingController();
@@ -163,6 +169,13 @@ class CreatorState extends ChangeNotifier {
   static const _prefRelationships = 'chargen_relationships';
   static const _prefCustomRelationship = 'chargen_custom_relationship';
   static const _prefNsfwEnabled = 'chargen_nsfw_enabled';
+  static const _prefRealismVerificationEnabled =
+      'chargen_realism_verification_enabled';
+  static const _prefRealismVerificationMax = 'chargen_realism_verification_max';
+  static const _prefRealismVerificationStrict =
+      'chargen_realism_verification_strict';
+  static const _prefRealismNeedsDirectorAuthority =
+      'chargen_realism_needs_director_authority';
   static const _prefBodyType = 'chargen_body_type';
   static const _prefRace = 'chargen_race';
   static const _prefCustomRace = 'chargen_custom_race';
@@ -307,6 +320,14 @@ class CreatorState extends ChangeNotifier {
         .toSet();
     customRelationship = prefs.getString(_prefCustomRelationship) ?? '';
     nsfwEnabled = prefs.getBool(_prefNsfwEnabled) ?? false;
+    realismVerificationEnabled =
+        prefs.getBool(_prefRealismVerificationEnabled) ?? false;
+    realismVerificationMaxReprocesses =
+        prefs.getInt(_prefRealismVerificationMax) ?? 1;
+    realismVerificationStrictness =
+        prefs.getInt(_prefRealismVerificationStrict) ?? 3;
+    realismNeedsDirectorAuthority =
+        prefs.getBool(_prefRealismNeedsDirectorAuthority) ?? false;
     bodyType = prefs.getString(_prefBodyType) ?? '';
     race = prefs.getString(_prefRace) ?? '';
     customRaceController.text = prefs.getString(_prefCustomRace) ?? '';
@@ -396,6 +417,22 @@ class CreatorState extends ChangeNotifier {
     await prefs.setString(_prefRelationships, selectedRelationships.join(','));
     await prefs.setString(_prefCustomRelationship, customRelationship);
     await prefs.setBool(_prefNsfwEnabled, nsfwEnabled);
+    await prefs.setBool(
+      _prefRealismVerificationEnabled,
+      realismVerificationEnabled,
+    );
+    await prefs.setInt(
+      _prefRealismVerificationMax,
+      realismVerificationMaxReprocesses,
+    );
+    await prefs.setInt(
+      _prefRealismVerificationStrict,
+      realismVerificationStrictness,
+    );
+    await prefs.setBool(
+      _prefRealismNeedsDirectorAuthority,
+      realismNeedsDirectorAuthority,
+    );
     await prefs.setString(_prefBodyType, bodyType);
     await prefs.setString(_prefRace, race);
     await prefs.setString(_prefCustomRace, customRaceController.text);
@@ -521,6 +558,10 @@ class CreatorState extends ChangeNotifier {
     selectedKinks = {};
     notableFeatures = {};
     nsfwEnabled = false;
+    realismVerificationEnabled = false;
+    realismVerificationMaxReprocesses = 1;
+    realismVerificationStrictness = 3;
+    realismNeedsDirectorAuthority = false;
 
     // Appearance dropdowns
     race = '';

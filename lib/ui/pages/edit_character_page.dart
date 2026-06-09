@@ -89,6 +89,11 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   bool _realismNeedsSim = false;
   bool _realismEnjoysLowHygiene = false;
   String _realismCurrentTask = '';
+  bool _realismVerificationEnabled = false;
+  int _realismVerificationMaxReprocesses = 1;
+  int _realismVerificationStrictness = 3;
+  bool _realismNeedsDirectorAuthority = false;
+  int _needsSimStrength = 1; // 1-5 multiplier for needs deltas (injected to model + Director)
 
   @override
   void initState() {
@@ -148,6 +153,12 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       _realismNeedsSim = ext.needsSimEnabled;
       _realismEnjoysLowHygiene = ext.enjoysLowHygiene;
       _realismCurrentTask = ext.currentTask;
+      _realismVerificationEnabled = ext.realismVerificationEnabled;
+      _realismVerificationMaxReprocesses =
+          ext.realismVerificationMaxReprocesses;
+      _realismVerificationStrictness = ext.realismVerificationStrictness;
+      _realismNeedsDirectorAuthority = ext.realismNeedsDirectorAuthority;
+      _needsSimStrength = ext.needsSimStrength;
     }
 
     _tabController = TabController(length: 4, vsync: this);
@@ -429,6 +440,11 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         needsSimEnabled: _realismNeedsSim,
         enjoysLowHygiene: _realismEnjoysLowHygiene,
         currentTask: _realismCurrentTask,
+        realismVerificationEnabled: _realismVerificationEnabled,
+        realismVerificationMaxReprocesses: _realismVerificationMaxReprocesses,
+        realismVerificationStrictness: _realismVerificationStrictness,
+        realismNeedsDirectorAuthority: _realismNeedsDirectorAuthority,
+        needsSimStrength: _needsSimStrength,
       );
     }
 
@@ -1838,6 +1854,31 @@ class _EditCharacterPageState extends State<EditCharacterPage>
           currentTask: _realismCurrentTask,
           onCurrentTaskChanged: (v) => setState(() {
             _realismCurrentTask = v;
+            _realismSettingsModified = true;
+          }),
+          realismVerificationEnabled: _realismVerificationEnabled,
+          onRealismVerificationChanged: (v) => setState(() {
+            _realismVerificationEnabled = v;
+            _realismSettingsModified = true;
+          }),
+          realismVerificationMaxReprocesses: _realismVerificationMaxReprocesses,
+          onRealismVerificationMaxReprocessesChanged: (v) => setState(() {
+            _realismVerificationMaxReprocesses = v;
+            _realismSettingsModified = true;
+          }),
+          realismVerificationStrictness: _realismVerificationStrictness,
+          onRealismVerificationStrictnessChanged: (v) => setState(() {
+            _realismVerificationStrictness = v;
+            _realismSettingsModified = true;
+          }),
+          realismNeedsDirectorAuthority: _realismNeedsDirectorAuthority,
+          onRealismNeedsDirectorAuthorityChanged: (v) => setState(() {
+            _realismNeedsDirectorAuthority = v;
+            _realismSettingsModified = true;
+          }),
+          needsSimStrength: _needsSimStrength,
+          onNeedsSimStrengthChanged: (v) => setState(() {
+            _needsSimStrength = v;
             _realismSettingsModified = true;
           }),
         ),

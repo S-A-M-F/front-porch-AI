@@ -16,22 +16,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-/// Structured result from the consolidated needs impact evaluation (Proposal A
-/// semantics + declarative rules + modifiers pipeline in NeedsImpactEvaluator).
+/// Structured result from the (now simplified) needs impact evaluation.
 ///
-/// Deltas are the net changes to apply (after base table + modifiers).
-/// startAfterglow / suppression / crash drive the erotic "net positive" buffers
-/// in NeedsSimulation (preserving afterglow/lust-haze/post-crash behavior).
-/// fulfillments drive restore only on *completed* clear acts (per existing
-/// fulfillment contract).
-/// detectedActivities / reason / intensity for logs, chips, debug, and future
-/// injection context. intensity also used for crash duration scaling (climax path).
+/// Deltas come from the model (verified/corrected by optional Director).
+/// Straight decay ticks (in NeedsSimulation) + these scene deltas.
+/// fulfillments (optional) drive targeted restores for clear acts.
+/// reason for chips; intensity/activities kept minimal for Director narrative checks
+/// and any legacy consumers (no buffer semantics).
 class NeedsImpact {
   final Map<String, int> deltas;
-  final bool startAfterglow;
-  final int? afterglowTurns;
-  final int? suppressionTurns;
-  final int? crashTurns;
   final Map<String, bool>? fulfillments;
   final String? reason;
   final int? intensity;
@@ -39,10 +32,6 @@ class NeedsImpact {
 
   const NeedsImpact({
     required this.deltas,
-    this.startAfterglow = false,
-    this.afterglowTurns,
-    this.suppressionTurns,
-    this.crashTurns,
     this.fulfillments,
     this.reason,
     this.intensity,
@@ -51,15 +40,10 @@ class NeedsImpact {
 
   @override
   String toString() =>
-      'NeedsImpact(deltas: $deltas, startAfterglow: $startAfterglow, '
-      'intensity: $intensity, reason: $reason, activities: $detectedActivities)';
+      'NeedsImpact(deltas: $deltas, reason: $reason, activities: $detectedActivities)';
 
   NeedsImpact copyWith({
     Map<String, int>? deltas,
-    bool? startAfterglow,
-    int? afterglowTurns,
-    int? suppressionTurns,
-    int? crashTurns,
     Map<String, bool>? fulfillments,
     String? reason,
     int? intensity,
@@ -67,10 +51,6 @@ class NeedsImpact {
   }) {
     return NeedsImpact(
       deltas: deltas ?? this.deltas,
-      startAfterglow: startAfterglow ?? this.startAfterglow,
-      afterglowTurns: afterglowTurns ?? this.afterglowTurns,
-      suppressionTurns: suppressionTurns ?? this.suppressionTurns,
-      crashTurns: crashTurns ?? this.crashTurns,
       fulfillments: fulfillments ?? this.fulfillments,
       reason: reason ?? this.reason,
       intensity: intensity ?? this.intensity,

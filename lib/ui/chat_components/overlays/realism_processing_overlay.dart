@@ -67,9 +67,18 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
     final accentColorDim = isGreeting
         ? const Color(0xFF7C3AED)
         : const Color(0xFF06B6D4);
-    final title = isGreeting ? 'Reading the room...' : 'Realism Engine';
+    final isVerifying = widget.chatService.isVerifyingRealism;
+    final vPass = widget.chatService.verificationPass;
+    final vMax = widget.chatService.verificationMaxPasses;
+    final title = isGreeting
+        ? 'Reading the room...'
+        : isVerifying
+        ? '🕵️ Verifying Realism output${(vMax > 0) ? ' (pass $vPass/$vMax)' : ''}'
+        : 'Realism Engine';
     final subtitle = isGreeting
         ? 'Capturing emotional baseline from opening message'
+        : isVerifying
+        ? 'Director thread checking deltas + latent context; applying corrections or reprocessing as needed'
         : 'Evaluating relationship, mood & scene state';
 
     final pills = isGreeting

@@ -42,6 +42,24 @@ class FrontPorchExtensions {
   bool
   enjoysLowHygiene; // when true, low hygiene is desirable (inverted behavior for filthy/musky characters)
 
+  // Optional director/verifier thread for Realism Engine + Needs (ingests full latent context + deltas JSON;
+  // rules + optional reprocess with corrections up to full per-eval clamp limits; per-char in Optional Features).
+  bool realismVerificationEnabled;
+  int realismVerificationMaxReprocesses; // 1-5
+  int
+  realismVerificationStrictness; // 1-5 (default 3 = Balanced; higher = stricter director)
+
+  // Director authority on needs deltas (simple model+Director path): when true, verified/corrected deltas from Director review loop take authority for needs_impact (straight decay ticks + model deltas + optional director corrections; no legacy buffers/table/spaghetti). Off by default for conservative behavior.
+  bool realismNeedsDirectorAuthority;
+
+  // User-chosen exponent (1-5) for Needs Simulation delta magnitude. 1 = baseline (current behavior).
+  // Higher values make swings larger (e.g. model/Director emits -3 hygiene → at 5x becomes -15).
+  // The value is injected into the first-pass needs impact eval prompt and the Director (needs_impact)
+  // so both the model emission and any corrections are produced at the user-requested scale.
+  // Applied as rawDelta * strength (safety) in the evaluator for both authority and legacy paths.
+  // Stored per-card (and per-member via frontPorch in groups). Default 1 = no behavior change.
+  int needsSimStrength;
+
   // Avatar behavior
   bool
   avatarLocked; // when true, avatar won't grow past default sidebar width on resize
@@ -73,6 +91,17 @@ class FrontPorchExtensions {
     this.chaosModeEnabled = false,
     this.needsSimEnabled = false,
     this.enjoysLowHygiene = false,
+
+    // Realism Verification (Director/Verifier) — optional, off by default (zero cost when off)
+    this.realismVerificationEnabled = false,
+    this.realismVerificationMaxReprocesses = 1,
+    this.realismVerificationStrictness = 3,
+
+    // Director authority on needs deltas (simple model+Director path; off default = legacy conservative)
+    this.realismNeedsDirectorAuthority = false,
+
+    // Needs delta strength exponent (1-5); 1 = baseline. Injected to model + Director; scales final deltas.
+    this.needsSimStrength = 1,
 
     // Avatar behavior
     this.avatarLocked = false,
@@ -108,6 +137,12 @@ class FrontPorchExtensions {
         'chaos_mode_enabled': chaosModeEnabled,
         'needs_sim_enabled': needsSimEnabled,
         'enjoys_low_hygiene': enjoysLowHygiene,
+        'realism_verification_enabled': realismVerificationEnabled,
+        'realism_verification_max_reprocesses':
+            realismVerificationMaxReprocesses,
+        'realism_verification_strictness': realismVerificationStrictness,
+        'realism_needs_director_authority': realismNeedsDirectorAuthority,
+        'needs_sim_strength': needsSimStrength,
         'avatar_locked': avatarLocked,
 
         // Chat appearance colors (null = use global default)
@@ -142,6 +177,15 @@ class FrontPorchExtensions {
       chaosModeEnabled: realism['chaos_mode_enabled'] as bool? ?? false,
       needsSimEnabled: realism['needs_sim_enabled'] as bool? ?? false,
       enjoysLowHygiene: realism['enjoys_low_hygiene'] as bool? ?? false,
+      realismVerificationEnabled:
+          realism['realism_verification_enabled'] as bool? ?? false,
+      realismVerificationMaxReprocesses:
+          realism['realism_verification_max_reprocesses'] as int? ?? 1,
+      realismVerificationStrictness:
+          realism['realism_verification_strictness'] as int? ?? 3,
+      realismNeedsDirectorAuthority:
+          realism['realism_needs_director_authority'] as bool? ?? false,
+      needsSimStrength: realism['needs_sim_strength'] as int? ?? 1,
       avatarLocked: realism['avatar_locked'] as bool? ?? false,
 
       // Chat appearance colors (null = use global default)
@@ -186,6 +230,11 @@ class FrontPorchExtensions {
     bool? chaosModeEnabled,
     bool? needsSimEnabled,
     bool? enjoysLowHygiene,
+    bool? realismVerificationEnabled,
+    int? realismVerificationMaxReprocesses,
+    int? realismVerificationStrictness,
+    bool? realismNeedsDirectorAuthority,
+    int? needsSimStrength,
     bool? avatarLocked,
 
     // Chat appearance colors (null = use global default)
@@ -215,6 +264,16 @@ class FrontPorchExtensions {
       chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
       needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
       enjoysLowHygiene: enjoysLowHygiene ?? this.enjoysLowHygiene,
+      realismVerificationEnabled:
+          realismVerificationEnabled ?? this.realismVerificationEnabled,
+      realismVerificationMaxReprocesses:
+          realismVerificationMaxReprocesses ??
+          this.realismVerificationMaxReprocesses,
+      realismVerificationStrictness:
+          realismVerificationStrictness ?? this.realismVerificationStrictness,
+      realismNeedsDirectorAuthority:
+          realismNeedsDirectorAuthority ?? this.realismNeedsDirectorAuthority,
+      needsSimStrength: needsSimStrength ?? this.needsSimStrength,
       avatarLocked: avatarLocked ?? this.avatarLocked,
 
       // Chat appearance colors (null = use global default)

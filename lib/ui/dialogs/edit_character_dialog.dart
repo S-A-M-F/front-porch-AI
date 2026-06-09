@@ -28,6 +28,7 @@ import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
+import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 
 // Specific dialogs not in barrels
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
@@ -58,6 +59,13 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
   List<LorebookEntry> _loreEntries = [];
   List<String> _selectedWorldNames = [];
   List<String> _tags = [];
+
+  // Local state for Optional Features (verification) in Details tab — read from ext on init, written on change via copy+persist pattern.
+  bool _realismVerificationEnabled = false;
+  int _realismVerificationMaxReprocesses = 1;
+  int _realismVerificationStrictness = 3;
+  bool _realismNeedsDirectorAuthority = false;
+  int _needsSimStrength = 1; // 1-5 exponent for needs delta magnitude; injected to model+Director; scales final deltas.
   final TextEditingController _tagInputController = TextEditingController();
   String? _newAvatarPath; // full path of newly picked avatar (null = no change)
 
@@ -100,6 +108,16 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     _selectedWorldNames = List.from(widget.character.worldNames);
     _tags = List<String>.from(widget.character.tags);
     _tabController = TabController(length: 3, vsync: this);
+
+    // Seed verification controls from card ext (defaults safe for old cards).
+    final ext = widget.character.frontPorchExtensions;
+    _realismVerificationEnabled = ext?.realismVerificationEnabled ?? false;
+    _realismVerificationMaxReprocesses =
+        ext?.realismVerificationMaxReprocesses ?? 1;
+    _realismVerificationStrictness = ext?.realismVerificationStrictness ?? 3;
+    _realismNeedsDirectorAuthority =
+        ext?.realismNeedsDirectorAuthority ?? false;
+    _needsSimStrength = ext?.needsSimStrength ?? 1;
   }
 
   @override
@@ -1061,6 +1079,169 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 ).globalActionColor,
             (color) => _updateColor('actionColor', color),
           ),
+
+          // Optional Features (Verification Director/Verifier + tuning) — per the right-click Details requirement.
+          // Matches card styling from form + dialog colors. Uses AppColors exclusively for our added UI.
+          // Other optionals (nsfw/chaos/needs) remain in full editors; here we surface the verifier controls (toggle + 2 sliders) as specified.
+          const SizedBox(height: 24),
+          Text(
+            'Optional Features',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: AppColors.textSecondary(context),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderOf(context)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Toggle row (inline, modeled on form _toggleRow but AppColors focused + no raw 0x in new).
+                Row(
+                  children: [
+                    Icon(
+                      Icons.verified_user,
+                      color: _realismVerificationEnabled
+                          ? AppColors.resolve(
+                              context,
+                              AppColors.optionalAccent,
+                              AppColors.optionalAccent,
+                            )
+                          : AppColors.iconSecondary(context),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Realism Verification (Director/Verifier)',
+                            style: TextStyle(
+                              color: _realismVerificationEnabled
+                                  ? AppColors.textPrimary(context)
+                                  : AppColors.textSecondary(context),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            'Optional director thread validates realism deltas + needs JSON; supplies corrections + reason or re-feeds for reprocessing (extra eval cost; strong models recommended)',
+                            style: TextStyle(
+                              color: AppColors.textTertiary(context),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: _realismVerificationEnabled,
+                      onChanged: (v) {
+                        setState(() => _realismVerificationEnabled = v);
+                        _updateVerificationSettings();
+                      },
+                      activeTrackColor: AppColors.resolve(
+                        context,
+                        AppColors.optionalAccent,
+                        AppColors.optionalAccent,
+                      ).withValues(alpha: 0.5),
+                      activeThumbColor: AppColors.resolve(
+                        context,
+                        AppColors.optionalAccent,
+                        AppColors.optionalAccent,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Max reprocesses slider (1-5)
+                Text(
+                  'Max reprocess passes: $_realismVerificationMaxReprocesses',
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 12,
+                  ),
+                ),
+                Slider(
+                  value: _realismVerificationMaxReprocesses.toDouble(),
+                  min: 1,
+                  max: 5,
+                  divisions: 4,
+                  label: '$_realismVerificationMaxReprocesses',
+                  onChanged: (d) {
+                    setState(
+                      () => _realismVerificationMaxReprocesses = d.round(),
+                    );
+                    _updateVerificationSettings();
+                  },
+                ),
+                const SizedBox(height: 8),
+                // Strictness slider (1-5, higher=strict)
+                Text(
+                  'Verifier strictness (1=lenient, 5=strict): $_realismVerificationStrictness',
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 12,
+                  ),
+                ),
+                Slider(
+                  value: _realismVerificationStrictness.toDouble(),
+                  min: 1,
+                  max: 5,
+                  divisions: 4,
+                  label: '$_realismVerificationStrictness',
+                  onChanged: (d) {
+                    setState(() => _realismVerificationStrictness = d.round());
+                    _updateVerificationSettings();
+                  },
+                ),
+                // Authority toggle (after verif sliders; uses shared buildToggleRow from realism form for DRY; AppColors exclusive in new authority/Optional/verif surfaces per re-grep (verified exclusively via resolve/buildToggleRow; withValues only on resolved AppColors for verif sliders/Optional; no raw color literals in the new authority/Optional/verif *executable* code; comments filtered from hygiene greps).
+                const SizedBox(height: 8),
+                RealismFormSection.buildToggleRow(
+                  icon: Icons.verified,
+                  label: 'Director authority on needs deltas',
+                  subtitle: '',
+                  value: _realismNeedsDirectorAuthority,
+                  onChanged: (v) {
+                    setState(() => _realismNeedsDirectorAuthority = v);
+                    _updateVerificationSettings();
+                  },
+                  context: context,
+                ),
+
+                // Needs delta strength 1x-5x (exponent). Placed after authority in the same Optional Features container
+                // (right-click Details per user request). Model + Director receive the value on first pass so they
+                // can emit at the requested magnitude; we also apply final scale. AppColors exclusive + per-re-grep hygiene.
+                const SizedBox(height: 12),
+                Text(
+                  'Needs delta strength: $_needsSimStrength x (1x baseline; 5x = 5× larger swings)',
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 12,
+                  ),
+                ),
+                Slider(
+                  value: _needsSimStrength.toDouble(),
+                  min: 1,
+                  max: 5,
+                  divisions: 4,
+                  label: '$_needsSimStrength x',
+                  onChanged: (d) {
+                    setState(() => _needsSimStrength = d.round());
+                    _updateVerificationSettings();
+                  },
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1535,6 +1716,46 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
       await chatService.setActiveCharacter(reloaded ?? widget.character);
     } catch (e) {
       debugPrint('Failed to save color changes: $e');
+    }
+
+    if (mounted) {
+      setState(() {}); // Refresh UI
+    }
+  }
+
+  /// Persist the three verification settings (toggle + sliders) from local state into the card's FrontPorchExtensions.
+  /// Reuses the exact repo + V2CardService.readCard + chatService.setActiveCharacter pattern from _updateColor.
+  /// Called from the toggle/switch/slider onChanged (after local setState for responsive UI).
+  Future<void> _updateVerificationSettings() async {
+    FrontPorchExtensions extensions;
+    if (widget.character.frontPorchExtensions == null) {
+      extensions = FrontPorchExtensions();
+    } else {
+      extensions = widget.character.frontPorchExtensions!.copyWith();
+    }
+
+    extensions.realismVerificationEnabled = _realismVerificationEnabled;
+    extensions.realismVerificationMaxReprocesses =
+        _realismVerificationMaxReprocesses;
+    extensions.realismVerificationStrictness = _realismVerificationStrictness;
+    extensions.realismNeedsDirectorAuthority = _realismNeedsDirectorAuthority;
+    extensions.needsSimStrength = _needsSimStrength;
+
+    widget.character.frontPorchExtensions = extensions;
+
+    // Save to PNG so changes persist (same as colors)
+    try {
+      final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+      await charRepo.updateCharacter(widget.character);
+      // Reload from PNG to ensure extensions are persisted
+      final reloaded = await V2CardService().readCard(
+        widget.character.imagePath!,
+      );
+      // Update ChatService with reloaded character (so live card read picks up for next turn's verifier cbs)
+      final chatService = Provider.of<ChatService>(context, listen: false);
+      await chatService.setActiveCharacter(reloaded ?? widget.character);
+    } catch (e) {
+      debugPrint('Failed to save verification settings: $e');
     }
 
     if (mounted) {

@@ -9,6 +9,7 @@
 // qualified notes only in dedicated header + god + MD per precedent).
 // aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent).
 // aug exercising only passive/qualified (no evolution-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_triggerCharacterEvolution ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no realism-verification-specific aug file edits; full in dedicated + manual; exercised via god thins + leaf verify cb ; qualified notes only in dedicated header + god + MD per precedent).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/models/chat_message.dart';

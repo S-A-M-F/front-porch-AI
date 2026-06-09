@@ -67,8 +67,8 @@ class NsfwInjection {
 
     // Protective window note for the newer layered systems
     final bool protectiveWindowActive =
-        needsSimulation.afterglowTurnsRemaining > 0 ||
-        needsSimulation.arousalSuppressionTurnsRemaining > 0;
+        0 > 0 || // buffers fully expunged; no protective window from afterglow/suppression
+        0 > 0;
     if (protectiveWindowActive && nsfwService.cooldownTurnsRemaining > 0) {
       statePrompt +=
           ' $charName is currently inside a temporary protective afterglow/lust-haze window. Other physical and emotional needs (hunger, energy, social connection, the need to move or clean up) feel significantly muted or distant for the next few turns. This is not just emotional — it is a real dampening effect.\n';
@@ -168,16 +168,13 @@ class NsfwInjection {
       }
 
       // When the old refractory has ended but newer protective layers are still active
-      if (needsSimulation.afterglowTurnsRemaining > 0 ||
-          needsSimulation.arousalSuppressionTurnsRemaining > 0) {
+      if (false) { // afterglow/suppression buffers expunged; no special state text
         statePrompt +=
             ' Even though the immediate refractory sensitivity has passed, $charName is still inside a lingering afterglow / lust-haze window. Other needs (hunger, energy, the desire to get up and do things) feel noticeably muted or unimportant for a while longer.\n';
       }
 
       // Explicit post-crash warning when the protective layers have expired
-      if (needsSimulation.postClimaxCrashTurnsRemaining > 0 &&
-          needsSimulation.afterglowTurnsRemaining == 0 &&
-          needsSimulation.arousalSuppressionTurnsRemaining == 0) {
+      if (false) { // postClimaxCrash / afterglow / suppression buffers expunged
         statePrompt +=
             ' A delayed wave of heavy, sated physical exhaustion is now hitting $charName. They may become slow, sleepy, reluctant to move, and deeply content to stay exactly where they are (${relationshipService.spatialStance}). This is the classic post-orgasm crash — warm, heavy, and very real.\n';
       }

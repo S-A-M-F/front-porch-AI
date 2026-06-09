@@ -93,6 +93,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   bool _realismNeedsSim = false;
   bool _realismEnjoysLowHygiene = false;
   String _realismCurrentTask = '';
+  bool _realismVerificationEnabled = false;
+  int _realismVerificationMaxReprocesses = 1;
+  int _realismVerificationStrictness = 3;
+  bool _realismNeedsDirectorAuthority = false;
 
   // ── Token counter ──
   int _totalTokenEstimate = 0;
@@ -1274,6 +1278,19 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 currentTask: _realismCurrentTask,
                 onCurrentTaskChanged: (v) =>
                     setState(() => _realismCurrentTask = v),
+                realismVerificationEnabled: _realismVerificationEnabled,
+                onRealismVerificationChanged: (v) =>
+                    setState(() => _realismVerificationEnabled = v),
+                realismVerificationMaxReprocesses:
+                    _realismVerificationMaxReprocesses,
+                onRealismVerificationMaxReprocessesChanged: (v) =>
+                    setState(() => _realismVerificationMaxReprocesses = v),
+                realismVerificationStrictness: _realismVerificationStrictness,
+                onRealismVerificationStrictnessChanged: (v) =>
+                    setState(() => _realismVerificationStrictness = v),
+                realismNeedsDirectorAuthority: _realismNeedsDirectorAuthority,
+                onRealismNeedsDirectorAuthorityChanged: (v) =>
+                    setState(() => _realismNeedsDirectorAuthority = v),
               ),
 
               _buildNavButtons(currentStep: 4),
@@ -2147,6 +2164,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         needsSimEnabled: _realismNeedsSim,
         enjoysLowHygiene: _realismEnjoysLowHygiene,
         currentTask: _realismCurrentTask,
+        realismVerificationEnabled: _realismVerificationEnabled,
+        realismVerificationMaxReprocesses: _realismVerificationMaxReprocesses,
+        realismVerificationStrictness: _realismVerificationStrictness,
+        realismNeedsDirectorAuthority: _realismNeedsDirectorAuthority,
       );
 
       final card = CharacterCard(
@@ -2269,6 +2290,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           _realismNsfwCooldown = false;
           _realismChaosMode = false;
           _realismCurrentTask = '';
+          _realismVerificationEnabled = false;
+          _realismVerificationMaxReprocesses = 1;
+          _realismVerificationStrictness = 3;
+          _realismNeedsDirectorAuthority = false;
           _totalTokenEstimate = 0;
         });
       }

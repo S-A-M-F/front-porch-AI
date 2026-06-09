@@ -629,8 +629,8 @@ void main() {
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
         );
-        ne2.initializeIfNeeded();
-        ne2.setNeedValue('bladder', 5);
+        // post-buffer thinned: use applySceneImpact (old initializeIfNeeded/setNeedValue removed with afterglow/buffers). aug exercising only passive/qualified (no needs-spaghetti-specific aug edits; full in dedicated + manual; exercised via god thins; qualified notes only in dedicated header + god + MD per precedent).
+        ne2.applySceneImpact(NeedsImpact(deltas: {'bladder': -75}));
         final b1 = createTestNeeds(
           needsSvc: ne2,
           nsfwSvc: n,
@@ -668,8 +668,8 @@ void main() {
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
         );
-        neSpecial.initializeIfNeeded();
-        neSpecial.setNeedValue('bladder', 10); // low for step <=2
+        // thinned: applySceneImpact for current post-buffer API. aug only qualified passive (no leaf aug edits; qualified notes only).
+        neSpecial.applySceneImpact(NeedsImpact(deltas: {'bladder': -70}));
         final bSpecial = createTestNeeds(
           needsSvc: neSpecial,
           nsfwSvc: nSpecial,
@@ -708,8 +708,8 @@ void main() {
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
         );
-        neSupp.initializeIfNeeded();
-        neSupp.setNeedValue('energy', 30); // step ~2-3
+        // thinned post expunge. aug qualified passive only.
+        neSupp.applySceneImpact(NeedsImpact(deltas: {'energy': -50}));
         final bSupp = createTestNeeds(
           needsSvc: neSupp,
           nsfwSvc: nSupp,
@@ -783,13 +783,9 @@ void main() {
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
         );
+        // post-buffer: NeedsImpact now only deltas+reason (startAfterglow/crash removed with buffers/afterglow). aug exercising only passive/qualified (no needs-spaghetti aug file edits; full in dedicated+manual; qualified notes only in dedicated header+god+MD per precedent).
         rawSim.applySceneImpact(
-          NeedsImpact(
-            deltas: {},
-            startAfterglow: false,
-            crashTurns: 3,
-            reason: 'post sex exhaustion',
-          ),
+          NeedsImpact(deltas: {}, reason: 'post sex exhaustion'),
         );
         final ns = NsfwService(
           getGroupInt: (_, _) => 0,

@@ -271,7 +271,11 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   }
 
   Map<String, dynamic> _defaultRealismSeedFor(CharacterCard c) {
-    // Neutral but alive starting point
+    // Neutral but alive starting point.
+    // Short keys (e.g. 'needsDirectorAuthority', 'verificationEnabled') are the internal convention for _memberRealismSeeds map
+    // (consistent with prior verif/enjoys per-member); they feed full to defaultMemberRealismState perChar[id].
+    // Long snake keys live only in FrontPorchExtensions JSON (card ext for runtime cb + group_members row).
+    // No key normalization (would require auditing all defaultMember load sites); documented here per review nit.
     return {
       'affection': 35,
       'trust': 40,
@@ -288,6 +292,11 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         'bladder': 85,
       },
       'enjoysLowHygiene': false,
+      'verificationEnabled': false,
+      'verificationMaxReprocesses': 1,
+      'verificationStrictness': 3,
+      'needsDirectorAuthority': false,
+      'needsSimStrength': 1,
       'relationships':
           <String, int>{}, // seeded in Group Dynamics step for small groups
     };
@@ -925,6 +934,51 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
         skipLibraryInsert: true,
       );
 
+      // Per-member authority + verif flags + needs strength (exponent 1-5) must propagate
+      // to the GroupMember row's frontPorchExtensions (the source of truth for runtime _groupCharacters cards
+      // via toCharacterCard + god impersonation cb reads of .frontPorchExtensions.* ).
+      // Seeds already feed full (incl short keys) to defaultMemberRealismState perChar; baseline scalars only.
+      // Patch here (not mutate source library card) so group instance gets UI choice; duplicate only for avatar/PNG.
+      // Consistent for all flags; other add-member paths use passed card's ext.
+      final id = _stableId(source);
+      final seed = _memberRealismSeeds[id] ?? _defaultRealismSeedFor(source);
+      FrontPorchExtensions? memberFp;
+      if (source.frontPorchExtensions != null) {
+        memberFp = source.frontPorchExtensions!.copyWith(
+          enjoysLowHygiene:
+              (seed['enjoysLowHygiene'] as bool?) ??
+              source.frontPorchExtensions!.enjoysLowHygiene,
+          realismVerificationEnabled:
+              (seed['verificationEnabled'] as bool?) ??
+              source.frontPorchExtensions!.realismVerificationEnabled,
+          realismVerificationMaxReprocesses:
+              (seed['verificationMaxReprocesses'] as int?) ??
+              source.frontPorchExtensions!.realismVerificationMaxReprocesses,
+          realismVerificationStrictness:
+              (seed['verificationStrictness'] as int?) ??
+              source.frontPorchExtensions!.realismVerificationStrictness,
+          realismNeedsDirectorAuthority:
+              (seed['needsDirectorAuthority'] as bool?) ??
+              source.frontPorchExtensions!.realismNeedsDirectorAuthority,
+          needsSimStrength:
+              (seed['needsSimStrength'] as int?) ??
+              source.frontPorchExtensions!.needsSimStrength,
+        );
+      } else if (_realismEnabled) {
+        memberFp = FrontPorchExtensions(
+          enjoysLowHygiene: (seed['enjoysLowHygiene'] as bool?) ?? false,
+          realismVerificationEnabled:
+              (seed['verificationEnabled'] as bool?) ?? false,
+          realismVerificationMaxReprocesses:
+              (seed['verificationMaxReprocesses'] as int?) ?? 1,
+          realismVerificationStrictness:
+              (seed['verificationStrictness'] as int?) ?? 3,
+          realismNeedsDirectorAuthority:
+              (seed['needsDirectorAuthority'] as bool?) ?? false,
+          needsSimStrength: (seed['needsSimStrength'] as int?) ?? 1,
+        );
+      }
+
       // Insert typed GroupMember row using the database instance.
       await database.insertGroupMember(
         db.GroupMembersCompanion(
@@ -949,9 +1003,11 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           ),
           worldNames: Value(jsonEncode(source.worldNames)),
           frontPorchExtensions: Value(
-            source.frontPorchExtensions != null
-                ? jsonEncode(source.frontPorchExtensions!.toJson())
-                : null,
+            memberFp != null
+                ? jsonEncode(memberFp.toJson())
+                : (source.frontPorchExtensions != null
+                      ? jsonEncode(source.frontPorchExtensions!.toJson())
+                      : null),
           ),
           rawExtensions: Value(
             source.rawExtensions != null
@@ -2328,6 +2384,37 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                           currentTask: (seed['currentTask'] as String?) ?? '',
                           onCurrentTaskChanged: (v) =>
                               _updateMemberRealism(id, {'currentTask': v}),
+                          realismVerificationEnabled:
+                              (seed['verificationEnabled'] as bool?) ?? false,
+                          onRealismVerificationChanged: (v) =>
+                              _updateMemberRealism(id, {
+                                'verificationEnabled': v,
+                              }),
+                          realismVerificationMaxReprocesses:
+                              (seed['verificationMaxReprocesses'] as int?) ?? 1,
+                          onRealismVerificationMaxReprocessesChanged: (v) =>
+                              _updateMemberRealism(id, {
+                                'verificationMaxReprocesses': v,
+                              }),
+                          realismVerificationStrictness:
+                              (seed['verificationStrictness'] as int?) ?? 3,
+                          onRealismVerificationStrictnessChanged: (v) =>
+                              _updateMemberRealism(id, {
+                                'verificationStrictness': v,
+                              }),
+                          realismNeedsDirectorAuthority:
+                              (seed['needsDirectorAuthority'] as bool?) ??
+                              false,
+                          onRealismNeedsDirectorAuthorityChanged: (v) =>
+                              _updateMemberRealism(id, {
+                                'needsDirectorAuthority': v,
+                              }),
+                          needsSimStrength: (seed['needsSimStrength'] as int?) ?? 1,
+                          onNeedsSimStrengthChanged: (v) =>
+                              _updateMemberRealism(id, {
+                                'needsSimStrength': v,
+                              }),
+                          showVerificationToggle: true,
                         ),
                       ),
 
