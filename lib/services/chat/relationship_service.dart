@@ -56,10 +56,18 @@ import 'package:flutter/foundation.dart';
 /// short/longTerm*Score/Tier + progress getters + tierName getters + inter-char
 /// public methods) for callers and tests.
 ///
-/// Reset helpers (resetForFreshChat, seedFromV2OrExt, loadScalars, applyLegacyMigrationIfNeeded,
-/// loadRelationshipScalarsForSpeaker, saveRelationshipScalarsToGroup) support the
-/// documented "keep reset blocks in sync" sites in parent without adding private
-/// helpers to the god file.
+/// Reset helpers (resetForFreshChat, seedFromV2OrExt, seedFromCardV2OrExt,
+/// loadScalars, applyLegacyMigrationIfNeeded, loadRelationshipScalarsForSpeaker,
+/// saveRelationshipScalarsToGroup) support the documented "keep reset blocks in sync"
+/// sites in parent without adding private helpers to the god file.
+///
+/// seedFromCardV2OrExt does *plain clamp only* (no migration) for fresh V2.5 card
+/// ext seeds on new 1:1 chats (card authors use the current ±300 scale). The
+/// original seedFromV2OrExt (which applies legacy ±150->*2 migration) is retained
+/// for direct test coverage of the migration path and any future legacy session
+/// seed compatibility; production legacy session loads use the explicit
+/// migrateShortTermScore / migrateLongTermScore + loadScalars + applyLegacy...
+/// paths in ChatService (see "card-seed bypass" notes in god keep-sync comments).
 ///
 /// 0 new private methods added to ChatService as part of this step (thins + delegations only;
 /// deletions of moved code are mandatory part of the task).
@@ -417,7 +425,9 @@ class RelationshipService {
   int calculateTier(int score) => _calculateTier(score);
 
   /// Public migrate helpers for load paths (kept internal impl private; surface
-  /// only for the 2-3 legacy scale sites in ChatService).
+  /// only for the 2-3 legacy scale sites in ChatService that load persisted old
+  /// ±150 session data). Card V2/Ext fresh seeds use seedFromCardV2OrExt (plain
+  /// clamp, no migration) to avoid doubling author-intended values on new chats.
   int migrateShortTermScore(int rawScore) => _migrateShortTermScore(rawScore);
   int migrateLongTermScore(int rawScore) => _migrateLongTermScore(rawScore);
 
@@ -478,6 +488,23 @@ class RelationshipService {
   }) {
     _affectionScore = _migrateShortTermScore(shortTermBond.clamp(-300, 300));
     _longTermScore = _migrateLongTermScore(longTermBond.clamp(-300, 300));
+    _trustLevel = trustLevel.clamp(-100, 100);
+    _relationshipTier = _calculateTier(_affectionScore);
+    _longTermTier = _calculateTier(_longTermScore);
+  }
+
+  /// Card V2/Ext seed path: plain clamp (current ±300 scale authored by V2.5 cards
+  /// and the creator UI). No legacy *2 migration. Tiers computed after. Used by the
+  /// two fresh ext-seed sites in ChatService (setActiveCharacter 0-session path and
+  /// startNewChat 1:1 ext branch). Group paths untouched (never used the doubling).
+  /// See god comments for "card-seed bypass" + cross-refs.
+  void seedFromCardV2OrExt({
+    required int shortTermBond,
+    required int longTermBond,
+    required int trustLevel,
+  }) {
+    _affectionScore = shortTermBond.clamp(-300, 300);
+    _longTermScore = longTermBond.clamp(-300, 300);
     _trustLevel = trustLevel.clamp(-100, 100);
     _relationshipTier = _calculateTier(_affectionScore);
     _longTermTier = _calculateTier(_longTermScore);

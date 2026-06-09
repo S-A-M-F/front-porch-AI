@@ -115,6 +115,15 @@ class ChatService extends ChangeNotifier {
       false; // god-side secondary runtime flag for objective_proposal leaf's get/setIsChecking (early guard in check); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths (like _activeObjectives + _messagesSinceLastCheck) to prevent permanent skip of future task checks after in-flight reset; see every "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed).
   bool _isNewChat = false;
 
+  // Central post-dispose guard (re-introduced per PR #47 rec 2 for prod stability + test flake).
+  // Protects *all* async-await-DB-then-notifyListeners patterns and any residual
+  // fire-and-forget / microtask paths (e.g. unawaited objective loads, realism evals,
+  // summary/fact/evo periodic, set* after rapid close/switch). Overrides ensure
+  // no "A ChatService was used after being disposed" or channel errors.
+  // Complements the "Awaited (was fire-and-forget)" at setActiveCharacter:2205;
+  // see also _loadActiveObjectives and keep-reset sites. 0 new god private _ methods.
+  bool _disposed = false;
+
   List<Objective> get activeObjectives => _activeObjectives;
   Objective? get primaryObjective =>
       _activeObjectives.where((o) => o.isPrimary).firstOrNull;
@@ -2119,7 +2128,16 @@ class ChatService extends ChangeNotifier {
         if (_activeCharacter!.frontPorchExtensions != null) {
           final ext = _activeCharacter!.frontPorchExtensions!;
           _realismEnabled = ext.realismEnabled;
-          _relationshipService.seedFromV2OrExt(
+          // Card-seed bypass (rec 1 from PR #47): use seedFromCardV2OrExt (plain .clamp only,
+          // no _migrate*) because V2.5 cards + creator UI author shortTermBond/longTermBond on the
+          // *current* ±300 scale (see models/character_card.dart:31-32 + FrontPorchExtensions).
+          // Legacy *2 migration must stay *only* on _loadLastSession loadScalars + migrate* wrappers
+          // + applyLegacyShortTermMigrationIfNeeded paths (and the public migrate surface).
+          // This was the root cause of bond-doubling (e.g. authored 55 -> 110) on every fresh 1:1
+          // card import / 0-session setActive / startNew. 1:1 only; group per-speaker paths were
+          // never affected (used loadRelationshipScalarsForSpeaker etc). See relationship_service.dart
+          // seedFromCardV2OrExt + god keep-sync comments (full list) + cross-ref setActiveCharacter:1572.
+          _relationshipService.seedFromCardV2OrExt(
             shortTermBond: ext.shortTermBond,
             longTermBond: ext.longTermBond,
             trustLevel: ext.trustLevel,
@@ -2148,7 +2166,7 @@ class ChatService extends ChangeNotifier {
           } else {
             _needsSimulation.clearVector();
           }
-          // Tiers maintained by service after seedFromV2OrExt.
+          // Tiers maintained by service after seedFromCardV2OrExt (or V2OrExt for other leaves).
           debugPrint(
             '[ChatService] V2.5 extensions seeded: realism=$_realismEnabled, '
             'bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}, day=${_timeService.dayCount}, time=${_timeService.timeOfDay}',
@@ -2202,7 +2220,7 @@ class ChatService extends ChangeNotifier {
       }
       // Load active objectives for this session (must be after _loadLastSession
       // so _currentSessionId is set)
-      await _loadActiveObjectives(); // Awaited (was fire-and-forget); root fix for post-dispose notify races in tests + rapid switches (guard remains for any residual unawaited/microtask paths elsewhere).
+      await _loadActiveObjectives(); // Awaited (was fire-and-forget); root fix for post-dispose notify races in tests + rapid switches. Central _disposed + notifyListeners override (rec 2) now protects residual unawaited/microtask paths + any other notify-after-async in god/services (see _disposed decl, overrides at end of class, and cleaned per-site guard in _loadActiveObjectives).
     }
     _isLoadingSession = false;
     notifyListeners();
@@ -2607,7 +2625,9 @@ class ChatService extends ChangeNotifier {
               : null,
         ),
         rawExtensions: drift.Value(
-          character.rawExtensions != null ? jsonEncode(character.rawExtensions!) : null,
+          character.rawExtensions != null
+              ? jsonEncode(character.rawExtensions!)
+              : null,
         ),
         memberState: drift.Value('{}'),
       ),
@@ -3073,7 +3093,10 @@ class ChatService extends ChangeNotifier {
     _parentSessionId = lastSession.parentSession;
     _forkIndex = lastSession.forkIndex;
     // Relationship scalars + migration/tier calc now via service (keeps load parity).
-    // Migration: scale old scores (±150) to new range (±300)
+    // Migration: scale old scores (±150) to new range (±300). (Card-seed bypass: fresh V2.5
+    // ext seeds use seedFromCardV2OrExt plain clamp in setActiveCharacter/startNew 1:1 paths;
+    // this migrate path is *only* for legacy persisted sessions. See card-seed notes at the two
+    // ext-seed sites + relationship_service + full keep-sync lists + setActiveCharacter:1572.)
     _relationshipService.loadScalars(
       affectionScore: _relationshipService.migrateShortTermScore(
         lastSession.affectionScore,
@@ -3089,7 +3112,10 @@ class ChatService extends ChangeNotifier {
       turnsSinceLongTermCheck: lastSession.turnsSinceLongTermCheck,
       shortTermDeltasSummary: lastSession.shortTermDeltasSummary,
     );
-    // Apply legacy migration (if needed) after load.
+    // Apply legacy migration (if needed) after load. (Card-seed bypass note: this *10 + migrate
+    // path is exclusively for legacy persisted sessions from pre-±300 era; fresh card seeds use
+    // the plain seedFromCardV2OrExt at the two 1:1 ext sites above. Expanded per "related load/reset
+    // sites" requirement + keep-sync full list + setActiveCharacter:1572 + both startNew.)
     _relationshipService.applyLegacyShortTermMigrationIfNeeded();
     _realismEnabled = lastSession.realismEnabled;
     _moodDecayCounter = lastSession.moodDecayCounter;
@@ -3132,7 +3158,9 @@ class ChatService extends ChangeNotifier {
       pressure: lastSession.chaosPressure,
     );
 
-    // Realism Engine 2.0 Compatibility Migration (delegated to service).
+    // Realism Engine 2.0 Compatibility Migration (delegated to service). (Card-seed bypass:
+    // this legacy path for old persisted data; fresh 1:1 card ext seeds use seedFromCardV2OrExt
+    // (plain) at setActive/startNew 1:1 sites. See expanded keep-sync + setActiveCharacter:1572.)
     _relationshipService.applyLegacyShortTermMigrationIfNeeded();
     if (_relationshipService.affectionScore != lastSession.affectionScore ||
         _relationshipService.relationshipTier != lastSession.relationshipTier) {
@@ -3417,6 +3445,8 @@ class ChatService extends ChangeNotifier {
         shortTermDeltasSummary: session.shortTermDeltasSummary,
       );
       _relationshipService.applyLegacyShortTermMigrationIfNeeded();
+      // (Card-seed bypass: legacy *10 migration only; see the two ext-seed sites + prior load sites
+      // for full "card seeds authored on current ±300" + keep-sync lists + relationship leaf.)
 
       // counters already via loadScalars on service.
       _realismEnabled = session.realismEnabled;
@@ -3801,8 +3831,16 @@ class ChatService extends ChangeNotifier {
           _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
 
       _realismEnabled = extSeed.realismEnabled;
-      // Migration + seed via service (keeps startNewChat parity with setActive ext seed).
-      _relationshipService.seedFromV2OrExt(
+      // Card-seed bypass (rec 1 from PR #47; keeps startNewChat parity with setActive ext seed):
+      // use seedFromCardV2OrExt (plain .clamp only, no _migrate*) because V2.5 cards + creator
+      // author on current ±300 scale. (The old "Migration + seed" comment + call was the source
+      // of the doubling regression on fresh 1:1 New Chat.) Migration stays exclusively on legacy
+      // persisted session paths (_loadLastSession + loadScalars(migrate*) + applyLegacy... at 3 sites).
+      // 1:1 vs group parity: group seeding paths untouched (resetForFresh + per-speaker load/save scalars).
+      // See relationship_service.dart (seedFromCardV2OrExt + public migrate docs) + expanded
+      // "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete"
+      // (full prior+current list: needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed); both startNew branches explicit; cross-refs e.g. setActiveCharacter:1572; card-seed bypass noted at both 1:1 ext sites).
+      _relationshipService.seedFromCardV2OrExt(
         shortTermBond: extSeed.shortTermBond,
         longTermBond: extSeed.longTermBond,
         trustLevel: extSeed.trustLevel,
@@ -3812,7 +3850,7 @@ class ChatService extends ChangeNotifier {
       // without god privates; now includes startNewChat 1:1 ext-seed path to prevent bleed of prior
       // isTriggered/remainingDepth into fresh New Chat for 1:1; constants skipped. See setActiveCharacter:1572
       // + "incomplete zeroing of secondary realism configuration fields" briefing pattern (cross-ref step6 nsfw).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
+      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing of secondary config on group/0-session/new-chat now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc; card-seed bypass hygiene added here too)
       _lorebookScanner.resetLorebookTriggerState();
       // Time seed via extracted service (keeps startNewChat / setActive / ext-seed blocks in sync).
       _timeService.seedFromV2OrExt(
@@ -6911,18 +6949,7 @@ class ChatService extends ChangeNotifier {
       );
       _activeObjectives = [];
     }
-    try {
-      notifyListeners();
-    } catch (e) {
-      // Targeted guard for post-dispose notify from async _loadActiveObjectives (now awaited at the primary 2205 site; protects any remaining fire-and-forget or microtask schedules e.g. in setActiveGroup/load paths or test races).
-      // Only swallow the specific ChangeNotifier disposed assert (common benign in teardown); rethrow real errors for visibility. Residual "Channel was closed" from repo/DB close races are handled at call sites.
-      if (e.toString().contains('used after being disposed') ||
-          e.toString().contains('debugAssertNotDisposed')) {
-        // Benign in test teardown / rapid context switch.
-      } else {
-        rethrow;
-      }
-    }
+    notifyListeners(); // Central _disposed guard in ChatService overrides now protects this (and all other) post-async notify sites. Per-site try/catch removed (deletion part of rec 2 task); see god _disposed + notify override + setActiveCharacter:2205 comment.
   }
 
   /// Build the prompt injection text for the active objectives.
@@ -8409,4 +8436,22 @@ class ChatService extends ChangeNotifier {
   }
 
   // (Chance Time pools moved verbatim to ChaosModeService; deletion complete.)
+
+  // ── Central dispose guard (rec 2 from PR #47) ─────────────────────────────────
+  // Overrides protect every notifyListeners() call (many direct + after async DB/repo
+  // work) from post-dispose use. Placed here (not a new void _ private) to obey god
+  // rules (void _ count must stay exactly 15 live grep after every edit + final).
+  // Deletion of the now-redundant per-site try/catch guard in _loadActiveObjectives
+  // (and its comment) is part of this task (see that site for the removed code).
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 }

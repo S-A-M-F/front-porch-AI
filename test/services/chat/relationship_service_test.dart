@@ -8,6 +8,8 @@
 // resetForFresh/seedFromV2/loadScalars, group per-char scalar load/save roundtrips,
 // inter-char map get/update via service, short/long term progress getters,
 // legacy migration apply, 1:1 vs group scoping/parity notes.
+// New for PR#47 rec1 port: dedicated test body for seedFromCardV2OrExt (plain clamp, card=55 seeds as 55 not 110)
+// + explicit legacy migrate* still doubles (for old persisted session data); see god card-seed bypass.
 // Uses createTestRelationship factory (per plan + needs/chaos precedent) for all ctors.
 // Real ChatService pre-turn/eval paths (apply deltas in relationship/one-shot calls,
 // ensure/update inter in group realism, load/save scalars in impersonation, decay via _applyMoodDecay delegate,
@@ -240,7 +242,7 @@ void main() {
         expect(
           svc.affectionScore,
           84,
-        ); // migrate doubles <=150 per verbatim original logic
+        ); // migrate doubles <=150 per verbatim original logic (legacy path)
         expect(svc.relationshipTier, 5); // 84 <120 ->5
         svc.resetForFreshChat();
         expect(svc.affectionScore, 0);
@@ -265,6 +267,64 @@ void main() {
         gSvc.saveRelationshipScalarsToGroup('spk');
         expect(gSvc.affectionScore, 15);
         // (group map write verified via closure in factory; scalar confirms apply+save path)
+      },
+    );
+
+    test(
+      'seedFromCardV2OrExt does plain clamp (no *2 migration) for V2.5 card seeds; legacy migrate* still double for old session data',
+      () {
+        final svc = createTestRelationship();
+        // Card seed path (used by setActiveCharacter fresh + startNewChat 1:1 ext): 55 stays 55
+        // (1:1-only per god thins + relationship_service docs; group seeding uses loadRelationshipScalarsForSpeaker etc.
+        // Card seed under group cb is not used / would be incorrect; parity guarded by never calling it in group paths.)
+        svc.seedFromCardV2OrExt(
+          shortTermBond: 55,
+          longTermBond: 30,
+          trustLevel: 10,
+        );
+        expect(
+          svc.affectionScore,
+          55,
+        ); // not 110; fixes bond-doubling regression for card authors
+        expect(svc.longTermScore, 30);
+        expect(svc.trustLevel, 10);
+        expect(
+          svc.relationshipTier,
+          4,
+        ); // 55<80 ->4 per _calculateTier (see 50-80 range)
+        // Direct boundary/edge for the new plain-clamp bypass method (plain .clamp only, no migration)
+        svc.seedFromCardV2OrExt(
+          shortTermBond: 400,
+          longTermBond: -400,
+          trustLevel: 150,
+        );
+        expect(svc.affectionScore, 300); // clamps high
+        expect(svc.longTermScore, -300); // clamps low
+        expect(svc.trustLevel, 100); // clamps trust
+        svc.seedFromCardV2OrExt(
+          shortTermBond: 0,
+          longTermBond: 300,
+          trustLevel: -100,
+        );
+        expect(svc.affectionScore, 0);
+        expect(svc.longTermScore, 300);
+        expect(svc.trustLevel, -100);
+        svc.resetForFreshChat();
+
+        // Legacy session data path (via public migrate wrappers + loadScalars in _loadLast) still migrates
+        final migratedShort = svc.migrateShortTermScore(42);
+        final migratedLong = svc.migrateLongTermScore(17);
+        expect(migratedShort, 84); // <=150 -> *2
+        expect(migratedLong, 34);
+        svc.loadScalars(
+          affectionScore: migratedShort,
+          longTermScore: migratedLong,
+          trustLevel: 5,
+        );
+        expect(svc.affectionScore, 84);
+        // Direct low-value <=150 still migrates (covers "legacy session data still migrates when appropriate")
+        expect(svc.migrateShortTermScore(55), 110);
+        expect(svc.migrateShortTermScore(200), 200); // >150 no change
       },
     );
 
