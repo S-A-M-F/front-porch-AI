@@ -99,4 +99,14 @@ jobs:
         run: flutter pub get
 
       - name: Run Tests
-        run: flutter test --reporter expanded
+        # Use --concurrency=1 because several tests (notably the "real production"
+        # ChatService + GroupTurnManager + per-speaker realism evals + DB settles
+        # in chat_service_realism_engine_test.dart) are integration-style and
+        # timing-sensitive. Default high concurrency on GitHub runners causes
+        # intermittent races in async group member population, isEvaluatingRealism
+        # polling, and shared mock setup (path_provider, SharedPreferences,
+        # forTesting DBs) even with the internal while-loop settles.
+        # See test file comments on "robust settle", "under load/CI", and the
+        # card-seed / inter-char key handling.
+        run: flutter test --concurrency=1 --reporter expanded
+        timeout-minutes: 20
