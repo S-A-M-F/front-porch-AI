@@ -29,6 +29,19 @@ import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 
+/// Per-eval delta limits for the realism LLM calls (relationship, emotional state,
+/// one-shot). These are the authoritative ranges for what each eval is allowed to
+/// contribute in a single turn. They are used both for .clamp() enforcement and
+/// interpolated into the prompt guidance text so the model instructions and the
+/// runtime guard cannot drift from each other (or between the multi-call paths and
+/// the fused one-shot path).
+const kMinRelationshipDelta = -15;
+const kMaxRelationshipDelta = 15;
+const kMinTrustDelta = -200;
+const kMaxTrustDelta = 50;
+const kMinArousalDelta = -25;
+const kMaxArousalDelta = 25;
+
 /// Plain (non-ChangeNotifier) leaf sibling to LlmEvalEngine owning the 5
 /// realism evaluation calls (relationship, emotional state, physical state,
 /// narrative, one-shot) + their prompt builders, orchestration, parse for
@@ -190,6 +203,99 @@ class RealismEvals {
     required this.setObjective,
   });
 
+  /// Parses relationship/trust (+ best-effort or requested arousal) fields from
+  /// an eval JSON text, applies the side effects (score/trust deltas to services,
+  /// arousal to nsfwService), populates pending metadata for chips/reasons using
+  /// only nonzero deltas (reasons are populated when present even if deltas are 0),
+  /// and returns the resolved values for caller debug logging.
+  ///
+  /// This single implementation is used by both the separate relationship eval
+  /// (multi-call) and the fused one-shot eval, guaranteeing identical clamp
+  /// behavior and pending population for bond/trust/arousal.
+  ({
+    int bondDelta,
+    int trustDelta,
+    int arousalDelta,
+    String bondReason,
+    String trustReason,
+  }) _parseAndApplyRelationshipDeltas(String text) {
+    // Bond / relationship delta (per prompt range)
+    final relDelta = extractJsonInt(text, 'relationship_delta');
+    int bondDelta = 0;
+    if (relDelta != null) {
+      bondDelta = relDelta.clamp(kMinRelationshipDelta, kMaxRelationshipDelta);
+      relationshipService.applyScoreDelta(bondDelta);
+    }
+
+    // Trust delta (user behavior only; per prompt range)
+    int trustDelta = 0;
+    final trDelta = extractJsonInt(text, 'trust_delta');
+    if (trDelta != null) {
+      trustDelta = trDelta.clamp(kMinTrustDelta, kMaxTrustDelta);
+      if (trustDelta != 0) {
+        relationshipService.applyTrustDelta(trustDelta);
+      }
+    }
+
+    // Arousal (only when NSFW cooldowns are enabled; relationship path treats
+    // as best-effort since its prompt does not request the field; emotional and
+    // one-shot paths request it when enabled).
+    int arousalDelta = 0;
+    if (nsfwService.nsfwCooldownEnabled) {
+      final arDelta = extractJsonInt(text, 'arousal_delta');
+      if (arDelta != null) {
+        arousalDelta = arDelta.clamp(kMinArousalDelta, kMaxArousalDelta);
+        nsfwService.setArousalLevel(
+          (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
+        );
+      }
+    }
+
+    // Nonzero deltas → pending (for chips + message metadata). Only record
+    // nonzero so UI and revert logic stay uncluttered (0s are the default).
+    if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
+      var pending = getPendingRealismMetadata() ?? {};
+      if (bondDelta != 0) pending['bond_delta'] = bondDelta;
+      if (arousalDelta != 0) pending['arousal_delta'] = arousalDelta;
+      if (trustDelta != 0) pending['trust_delta'] = trustDelta;
+      setPendingRealismMetadata(pending);
+    }
+
+    // Reasons (for hover tooltips on chips). Always extract; set if present
+    // and not the sentinel "none".
+    final bondReasonMatch = RegExp(
+      r'"bond_reason"\s*:\s*"([^"]*)"',
+    ).firstMatch(text);
+    final rawBondReason = bondReasonMatch?.group(1)?.trim() ?? '';
+    final bondReason =
+        rawBondReason.toLowerCase() == 'none' ? '' : rawBondReason;
+    if (bondReason.isNotEmpty) {
+      var pending = getPendingRealismMetadata() ?? {};
+      pending['bond_reason'] = bondReason;
+      setPendingRealismMetadata(pending);
+    }
+
+    final trustReasonMatch = RegExp(
+      r'"trust_reason"\s*:\s*"([^"]*)"',
+    ).firstMatch(text);
+    final rawTrustReason = trustReasonMatch?.group(1)?.trim() ?? '';
+    final trustReason =
+        rawTrustReason.toLowerCase() == 'none' ? '' : rawTrustReason;
+    if (trustReason.isNotEmpty) {
+      var pending = getPendingRealismMetadata() ?? {};
+      pending['trust_reason'] = trustReason;
+      setPendingRealismMetadata(pending);
+    }
+
+    return (
+      bondDelta: bondDelta,
+      trustDelta: trustDelta,
+      arousalDelta: arousalDelta,
+      bondReason: bondReason,
+      trustReason: trustReason,
+    );
+  }
+
   // ── The 5 Realism Eval Calls (full bodies moved here from engine in step 10) ──
 
   Future<void> evaluateRelationshipCall({
@@ -230,7 +336,7 @@ class RealismEvals {
         'IMPORTANT: Reactions are entirely subjective based on $charName\'s personality. '
         'Most normal interactions should score 0 or slightly positive. '
         'Reserve negative scores ONLY for clear rudeness, hostility, manipulation, or betrayal.\n\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
+        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (' "$kMinRelationshipDelta to +$kMaxRelationshipDelta" ')\n'
         '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
         '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
         '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
@@ -243,7 +349,7 @@ class RealismEvals {
         '   -15: Devastating betrayal — a relationship-destroying act\n'
         '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
         '2. "bond_reason": One brief in-character thought from $charName explaining the tension shift, e.g. "His warmth made me feel safe." or "That dismissal stung." Use "none" if delta is 0.\n'
-        '3. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
+        '3. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (' "$kMinTrustDelta to +$kMaxTrustDelta" ')\n'
         '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
         '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
         '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
@@ -263,71 +369,13 @@ class RealismEvals {
       final searchText = stripThinkBlocks(raw);
       final text = searchText.isNotEmpty ? searchText : raw;
 
-      final relDelta = extractJsonInt(text, 'relationship_delta');
-      int bondDelta = 0;
-      if (relDelta != null) {
-        bondDelta = relDelta.clamp(-50, 50);
-        relationshipService.applyScoreDelta(bondDelta);
-      }
-
-      int trustDelta = 0;
-      final trDelta = extractJsonInt(text, 'trust_delta');
-      if (trDelta != null) {
-        trustDelta = trDelta.clamp(-200, 50);
-        if (trustDelta != 0) {
-          relationshipService.applyTrustDelta(trustDelta);
-        }
-      }
-
-      int arousalDelta = 0;
-      if (nsfwService.nsfwCooldownEnabled) {
-        // best-effort; relationship prompt does not request 'arousal_delta' (arousal
-        // primarily via emotional state / physical state / oneShot evals). Harmless no-op
-        // if absent (pre-existing behavior preserved from engine move).
-        final arDelta = extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          arousalDelta = arDelta.clamp(-25, 25);
-          nsfwService.setArousalLevel(
-            (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-        }
-      }
-
-      if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        var pending = getPendingRealismMetadata() ?? {};
-        if (bondDelta != 0) pending['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) {
-          pending['arousal_delta'] = arousalDelta;
-        }
-        if (trustDelta != 0) {
-          pending['trust_delta'] = trustDelta;
-        }
-        setPendingRealismMetadata(pending);
-      }
-
-      // Extract and store per-chip reasons
-      final bondReasonMatch = RegExp(
-        r'"bond_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['bond_reason'] = bondReason;
-        setPendingRealismMetadata(pending);
-      }
-
-      final trustReasonMatch = RegExp(
-        r'"trust_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['trust_reason'] = trustReason;
-        setPendingRealismMetadata(pending);
-      }
+      // Unified parse/apply (also used by one-shot). The relationship path passes
+      // arousal parsing through even though its prompt does not request the field
+      // (best-effort extraction preserved exactly).
+      final res = _parseAndApplyRelationshipDeltas(text);
 
       debugPrint(
-        '[Realism:Relationship] Bond: $bondDelta (${bondReason.isNotEmpty ? bondReason : 'no reason'}) | Trust: $trustDelta (${trustReason.isNotEmpty ? trustReason : 'no reason'})',
+        '[Realism:Relationship] Bond: ${res.bondDelta} (${res.bondReason.isNotEmpty ? res.bondReason : 'no reason'}) | Trust: ${res.trustDelta} (${res.trustReason.isNotEmpty ? res.trustReason : 'no reason'})',
       );
       debugPrint(
         '[Realism:Metadata] _pendingRealismMetadata after relationship eval: ${getPendingRealismMetadata()}',
@@ -371,10 +419,10 @@ class RealismEvals {
 
     // ── Arousal instruction (enriched with current level + behavioral visibility) ──
     final arousalField = nsfwService.nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -25 to +25>'
+        ? ", \"arousal_delta\": <number $kMinArousalDelta to +$kMaxArousalDelta>"
         : '';
     final arousalInstr = nsfwService.nsfwCooldownEnabled
-        ? '3. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
+        ? '3. "arousal_delta": Physical arousal shift this turn. (' "$kMinArousalDelta to +$kMaxArousalDelta" ')\n'
               '   Current arousal: ${nsfwService.arousalLevel}/100. '
               'Arousal measures DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   Be bold with arousal deltas — intimate moments should produce significant shifts (+10 to +20).\n'
@@ -425,7 +473,7 @@ class RealismEvals {
       if (nsfwService.nsfwCooldownEnabled) {
         final arDelta = extractJsonInt(text, 'arousal_delta');
         if (arDelta != null) {
-          final arousalDelta = arDelta.clamp(-10, 10);
+          final arousalDelta = arDelta.clamp(kMinArousalDelta, kMaxArousalDelta);
           nsfwService.setArousalLevel(
             (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
           );
@@ -613,11 +661,11 @@ class RealismEvals {
         '$emotionCtx${postureCtx}Current relationship tension: ${relationshipService.shortTermTierName} | Trust level: ${relationshipService.trustLevel}\n\n';
 
     final arousalField = nsfwService.nsfwCooldownEnabled
-        ? ', "arousal_delta": <number -25 to +25>'
+        ? ", \"arousal_delta\": <number $kMinArousalDelta to +$kMaxArousalDelta>"
         : '';
     // Arousal is field 8 (after posture), objective is 9, fixation 10, reason 11
     final arousalInstr = nsfwService.nsfwCooldownEnabled
-        ? '8. "arousal_delta": Physical arousal shift this turn. (-25 to +25)\n'
+        ? '8. "arousal_delta": Physical arousal shift this turn. (' "$kMinArousalDelta to +$kMaxArousalDelta" ')\n'
               '   Current arousal: ${nsfwService.arousalLevel}/100. '
               'Arousal = DESIRE and PHYSICAL RESPONSE, not progress toward orgasm.\n'
               '   Be bold — intimate moments should produce significant shifts (+10 to +20).\n'
@@ -638,7 +686,7 @@ class RealismEvals {
         '$relationshipCtx'
         'Reactions are subjective! Evaluate ALL changes through $charName\'s specific personality.\n\n'
         'Evaluate ALL of the following at once:\n'
-        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (-15 to +15)\n'
+        '1. "relationship_delta": How did this exchange shift $charName\'s warmth toward $userName? (' "$kMinRelationshipDelta to +$kMaxRelationshipDelta" ')\n'
         '   +15: Life-changing — a moment that fundamentally redefines the relationship\n'
         '   +10: Profoundly moving — raw vulnerability, sacrifice, or devotion that leaves $charName shaken\n'
         '   +7: Deeply touched — a significant emotional breakthrough or act of genuine care\n'
@@ -650,7 +698,7 @@ class RealismEvals {
         '   -10: Devastated — a severe betrayal of emotional trust\n'
         '   -15: Devastating betrayal — a relationship-destroying act\n'
         '   ⚠ Default to 0 for normal conversation. Only go negative if $userName was clearly unkind, dismissive, or harmful.\n'
-        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (-200 to +50)\n'
+        '2. "trust_delta": Did $userName — NOT $charName — do something that builds or destroys $charName\'s trust in $userName? (' "$kMinTrustDelta to +$kMaxTrustDelta" ')\n'
         '   Trust is SUBJECTIVE to $charName\'s personality and what she values. Examples:\n'
         '   +30 to +50: $userName did something EXTRAORDINARILY trustworthy — a selfless sacrifice, returning something precious, protecting $charName at real cost to themselves, or proving loyalty in a way that CANNOT be faked\n'
         '   +10 to +20: $userName did something meaningfully trustworthy — kept a difficult promise, showed vulnerability, stood firm under pressure in a way $charName deeply respects\n'
@@ -686,81 +734,8 @@ class RealismEvals {
       final searchText = stripThinkBlocks(raw);
       final text = searchText.isNotEmpty ? searchText : raw;
 
-      // ── Relationship fields ──
-      int bondDelta = 0;
-      final relDelta = extractJsonInt(text, 'relationship_delta');
-      if (relDelta != null) {
-        bondDelta = relDelta.clamp(-50, 50);
-        relationshipService.applyScoreDelta(bondDelta);
-      }
-
-      int trustDelta = 0;
-      final trDelta = extractJsonInt(text, 'trust_delta');
-      if (trDelta != null) {
-        trustDelta = trDelta.clamp(-50, 30);
-        if (trustDelta != 0) {
-          relationshipService.applyTrustDelta(trustDelta);
-        }
-      }
-
-      int arousalDelta = 0;
-      if (nsfwService.nsfwCooldownEnabled) {
-        final arDelta = extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          arousalDelta = arDelta.clamp(-25, 25);
-          nsfwService.setArousalLevel(
-            (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-        }
-      }
-
-      // Extract and store per-chip reasons for hover tooltips
-      final bondReasonMatch = RegExp(
-        r'"bond_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final bondReason = bondReasonMatch?.group(1)?.trim() ?? '';
-      if (bondReason.isNotEmpty && bondReason.toLowerCase() != 'none') {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['bond_reason'] = bondReason;
-        setPendingRealismMetadata(pending);
-      }
-
-      final trustReasonMatch = RegExp(
-        r'"trust_reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(text);
-      final trustReason = trustReasonMatch?.group(1)?.trim() ?? '';
-      if (trustReason.isNotEmpty && trustReason.toLowerCase() != 'none') {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['trust_reason'] = trustReason;
-        setPendingRealismMetadata(pending);
-      }
-
-      if (bondDelta != 0 || arousalDelta != 0 || trustDelta != 0) {
-        var pending = getPendingRealismMetadata() ?? {};
-        pending['bond_delta'] = bondDelta;
-        if (arousalDelta != 0) {
-          pending['arousal_delta'] = arousalDelta;
-        }
-        if (trustDelta != 0) {
-          pending['trust_delta'] = trustDelta;
-        }
-        if (bondReason.isNotEmpty) {
-          pending['bond_reason'] = bondReason;
-        }
-        if (trustReason.isNotEmpty) {
-          pending['trust_reason'] = trustReason;
-        }
-        setPendingRealismMetadata(pending);
-      } else if (bondReason.isNotEmpty || trustReason.isNotEmpty) {
-        var pending = getPendingRealismMetadata() ?? {};
-        if (bondReason.isNotEmpty) {
-          pending['bond_reason'] = bondReason;
-        }
-        if (trustReason.isNotEmpty) {
-          pending['trust_reason'] = trustReason;
-        }
-        setPendingRealismMetadata(pending);
-      }
+      // ── Relationship / trust / arousal (unified with multi-call path) ──
+      _parseAndApplyRelationshipDeltas(text);
 
       // ── Autonomous Objective ──
       final objectiveMatch = RegExp(
