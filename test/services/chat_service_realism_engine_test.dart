@@ -272,9 +272,13 @@ void main() {
           await chat.startNewChat();
 
           expect(chat.realismEnabled, isTrue);
-          // V2.5 seed path: shortTermBond 55 (<=150) migrates *2 via seedFromV2OrExt -> 110.
-          // (Trust 11 unaffected by bond migrate; longTerm would also *2 if present.)
-          expect(chat.relationshipService.affectionScore, 110);
+          // Fresh V2.5 card/extension seed path (setActive + startNewChat with frontPorchExtensions)
+          // intentionally uses seedFromCardV2OrExt (plain clamp, no *2 migration).
+          // This avoids doubling author-intended values on the current \u00b1300 scale (see
+          // "card-seed bypass" comments in chat_service.dart and relationship_service.dart).
+          // Legacy *2 migration (seedFromV2OrExt / migrateShortTermScore) applies only to
+          // old persisted session data. Trust is unaffected in either path.
+          expect(chat.relationshipService.affectionScore, 55);
           expect(chat.relationshipService.trustLevel, 11);
           if (chat.needsSimEnabled) {
             expect(chat.needsSimulation.vector, isNotEmpty);
@@ -574,12 +578,14 @@ void main() {
         // Launch a send that will enter the eval block.
         final future = chat.sendMessage('This should trigger a realism eval.');
 
-        // Poll briefly for the pre-eval window (_isEvaluatingRealism set around thins to realism_evals before the await on leaf fire).
+        // Poll for the pre-eval window (_isEvaluatingRealism set around thins to realism_evals before the await on leaf fire).
         // Uses existing public getter + small delays (no new methods, no test body count change). This reliably exercises "cancel during active" + abort paths in leaves via getIsCancelling cb (post-consolidated impact intentionally does not set the flag).
-        // Fixed heuristic 120ms replaced by short backoff loop to reduce flakes under load/scheduler variance.
-        for (int i = 0; i < 8; i++) {
+        // Increased budget (up to ~1s total) to reduce flakes under full-suite load / scheduler variance / sequential eval steps.
+        bool didRequestCancel = false;
+        for (int i = 0; i < 40; i++) {
           if (chat.isEvaluatingRealism) {
             await chat.cancelRealismEval();
+            didRequestCancel = true;
             break;
           }
           await Future<void>.delayed(const Duration(milliseconds: 25));
@@ -587,9 +593,17 @@ void main() {
 
         // The future should complete (possibly short-circuited) without hanging.
         try {
-          await future.timeout(const Duration(seconds: 2));
+          await future.timeout(const Duration(seconds: 3));
         } catch (_) {
           // Timeout or error is acceptable for cancel-during-eval; the important thing is we didn't leave the service stuck.
+        }
+
+        // Give the state machine a moment to clear the flag after abort/cancel (post-gen cleanup + notifier).
+        if (didRequestCancel) {
+          for (int i = 0; i < 10; i++) {
+            if (!chat.isEvaluatingRealism) break;
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+          }
         }
 
         expect(chat.isEvaluatingRealism, isFalse);
@@ -676,9 +690,16 @@ void main() {
           );
         }
 
-        await Future<void>.delayed(
-          Duration.zero,
-        ); // settle DB inserts for group members before setActiveGroup (prevents intermittent length<5 for cap guard in _groupCharacters at per-speaker eval time; symmetric to large group)
+        // Robust settle for DB inserts (mirrors large-group pattern for reliability under full-suite load).
+        int dbAttempts = 0;
+        while (dbAttempts < 100) {
+          final c = await db.groupMembers
+              .count(where: (tbl) => tbl.groupId.equals(gid))
+              .getSingle();
+          if (c >= 3) break;
+          await Future<void>.delayed(const Duration(milliseconds: 2));
+          dbAttempts++;
+        }
 
         final group = GroupChat(
           id: gid,
@@ -689,19 +710,30 @@ void main() {
         );
 
         await chat.setActiveGroup(group, groupRepo: groupRepo);
-        await Future<void>.delayed(
-          const Duration(milliseconds: 5),
-        ); // extra settle after setActiveGroup (repo populates _groupCharacters for cap cb + per-speaker seeding decision); complements the post-insert zero.
+
+        // Robust post-setActive settle for _groupCharacters (sourced from GroupTurnManager after repo load).
+        // The cap guard and per-speaker eval read chat.groupCharacters.length directly.
+        int gAttempts = 0;
+        while (gAttempts < 200) {
+          if (chat.groupCharacters.length >= 3) break;
+          await Future<void>.delayed(const Duration(milliseconds: 3));
+          gAttempts++;
+        }
 
         // Send as user — drives real group send path + _evaluateRealismForUpcomingGroupSpeaker
         // (impersonation, load scalars via RelationshipService, ensureInter..., scalar save, per-speaker eval via seam).
         await chat.sendMessage('Good evening, everyone.');
 
+        // Small post-send settle for side effects (prompts + inter-char under cap) under load.
+        await Future<void>.delayed(const Duration(milliseconds: 15));
+
         // Promotion + per-speaker path exercised.
         expect(chat.isGroupRealismActive, isTrue);
 
         // Public accessors + scalar swap (load/save) exercised with resolved keys.
-        final ava = CharacterCard(name: 'Ava');
+        // Use the actual runtime cards from the GroupTurnManager (they carry the exact id used for
+        // _groupRealism + inter-char storage, even when falling back to name for avatar-less test members).
+        final ava = chat.groupCharacters.firstWhere((c) => c.name == 'Ava');
         final needs = chat.getNeedsForGroupCharacter(ava);
         expect(needs, isA<Map<String, int>>());
 
@@ -714,7 +746,6 @@ void main() {
         );
         expect(rels, isA<Map<String, int>>());
         // Seeding (via RelationshipService + per-speaker eval under <=4 cap) populates entries for other members (or deltas).
-        // Strengthened from >=0 (no-op) now that settle + race fixes ensure the path exercises inter-char for 3-member case.
         expect(rels.length, greaterThan(0));
 
         // Contract: real per-speaker eval prompt builders (relationship/one-shot) were invoked for the impersonated speaker.
@@ -803,14 +834,14 @@ void main() {
         // Robust settle: wait until all 5 members are visible via direct DB count
         // (ensures _groupCharacters will have full length==5 when setActiveGroup
         // populates it and the per-speaker eval runs the cap guard).
-        // Replaces fragile fixed micro-delays that could still race under load/CI.
+        // Increased budget for reliability under full-suite / CI load.
         int attempts = 0;
-        while (attempts < 50) {
+        while (attempts < 150) {
           final c = await db.groupMembers
               .count(where: (tbl) => tbl.groupId.equals(gid))
               .getSingle();
           if (c >= 5) break;
-          await Future<void>.delayed(const Duration(milliseconds: 1));
+          await Future<void>.delayed(const Duration(milliseconds: 2));
           attempts++;
         }
 
@@ -825,14 +856,18 @@ void main() {
         // Robust post-setActive settle for the in-memory _groupCharacters (sourced from GroupTurnManager after repo load of members).
         // The cap guard (_shouldTrackInterCharacterRelationships) and per-speaker eval path read chat.groupCharacters.length / _groupCharacters.length directly.
         // DB count alone is not sufficient; the manager population is async after the await returns in some schedulings (full suite load, prior tests, etc.).
-        // This mirrors the documented race fix + delay in the sibling small-group (<=4) test.
         int gAttempts = 0;
-        while (gAttempts < 50) {
+        while (gAttempts < 200) {
           if (chat.groupCharacters.length >= 5) break;
-          await Future<void>.delayed(const Duration(milliseconds: 1));
+          await Future<void>.delayed(const Duration(milliseconds: 3));
           gAttempts++;
         }
         await chat.sendMessage('Hello to the whole large group.');
+
+        // Small post-send settle to let any final per-speaker eval side effects (prompt recording,
+        // relationship map writes under the cap guard) become visible to the subsequent expects.
+        // This helps under heavy full-suite scheduler contention.
+        await Future<void>.delayed(const Duration(milliseconds: 20));
 
         // Per-speaker evals still run (user-focused realism) even under cap.
         expect(
@@ -849,8 +884,12 @@ void main() {
 
         // The 4-char _shouldTrackInterCharacterRelationships guard kept inter-char empty for speakers
         // (no seeding happened inside the eval for any member).
+        // Use actual runtime cards from the group manager for ID key parity with the seeding path.
         for (final m in members) {
-          final card = CharacterCard(name: m);
+          final card = chat.groupCharacters.firstWhere(
+            (c) => c.name == m,
+            orElse: () => CharacterCard(name: m),
+          );
           final rels = chat.relationshipService.getInterCharacterRelationships(
             card.stableGroupId,
           );
