@@ -1369,13 +1369,34 @@ class _MessageBubbleState extends State<MessageBubble> {
       );
     }
 
+    // Safely build a list of children with spacers between them.
+    // The old expand(...).toList()..removeLast() pattern would throw
+    // "RangeError (length): Invalid value: Valid value range is empty: -1"
+    // whenever the source list was empty (chips or needsChipList after 0-delta filtering).
+    // This happened for messages whose realism metadata only contained needs_deltas
+    // (or a needs_deltas map whose deltas all filtered to 0) with no bond/trust/verif/etc.,
+    // or for older messages in history when the indicator was re-built after new realism
+    // metadata started being attached. The crash surfaced in the chat ListView item builder.
+    List<Widget> _spaced(List<Widget> items, double gap) {
+      if (items.isEmpty) return const <Widget>[];
+      final out = <Widget>[];
+      for (int i = 0; i < items.length; i++) {
+        out.add(items[i]);
+        if (i < items.length - 1) out.add(SizedBox(width: gap));
+      }
+      return out;
+    }
+
+    final classicSpaced = _spaced(chips, 10);
     final classicRow = Row(
       mainAxisSize: MainAxisSize.min,
-      children: chips.expand((c) => [c, const SizedBox(width: 10)]).toList()
-        ..removeLast(),
+      children: classicSpaced,
     );
 
     if (needsChipList.isEmpty) {
+      // Nothing classic and no needs chips → nothing to show (guard should have caught most,
+      // but be defensive after 0-delta filtering in needs).
+      if (classicSpaced.isEmpty) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.only(top: 10),
         child: Container(
@@ -1400,32 +1421,35 @@ class _MessageBubbleState extends State<MessageBubble> {
 
     // Two-row layout: Classic Realism chips on top, Needs chips on a dedicated second row below.
     // This prevents the single-row clutter the user was worried about.
+    // Only render the classic container if we actually have classic chips (bond/trust/verif/etc.);
+    // otherwise just show the needs row without an empty bordered box on top.
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Row 1: Classic Realism (Bond, Trust, Lust, Mood, Time, Chance Time, etc.)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.resolve(
-                context,
-                AppColors.resolve(
+          // Row 1: Classic Realism (Bond, Trust, Lust, Mood, Time, Chance Time, Director status, etc.)
+          if (classicSpaced.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.resolve(
                   context,
-                  Colors.black12,
+                  AppColors.resolve(
+                    context,
+                    Colors.black12,
+                    Colors.black.withValues(alpha: 0.06),
+                  ),
                   Colors.black.withValues(alpha: 0.06),
                 ),
-                Colors.black.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.white10),
               ),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: Colors.white10),
+              child: classicRow,
             ),
-            child: classicRow,
-          ),
 
-          const SizedBox(height: 4),
+          if (classicSpaced.isNotEmpty) const SizedBox(height: 4),
 
           // Row 2: Needs Simulation deltas (Energy, Hunger, Bladder, etc.)
           Container(
@@ -1437,11 +1461,7 @@ class _MessageBubbleState extends State<MessageBubble> {
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children:
-                  needsChipList
-                      .expand((c) => [c, const SizedBox(width: 8)])
-                      .toList()
-                    ..removeLast(),
+              children: _spaced(needsChipList, 8),
             ),
           ),
         ],
