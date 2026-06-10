@@ -121,9 +121,8 @@ class NeedsInjection {
 
     if (effectiveStep >= 5) return '';
 
-    final baseText =
-        (NeedsSimulation.needSteppedText[top.key] ??
-        const <String>[])[effectiveStep.clamp(0, 4)];
+    final list = NeedsSimulation.needSteppedText[top.key] ?? const <String>[];
+    final baseText = list.isNotEmpty ? list[effectiveStep.clamp(0, 4)] : top.key;
 
     final urgencyPrefix = "";
     final secondaryNote = "";

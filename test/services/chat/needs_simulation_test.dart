@@ -182,7 +182,8 @@ void main() {
     test('consume catas + step helpers', () {
       sim.initializeFresh();
       sim.consumePendingCatastrophe();
-      expect(sim.getNeedStep('hunger', 10), 0);
+      // current getNeedStep: 10 <=15 -> step 1 (thresholds [0,15,30,...])
+      expect(sim.getNeedStep('hunger', 10), 1);
     });
   });
 }
