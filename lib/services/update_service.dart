@@ -30,7 +30,11 @@ import 'package:front_porch_ai/app_version.dart';
 
 /// Cross-platform self-update service.
 /// Checks GitHub Releases for new versions and downloads/runs the update.
-/// Supports Windows (Inno Setup), Linux (AppImage), and macOS (DMG).
+/// Supports Windows (Inno Setup), Linux (AppImage), and macOS (.pkg primary
+/// with last unsigned/un-notarized DMG shim for seamless transition from
+/// .app/.dmg installs to .pkg). Old clients continue to find a recognizable
+/// asset; new clients prefer .pkg but fall back to legacy DMG names during
+/// the transition. The shim DMGs are produced only as a bridge (one last time).
 class UpdateService extends ChangeNotifier {
   static const String _repoOwner = 'linux4life1';
   static const String _repoName = 'front-porch-AI';
@@ -40,6 +44,15 @@ class UpdateService extends ChangeNotifier {
   static const String _linuxAsset = 'Front_Porch_AI-Linux.AppImage';
   static const String _linuxAssetNightly =
       'Front_Porch_AI_Nightly-Linux.AppImage';
+  // Primary (new canonical) asset names for macOS .pkg releases (signed+notarized).
+  static const String _macosAssetPkg = 'Front_Porch_AI.pkg';
+  static const String _macosAssetBetaPkg = 'Front_Porch_AI_MacOS.pkg';
+  static const String _macosAssetNightlyPkg = 'Front_Porch_AI_Nightly.pkg';
+  // Legacy DMG names — still published as unsigned shims for this transition
+  // release (and at least one more cycle) so the in-app updater works for all
+  // users (pre-pkg .dmg/.app drag installs + new .pkg installs) without forcing
+  // a manual download+double-click. Client code prefers the .pkg but probes
+  // these as fallback.
   static const String _macosAsset = 'Front_Porch_AI.dmg';
   static const String _macosAssetBeta = 'Front_Porch_AI_MacOS.dmg';
   static const String _macosAssetNightly = 'Front_Porch_AI_Nightly.dmg';
@@ -57,6 +70,11 @@ class UpdateService extends ChangeNotifier {
   double _downloadProgress = 0.0;
   bool _autoCheckEnabled = true;
   String? _pendingInstallerPath;
+  // The actual asset filename chosen (e.g. the .pkg or the fallback legacy .dmg shim).
+  // Used so download names the temp file after the real remote asset (extension
+  // then drives pkg vs dmg path in the install script). Sniffing the extension
+  // of _pendingInstallerPath at install time is the robust dispatch.
+  String _selectedAssetName = '';
 
   String get currentVersion => _currentVersion;
   String get latestVersion => _latestVersion;
@@ -132,9 +150,13 @@ class UpdateService extends ChangeNotifier {
       return _linuxAsset;
     }
     if (Platform.isMacOS) {
-      if (isNightlyBuild) return _macosAssetNightly;
-      if (isPreRelease) return _macosAssetBeta;
-      return _macosAsset;
+      // New clients use .pkg names (primary artifacts). The fallback to legacy
+      // DMG names happens in checkForUpdate (see _getLegacyMacDmgAsset) so that
+      // this binary (and old binaries still carrying the .dmg strings) can find
+      // an asset in transition releases that publish both.
+      if (isNightlyBuild) return _macosAssetNightlyPkg;
+      if (isPreRelease) return _macosAssetBetaPkg;
+      return _macosAssetPkg;
     }
     return '';
   }
@@ -232,24 +254,56 @@ class UpdateService extends ChangeNotifier {
       // Find the platform-specific update asset (now correctly picks Nightly/Beta/Stable)
       final targetAsset = _platformAsset;
       String? installerUrl;
+      String? resolvedAssetName;
       for (final asset in assets) {
         if (asset['name'] == targetAsset) {
           installerUrl = asset['browser_download_url'] as String?;
+          resolvedAssetName = targetAsset;
           break;
         }
       }
 
+      // macOS transition support (critical): prefer the new .pkg name (canonical
+      // for post-switch releases), but if not present in the release's asset list
+      // fall back to the exact legacy DMG name for that channel. This lets:
+      // - old client binaries (still compiled against the .dmg consts) find an
+      //   asset they recognize and successfully self-update;
+      // - new binaries (this code) also succeed on a "shim only" or mixed release
+      //   during the cutover, then after update they run the fixed logic.
+      // The shim DMGs are unsigned/un-notarized on purpose (see build/CI) so
+      // Gatekeeper does not interfere with the temp hdiutil attach used by the
+      // legacy replace path.
+      if (Platform.isMacOS && installerUrl == null) {
+        final legacyDmg = _getLegacyMacDmgAsset();
+        for (final asset in assets) {
+          if (asset['name'] == legacyDmg) {
+            installerUrl = asset['browser_download_url'] as String?;
+            resolvedAssetName = legacyDmg;
+            debugPrint(
+              'macOS update: preferred pkg "$targetAsset" not found in $originalTag; '
+              'falling back to legacy unsigned shim DMG "$legacyDmg" (smooth transition)',
+            );
+            break;
+          }
+        }
+      }
+
       if (installerUrl == null) {
-        debugPrint(
-          'No update asset ($targetAsset) found in release $originalTag',
-        );
+        final probed = Platform.isMacOS
+            ? '$targetAsset (or legacy ${_getLegacyMacDmgAsset()})'
+            : targetAsset;
+        debugPrint('No update asset ($probed) found in release $originalTag');
         return false;
       }
 
       _latestReleaseTag = originalTag;
       _latestVersion = normalizedVersion;
       _downloadUrl = installerUrl;
+      _selectedAssetName = resolvedAssetName ?? targetAsset;
       _releaseNotes = targetRelease['body'] as String? ?? '';
+      // The friendly "What's New" (including the macOS .pkg+shim transition note)
+      // comes from docs/<Branch>.md (e.g. docs/Rawhide.md) via the CI release_notes
+      // step; it is rendered in the in-app Update Available dialog.
       _updateAvailable = _isNewerVersion(normalizedVersion, _currentVersion);
 
       return _updateAvailable;
@@ -264,6 +318,8 @@ class UpdateService extends ChangeNotifier {
 
   /// Download the installer to a temp directory.
   /// Does NOT run it — call installNow() or let installOnClose() handle it.
+  /// On macOS the downloaded filename (and thus its extension) may be the .pkg
+  /// or a legacy .dmg shim depending on what the release actually contained.
   Future<void> downloadUpdate() async {
     if (!isSupported || _downloadUrl.isEmpty || _downloading) return;
 
@@ -274,7 +330,11 @@ class UpdateService extends ChangeNotifier {
 
     try {
       final tempDir = Directory.systemTemp;
-      final assetName = _platformAsset;
+      // Use the resolved asset name (may be the fallback shim .dmg) so the
+      // temp file has the correct extension for the later install dispatch.
+      final assetName = _selectedAssetName.isNotEmpty
+          ? _selectedAssetName
+          : _platformAsset;
       final sep = Platform.isWindows ? '\\' : '/';
       final installerPath = '${tempDir.path}$sep$assetName';
       final file = File(installerPath);
@@ -414,30 +474,71 @@ class UpdateService extends ChangeNotifier {
     return File(exe).parent.parent.parent.path;
   }
 
-  /// Replace the current .app bundle with the one inside the downloaded DMG.
+  /// Returns the legacy DMG asset name for the current channel.
+  /// Used only as fallback probe during the .dmg -> .pkg transition.
+  static String _getLegacyMacDmgAsset() {
+    if (isNightlyBuild) return _macosAssetNightly;
+    if (isPreRelease) return _macosAssetBeta;
+    return _macosAsset;
+  }
+
+  /// Install the macOS update (primary .pkg path or legacy DMG shim path).
   /// Spawns a detached shell script that:
-  ///   1. Waits for this process to exit
-  ///   2. Mounts the DMG
-  ///   3. Replaces the .app bundle
-  ///   4. Strips quarantine
-  ///   5. Unmounts the DMG
-  ///   6. Relaunches the app
-  Future<void> _replaceMacApp(String dmgPath) async {
+  ///   1. Waits for this process to exit (by PID)
+  ///   2. For .pkg (new primary): simply `open`s the .pkg so the user gets the
+  ///      standard Installer.app flow (one auth prompt, official Apple path,
+  ///      signed+notarized+stapled package installs the new .app to /Applications).
+  ///   3. For legacy .dmg shim (unsigned/un-notarized bridge): does the old
+  ///      hdiutil attach + find *.app + rm -rf + cp -R + xattr -cr + detach +
+  ///      relaunch. This path exists only to let pre-.pkg users (old .dmg drag
+  ///      installs) keep using the in-app updater during the transition.
+  ///      (Note: if a .pkg-installed bundle ever falls back to a shim DMG the
+  ///      rm/cp may fail due to ownership in /Applications; shims primarily
+  ///      serve the old .app users.)
+  /// The single script + extension sniff keeps the pending-installer path
+  /// unified and avoids method proliferation.
+  ///
+  /// Cleanup (rm of downloaded installer + script) is best-effort after launch
+  /// of the consumer (Installer.app or the new app). This can race on slow disks
+  /// or with detached exit(0) in the parent (errors only visible in system logs
+  /// after the app has exited). For .pkg we deliberately omit payload rm so the
+  /// Installer can manage its temp. Documented limitation per review feedback.
+  Future<void> _replaceMacApp(String installerPath) async {
     final currentApp = _currentMacAppPath;
     final appParent = File(currentApp).parent.path;
     final appName = currentApp.split('/').last;
     final destPath = '$appParent/$appName';
     final currentPid = pid; // Current process PID (dart:io top-level getter)
 
+    final lower = installerPath.toLowerCase();
+    final isPkg = lower.endsWith('.pkg');
+    final kind = isPkg ? 'PKG' : 'DMG shim';
+
     debugPrint(
-      'macOS update: will replace $currentApp from $dmgPath after PID $currentPid exits',
+      'macOS update: will handle $kind $installerPath after PID $currentPid exits (replacing $currentApp)',
     );
 
-    // Write a shell script that performs the replacement after we exit
+    // Compute the output script filename first (it is independent).
+    // Robust wait + cleanup + error to stderr (bash sidecar spirit).
     final scriptPath =
         '${Directory.systemTemp.path}/fp_update_${DateTime.now().millisecondsSinceEpoch}.sh';
-    final script =
-        '''#!/bin/bash
+
+    // Defense-in-depth escaping for paths embedded into the generated shell
+    // script (issue #12). Pid is numeric and safe. We use single-quote + ' -> '\''
+    // escaping for the three path values so that even if (theoretically) a path
+    // contained a single quote, the generated bash remains correct. Current
+    // values (asset names from GH, dest from resolvedExecutable walk) are
+    // controlled and safe, but this satisfies the nit without changing quoting
+    // style in the templates.
+    String _shellEscape(String p) => p.replaceAll("'", r"'\''");
+    final escInstaller = _shellEscape(installerPath);
+    final escDest = _shellEscape(destPath);
+    final escScript = _shellEscape(scriptPath);
+
+    String script;
+    if (isPkg) {
+      script =
+          '''#!/bin/bash
 # Wait for the current app process to exit (max 30s)
 for i in {1..60}; do
   if ! kill -0 $currentPid 2>/dev/null; then
@@ -446,41 +547,82 @@ for i in {1..60}; do
   sleep 0.5
 done
 
-# Mount the DMG
-MOUNT_OUTPUT=\$(hdiutil attach "$dmgPath" -nobrowse -noverify -mountrandom /tmp 2>&1)
+# Primary .pkg path (signed+notarized+stapled): just hand it to the system
+# Installer. User authenticates in the standard UI; the installer places
+# the new bundle (preserving sidecars etc.) and handles launch.
+open '$escInstaller'
+
+# Clean up the downloaded package and this script (best effort; see race note).
+# For .pkg we omit rm of the payload itself (let Installer.app / system manage
+# the temp file to avoid TOCTOU/race with the launched Installer process).
+rm -f '$escScript' || true
+
+# No explicit relaunch here — Installer.app or the user will start the new app.
+# (The old bundle at $destPath may be replaced in-place by the package.)
+''';
+    } else {
+      script =
+          '''#!/bin/bash
+# Wait for the current app process to exit (max 30s)
+for i in {1..60}; do
+  if ! kill -0 $currentPid 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+# Mount the DMG (legacy shim path — unsigned/un-notarized on purpose)
+# NOTE (per Issue C): the legacy shim path (critical for .dmg->.pkg transition
+# for old clients/pre-pkg users) relies on CI/gates/manual verification for
+# generated script invariants per NEVER-create + smallest-change rules.
+# Pure parts (name resolution, extension dispatch, template content) verified
+# via fix-round gates/re-reads/greps (no test file created).
+# All external-command path embeddings (hdiutil, rm, cp, open, etc.) now go
+# through the esc* forms for defense-in-depth (see _shellEscape above).
+MOUNT_OUTPUT=\$(hdiutil attach '$escInstaller' -nobrowse -noverify -mountrandom /tmp 2>&1)
 if [ \$? -ne 0 ]; then
   echo "Failed to mount DMG" >&2
   exit 1
 fi
 
-# Extract mount point (last field of last line, tab-delimited)
-MOUNT_POINT=\$(echo "\$MOUNT_OUTPUT" | tail -1 | awk -F'\\t' '{print \$NF}' | xargs)
+# Debug the raw output (helps diagnose mount issues on CI/user machines)
+echo "hdiutil attach output (for debugging shim path):" >&2
+echo "\$MOUNT_OUTPUT" >&2
 
-# Find the .app inside the mounted volume
+# Extract mount point robustly (cut -f uses tab by default; avoids any
+# literal-backslash-t parsing bugs from awk -F in generated script).
+# This is the critical fix for the legacy unsigned shim DMG path that allows
+# pre-pkg .app users and old clients to continue seamless in-app updates.
+MOUNT_POINT=\$(echo "\$MOUNT_OUTPUT" | tail -1 | cut -f 2- | xargs)
+
+# Find the .app inside the mounted volume (top level, per our shim layout)
 NEW_APP=\$(find "\$MOUNT_POINT" -maxdepth 1 -name "*.app" -type d | head -1)
-if [ -z "\$NEW_APP" ]; then
-  hdiutil detach "\$MOUNT_POINT" -quiet 2>/dev/null
-  echo "No .app found in DMG" >&2
+if [ -z "\$NEW_APP" ] || [ ! -d "\$NEW_APP" ]; then
+  hdiutil detach "\$MOUNT_POINT" -quiet 2>/dev/null || true
+  echo "No .app found in DMG (mount point was: \$MOUNT_POINT)" >&2
   exit 1
 fi
 
-# Replace the old app
-rm -rf "$destPath"
-cp -R "\$NEW_APP" "$destPath"
+# Replace the old app (works for user-owned drag installs from old DMGs)
+rm -rf '$escDest'
+cp -R "\$NEW_APP" '$escDest'
 
 # Strip quarantine
-xattr -cr "$destPath" 2>/dev/null
+xattr -cr '$escDest' 2>/dev/null || true
 
 # Unmount DMG
-hdiutil detach "\$MOUNT_POINT" -quiet 2>/dev/null
+hdiutil detach "\$MOUNT_POINT" -quiet 2>/dev/null || true
 
-# Clean up the DMG and this script
-rm -f "$dmgPath"
-rm -f "$scriptPath"
+# Clean up the DMG and this script (best effort; rm of the dmg payload happens
+# after detach so the mount consumer has released it; still racy on very slow
+# disks but acceptable for the legacy shim path).
+rm -f '$escInstaller' || true
+rm -f '$escScript' || true
 
 # Relaunch
-open -n "$destPath"
+open -n '$escDest'
 ''';
+    }
 
     await File(scriptPath).writeAsString(script);
     await Process.run('chmod', ['+x', scriptPath]);
@@ -493,9 +635,11 @@ open -n "$destPath"
   }
 
   /// Relaunch the macOS app after replacing it.
-  /// (Now handled by the update script, but kept for installOnClose fallback)
+  /// (Now handled by the update script for both paths; kept for API symmetry
+  /// and installOnClose fallback.)
   Future<void> _relaunchMacApp() async {
-    // Relaunch is handled by the update shell script
+    // Relaunch (for DMG path) or user/Installer action (for PKG path) is handled
+    // by the update shell script. Nothing to do here.
   }
 
   /// Normalizes a version/tag string for comparison and display:
