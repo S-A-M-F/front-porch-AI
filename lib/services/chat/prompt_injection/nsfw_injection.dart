@@ -167,17 +167,8 @@ class NsfwInjection {
         statePrompt += ' $charName is currently $arousalDesc.\n';
       }
 
-      // When the old refractory has ended but newer protective layers are still active
-      if (false) { // afterglow/suppression buffers expunged; no special state text
-        statePrompt +=
-            ' Even though the immediate refractory sensitivity has passed, $charName is still inside a lingering afterglow / lust-haze window. Other needs (hunger, energy, the desire to get up and do things) feel noticeably muted or unimportant for a while longer.\n';
-      }
-
-      // Explicit post-crash warning when the protective layers have expired
-      if (false) { // postClimaxCrash / afterglow / suppression buffers expunged
-        statePrompt +=
-            ' A delayed wave of heavy, sated physical exhaustion is now hitting $charName. They may become slow, sleepy, reluctant to move, and deeply content to stay exactly where they are (${relationshipService.spatialStance}). This is the classic post-orgasm crash — warm, heavy, and very real.\n';
-      }
+      // (afterglow / post-climax crash / suppression buffer text removed in simplification;
+      // no protective "muted needs" window is injected anymore)
     }
 
     statePrompt +=

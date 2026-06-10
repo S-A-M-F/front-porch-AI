@@ -158,7 +158,6 @@ class ChatService extends ChangeNotifier {
   int _tokensGenerated = 0;
   int _maxTokens = 0;
   DateTime? _generationStartTime;
-  double _lastGenerationDurationSeconds = 0.0;
   bool _isBuffering = false;
   GenerationPhase _generationPhase = GenerationPhase.idle;
   DateTime? _prefillStartTime; // When we entered prefill (for elapsed timer)
@@ -6258,13 +6257,7 @@ class ChatService extends ChangeNotifier {
       _generationPhase = GenerationPhase.idle;
       _prefillStartTime = null;
       _prefillPromptTokens = 0;
-      if (_generationStartTime != null) {
-        _lastGenerationDurationSeconds =
-            DateTime.now().difference(_generationStartTime!).inMilliseconds /
-            1000.0;
-      }
       _generationStartTime = null;
-      _lastGenerationDurationSeconds = 0.0;
       _perfPoller?.cancel();
       _perfPoller = null;
 
@@ -6465,7 +6458,6 @@ class ChatService extends ChangeNotifier {
       _prefillStartTime = null;
       _prefillPromptTokens = 0;
       _generationStartTime = null;
-      _lastGenerationDurationSeconds = 0.0;
 
       // "Connection closed before full header was received" is thrown by the http package
       // when the HTTP client is closed mid-stream (either by abortGeneration() or a process
