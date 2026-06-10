@@ -9,6 +9,7 @@
 // aug (realism_engine_test, group_realism_test, etc) receive *only* qualified passive notes
 // in headers/comments (no leaf-specific logic edits; full in dedicated + manual;
 // exercised via god thins + evaluator thin path ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no realism-verification-specific aug file edits; full in dedicated + manual; exercised via god thins + verifyFn wiring ; qualified notes only in dedicated header + god + MD per precedent).
 // aug exercising only passive/qualified (no needs-spaghetti-removal-specific aug file edits; full in dedicated + manual; exercised via god thins + evaluator thin path ; qualified notes only in dedicated header + god + MD per precedent).
 // 1:1 vs group + oneShot vs normal + Realism/Needs parity 1:1 equivalent deltas/behavior at all times (thin authority too; dispatch via cbs + god impersonation).
 // Dispatch preserved exactly. All per plan + CLAUDE/AGENTS (deletion part of task, live grep claims vs on-disk, 0 new god privs, gate hygiene with cd+abs+EXIT+literal raw + re-reads, etc).

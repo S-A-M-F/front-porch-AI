@@ -145,10 +145,11 @@ class AutomatedConfigStep extends StatelessWidget {
                         label: Text(t),
                         selected: sel,
                         onSelected: (v) {
-                          if (v)
+                          if (v) {
                             state.selectedTones.add(t);
-                          else
+                          } else {
                             state.selectedTones.remove(t);
+                          }
                           state.notify();
                         },
                       );

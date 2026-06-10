@@ -239,6 +239,11 @@ class EvolutionService {
       );
 
       final prompt =
+          'CRITICAL: Output ONLY structured data for the two fields below. No other text before or after.\n'
+          'Preferred format: a single JSON object {"personality": "...", "scenario": "..."} with the full texts as values.\n'
+          'If emitting a perfect JSON object is difficult for this long creative rewrite, use this exact labeled format instead (no extra sentences):\n'
+          'PERSONALITY:\n<the complete rewritten personality here, using {{char}} and {{user}}>\n\n'
+          'SCENARIO:\n<the complete rewritten scenario here>\n\n'
           'You are analyzing how a roleplay character has evolved through their interactions. '
           'Based on the conversation history and memories below, rewrite the character\'s personality '
           'and scenario to reflect how they have grown, changed, or been affected by events.\n\n'
@@ -248,7 +253,7 @@ class EvolutionService {
           '- Update the scenario to reflect the current state of the story/relationship\n'
           '- Keep the same level of detail as the originals\n'
           '- Use {{char}} for the character name and {{user}} for the user name\n'
-          '- Return ONLY a JSON object, no other text\n\n'
+          '- The personality and scenario values may contain newlines and {{char}}/{{user}} macros\n\n'
           'Character name: $charName\n'
           'User name: $userName\n\n'
           'Original personality:\n$originalPersonality\n\n'
@@ -258,9 +263,7 @@ class EvolutionService {
           '$memoryContext'
           '$summaryContext'
           'Recent conversation:\n$recentContext\n\n'
-          'Return a JSON object with exactly two keys: "personality" and "scenario". '
-          'Each value should be the full rewritten text for that field.\n'
-          'Response:';
+          'Output the structured PERSONALITY and SCENARIO (JSON object preferred, or the labeled format above).';
 
       debugPrint('[Evolution] Prompt built: ${prompt.length} chars');
 
@@ -326,11 +329,13 @@ class EvolutionService {
 
       setEvolutionStatus('Parsing evolved traits...');
 
-      // Parse JSON from response — try multiple strategies
+      // Parse JSON from response — robust strategies tolerant of reasoning
+      // preamble from remote/thinking models, {{char}} macros inside the *content*
+      // of personality/scenario text, code fences, truncation, and stray braces.
       String? newPersonality;
       String? newScenario;
 
-      // Strategy 1: Extract from markdown code block
+      // Strategy 1: Extract from markdown code block (preferred when present)
       var jsonStr = responseText;
       if (jsonStr.contains('```')) {
         final match = RegExp(
@@ -345,38 +350,87 @@ class EvolutionService {
         }
       }
 
-      // Strategy 2: Find JSON object with greedy match
-      final objMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(jsonStr);
-      if (objMatch != null) {
-        final jsonCandidate = objMatch.group(0)!;
+      // Strategy 2: Find best JSON object. Anchor on the last structural key
+      // ("personality" / "scenario") so we don't start the span at a data '{'
+      // from {{char}} / {{user}} or other prose the model echoed or wrote.
+      // Falls back to simple outer { ... } when no key anchor is present.
+      final jsonCandidate = _extractBestJsonObject(
+        jsonStr,
+        requiredKeys: ['personality', 'scenario'],
+      );
+
+      if (jsonCandidate != null && jsonCandidate.isNotEmpty) {
         debugPrint(
           '[Evolution] Found JSON candidate (${jsonCandidate.length} chars)',
         );
         try {
           final parsed = jsonDecode(jsonCandidate) as Map<String, dynamic>;
-          newPersonality = parsed['personality'] as String?;
-          newScenario = parsed['scenario'] as String?;
+          newPersonality = _asString(parsed['personality']);
+          newScenario = _asString(parsed['scenario']);
           debugPrint(
             '[Evolution] JSON parsed OK — personality=${newPersonality?.length ?? 0} chars, scenario=${newScenario?.length ?? 0} chars',
           );
         } catch (e) {
           debugPrint('[Evolution] JSON parse attempt failed: $e');
-          // Strategy 3: Try to fix truncated JSON — the model may have hit max tokens
-          // Look for the last complete string value
+          // Log preview of the bad candidate (helps diagnose future model quirks)
+          final preview = jsonCandidate.length > 400
+              ? '${jsonCandidate.substring(0, 200)}...${jsonCandidate.substring(jsonCandidate.length - 200)}'
+              : jsonCandidate;
+          debugPrint('[Evolution] Bad candidate preview (first/last): $preview');
+
           debugPrint('[Evolution] Attempting truncated JSON recovery...');
           try {
-            // Try adding a closing brace to incomplete JSON
-            final fixedJson = '$jsonCandidate"}';
-            final parsed = jsonDecode(fixedJson) as Map<String, dynamic>;
-            newPersonality = parsed['personality'] as String?;
-            newScenario = parsed['scenario'] as String?;
-            debugPrint('[Evolution] Truncated JSON recovery succeeded');
+            final repaired = _repairTruncatedJson(jsonCandidate);
+            final parsed = jsonDecode(repaired) as Map<String, dynamic>;
+            newPersonality = _asString(parsed['personality']);
+            newScenario = _asString(parsed['scenario']);
+            if ((newPersonality?.isNotEmpty ?? false) &&
+                (newScenario?.isNotEmpty ?? false)) {
+              debugPrint('[Evolution] Truncated JSON recovery succeeded');
+            }
           } catch (_) {
             debugPrint('[Evolution] Truncated JSON recovery failed');
           }
         }
       } else {
-        debugPrint('[Evolution] ✗ No JSON object ({...}) found in response');
+        debugPrint(
+          '[Evolution] ✗ No JSON object containing personality/scenario found in response',
+        );
+      }
+
+      // ── Labeled sections fallback (for models that partially follow the prompt) ──
+      if ((newPersonality == null || newPersonality.isEmpty) ||
+          (newScenario == null || newScenario.isEmpty)) {
+        final labeled = _tryParseLabeledSections(responseText);
+        if (labeled != null) {
+          newPersonality ??= labeled.$1;
+          newScenario ??= labeled.$2;
+          if (newPersonality.isNotEmpty && newScenario.isNotEmpty) {
+            debugPrint('[Evolution] Parsed using labeled PERSONALITY:/SCENARIO: sections');
+          }
+        }
+      }
+
+      // ── Prose salvage fallback (for models that completely ignore JSON/labels and just write the rewrite) ──
+      // This is the path that catches the exact failure mode where the model produces good
+      // evolved personality text (often starting with "{{char}} is ...") but no wrapper at all.
+      if (newPersonality == null || newPersonality.isEmpty) {
+        // Prefer a bad JSON candidate that turned out to be prose, otherwise the full response.
+        final proseSource = (jsonCandidate != null &&
+                jsonCandidate.length > 400 &&
+                jsonCandidate.contains('{{char}}'))
+            ? jsonCandidate
+            : responseText;
+        final salvaged = _salvagePersonalityFromProse(proseSource);
+        if (salvaged != null && salvaged.length > 80) {
+          newPersonality = salvaged;
+          // Scenario evolution is secondary when the model gave us no structure;
+          // reuse the most recent known version (or original) so we don't lose it.
+          newScenario ??= (currentScenario.isNotEmpty ? currentScenario : originalScenario);
+          debugPrint(
+            '[Evolution] ⚠ Model emitted raw prose instead of structured output — salvaged personality directly (${newPersonality.length} chars). Reused prior scenario for safety.',
+          );
+        }
       }
 
       if (newPersonality == null ||
@@ -468,4 +522,187 @@ class EvolutionService {
   // Note: getEvolved*For / getEvolutionCountFor public surface are thin delegates in god
   // (they use the same cbs internally or direct god map access for UI/sidebar; parity
   // via cbs for per-char in group).
+
+  // ── Robust JSON extraction helpers (fix for reasoning-preamble + {{char}} false starts + truncation) ──
+
+  /// Extract the best JSON object substring that is likely to contain the
+  /// required structural keys. Anchors on the *last* occurrence of a key like
+  /// "personality" so that { characters appearing inside the *data* (e.g.
+  /// {{char}} / {{user}} macros the model is rewriting, or prose) do not cause
+  /// us to start the span too early and produce unparseable garbage.
+  String? _extractBestJsonObject(
+    String text, {
+    required List<String> requiredKeys,
+  }) {
+    if (text.isEmpty) return null;
+
+    // Prefer anchoring on the last structural key we care about.
+    int bestAnchor = -1;
+    for (final key in requiredKeys) {
+      final idx = text.lastIndexOf('"$key"');
+      if (idx > bestAnchor) bestAnchor = idx;
+    }
+
+    int start;
+    if (bestAnchor != -1) {
+      // Walk backward from the key to a plausible opening brace.
+      start = text.lastIndexOf('{', bestAnchor);
+      if (start == -1) start = text.indexOf('{');
+    } else {
+      // No key found — fall back to the outermost object span.
+      start = text.indexOf('{');
+    }
+    if (start != -1) {
+      final end = text.lastIndexOf('}');
+      if (end > start) {
+        return text.substring(start, end + 1);
+      } else {
+        // Truncation (no closing } in the text yet). Return from the opening {
+        // to the end of the string so the caller can run repair which will
+        // supply the missing closers. This is the key fix for the old
+        // "truncated recovery" cases in tests and real remote responses.
+        return text.substring(start);
+      }
+    }
+    return null;
+  }
+
+  /// Repair a truncated JSON string by closing unterminated strings and
+  /// supplying the missing closing brackets/braces. Modeled on the proven
+  /// implementation used by StoryPipeline.
+  String _repairTruncatedJson(String json) {
+    var openBraces = 0;
+    var openBrackets = 0;
+    var inString = false;
+    var escaped = false;
+
+    for (int i = 0; i < json.length; i++) {
+      final c = json[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (c == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (c == '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (c == '{') openBraces++;
+      if (c == '}') openBraces--;
+      if (c == '[') openBrackets++;
+      if (c == ']') openBrackets--;
+    }
+
+    var repaired = json;
+    if (inString) repaired += '"';
+    for (int i = 0; i < openBrackets; i++) {
+      repaired += ']';
+    }
+    for (int i = 0; i < openBraces; i++) {
+      repaired += '}';
+    }
+    return repaired;
+  }
+
+  /// Safe cast to String (LLM may emit number / bool / null for a key).
+  String? _asString(dynamic v) {
+    if (v == null) return null;
+    if (v is String) return v;
+    return v.toString();
+  }
+
+  /// Try to parse "PERSONALITY:\n...\n\nSCENARIO:\n..." (or close variants like
+  /// **Personality:**, Personality:, etc.). This is the explicit fallback format
+  /// documented in the prompt for models that struggle with raw JSON on long outputs.
+  (String, String)? _tryParseLabeledSections(String text) {
+    if (text.isEmpty) return null;
+    final t = text.trim();
+
+    // Common header variants, case-insensitive, tolerant of **markdown** or extra colons.
+    final persRe = RegExp(
+      r'(?:^|\n)\s*\*{0,2}(?:PERSONALITY|Personality|personality)\*{0,2}\s*[:：]?\s*\n+',
+      dotAll: true,
+    );
+    final scenRe = RegExp(
+      r'(?:^|\n)\s*\*{0,2}(?:SCENARIO|Scenario|scenario)\*{0,2}\s*[:：]?\s*\n+',
+      dotAll: true,
+    );
+
+    final persMatch = persRe.firstMatch(t);
+    final scenMatch = scenRe.firstMatch(t);
+
+    String? pers;
+    String? scen;
+
+    if (persMatch != null) {
+      final start = persMatch.end;
+      int end = t.length;
+      if (scenMatch != null && scenMatch.start > start) {
+        end = scenMatch.start;
+      }
+      pers = t.substring(start, end).trim();
+    }
+
+    if (scenMatch != null) {
+      final start = scenMatch.end;
+      scen = t.substring(start).trim();
+    }
+
+    if (pers != null && pers.isNotEmpty) {
+      // If we only got personality, scenario may be missing — caller will decide reuse.
+      return (pers, scen ?? '');
+    }
+    if (scen != null && scen.isNotEmpty && pers == null) {
+      // Uncommon, but allow scenario-only salvage
+      return ('', scen);
+    }
+    return null;
+  }
+
+  /// Heuristic salvage when the model completely ignored all structured output
+  /// instructions and just wrote the evolved personality as plain prose (often
+  /// beginning with "{{char}} is ..." or similar descriptive text using the macros).
+  /// We strip obvious leading reasoning, then take the longest descriptive block
+  /// that contains {{char}} references. This turns "total failure" into "we at
+  /// least captured the creative rewrite the model did".
+  String? _salvagePersonalityFromProse(String text) {
+    if (text.isEmpty) return null;
+    var t = text.trim();
+
+    // Drop common leading meta/reasoning paragraphs the model emits before the actual rewrite.
+    t = t.replaceFirst(
+      RegExp(
+        r'^((The user wants|I (need|will|should|must)|Based on the (conversation|history|memories|provided)|'
+        r'After (reviewing|analyzing|looking)|The (conversation|history) shows|Here (is|are)|'
+        r'Let me (rewrite|update|craft)|I should (focus|preserve|keep)).{0,400}?[\.\n]{1,3}){1,4}',
+        dotAll: true,
+        caseSensitive: false,
+      ),
+      '',
+    ).trim();
+
+    // If what's left is substantial and uses the {{char}} style the model was asked to preserve, use it.
+    if (t.length > 150 && t.contains('{{char}}')) {
+      // Remove any trailing leaked instructions
+      t = t.replaceFirst(RegExp(r'\n*(Response:|Return only|Output only).*$', caseSensitive: false, dotAll: true), '').trim();
+      return t;
+    }
+
+    // Secondary: grab the last substantial chunk that mentions {{char}} (the model often puts the good evolved text at the end).
+    final lastMention = t.lastIndexOf('{{char}}');
+    if (lastMention >= 0) {
+      // Take from a bit before the last {{char}} to the end (captures the final descriptive block)
+      final start = (lastMention - 80).clamp(0, t.length);
+      final tail = t.substring(start).trim();
+      if (tail.length > 150) {
+        return tail;
+      }
+    }
+
+    return null;
+  }
 }

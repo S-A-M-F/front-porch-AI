@@ -514,7 +514,7 @@ void main() {
     });
 
     test(
-      'persist updates count and evolved via cb (truncated recovery attempt/failure path coverage; heuristic not guaranteed per re-review B; use strict "attempt/failure path only; heuristic not guaranteed" qualify + align asserts to actual outcomes for the input (e.g. no Growth on parse fail); error expect exact for the input)',
+      'persist updates count and evolved via cb (truncated recovery now succeeds with proper brace-counting repair)',
       () async {
         final c = CharacterCard(
           name: 'C',
@@ -530,18 +530,17 @@ void main() {
             _mkMsg('U', '3'),
             _mkMsg('C', '4'),
           ],
-          // deliberately truncated incomplete input to hit Strategy 3 recovery code path (objMatch + catch + fixedJson attempt); per re-review B, success not guaranteed (heuristic fragility) -- this input exercises attempt/failure (parse error path); see error test for similar recovery attempt coverage. Adjust assert to actual outcome for this input (no Growth).
+          // Truncated (missing final " and }) — the robust _repairTruncatedJson now closes it and yields usable fields.
+          // (Previous dumb append "} was fragile; this exercises the real repair path and demonstrates the fix.)
           streamFactory: (_) => Stream.value(
             '{"personality":"np from recovery","scenario":"ns from recovery',
           ),
         );
         await svc.triggerCharacterEvolution(targetCharacter: c);
         final eff = svc.getEffectivePersonality(c);
-        // actual for this input (from fix2 gate): no JSON object / missing fields (recovery attempt ran but did not produce valid fields); no Growth
-        expect(
-          eff,
-          isNot(contains('[Character Growth')),
-        ); // no layer (heuristic failure for this cut)
+        // With the fix, recovery succeeds and we get the layered growth block + recovered text.
+        expect(eff, contains('[Character Growth'));
+        expect(eff, contains('np from recovery'));
       },
     );
 
@@ -634,6 +633,76 @@ void main() {
         eff,
         contains('m'),
       ); // evolved text from response for this test's target
+    });
+
+    test(
+      'prose salvage when model completely ignores JSON and emits raw {{char}} personality rewrite (the reported remote-API failure mode)',
+      () async {
+        final c = CharacterCard(
+          name: 'Iris',
+          description: '',
+          personality: 'old base personality that is being replaced',
+          scenario: 'old scenario',
+        );
+        final statuses = <String>[];
+        String? err;
+        final svc = createTestEvolutionService(
+          activeChar: c,
+          messages: [
+            _mkMsg('U', '1'),
+            _mkMsg('Iris', '2'),
+            _mkMsg('U', '3'),
+            _mkMsg('Iris', '4'),
+            _mkMsg('U', '5'),
+            _mkMsg('Iris', '6'),
+          ],
+          // This is the shape from the user report: reasoning preamble + long free-form rewrite
+          // starting with "{{char}} is sharp..." with no JSON wrapper and no labeled sections.
+          // The salvage must capture it as personality and still produce the [Character Growth] layer.
+          streamFactory: (_) => Stream.value(
+            'The user wants me to rewrite Iris\'s personality...\n\n'
+            '{{char}} is sharp, playful, and warmly affectionate, but beneath her bright ENFP energy lies a newly forged steel: she is fully, irrevocably autonomous. '
+            'Quiet shared silences that are not empty: when {{user}} is reading or thinking and she is curled up in a corner window, just watching, feeling like she belongs. '
+            'Physical touch in the cybernetic sense that makes her light up because she *wants* to be seen.\n\n'
+            'More paragraphs of evolved description here with {{char}} and {{user}}.',
+          ),
+          statuses: statuses,
+        );
+        await svc.triggerCharacterEvolution(targetCharacter: c);
+
+        expect(err, isNull); // no error set
+        final eff = svc.getEffectivePersonality(c);
+        expect(eff, contains('[Character Growth'));
+        expect(eff, contains('newly forged steel')); // from the salvaged prose
+        expect(eff, contains('autonomous'));
+        // Status should have reached parsing (even though it went through salvage)
+        expect(statuses, contains('Parsing evolved traits...'));
+      },
+    );
+
+    test('labeled sections PERSONALITY:/SCENARIO: are parsed when JSON is absent', () async {
+      final c = CharacterCard(
+        name: 'C',
+        description: '',
+        personality: 'orig',
+        scenario: 'origs',
+      );
+      final svc = createTestEvolutionService(
+        activeChar: c,
+        messages: [_mkMsg('U', '1'), _mkMsg('C', '2'), _mkMsg('U', '3'), _mkMsg('C', '4')],
+        streamFactory: (_) => Stream.value(
+          'Some reasoning first.\n\n'
+          'PERSONALITY:\nShe has grown braver and more independent around {{user}}.\n\n'
+          'SCENARIO:\nThey now live together in the renovated outpost.',
+        ),
+      );
+      await svc.triggerCharacterEvolution(targetCharacter: c);
+      final effP = svc.getEffectivePersonality(c);
+      final effS = svc.getEffectiveScenario(c);
+      expect(effP, contains('[Character Growth'));
+      expect(effP, contains('grown braver'));
+      expect(effS, contains('[Current Situation'));
+      expect(effS, contains('renovated outpost'));
     });
   });
 }

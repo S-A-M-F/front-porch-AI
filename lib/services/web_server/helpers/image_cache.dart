@@ -63,8 +63,8 @@ class ImageCacheHelper {
     return '$hash$ext';
   }
 
-  /// GET /api/image-cache/check?url=<encoded_url>
-  /// Returns `{ cached: bool }` — checks if URL is already in local image cache.
+  /// GET /api/image-cache/check?url=[encoded_url]
+  /// Returns { cached: bool } — checks if URL is already in local image cache.
   Future<shelf.Response> check(shelf.Request request) async {
     final url = request.url.queryParameters['url'];
     if (url == null || url.isEmpty) {
