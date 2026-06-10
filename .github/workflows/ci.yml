@@ -98,6 +98,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Setup Python (for sidecars used by expression classifier / ONNX tests etc.)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps for test sidecars (numpy etc for sentiment_classifier.py)
+        run: pip install numpy onnxruntime huggingface_hub transformers
+
       - name: Run Tests
         # Use --concurrency=1 because several tests (notably the "real production"
         # ChatService + GroupTurnManager + per-speaker realism evals + DB settles
