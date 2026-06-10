@@ -100,7 +100,10 @@ class FrontPorchExtensions {
     // Director authority on needs deltas (simple model+Director path; off default = legacy conservative)
     this.realismNeedsDirectorAuthority = false,
 
-    // Needs delta strength exponent (1-5); 1 = baseline. Injected to model + Director; scales final deltas.
+    // Needs delta strength (1-5). Injected into the first needs-impact model call and (when Director
+    // authority is enabled) the verifier prompt so the model and Director emit/correct deltas at the
+    // requested magnitude on the first pass. The Director must not receive an already-scaled value
+    // and then scale it again. What the (Director-corrected) call returns is applied directly.
     this.needsSimStrength = 1,
 
     // Avatar behavior

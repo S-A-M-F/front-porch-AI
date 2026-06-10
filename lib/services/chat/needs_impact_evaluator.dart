@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/models/character_card.dart';
@@ -25,33 +27,11 @@ import 'package:front_porch_ai/models/needs_impact.dart';
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/realism_verification.dart';
 
-/// Plain (non-ChangeNotifier) sibling leaf to NeedsSimulation owning the
-/// (now radically simplified) needs *impact* layer.
+/// Plain leaf for needs impact.
 ///
-/// Straight decay ticks (in NeedsSimulation) + model-provided scene deltas.
-/// Optional Director/Verifier review loop (via verify cb) sits on top and
-/// corrects deltas when the raw model JSON contradicts the scene text or pre-state.
-///
-/// No activity table. No modifier if/then pipeline. No afterglow / crash / suppression buffers.
-/// The LLM (reviewed by Director when enabled) is the source of the per-turn deltas
-/// for hunger/energy/bladder/hygiene/fun/social/comfort. Decay is always the safe baseline.
-///
-/// Ctor takes granular cbs only for the fire, verify, active/group dispatch (impersonation for per-speaker),
-/// messages/pre for verifier bundle, needsSimulation for apply, and enabled flags.
-///
-/// evaluateAndApply: fire the impact call, wrap with verifier (kind='needs_impact'), use effective/corrected
-/// for delta extraction, build minimal NeedsImpact, applySceneImpact (now just deltas + reason).
-///
-/// 1:1 / group parity via cbs + god impersonation dance (verifier and apply see correct speaker).
-///
-/// Dedicated test with live-closure factory; 28 bodies (live grep -c '^\s*test(' =28 post dels/adds as part of task; matrix for authority+verif flag=false + group per-member roundtrip via GroupMember/toCharacterCard/cb + impersonation + god thin coverage via cbs).
-/// aug/integration receive *only* qualified passive notes (no leaf edits).
-///
-/// 0 new god private _ methods (thins + late final only; void _ count stays exactly 15 after every edit + final).
-/// Stateless/prompt+rule only (no owned mutable state); god reset comments list this leaf as "stateless or prompt-only; no reset calls needed" + "buffer removal complete" at all ~15+ sites + both startNew.
-/// Deletion part of task: old table, all 6 modifiers, buffer recs, authority flag logic, climax-for-buffers, obsolete comments all expunged here.
-///
-/// All per AGENTS/CLAUDE (full gates, analyze 0 new on surfaces, live greps, manual 1:1+group smoke for pure decay + model deltas + Director corrections on classic realism too).
+/// Model provides net signed deltas for the scene (open prompt, like bond/emotion evals).
+/// Optional Director/Verifier corrects when authority is enabled on the card.
+/// Simple clamps only. Decay is handled separately in NeedsSimulation.
 class NeedsImpactEvaluator {
   final Future<String?> Function(
     String responseText, {
@@ -182,24 +162,49 @@ class NeedsImpactEvaluator {
       }
       // else: straight model deltas (authority off, or verif card flag off, or no verify cb). No redundant else if.
 
-      // Parse deltas directly from effective (model or Director corrected). No table, no modifiers.
+      // Parse deltas directly from effective (model or Director corrected).
+      // Robust JSON attempt first, then regex fallback.
       final deltas = <String, int>{};
+      Map<String, dynamic> parsed = {};
+      try {
+        final noFence = effectiveText.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
+        final si = noFence.indexOf('{');
+        final ei = noFence.lastIndexOf('}');
+        if (si >= 0 && ei > si) {
+          final obj = jsonDecode(noFence.substring(si, ei + 1));
+          if (obj is Map<String, dynamic>) parsed = obj;
+        }
+      } catch (_) {
+        parsed = {};
+      }
       for (final k in NeedsSimulation.needKeys) {
-        final d =
-            _extractInt(effectiveText, '${k}_delta') ??
-            _extractInt(effectiveText, k);
+        int? d;
+        if (parsed.isNotEmpty) {
+          final v = parsed['${k}_delta'] ?? parsed[k];
+          if (v is num) d = v.toInt();
+        }
+        d ??= _extractInt(effectiveText, '${k}_delta') ?? _extractInt(effectiveText, k);
         if (d != null) {
           deltas[k] = d;
         }
       }
 
-      // Apply user-requested strength (1-5) to the (possibly Director-corrected) deltas.
-      // This is the final guarantee; the prompt + Director already saw the strength so they could emit large.
-      if (strength != 1) {
-        for (final k in deltas.keys.toList()) {
-          deltas[k] = (deltas[k]! * strength).round();
-        }
+      // Simple clamps only (no complex gates/rules). Prevent obviously broken output from the model.
+      // The Director (when authority + verification enabled) does the scene-faithfulness check,
+      // just like bond/emotion/relationship evals. Strength scaling is already instructed in the prompt.
+      for (final k in deltas.keys.toList()) {
+        deltas[k] = deltas[k]!.clamp(-30, 30);
       }
+
+      // Strength (1-5x) is communicated to the model on the first needs-impact call and (when
+      // Director authority is enabled) to the verifier critique so both emit/correct at the
+      // user-requested magnitude in a single pass. We do NOT post-multiply here — that would
+      // cause the Director to take an already-scaled delta (e.g. -15 at 5x) and multiply it
+      // again (→ -75). The numbers that come back from the (Director-corrected) effective text
+      // are the final deltas to apply. (See user clarification 2026-06: multiplier is applied
+      // at first run / in the prompt to model+Director; Director must not re-scale the scaled value.)
+      // If the model ignores the scale instruction the deltas will simply be smaller than desired
+      // (model compliance issue, not a post-hoc multiplication).
 
       final reasonMatch = RegExp(
         r'"reason"\s*:\s*"([^"]*)"',

@@ -65,7 +65,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
   int _realismVerificationMaxReprocesses = 1;
   int _realismVerificationStrictness = 3;
   bool _realismNeedsDirectorAuthority = false;
-  int _needsSimStrength = 1; // 1-5 exponent for needs delta magnitude; injected to model+Director; scales final deltas.
+  int _needsSimStrength = 1; // 1-5. Injected to first model call (+ Director when authority on) so they emit at the requested magnitude. Numbers returned by (Director-corrected) call are applied directly; no second multiply on top of already-scaled deltas.
   final TextEditingController _tagInputController = TextEditingController();
   String? _newAvatarPath; // full path of newly picked avatar (null = no change)
 

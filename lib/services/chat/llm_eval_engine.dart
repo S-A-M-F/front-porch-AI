@@ -44,10 +44,7 @@ import 'package:front_porch_ai/models/group_chat.dart';
 ///
 /// Extracted as step 9 (immediately after prompt_injection step 8 per the
 /// 15-step leaf-first order in docs/refactoring-guide.md).
-/// + needs impact support (evaluateNeedsImpactCall + consolidated prompt for
-/// the needs_impact_evaluator sibling leaf in the needs domain rework; prompt
-/// lightly strengthened for net signed deltas + explicit recommend_afterglow /
-/// recommend_crash / buffer_reason to support authority thin path).
+/// + needs impact support (evaluateNeedsImpactCall for the needs_impact_evaluator leaf; open prompt + simple clamps, model-driven like other realism evals).
 /// + step 10 sibling realism_evals uses this engine's fire/strip/extract for the
 /// 5 realism calls (granular cbs; prompt builders full in leaf).
 /// + step 11 sibling objective_proposal uses this engine's strip (for central
@@ -380,22 +377,10 @@ class LlmEvalEngine {
   // (check + gen excised to objective_proposal step 11; deletion part of task)
   // (all dangling body chunks removed; engine clean for step 11.)
 
-  // ── Needs impact (consolidated; Proposal A + rich JSON) ─────────────────────
-  /// Thin + full impl for the consolidated needs impact eval (one call replacing
-  /// the 4 prior god checks: climax/sexual/daily/fulfillment).
-  /// Prompt reuses personality/stance/recent patterns from rel/phys/narr/oneShot.
-  /// Strict: "ONLY unambiguous description of the *act*" (eating food not metaphor;
-  /// deliberate non-sexual bath not rinse; completed sleep; physical climax for $charName only).
-  /// Includes activities, intensity, grounded deltas for all needs, fulfillments,
-  /// reason, refractory/orgasm_intensity if climax. 1:1/group parity qualified
-  /// (via god impersonation + cbs); oneShot vs normal also (same path).
-  /// "some coordination stayed thin in god per plan (qualify)".
-  /// The evaluator sibling owns table/modifiers/parse/apply/NeedsImpact; this
-  /// centralizes the LLM fire/strip (4000 budget) + prompt.
   Future<String?> evaluateNeedsImpactCall(
     String responseText, {
     void Function(String)? onChunk,
-    int strength = 1, // 1-5 exponent; injected so model emits at user-requested magnitude (e.g. 5x larger swings)
+    int strength = 1, // 1-5; injected into the prompt so the model emits deltas at the user-requested magnitude on the *first* call (e.g. normal -3 becomes ~-15 at 5x). When Director authority is on, the verifier is also told the strength and corrects in the scaled space. The evaluator no longer post-multiplies after Director (avoids double-scaling a -15 into -75).
   }) async {
     if (!getRealismEnabled()) return null;
     if (getActiveCharacter() == null && getActiveGroup() == null) return null;
@@ -424,30 +409,24 @@ class LlmEvalEngine {
         : '';
 
     final prompt =
-        'Read the following character response and detect *completed* scene actions that affect needs. '
-        'A need is only fulfilled or a daily/sexual act only counts if the action was COMPLETED and unambiguously described in the scene — not just mentioned or used as metaphor.\n\n'
+        'You are evaluating the effects of a roleplay scene on $charName\'s needs.\n\n'
         '$personalityInjection'
         '$currentStance'
-        'RESPONSE:\n$responseText\n\n'
+        'RESPONSE (the scene that just happened):\n$responseText\n\n'
         'Recent exchange for context:\n$recent\n\n'
-        'Detect ONLY if unambiguous description of the *act* (e.g. "she ate the full dinner", "they slept for hours", "he came inside her", "she took a long hot shower"). '
-        'Do NOT trigger on metaphors ("devoured her lips", "sated by your touch", "waves of pleasure washed over" alone do not count as ate/slept/sexual for positives). '
-        'For pure romantic/sexual scenes without explicit eat/drink/sleep/bath words: energy and hunger deltas must be neutral or small negative (no replenish from intimacy). '
-        'Hygiene negative only on explicit mess (creampie, cum on face/tits/stomach/sheets, fluids, messy, internal) or high intensity + stance shows exposure (not contained in shower/bath).\n\n'
-        'Report *net signed effects* on each need after the full scene (the deltas the character actually experiences). '
-        'Report *net signed effects* (deltas) on each need caused by the events in the scene (on top of normal decay). The optional Director will correct contradictions. '
-        'The Director/Verifier (when enabled with authority on needs) will correct you if your structured output does not match the unambiguous narrative you just wrote; prefer scene-faithful numbers.\n\n'
+        'Analyze what actually occurred in the scene (actions, physical descriptions, dialogue, power dynamics, emotional tone) and determine the *net signed effects* on each of $charName\'s needs caused by this scene, on top of normal decay.\n\n'
+        'This is immersive erotic roleplay. Detailed physical and psychological descriptions matter: self-touch, bodily arousal states ("charging", "aching", "swollen", "leaking through fabric"), fluids, dominance, submission, "choosing", begging, power exchange, and explicit narration of what the character is doing or feeling should influence the relevant needs (fun, social, comfort, hygiene, energy, etc.) in natural, grounded ways.\n\n'
+        'Be reasonable and faithful to the written text. Do not invent events that are not described.\n\n'
+        'Report *net signed effects* (deltas) on each need.\n\n'
         'User has set Needs delta strength to ' + strength.toString() + 'x. Emit deltas with magnitude scaled by this factor so the final applied swings match the user setting (example: a hygiene hit you would normally call -3 at 1x should be around -15 at 5x; small effects stay small at 1x). The Director (if reviewing) also receives this strength and will correct at the requested scale.\n\n'
+        'The optional Director/Verifier (when enabled with authority on needs) will correct you if your structured output does not match the actual narrative you just wrote.\n\n'
         'Respond with ONLY a flat JSON object:\n'
-        '{"activities": ["sexual_climax" or "sexual_nonclimax" or "ate" or "slept" or "bathed"], '
+        '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
         '"intensity": 1-10, '
         '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
-        '"fulfillment": {"hunger": true/false, "energy": ..., ... for any low needs in context}, '
-        '"reason": "<brief grounded reason>", '
-        '"refractory_turns": <1-8 or omit>, "orgasm_intensity": <1-10 or omit>, '
-        '"is_climax": true/false, '
-        '"recommend_afterglow": true/false, "recommend_crash_turns": <int or omit>, "buffer_reason": "<string or omit>" }\n'
-        'If no clear completed act matching the rules, return {"activities": [], "intensity": 0, ... all deltas 0, "reason": "none"}.';
+        '"reason": "<brief grounded reason for the deltas>", '
+        '"is_climax": true/false }\n'
+        'If the scene had little or no notable effect on needs, use small numbers or zeros and a short reason.';
 
     try {
       debugPrint(

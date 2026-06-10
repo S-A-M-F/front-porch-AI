@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -687,37 +688,56 @@ class RealismEvals {
       );
       text = effectiveText; // rebind for downstream (no other code change)
 
-      relationshipService.updateFixationFromEvalResult(
-        (RegExp(
-              r'"fixation_topic"\s*:\s*"([^"]+)"',
-            ).firstMatch(text)?.group(1) ??
-            ''),
-      );
+      // Robust extraction (survives Director reprocess/correction which may reformat/partial JSON).
+      // Inline (no new named helper/method per rules). JSON attempt + fence strip + regex fallback.
+      String fixationRaw = '';
+      try {
+        final noFence = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
+        final si = noFence.indexOf('{');
+        final ei = noFence.lastIndexOf('}');
+        if (si >= 0 && ei > si) {
+          final obj = jsonDecode(noFence.substring(si, ei + 1));
+          if (obj is Map && obj['fixation_topic'] != null) fixationRaw = obj['fixation_topic'].toString().trim();
+        }
+      } catch (_) {}
+      if (fixationRaw.isEmpty) {
+        final m = RegExp('"fixation_topic"\\s*:\\s*"([^"]*)"', dotAll: true).firstMatch(text);
+        fixationRaw = m?.group(1)?.trim() ?? '';
+      }
+      relationshipService.updateFixationFromEvalResult(fixationRaw.isNotEmpty ? fixationRaw : '');
 
-      final objectiveMatch = RegExp(
-        r'"proposed_objective"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (objectiveMatch != null) {
-        final newObj = objectiveMatch.group(1)!.trim();
-        if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          final active = getActiveObjectives();
-          final isDuplicate = active.any(
-            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
+      String objectiveRaw = '';
+      try {
+        final noFence2 = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
+        final si2 = noFence2.indexOf('{');
+        final ei2 = noFence2.lastIndexOf('}');
+        if (si2 >= 0 && ei2 > si2) {
+          final obj2 = jsonDecode(noFence2.substring(si2, ei2 + 1));
+          if (obj2 is Map && obj2['proposed_objective'] != null) objectiveRaw = obj2['proposed_objective'].toString().trim();
+        }
+      } catch (_) {}
+      if (objectiveRaw.isEmpty) {
+        final m2 = RegExp('"proposed_objective"\\s*:\\s*"([^"]*)"', dotAll: true).firstMatch(text);
+        objectiveRaw = m2?.group(1)?.trim() ?? '';
+      }
+      if (objectiveRaw.toLowerCase() != 'none' && objectiveRaw.isNotEmpty) {
+        final active = getActiveObjectives();
+        final isDuplicate = active.any(
+          (o) => o.objective.toLowerCase() == objectiveRaw.toLowerCase(),
+        );
+        if (!isDuplicate) {
+          debugPrint(
+            '[Realism:Narrative] Autonomous objective proposed: $objectiveRaw',
           );
-          if (!isDuplicate) {
-            debugPrint(
-              '[Realism:Narrative] Autonomous objective proposed: $newObj',
-            );
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            // (thin delegation to god setObjective per plan for step9; full proposal logic here)
-            await setObjective(
-              newObj,
-              isPrimary: false,
-              autoGenerateTasks: true,
-            );
-          }
+          // Pass autoGenerateTasks:true so the character's self-initiated goal gets
+          // concrete subtasks (making autonomous objectives feel like real pursuits
+          // with steps the character can accomplish).
+          // (thin delegation to god setObjective per plan for step9; full proposal logic here)
+          await setObjective(
+            objectiveRaw,
+            isPrimary: false,
+            autoGenerateTasks: true,
+          );
         }
       }
     } catch (e) {
