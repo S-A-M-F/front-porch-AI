@@ -1122,6 +1122,14 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
   // These are persisted via the member's private card extensions or group default state.
   final Map<String, bool> _enjoysLowHygiene = {};
 
+  // Per-member Director/Verifier (Realism Verification) settings for groups.
+  // Wired the same as 1:1 via per-member CharacterCard.frontPorchExtensions + impersonation.
+  // UI exposed here for existing groups (previously only in creation flow).
+  final Map<String, bool> _verificationEnabled = {};
+  final Map<String, int> _verificationMaxReprocesses = {};
+  final Map<String, int> _verificationStrictness = {};
+  final Map<String, bool> _needsDirectorAuthority = {};
+
   // Baseline seeding state (only bond/trust/emotion/time/day)
   final Map<String, Map<String, dynamic>> _baselineSeeds = {};
 
@@ -1154,6 +1162,12 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       );
       final id = _getCharId(c);
       _enjoysLowHygiene[id] = c.frontPorchExtensions?.enjoysLowHygiene ?? false;
+
+      // Load per-member Director/Verifier settings (if present on the member's card ext)
+      _verificationEnabled[id] = c.frontPorchExtensions?.realismVerificationEnabled ?? false;
+      _verificationMaxReprocesses[id] = c.frontPorchExtensions?.realismVerificationMaxReprocesses ?? 1;
+      _verificationStrictness[id] = c.frontPorchExtensions?.realismVerificationStrictness ?? 3;
+      _needsDirectorAuthority[id] = c.frontPorchExtensions?.realismNeedsDirectorAuthority ?? false;
     }
   }
 
@@ -1191,6 +1205,84 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       }
     } catch (_) {
       // Non-fatal; the in-memory card update will help for current session.
+    }
+  }
+
+  // --- Per-member Director/Verifier updates (mirrors enjoys pattern for consistency) ---
+  void _updateMemberVerificationEnabled(CharacterCard char, bool value) {
+    final id = _getCharId(char);
+    setState(() {
+      _verificationEnabled[id] = value;
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+            realismVerificationEnabled: value,
+          );
+    });
+
+    _persistMemberVerificationPref(id, 'verificationEnabled', value);
+  }
+
+  void _updateMemberVerificationMaxReprocesses(CharacterCard char, int value) {
+    final id = _getCharId(char);
+    setState(() {
+      _verificationMaxReprocesses[id] = value;
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+            realismVerificationMaxReprocesses: value,
+          );
+    });
+
+    _persistMemberVerificationPref(id, 'verificationMaxReprocesses', value);
+  }
+
+  void _updateMemberVerificationStrictness(CharacterCard char, int value) {
+    final id = _getCharId(char);
+    setState(() {
+      _verificationStrictness[id] = value;
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+            realismVerificationStrictness: value,
+          );
+    });
+
+    _persistMemberVerificationPref(id, 'verificationStrictness', value);
+  }
+
+  void _updateMemberNeedsDirectorAuthority(CharacterCard char, bool value) {
+    final id = _getCharId(char);
+    setState(() {
+      _needsDirectorAuthority[id] = value;
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+            realismNeedsDirectorAuthority: value,
+          );
+    });
+
+    _persistMemberVerificationPref(id, 'needsDirectorAuthority', value);
+  }
+
+  void _persistMemberVerificationPref(String id, String key, dynamic value) {
+    try {
+      final group = widget.chatService.activeGroup;
+      if (group != null) {
+        final map =
+            group.defaultMemberRealismState.isNotEmpty &&
+                group.defaultMemberRealismState != '{}'
+            ? (jsonDecode(group.defaultMemberRealismState)
+                      as Map<String, dynamic>? ??
+                  {})
+            : <String, dynamic>{};
+        final perChar = (map['perChar'] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        final current = (perChar[id] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        current[key] = value;
+        perChar[id] = current;
+        map['perChar'] = perChar;
+        group.defaultMemberRealismState = jsonEncode(map);
+      }
+    } catch (_) {
+      // Non-fatal
     }
   }
 
@@ -1729,6 +1821,118 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                                     },
                                     materialTapTargetSize:
                                         MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Per-member Director/Verifier settings (new in Realism & Needs tab for groups).
+                            // These were previously only configurable at group creation time.
+                            // Now editable here for existing groups. Uses same perChar persistence + card ext patch.
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Director/Verifier',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: Checkbox(
+                                    value: _verificationEnabled[_getCharId(char)] ?? false,
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        _updateMemberVerificationEnabled(char, v);
+                                      }
+                                    },
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            // Compact sliders + authority toggle for the Director settings.
+                            // Always shown in Realism & Needs for discoverability (config can be set even if currently disabled).
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Text(
+                                  'Max: ${_verificationMaxReprocesses[_getCharId(char)] ?? 1}',
+                                  style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                ),
+                                const SizedBox(width: 4),
+                                SizedBox(
+                                  width: 80,
+                                  child: SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 2,
+                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 8),
+                                    ),
+                                    child: Slider(
+                                      value: (_verificationMaxReprocesses[_getCharId(char)] ?? 1).toDouble(),
+                                      min: 1,
+                                      max: 5,
+                                      divisions: 4,
+                                      onChanged: (d) {
+                                        _updateMemberVerificationMaxReprocesses(char, d.round());
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Strict: ${_verificationStrictness[_getCharId(char)] ?? 3}',
+                                  style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                ),
+                                const SizedBox(width: 4),
+                                SizedBox(
+                                  width: 80,
+                                  child: SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 2,
+                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                                    ),
+                                    child: Slider(
+                                      value: (_verificationStrictness[_getCharId(char)] ?? 3).toDouble(),
+                                      min: 1,
+                                      max: 5,
+                                      divisions: 4,
+                                      onChanged: (d) {
+                                        _updateMemberVerificationStrictness(char, d.round());
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Director authority (needs)',
+                                  style: TextStyle(fontSize: 10, color: Colors.white54),
+                                ),
+                                const SizedBox(width: 4),
+                                SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: Checkbox(
+                                    value: _needsDirectorAuthority[_getCharId(char)] ?? false,
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        _updateMemberNeedsDirectorAuthority(char, v);
+                                      }
+                                    },
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                     visualDensity: VisualDensity.compact,
                                   ),
                                 ),
