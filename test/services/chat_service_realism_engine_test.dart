@@ -126,13 +126,14 @@ class _ControllableFakeLlm extends LLMService {
     } else if (p.contains('activities') ||
         p.contains('sexual_climax') ||
         p.contains('needs impact') ||
-        p.contains('unambiguous description of the *act*')) {
-      // Support for consolidated needs_impact eval (via _runPostGenNeedsChecks thin + _needsImpactEvaluator; rich prompt + fulfillment map in JSON).
-      // Returns Proposal A safe JSON (no energy/hunger replenish in romance; hygiene only on mess) + fulfillment map so sim.applySceneImpact restores (e.g. hunger) for decay+fulfill tests.
-      // Full coverage + factory cbs + edges + A scenarios in dedicated needs_impact_evaluator_test.dart
-      // (aug exercising only passive/qualified; no leaf-specific logic edits here; exercised via thins).
+        p.contains('net signed effects') ||
+        p.contains('Analyze what actually occurred in the scene')) {
+      // Support for consolidated needs_impact eval (via _runPostGenNeedsChecks thin + _needsImpactEvaluator).
+      // Returns deltas (positive hunger for fulfillment restoration in decay+fulfill tests) + reason.
+      // The model now decides deltas directly (open prompt like bond/emotion); fulfillment map is legacy.
+      // Full coverage in dedicated needs_impact_evaluator_test.dart.
       response =
-          '{"activities": [], "intensity": 0, "energy_delta": 0, "hunger_delta": 0, "hygiene_delta": 0, "reason": "none", "fulfillment": {"hunger": true, "energy": false, "social": false, "fun": false, "bladder": false, "comfort": false}}';
+          '{"activities": ["ate"], "intensity": 5, "energy_delta": 0, "hunger_delta": 35, "hygiene_delta": 0, "reason": "ate during scene", "fulfillment": {"hunger": true, "energy": false, "social": false, "fun": false, "bladder": false, "comfort": false}}';
     } else if (p.contains('autonomous story engine') ||
         p.contains('one shot') ||
         p.contains('bond_delta')) {
@@ -507,8 +508,8 @@ void main() {
         // expect(chat.needsArousalSuppressionTurnsRemaining, 0); // removed post-buffer
         // expect(chat.needsPostClimaxCrashTurnsRemaining, 0); // removed
 
-        // The next send triggers post-gen _runPostGenNeedsChecks thin → _needsImpactEvaluator consolidated "needs impact" (with fulfillment map from fake) → sim applySceneImpact restore.
-        // Fake supplies "fulfillment": {"hunger": true, ...} in the impact JSON (see needs-impact branch); old _verify path excised.
+        // The next send triggers post-gen _runPostGenNeedsChecks thin → _needsImpactEvaluator consolidated "needs impact" → sim applySceneImpact (deltas from model/fake).
+        // Fake now supplies positive hunger_delta (open prompt model-driven path); fulfillment is legacy.
         await chat.sendMessage('Anything new?');
 
         final hungerAfter = chat.needsSimulation.vector['hunger'] ?? 0;
@@ -523,9 +524,9 @@ void main() {
         expect(
           fakeLlm.seenPrompts.any(
             (p) =>
-                p.contains('unambiguous description of the *act*') ||
-                p.contains('needs impact') ||
-                p.contains('fulfillment'),
+                p.contains('You are evaluating the effects of a roleplay scene on') ||
+                p.contains('net signed effects') ||
+                p.contains('Analyze what actually occurred in the scene'),
           ),
           isTrue,
         );

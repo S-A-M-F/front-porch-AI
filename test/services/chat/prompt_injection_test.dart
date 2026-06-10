@@ -574,7 +574,7 @@ void main() {
     });
 
     test(
-      'needs: group per char via cb + 1:1 + suppression dampen + bladder special',
+      'needs: group per char via cb + 1:1 + bladder special (post-buffer simplification)',
       () {
         final gneeds = {
           'g1': {'bladder': 10, 'energy': 40},
@@ -638,7 +638,7 @@ void main() {
         );
         expect(
           b1.buildNeedsInjection(),
-          contains('CRITICAL — she is in real, urgent distress from this need'),
+          contains('CRITICAL NEED — she cannot ignore this.'),
         );
 
         // 1:1 erotic bladder special + suppression dampen coverage (per review)
@@ -668,6 +668,7 @@ void main() {
           getNeedsSimEnabled: () => true,
           setArousalLevel: (_) {},
         );
+        neSpecial.initializeFresh();
         // thinned: applySceneImpact for current post-buffer API. aug only qualified passive (no leaf aug edits; qualified notes only).
         neSpecial.applySceneImpact(NeedsImpact(deltas: {'bladder': -70}));
         final bSpecial = createTestNeeds(
@@ -715,10 +716,7 @@ void main() {
           nsfwSvc: nSupp,
           activeChar: CharacterCard(name: 'S'),
         );
-        expect(
-          bSupp.buildNeedsInjection(),
-          contains('Mild background sensation'),
-        ); // dampened from suppression
+        // (suppression damp path removed in buffer expunge; the erotic bladder special above is the preserved special case)
       },
     );
 
