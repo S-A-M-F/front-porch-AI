@@ -54,6 +54,8 @@ class NeedsImpactEvaluator {
   })?
   verifyRealismOutput;
 
+  final Future<String?> Function(String prompt, {void Function(String)? onChunk})? fireLLMEval;
+
   final Map<String, dynamic> Function()? getPendingRealismMetadata;
   final void Function(Map<String, dynamic>)? setPendingRealismMetadata;
 
@@ -80,6 +82,7 @@ class NeedsImpactEvaluator {
   NeedsImpactEvaluator({
     required this.evaluateNeedsImpactCall,
     this.verifyRealismOutput,
+    this.fireLLMEval,
     this.getPendingRealismMetadata,
     this.setPendingRealismMetadata,
     required this.getActiveCharacter,
@@ -255,5 +258,113 @@ class NeedsImpactEvaluator {
     final m = re.firstMatch(text);
     if (m != null) return int.tryParse(m.group(1)!);
     return null;
+  }
+
+  Future<void> reprocessWithUserCritique(
+    String responseText,
+    Map<String, int> oldDeltas,
+    String critique,
+  ) async {
+    if (fireLLMEval == null) return;
+    final strength = getNeedsSimStrength();
+    final prompt =
+        'You are the Realism Director correcting the previous Needs deltas for a roleplay scene.\n\n'
+        'RESPONSE (the scene that just happened):\n$responseText\n\n'
+        'PREVIOUS DELTAS:\n${jsonEncode(oldDeltas)}\n\n'
+        'USER CRITIQUE (The user noticed an issue with the deltas that MUST be fixed):\n"$critique"\n\n'
+        'Analyze what actually occurred in the scene and output a corrected set of net signed effects (deltas) on each need.\n\n'
+        'Respond with ONLY a flat JSON object correcting the deltas based on the user critique.\n'
+        'User has set Needs delta strength to ${strength}x. Emit deltas with magnitude scaled by this factor so the final applied swings match the user setting (example: a hygiene hit you would normally call -3 at 1x should be around -15 at 5x; small effects stay small at 1x).\n\n'
+        'Format:\n'
+        '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
+        '"intensity": 1-10, '
+        '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
+        '"reason": "<brief grounded reason for the deltas incorporating the critique>", '
+        '"is_climax": true/false }\n';
+
+    try {
+      debugPrint('[Realism:Needs] Running manual reprocess impact eval (via engine)...');
+      final raw = await fireLLMEval!(prompt);
+      if (raw == null) return;
+      
+      String effectiveText = raw.replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '').trim();
+      final unclosed = effectiveText.indexOf('<think>');
+      if (unclosed >= 0) {
+        effectiveText = effectiveText.substring(0, unclosed).trim();
+      }
+
+      final deltas = <String, int>{};
+      Map<String, dynamic> parsed = {};
+      try {
+        final noFence = effectiveText.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
+        final si = noFence.indexOf('{');
+        final ei = noFence.lastIndexOf('}');
+        if (si >= 0 && ei > si) {
+          final obj = jsonDecode(noFence.substring(si, ei + 1));
+          if (obj is Map<String, dynamic>) parsed = obj;
+        }
+      } catch (_) {
+        parsed = {};
+      }
+      for (final k in NeedsSimulation.needKeys) {
+        int? d;
+        if (parsed.isNotEmpty) {
+          final v = parsed['${k}_delta'] ?? parsed[k];
+          if (v is num) d = v.toInt();
+        }
+        d ??= _extractInt(effectiveText, '${k}_delta') ?? _extractInt(effectiveText, k);
+        if (d != null) {
+          deltas[k] = d;
+        }
+      }
+
+      for (final k in deltas.keys.toList()) {
+        deltas[k] = deltas[k]!.clamp(-30, 30);
+      }
+
+      final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(effectiveText);
+      final reason = reasonMatch?.group(1)?.trim();
+
+      bool isClimax = false;
+      int crashTurns = 5;
+      if (parsed.isNotEmpty) {
+        final c = parsed['is_climax'];
+        if (c is bool) {
+          isClimax = c;
+        } else if (c is String) {
+          isClimax = c.toLowerCase() == 'true';
+        }
+        final t = parsed['crashTurns'] ?? parsed['refractory_turns'];
+        if (t is num) crashTurns = t.toInt();
+      } else {
+        final re = RegExp(r'"is_climax"\s*:\s*(true|false)');
+        final m = re.firstMatch(effectiveText);
+        if (m != null) isClimax = m.group(1) == 'true';
+        crashTurns = _extractInt(effectiveText, 'crashTurns') ?? _extractInt(effectiveText, 'refractory_turns') ?? 5;
+      }
+
+      if (isClimax) {
+        onClimax?.call(crashTurns.clamp(1, 10));
+      }
+
+      final impact = NeedsImpact(
+        deltas: deltas,
+        reason: (reason != null && reason.toLowerCase() != 'none') ? reason : null,
+      );
+
+      needsSimulation.applySceneImpact(impact);
+      
+      // Store the metadata for the update
+      final currentMeta = (getPendingRealismMetadata?.call() ?? <String, dynamic>{});
+      // We manually construct a fake VerificationResult metadata to display the Director Corrected pill.
+      currentMeta[RealismVerification.kMetaKey] = {
+        'status': 'Director corrected (manual)',
+        'passes': 1,
+      };
+      setPendingRealismMetadata?.call(currentMeta);
+      
+    } catch (e) {
+      debugPrint('[Realism:Needs] reprocessWithUserCritique error: $e');
+    }
   }
 }

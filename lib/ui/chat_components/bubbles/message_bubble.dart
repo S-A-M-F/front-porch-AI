@@ -1464,6 +1464,105 @@ class _MessageBubbleState extends State<MessageBubble> {
               children: _spaced(needsChipList, 8),
             ),
           ),
+          
+          // Row 3: Manual Reprocess Button
+          if (widget.chatService != null && index == widget.chatService!.messages.length - 1 && !message.isUser) ...[
+            const SizedBox(height: 6),
+            Tooltip(
+              message: 'Reprocess Needs with critique',
+              preferBelow: false,
+              textStyle: const TextStyle(fontSize: 12, color: Colors.white),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F2937),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _showReprocessNeedsDialog(context, index),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.tealAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.rate_review, size: 12, color: Colors.tealAccent),
+                        SizedBox(width: 6),
+                        Text(
+                          'Manual Reprocess',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.tealAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showReprocessNeedsDialog(BuildContext context, int index) {
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceOf(context),
+        title: const Text('Reprocess Needs Deltas'),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Enter your critique to correct the Needs Simulation deltas. The Realism Director will re-evaluate the scene based on this input.', style: TextStyle(color: Colors.white70, fontSize: 13)),
+              const SizedBox(height: 12),
+              AppTextField(
+                controller: controller,
+                maxLines: 5,
+                minLines: 2,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'e.g., The character ate a granola bar and an energy drink. Hunger and energy should improve.',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF374151),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textTertiary(context))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.resolve(context, Colors.teal, const Color(0xFF0D9488))),
+            onPressed: () {
+              Navigator.of(context).pop();
+              if (controller.text.trim().isNotEmpty) {
+                chatService.manualReprocessNeeds(index, controller.text.trim());
+              }
+            },
+            child: const Text('Reprocess', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );

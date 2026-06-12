@@ -855,6 +855,7 @@ class ChatService extends ChangeNotifier {
   late final _needsImpactEvaluator = NeedsImpactEvaluator(
     evaluateNeedsImpactCall: _llmEvalEngine.evaluateNeedsImpactCall,
     verifyRealismOutput: _realismVerifier.verify,
+    fireLLMEval: (p, {onChunk}) => _fireLLMEval(p, onChunk: onChunk),
     getPendingRealismMetadata: () => _pendingRealismMetadata ?? {},
     setPendingRealismMetadata: (v) => _pendingRealismMetadata = v,
     getActiveCharacter: () => _activeCharacter,
@@ -4578,6 +4579,58 @@ class ChatService extends ChangeNotifier {
     if (_isGenerating) return; // wait for current generation to finish
 
     await _generateResponse(GenerationMode.normal);
+  }
+
+  Future<void> manualReprocessNeeds(int index, String critique) async {
+    if (index < 0 || index >= _messages.length) return;
+    if (index != _messages.length - 1) return;
+    
+    final msg = _messages[index];
+    if (msg.isUser || msg.sender == 'System') return;
+    
+    final meta = msg.activeMetadata;
+    if (meta == null || !meta.containsKey('realism_state')) return;
+    
+    final preState = meta['realism_state'];
+    if (preState is! Map || preState['needs'] == null) return;
+    
+    final oldNeedsDeltas = <String, int>{};
+    if (meta.containsKey('needs_deltas')) {
+      final oldMap = meta['needs_deltas'] as Map;
+      for (final k in oldMap.keys) {
+        if (oldMap[k] is Map && oldMap[k]['delta'] is num) {
+          oldNeedsDeltas[k.toString()] = (oldMap[k]['delta'] as num).toInt();
+        }
+      }
+    }
+    
+    _needsSimulation.restoreFromSnapshot(preState['needs']);
+    final Map<String, int> restoredPreVector = Map<String, int>.from(_needsSimulation.vector);
+    
+    _isVerifyingRealism = true;
+    _verificationPass = 1;
+    _verificationMaxPasses = 1;
+    notifyListeners();
+    
+    _pendingRealismMetadata = null;
+    
+    await _needsImpactEvaluator.reprocessWithUserCritique(msg.displayText, oldNeedsDeltas, critique);
+    
+    final updatedMeta = Map<String, dynamic>.from(meta);
+    updatedMeta['needs_deltas'] = _needsSimulation.computeNeedsDeltasWithReasons(restoredPreVector);
+    
+    if (_pendingRealismMetadata != null) {
+      for (final e in _pendingRealismMetadata!.entries) {
+        updatedMeta[e.key] = e.value;
+      }
+    }
+    
+    msg.swipeMetadata[msg.swipeIndex] = updatedMeta;
+    
+    _isVerifyingRealism = false;
+    _pendingRealismMetadata = null;
+    await _saveChat();
+    notifyListeners();
   }
 
   Future<void> regenerateLastMessage() async {

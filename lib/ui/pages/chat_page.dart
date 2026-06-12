@@ -913,7 +913,8 @@ class _ChatPageState extends State<ChatPage> {
               ),
             // Realism Engine processing overlays
             if (chatService.isEvaluatingRealism ||
-                chatService.isProcessingGreeting)
+                chatService.isProcessingGreeting ||
+                chatService.isVerifyingRealism)
               RealismProcessingOverlay(
                 chatService: chatService,
                 isGreeting: chatService.isProcessingGreeting,

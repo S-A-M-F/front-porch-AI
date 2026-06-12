@@ -4,6 +4,8 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🔄 **Manual Needs Reprocessing** — you can now forcefully reprocess the Needs deltas of the latest AI message using the Director/Verifier. A new "Manual Reprocess" button sits below the Needs chips. Clicking it opens a dialog where you can enter a custom critique (e.g., "The character ate a granola bar and an energy drink"). The Realism Engine will then use your explicit feedback to reconstruct the scene's impacts on the character's Needs vector with the specified intensity scale. Look for the "✓ Director corrected (manual)" pill on the message once done!
+
 - 🐛 **Fixed missing Needs reactions from characters** — Needs levels (hunger, comfort, bladder, etc.) were no longer impacting the character's internal thoughts and roleplay due to a regression where the descriptive text prompts were accidentally abbreviated in the code. We've restored the full injection prompts so characters will now appropriately complain or struggle when their needs hit noticeable or critical levels.
 
 - 📋 **Group settings now has a dedicated "Needs" tab** — the needs simulation master toggle, per-character baseline sliders (Hunger, Bladder, Energy, Social, Fun, Hygiene, Comfort), and "Enjoys low hygiene" have all been moved from "Realism & Needs" into their own tab. The Director/Verifier controls (Max reprocesses, Strictness, Director authority) are now gated behind the Director/Verifier toggle so they don't clutter the UI when disabled. Also fixed: the character editor's needs baseline sliders were previously hardcoded to 80 with no-op callbacks — they now properly save your settings.
