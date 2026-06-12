@@ -117,16 +117,23 @@ class NeedsInjection {
 
     // Delegate effective step (enjoys inversion + suppression damp) + prefix/secondary/postcrash
     // to sim helpers (kills prior 10+ ifs for calc in this file).
-    final effectiveStep = 0;
+    final effectiveStep = needsSimulation.getInjectionEffectiveStep(
+      top.key,
+      top.value,
+    );
 
     if (effectiveStep >= 5) return '';
 
     final list = NeedsSimulation.needSteppedText[top.key] ?? const <String>[];
     final baseText = list.isNotEmpty ? list[effectiveStep.clamp(0, 4)] : top.key;
 
-    final urgencyPrefix = "";
-    final secondaryNote = "";
-    final postCrashSuffix = "";
+    final urgencyPrefix = needsSimulation.getUrgencyPrefixForStep(effectiveStep);
+    final secondaryNote = needsSimulation.getSecondaryLowNeedNote(
+      sorted,
+      top.key,
+      effectiveStep,
+    );
+    final postCrashSuffix = needsSimulation.getPostCrashSuffixIfRelevant(top.key);
 
     return '[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n';
   }

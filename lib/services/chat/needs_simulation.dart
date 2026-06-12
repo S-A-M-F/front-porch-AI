@@ -58,6 +58,7 @@ class NeedsSimulation {
   final bool Function() getEnjoysLowHygiene;
   final bool Function() getNeedsSimEnabled;
   final void Function(int newArousal) setArousalLevel;
+  final Map<String, int>? Function()? getCustomDecayRates;
 
   Map<String, int> _vector = {};
   String? _pendingCatastrophe;
@@ -79,6 +80,7 @@ class NeedsSimulation {
     required this.getEnjoysLowHygiene,
     required this.getNeedsSimEnabled,
     required this.setArousalLevel,
+    this.getCustomDecayRates,
   });
 
   Map<String, int> get vector => Map<String, int>.unmodifiable(_vector);
@@ -98,9 +100,6 @@ class NeedsSimulation {
     'hunger': 4, 'bladder': 6, 'energy': 3, 'social': 2, 'fun': 2, 'hygiene': 1, 'comfort': 2,
   };
 
-  static const Map<String, int> needDecayMorning = {'hunger': 6};
-  static const Map<String, int> needDecayNight = {'energy': 6};
-
   static const Map<String, int> needRestore = {
     'hunger': 50, 'bladder': 70, 'energy': 40, 'social': 45, 'fun': 40, 'hygiene': 35, 'comfort': 35,
   };
@@ -111,9 +110,67 @@ class NeedsSimulation {
 
   static const List<int> needStepUpperBounds = [0, 15, 30, 45, 65];
 
-  static const Map<String, List<String>> needSteppedText = { /* kept for injection/step text; abbreviated for brevity in this clean */ };
+  static const Map<String, List<String>> needSteppedText = {
+    'hunger': [
+      '''A violent stomach cramp doubles her over. She is genuinely starving — vision swimming, knees weak, barely able to stay upright. The hunger has become a real physical crisis.''',
+      '''Sharp, gnawing cramps twist through her. She feels light-headed and shaky, and her thoughts keep drifting uncontrollably to food. She is struggling to focus on anything else.''',
+      '''Her stomach feels painfully hollow and tight. A constant, distracting ache that makes her restless and short-tempered. She keeps thinking about when she might be able to eat.''',
+      '''A steady, empty feeling sits in her stomach. Her thoughts occasionally wander toward food and she feels a bit distracted or low-energy.''',
+      '''A quiet, background emptiness in her stomach. It is not urgent, but she is aware of it and would welcome a chance to eat soon.''',
+    ],
+    'bladder': [
+      '''She loses control completely. A sudden, hot rush — she is wetting herself right now in the current scene. The humiliation is immediate and overwhelming.''',
+      '''She is fighting with everything she has not to lose control. Thighs pressed tight, constantly shifting, voice tight with strain. She is very close to having an accident.''',
+      '''A strong, insistent pressure has built up. She is visibly uncomfortable and keeps looking for a polite way to excuse herself soon.''',
+      '''A steady, distracting pressure low in her belly. She feels the need more and more and would like to find a bathroom before too long.''',
+      '''A faint but persistent urge to use the restroom sits at the back of her mind, making her slightly restless.''',
+    ],
+    'energy': [
+      '''Her body gives out completely. Mid-sentence her eyes flutter and she collapses — slumping to the floor or into {{user}}'s arms, fully unconscious from exhaustion.''',
+      '''She is barely staying awake. Head nodding, speech slow and heavy, eyes unfocused. She may drift off at any moment.''',
+      '''A heavy, crushing tiredness has settled over her. Every movement feels like effort and her thoughts are slow. She desperately wants to rest.''',
+      '''A deep weariness is weighing on her. She moves a little slower and seems less animated than usual, clearly running low on energy.''',
+      '''A comfortable, heavy tiredness sits behind her eyes. She would happily curl up and rest if the opportunity arose.''',
+    ],
+    'social': [
+      '''The loneliness has become overwhelming. She feels hollow and raw, on the edge of breaking down if she cannot have real, meaningful connection with someone soon.''',
+      '''She feels painfully isolated. The lack of real connection is starting to hurt, and she may become unusually quiet, clingy, or emotionally fragile.''',
+      '''A deep ache for genuine connection sits in her chest. Casual interaction feels hollow and she keeps seeking more meaningful moments or closeness.''',
+      '''She is feeling the absence of real companionship. She seems a little more eager for meaningful conversation or physical closeness than usual.''',
+      '''A quiet, gentle craving for real connection makes her a bit more warm and attentive than normal.''',
+    ],
+    'fun': [
+      '''The boredom has become torturous. She feels dangerously restless and may suddenly do something reckless or wildly inappropriate just to feel *something* again.''',
+      '''She is deeply restless and bored out of her mind. She fidgets constantly and will suggest almost anything to break the monotony.''',
+      '''A heavy restlessness has settled over her. Everything feels dull and she keeps looking for any excuse to do something more stimulating.''',
+      '''She is noticeably bored and fidgety. The current situation feels flat and she is actively hoping for a change of pace.''',
+      '''A mild restlessness makes her a little more eager for something fun or different to happen.''',
+    ],
+    'hygiene': [
+      '''She feels filthy and overwhelmed by it. The grime or smell is so strong it is making her physically uncomfortable and self-conscious to the point of distress.''',
+      '''She feels genuinely dirty and is very aware of it. She keeps wanting to cover herself or pull away from contact until she can clean up.''',
+      '''A persistent feeling of being grimy clings to her. She is self-conscious and keeps thinking about when she can wash or change.''',
+      '''She is starting to feel noticeably unkempt. A quiet discomfort with her own state makes her want to freshen up soon.''',
+      '''A faint, background sense of being a little grubby makes her mildly self-conscious.''',
+    ],
+    'comfort': [
+      '''The physical discomfort has become unbearable. She cannot stay like this any longer and will do whatever it takes to find relief, even if it disrupts everything else happening.''',
+      '''Her body is in real distress — too hot, too cold, cramped, or aching badly. She is constantly shifting and struggling to focus on anything else.''',
+      '''A strong physical discomfort is wearing on her. She keeps adjusting her position or environment, clearly unable to settle.''',
+      '''She is noticeably uncomfortable. A persistent physical irritation (temperature, pressure, stiffness) makes it hard for her to fully relax.''',
+      '''A mild but persistent physical discomfort sits in the background, making her slightly restless.''',
+    ],
+  };
 
-  static const Map<String, String> needCatastropheText = { /* kept for catas; abbreviated */ };
+  static const Map<String, String> needCatastropheText = {
+    'hunger': '''A violent stomach cramp drops her to her knees or against {{user}}. She hasn't eaten in far too long; her blood sugar crashes and she nearly faints or becomes too weak to stand. The hunger has turned into a real physical emergency.''',
+    'bladder': '''She loses control completely. A sudden, hot, unstoppable rush — she is wetting herself right now, in the current scene, in front of {{user}} or anyone present. The fabric darkens, liquid runs down her legs, the smell fills the air, and her face is a mask of horror and humiliation. The accident is happening / has just happened.''',
+    'energy': '''Her body simply shuts down. Mid-sentence her eyes roll back and she collapses — slumping to the floor, onto furniture, or into {{user}}'s arms — completely unconscious from exhaustion. She is out cold and will not wake for some time.''',
+    'social': '''The isolation finally breaks her. She bursts into tears or a raw, desperate plea for real connection, unable to pretend any longer that she is okay alone.''',
+    'fun': '''The boredom has driven her to something reckless or wildly inappropriate — she does something dangerous, sexual, or chaotic purely to feel *anything* again.''',
+    'hygiene': '''The accumulated grime and smell finally overwhelm her. She gags, tears up, or has a small breakdown about how disgusting she feels, refusing further contact until she can wash.''',
+    'comfort': '''The physical misery becomes too much. She cries out, pushes away from whatever is hurting her (the chair, the ropes, the position, the temperature), and demands — or takes — immediate relief no matter what else is happening in the scene.''',
+  };
 
   static const Map<String, int> needPostCatastropheFloor = {
     'hunger': 70, 'bladder': 85, 'energy': 65, 'social': 60, 'fun': 55, 'hygiene': 70, 'comfort': 70,
@@ -216,6 +273,7 @@ class NeedsSimulation {
   void tickDecay() {
     if (!getNeedsSimEnabled() || !getRealismEnabled()) return;
 
+    final customRates = getCustomDecayRates?.call() ?? {};
     final isGroupNonObserver = getIsGroupNonObserverMode();
     if (isGroupNonObserver) {
       final sid = getCurrentSpeakerIdForRealism();
@@ -223,18 +281,11 @@ class NeedsSimulation {
       if (needs.isEmpty) {
         needs = Map.fromEntries(needKeys.map((k) => MapEntry(k, 80)));
       }
-      final isNight = getTimeOfDay() == 'night';
-      final isMorning = getTimeOfDay() == 'dawn' || getTimeOfDay() == 'morning';
 
       for (final key in needKeys) {
         final current = needs[key] ?? 80;
-        int decay = needDecay[key] ?? 0;
-        if (isMorning && needDecayMorning.containsKey(key)) {
-          decay = needDecayMorning[key] ?? decay;
-        } else if (isNight && needDecayNight.containsKey(key)) {
-          decay = needDecayNight[key] ?? decay;
-        }
-        // (no afterglow damp)
+        int decay = customRates[key] ?? needDecay[key] ?? 0;
+        
         final next = (current - decay).clamp(0, 100);
         needs[key] = next;
       }
@@ -243,18 +294,10 @@ class NeedsSimulation {
     }
 
     // 1:1 scalar path (pure decay + simplified modifiers, no buffer damp/crash)
-    final isNight = getTimeOfDay() == 'night';
-    final isMorning = getTimeOfDay() == 'dawn' || getTimeOfDay() == 'morning';
-
     for (final key in needKeys) {
       final current = _vector[key];
       if (current == null) continue;
-      int decay = needDecay[key] ?? 0;
-      if (isMorning && needDecayMorning.containsKey(key)) {
-        decay = needDecayMorning[key] ?? decay;
-      } else if (isNight && needDecayNight.containsKey(key)) {
-        decay = needDecayNight[key] ?? decay;
-      }
+      int decay = customRates[key] ?? needDecay[key] ?? 0;
 
       for (final mod in decayModifiers) {
         if (mod.condition(key, _vector, this)) {
@@ -305,5 +348,38 @@ class NeedsSimulation {
     return 5;
   }
 
-  // (Other context helpers like getUrgencyPrefixForStep etc. can be reimplemented simply or moved to injection if needed.)
+  int getInjectionEffectiveStep(String need, int value) {
+    int step = getNeedStep(need, value);
+    if (getEnjoysLowHygiene() && need == 'hygiene') {
+      step = (5 - step).clamp(0, 5);
+    }
+    return step;
+  }
+
+  String getUrgencyPrefixForStep(int effectiveStep) {
+    return switch (effectiveStep) {
+      0 => 'CATASTROPHIC — this has already happened and must be roleplayed immediately.',
+      1 => 'CRITICAL — she is in real, urgent distress from this need.',
+      2 => 'Strong need — this is heavily weighing on her and affecting her focus.',
+      3 => 'Noticeable need — this is a clear background pressure on her mood and attention.',
+      _ => 'Mild background sensation — this is subtly coloring her state.',
+    };
+  }
+
+  String getSecondaryLowNeedNote(
+    List<MapEntry<String, int>> sorted,
+    String topKey,
+    int effectiveStep,
+  ) {
+    if (effectiveStep < 1 || effectiveStep > 3) return '';
+    final secondary = sorted
+        .where((e) => e.key != topKey && getNeedStep(e.key, e.value) <= 3)
+        .firstOrNull;
+    if (secondary == null) return '';
+    return ' (She is also feeling the ${secondary.key} need.)';
+  }
+
+  String getPostCrashSuffixIfRelevant(String topKey) {
+    return '';
+  }
 }
