@@ -82,6 +82,26 @@ void main() {
       expect(sim.vector['hunger'], NeedsSimulation.needDefaults['hunger']);
     });
 
+    test('initializeFreshWithDefaults seeds custom values', () {
+      sim.initializeFreshWithDefaults({
+        'hunger': 50,
+        'bladder': 90,
+        'energy': 30,
+        'social': 70,
+        'fun': 60,
+        'hygiene': 40,
+        'comfort': 85,
+      });
+      expect(sim.vector['hunger'], 50);
+      expect(sim.vector['bladder'], 90);
+      expect(sim.vector['energy'], 30);
+      expect(sim.vector['social'], 70);
+      expect(sim.vector['fun'], 60);
+      expect(sim.vector['hygiene'], 40);
+      expect(sim.vector['comfort'], 85);
+      expect(sim.pendingCatastrophe, null);
+    });
+
     test('clearVector empties', () {
       sim.initializeFresh();
       sim.clearVector();

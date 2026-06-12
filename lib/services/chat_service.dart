@@ -2137,8 +2137,16 @@ class ChatService extends ChangeNotifier {
           _enjoysLowHygiene = ext.enjoysLowHygiene;
           if (_needsSimEnabled) {
             // Brand new conversation for this character (no prior session loaded):
-            // start needs at 100 so a just-imported card + first chat feels fresh.
-            _needsSimulation.initializeFresh();
+            // seed from card baselines (falls back to needDefaults when the card has no baselines).
+            _needsSimulation.initializeFreshWithDefaults({
+              'hunger': ext.needsBaselineHunger,
+              'bladder': ext.needsBaselineBladder,
+              'energy': ext.needsBaselineEnergy,
+              'social': ext.needsBaselineSocial,
+              'fun': ext.needsBaselineFun,
+              'hygiene': ext.needsBaselineHygiene,
+              'comfort': ext.needsBaselineComfort,
+            });
           } else {
             _needsSimulation.clearVector();
           }
@@ -2351,7 +2359,12 @@ class ChatService extends ChangeNotifier {
           return n is Map && n.isNotEmpty;
         });
         if (_needsSimEnabled) {
-          _needsSimulation.initializeFresh();
+          // Seed from group definition's per-char needs baselines (falls back to 80 when absent).
+          final defaults = <String, int>{
+            'hunger': 80, 'bladder': 80, 'energy': 80, 'social': 80,
+            'fun': 80, 'hygiene': 80, 'comfort': 80,
+          };
+          _needsSimulation.initializeFreshWithDefaults(defaults);
         }
         debugPrint(
           '[GroupRealism] Promoted definition realism/needs on fresh group entry '
@@ -3855,10 +3868,17 @@ class ChatService extends ChangeNotifier {
       _needsSimEnabled = extSeed.needsSimEnabled;
       _enjoysLowHygiene = extSeed.enjoysLowHygiene;
       if (_needsSimEnabled) {
-        // Fresh chat / new session: start all needs at 100 (full). The varied
-        // _needDefaults are the "sensible mid-scene" curve used for legacy
-        // restores or when the user toggles Needs on mid-chat.
-        _needsSimulation.initializeFresh();
+        // Fresh chat / new session: seed from card baselines (falls back to
+        // needDefaults when the card has no baselines).
+        _needsSimulation.initializeFreshWithDefaults({
+          'hunger': extSeed.needsBaselineHunger,
+          'bladder': extSeed.needsBaselineBladder,
+          'energy': extSeed.needsBaselineEnergy,
+          'social': extSeed.needsBaselineSocial,
+          'fun': extSeed.needsBaselineFun,
+          'hygiene': extSeed.needsBaselineHygiene,
+          'comfort': extSeed.needsBaselineComfort,
+        });
       } else {
         _needsSimulation.clearVector();
       }

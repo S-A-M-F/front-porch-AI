@@ -151,6 +151,18 @@ class NeedsSimulation {
     // No buffer state to zero.
   }
 
+  /// Initialize the needs vector from card-specific baseline values.
+  ///
+  /// Used when starting a new chat so that the character's
+  /// [FrontPorchExtensions] baseline needs (needsBaselineHunger, etc.)
+  /// are respected instead of the hardcoded [needDefaults].
+  void initializeFreshWithDefaults(Map<String, int> defaults) {
+    _vector = Map<String, int>.from(defaults);
+    _pendingCatastrophe = null;
+    _lastSceneReason = null;
+    // No buffer state to zero.
+  }
+
   void clearVector() {
     _vector.clear();
     _pendingCatastrophe = null;

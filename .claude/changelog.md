@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-06-12 (fix: needs baseline sliders now respected on new chat)
+
+- **Files changed**: lib/services/chat/needs_simulation.dart (added `initializeFreshWithDefaults`), lib/services/chat_service.dart (3 call sites updated), test/services/chat/needs_simulation_test.dart (added test).
+- **Why**: The per-need baseline sliders in the character edit dialog (right-click → edit character → Needs Simulation section) were being saved to the character card's `FrontPorchExtensions` correctly, but the chat service was never reading them. When starting a new chat, `initializeFresh()` always used hardcoded `needDefaults` (hunger=75, social=65, fun=65, etc.) instead of the user-configured baselines (all defaulting to 80).
+- **What changed**:
+  - Added `initializeFreshWithDefaults(Map<String, int> defaults)` to `NeedsSimulation` — mirrors `initializeFresh()` but accepts a custom defaults map.
+  - Updated 3 call sites in `chat_service.dart` (`startNewChat`, `setActiveCharacter`, group path) to call `initializeFreshWithDefaults` with the card's `needsBaseline*` values.
+  - Added unit test for the new method.
+- **Verification**: `flutter analyze` clean (0 issues); `flutter test test/services/chat/needs_simulation_test.dart` — 14/14 passed.
+
+## 2026-06-12 (group settings: rename "Realism & Needs" → "Realism", editable realism baselines)
+
+- **Files changed**: lib/ui/dialogs/group_settings_dialog.dart (renamed tab, added editable realism baseline sliders per character, added group-level Time & Day, added `_sliderRow` helper, added `_applyEditToBaselineSeedAndCard` persistence method).
+- **Why**: The tab was still named "Realism & Needs" after needs were moved to their own tab. Users also needed to edit realism baselines (bond, trust, emotion) for group characters — previously only display-only readout existed in the Realism tab.
+- **What changed**:
+  - Renamed "Realism & Needs" tab → "Realism" (tab label, header, subtitle).
+  - Added group-level Time & Day selector (time of day dropdown + day count) above per-character cards.
+  - Added editable realism baseline sliders per character: Short-Term Bond (-300..300), Long-Term Bond (-300..300), Trust Level (-100..100).
+  - Added editable emotion settings: Emotion text field, Emotion Intensity dropdown (calm/moderate/intense).
+  - Each per-character edit updates local state + card extension + baseline seed via `ChatService.setBaselineSeedForGroupCharacter` + group `defaultMemberRealismState`.
+  - **Not added** (user feedback): Per-character Time & Day (footgun — made it global instead), Current Task, Chaos Mode (global toggle exists), Enjoys Low Hygiene (in Needs tab), Needs Simulation (in Needs tab).
+- **Verification**: `flutter analyze` clean (0 issues); `dart fix --dry-run`: nothing to fix.
+
+## 2026-06-11 (group settings: dedicated "Needs" tab, Director/Verifier gating, needs baseline fix)
+
+## 2026-06-11 (group settings: dedicated "Needs" tab, Director/Verifier gating, needs baseline fix)
+
+- **Files changed**: lib/ui/dialogs/group_settings_dialog.dart (added "Needs" tab, extracted `_NeedsTab` widget with full needs baseline editing + Director/Verifier gating, removed needs controls from "Realism & Needs" tab, removed unused methods), lib/ui/pages/edit_character_page.dart (wired up needs baseline sliders with state vars, seeding from extensions, callbacks, and persistence to `FrontPorchExtensions`).
+- **Why**: The group settings dialog's "Realism & Needs" tab mixed needs-related settings with realism settings, making it hard to find what you're looking for. The Director/Verifier controls (Max reprocesses, Strictness, Director authority) were always visible even when the toggle was off. The needs baselines in the character editor page were hardcoded to 80 with no-op callbacks.
+- **What changed**:
+  - New "Needs" tab in group settings dialog with: Needs Simulation master toggle, per-character baseline sliders (7 needs), "Enjoys low hygiene" checkbox, and gated Director/Verifier controls.
+  - Removed needs controls from "Realism & Needs" tab: Needs Simulation toggle, "Enjoys low hygiene" checkbox.
+  - Director/Verifier controls (Max reprocesses, Strictness, Director authority) in "Realism & Needs" tab are now gated behind the Director/Verifier checkbox.
+  - Fixed needs baseline bug in edit_character_page.dart: added state variables, seeded from extensions, wired callbacks, persisted to `FrontPorchExtensions`.
+- **Verification**: `flutter analyze` clean (0 issues); `dart fix --dry-run`: nothing to fix.
+
+## 2026-06-11 (needs simulation settings: dedicated UI section with per-need baselines)
+
+- **Files changed**: lib/models/character_card.dart (7 new baseline fields + serialization), lib/ui/dialogs/edit_character_dialog.dart (new "Needs Simulation" section, moved needs controls from "Optional Features", 7 new sliders, `_updateNeedsSettings` method), lib/ui/widgets/realism_form_section.dart (removed needs controls from "Optional Features", added `needsFormSection` optional parameter, renders it in build), lib/ui/widgets/needs_form_section.dart (new — extracted needs UI widget, 266 LOC), lib/ui/pages/create_character_page.dart (added 7 baseline state vars, wired `NeedsFormSection` into realism step), lib/ui/pages/edit_character_page.dart (wired `NeedsFormSection` into realism step), lib/ui/pages/create_group_chat_page.dart (added per-member needs baseline state, wired `NeedsFormSection` into per-member realism form, added baseline fields to seed), lib/ui/character_creator/steps/realism_step.dart (removed needs params, added `NeedsFormSection` stub).
+- **Why**: The right-click "Edit Character" dialog buried all Needs Simulation settings inside the generic "Optional Features" box. Users needed a dedicated, clearly organized section with the ability to set per-need baseline values (similar to how Relationship baselines like bond/trust are configurable).
+- **What changed**:
+  - New "Needs Simulation" section (before Optional Features) with a master toggle, 7 per-need baseline sliders (Hunger, Bladder, Energy, Social, Fun, Hygiene, Comfort — 0-100, default 80), "Enjoys low hygiene" toggle, and "Needs delta strength" slider.
+  - All settings below the master toggle are gated — hidden when Needs Simulation is off.
+  - Moved: Needs Simulation toggle, per-need sliders, Enjoys low hygiene, Needs delta strength slider → from Optional Features to the new Needs Simulation section.
+  - Kept in Optional Features: Director/Verifier toggle, max reprocesses slider, strictness slider, Director authority toggle.
+  - New `FrontPorchExtensions` fields: `needsBaselineHunger`, `needsBaselineBladder`, `needsBaselineEnergy`, `needsBaselineSocial`, `needsBaselineFun`, `needsBaselineHygiene`, `needsBaselineComfort` (all default 80, serialized under `realism_engine.needs_baseline_*` keys, backward-compatible with `fromJson` fallback).
+  - New `_updateNeedsSettings()` method for persisting needs settings to PNG + DB.
+  - New `_needsSlider()` helper widget for the 7 baseline sliders.
+- **Verification**: `flutter analyze` clean (0 issues); full project analyze: 0 new warnings/errors. No DB schema change (stored in existing `front_porch_extensions` JSON column). Existing characters default to 80 for all baselines.
+- **Commit**: will be filled after `git commit`.
+
 ## 2026-06-09 (test surfaces: Director/Verifier realism_verification dedicated test)
 
 - **Files changed**: test/services/chat/realism_verification_test.dart (major surface upgrade), test/services/chat/needs_impact_evaluator_test.dart (qualified passive note), docs/Rawhide.md (note), .claude/changelog.md.
