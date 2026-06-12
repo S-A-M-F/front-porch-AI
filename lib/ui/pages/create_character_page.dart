@@ -32,6 +32,7 @@ import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
+import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 
@@ -97,6 +98,23 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   int _realismVerificationMaxReprocesses = 1;
   int _realismVerificationStrictness = 3;
   bool _realismNeedsDirectorAuthority = false;
+
+  // ── Needs Simulation baselines (0-100) ──
+  int _needsBaselineHunger = 80;
+  int _needsBaselineBladder = 80;
+  int _needsBaselineEnergy = 80;
+  int _needsBaselineSocial = 80;
+  int _needsBaselineFun = 80;
+  int _needsBaselineHygiene = 80;
+  int _needsBaselineComfort = 80;
+
+  int _needsDecayHunger = 5;
+  int _needsDecayBladder = 5;
+  int _needsDecayEnergy = 5;
+  int _needsDecaySocial = 5;
+  int _needsDecayFun = 5;
+  int _needsDecayHygiene = 5;
+  int _needsDecayComfort = 5;
 
   // ── Token counter ──
   int _totalTokenEstimate = 0;
@@ -1270,11 +1288,6 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 chaosModeEnabled: _realismChaosMode,
                 onChaosModeChanged: (v) =>
                     setState(() => _realismChaosMode = v),
-                needsSimEnabled: _realismNeedsSim,
-                onNeedsSimChanged: (v) => setState(() => _realismNeedsSim = v),
-                enjoysLowHygiene: _realismEnjoysLowHygiene,
-                onEnjoysLowHygieneChanged: (v) =>
-                    setState(() => _realismEnjoysLowHygiene = v),
                 currentTask: _realismCurrentTask,
                 onCurrentTaskChanged: (v) =>
                     setState(() => _realismCurrentTask = v),
@@ -1288,9 +1301,56 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 realismVerificationStrictness: _realismVerificationStrictness,
                 onRealismVerificationStrictnessChanged: (v) =>
                     setState(() => _realismVerificationStrictness = v),
-                realismNeedsDirectorAuthority: _realismNeedsDirectorAuthority,
-                onRealismNeedsDirectorAuthorityChanged: (v) =>
-                    setState(() => _realismNeedsDirectorAuthority = v),
+                needsFormSection: NeedsFormSection(
+                  enabled: _realismNeedsSim,
+                  onEnabledChanged: (v) => setState(() => _realismNeedsSim = v),
+                  enjoysLowHygiene: _realismEnjoysLowHygiene,
+                  onEnjoysLowHygieneChanged: (v) =>
+                      setState(() => _realismEnjoysLowHygiene = v),
+                  needsSimStrength: 1, // default, not editable in creator
+                  baselineHunger: _needsBaselineHunger,
+                  onBaselineHungerChanged: (v) =>
+                      setState(() => _needsBaselineHunger = v),
+                  baselineBladder: _needsBaselineBladder,
+                  onBaselineBladderChanged: (v) =>
+                      setState(() => _needsBaselineBladder = v),
+                  baselineEnergy: _needsBaselineEnergy,
+                  onBaselineEnergyChanged: (v) =>
+                      setState(() => _needsBaselineEnergy = v),
+                  baselineSocial: _needsBaselineSocial,
+                  onBaselineSocialChanged: (v) =>
+                      setState(() => _needsBaselineSocial = v),
+                  baselineFun: _needsBaselineFun,
+                  onBaselineFunChanged: (v) =>
+                      setState(() => _needsBaselineFun = v),
+                  baselineHygiene: _needsBaselineHygiene,
+                  onBaselineHygieneChanged: (v) =>
+                      setState(() => _needsBaselineHygiene = v),
+                  baselineComfort: _needsBaselineComfort,
+                  onBaselineComfortChanged: (v) =>
+                      setState(() => _needsBaselineComfort = v),
+                  decayHunger: _needsDecayHunger,
+                  onDecayHungerChanged: (v) =>
+                      setState(() => _needsDecayHunger = v),
+                  decayBladder: _needsDecayBladder,
+                  onDecayBladderChanged: (v) =>
+                      setState(() => _needsDecayBladder = v),
+                  decayEnergy: _needsDecayEnergy,
+                  onDecayEnergyChanged: (v) =>
+                      setState(() => _needsDecayEnergy = v),
+                  decaySocial: _needsDecaySocial,
+                  onDecaySocialChanged: (v) =>
+                      setState(() => _needsDecaySocial = v),
+                  decayFun: _needsDecayFun,
+                  onDecayFunChanged: (v) =>
+                      setState(() => _needsDecayFun = v),
+                  decayHygiene: _needsDecayHygiene,
+                  onDecayHygieneChanged: (v) =>
+                      setState(() => _needsDecayHygiene = v),
+                  decayComfort: _needsDecayComfort,
+                  onDecayComfortChanged: (v) =>
+                      setState(() => _needsDecayComfort = v),
+                ),
               ),
 
               _buildNavButtons(currentStep: 4),
@@ -2168,6 +2228,20 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         realismVerificationMaxReprocesses: _realismVerificationMaxReprocesses,
         realismVerificationStrictness: _realismVerificationStrictness,
         realismNeedsDirectorAuthority: _realismNeedsDirectorAuthority,
+        needsBaselineHunger: _needsBaselineHunger,
+        needsBaselineBladder: _needsBaselineBladder,
+        needsBaselineEnergy: _needsBaselineEnergy,
+        needsBaselineSocial: _needsBaselineSocial,
+        needsBaselineFun: _needsBaselineFun,
+        needsBaselineHygiene: _needsBaselineHygiene,
+        needsBaselineComfort: _needsBaselineComfort,
+        needsDecayHunger: _needsDecayHunger,
+        needsDecayBladder: _needsDecayBladder,
+        needsDecayEnergy: _needsDecayEnergy,
+        needsDecaySocial: _needsDecaySocial,
+        needsDecayFun: _needsDecayFun,
+        needsDecayHygiene: _needsDecayHygiene,
+        needsDecayComfort: _needsDecayComfort,
       );
 
       final card = CharacterCard(

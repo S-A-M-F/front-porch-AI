@@ -47,7 +47,7 @@ NeedsImpactEvaluator createTestEvaluator({
   String Function(String)? stripFn,
   Future<String?> Function(String, {void Function(String)? onChunk, int strength})?
   impactCallFn,
-  void Function(int, int)? onClimax,
+  void Function(int)? onClimax,
   Future<VerificationResult> Function({
     required String evalKind,
     required String rawOutput,
@@ -82,6 +82,7 @@ NeedsImpactEvaluator createTestEvaluator({
         getCurrentSpeakerIdForRealism: speakerFn ?? () => 'char-1',
         getIsGroupNonObserverMode: groupNonObsFn ?? () => false,
         getGroupNeeds: (id) => gn[id] ?? {},
+
         setGroupNeeds: (id, nn) => gn[id] = Map.from(nn),
         getEnjoysLowHygiene: enjoysFn ?? () => false,
         getNeedsSimEnabled: needsEnabledFn ?? () => true,
@@ -100,6 +101,7 @@ NeedsImpactEvaluator createTestEvaluator({
     getCurrentSpeakerIdForRealism: speakerFn ?? () => 'char-1',
     getIsGroupNonObserverMode: groupNonObsFn ?? () => false,
     getGroupNeeds: (id) => gn[id] ?? {},
+
     setGroupNeeds: (id, nn) => gn[id] = Map.from(nn),
     getGroupCharacters: groupCharsFn ?? () => const [],
     getCharacterIdFromCard: idFromCardFn ?? (c) => c.name,
@@ -109,6 +111,7 @@ NeedsImpactEvaluator createTestEvaluator({
     getRealismEnabled: realismFn ?? () => true,
     getNeedsModelAuthorityEnabled: authorityFn ?? () => false,
     getNeedsSimStrength: strengthFn ?? () => 1,
+    onClimax: onClimax,
   );
 }
 
@@ -140,6 +143,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (id) => groupNeeds[id] ?? {},
+
         setGroupNeeds: (id, nn) => groupNeeds[id] = Map.from(nn),
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
@@ -208,6 +212,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
+
         setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
@@ -240,6 +245,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
+
         setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
@@ -273,6 +279,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
+
         setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
@@ -306,6 +313,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
+
         setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
@@ -340,6 +348,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => 'char-1',
           getIsGroupNonObserverMode: () => false,
           getGroupNeeds: (_) => {},
+
           setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
@@ -400,6 +409,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => 'char-1',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
+
         setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,

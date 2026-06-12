@@ -45,10 +45,6 @@ class RealismFormSection extends StatelessWidget {
   final ValueChanged<bool> onNsfwCooldownChanged;
   final bool chaosModeEnabled;
   final ValueChanged<bool> onChaosModeChanged;
-  final bool needsSimEnabled;
-  final ValueChanged<bool> onNeedsSimChanged;
-  final bool enjoysLowHygiene;
-  final ValueChanged<bool> onEnjoysLowHygieneChanged;
   final String currentTask;
   final ValueChanged<String> onCurrentTaskChanged;
 
@@ -65,21 +61,14 @@ class RealismFormSection extends StatelessWidget {
   final int realismVerificationStrictness;
   final ValueChanged<int>? onRealismVerificationStrictnessChanged;
 
-  // Director authority on needs deltas (new toggle in Optional Features; uses AppColors exclusively via buildToggleRow (shared with edit dialog for DRY); AppColors exclusive in new authority/Optional/verif surfaces per re-grep (withValues(alpha) only on resolved AppColors values like formMasterAccent/verifiedAccentOf/borderOf; no raw color literals (Colors or hex 0x) in authority/Optional/verif *executable* code; comments filtered from hygiene greps).
-  final bool realismNeedsDirectorAuthority;
-  final ValueChanged<bool> onRealismNeedsDirectorAuthorityChanged;
-
-  // Needs delta strength (1-5). Injected to the first needs-impact model call (and to Director when authority
-  // is on) so they emit/correct at the requested magnitude on the first pass. The evaluator applies what comes
-  // back directly (no post-multiply after Director, to avoid scaling an already-scaled value a second time).
-  // Slider shown in Optional Features (Details / right-click edit).
-  final int needsSimStrength;
-  final ValueChanged<int>? onNeedsSimStrengthChanged;
+  // Optional needs form (rendered separately from Optional Features).
+  // When provided, the caller is responsible for rendering this widget
+  // (e.g. in the character creator). When null, no needs UI is rendered.
+  final Widget? needsFormSection;
 
   // Visibility controls (for group creator where some features are global only)
   final bool showNsfwCooldownToggle;
   final bool showChaosToggle;
-  final bool showNeedsToggle;
   final bool showTimeAndDay;
   final bool showMasterEnabledToggle;
 
@@ -105,10 +94,6 @@ class RealismFormSection extends StatelessWidget {
     required this.onNsfwCooldownChanged,
     required this.chaosModeEnabled,
     required this.onChaosModeChanged,
-    required this.needsSimEnabled,
-    required this.onNeedsSimChanged,
-    required this.enjoysLowHygiene,
-    required this.onEnjoysLowHygieneChanged,
     required this.currentTask,
     required this.onCurrentTaskChanged,
     required this.realismVerificationEnabled,
@@ -118,16 +103,9 @@ class RealismFormSection extends StatelessWidget {
     this.onRealismVerificationMaxReprocessesChanged,
     this.realismVerificationStrictness = 3,
     this.onRealismVerificationStrictnessChanged,
-    // Director authority on needs deltas (simple model+Director; default off)
-    this.realismNeedsDirectorAuthority = false,
-    required this.onRealismNeedsDirectorAuthorityChanged,
-
-    // Needs strength 1-5 (exponent); default 1. onChanged optional for read-only cases.
-    this.needsSimStrength = 1,
-    this.onNeedsSimStrengthChanged,
+    this.needsFormSection,
     this.showNsfwCooldownToggle = true,
     this.showChaosToggle = true,
-    this.showNeedsToggle = true,
     this.showTimeAndDay = true,
     this.showMasterEnabledToggle = true,
   });
@@ -405,6 +383,10 @@ class RealismFormSection extends StatelessWidget {
           ], // end showTimeAndDay
           const SizedBox(height: 20),
 
+          // Needs Simulation (rendered separately when provided by caller).
+          // ignore: use_null_aware_elements — '?' doesn't work in children lists
+          if (needsFormSection != null) needsFormSection!,
+
           // Relationship Section
           _sectionHeader(
             Icons.favorite,
@@ -596,7 +578,7 @@ class RealismFormSection extends StatelessWidget {
                     onChanged: onNsfwCooldownChanged,
                     context: context,
                   ),
-                  if (showChaosToggle || showNeedsToggle)
+                  if (showChaosToggle)
                     Divider(
                       color: AppColors.borderOf(context).withValues(alpha: 0.4),
                       height: 24,
@@ -611,71 +593,12 @@ class RealismFormSection extends StatelessWidget {
                     onChanged: onChaosModeChanged,
                     context: context,
                   ),
-                  if (showNeedsToggle)
-                    Divider(
-                      color: AppColors.borderOf(context).withValues(alpha: 0.4),
-                      height: 24,
-                    ),
-                ],
-                if (showNeedsToggle) ...[
-                  buildToggleRow(
-                    icon: Icons.battery_std,
-                    label: 'Needs Simulation',
-                    subtitle:
-                        'Hunger, bladder, energy, social, fun, hygiene, comfort — influences prompts & behavior',
-                    value: needsSimEnabled,
-                    onChanged: onNeedsSimChanged,
-                    context: context,
-                  ),
-                ],
-
-                // "Enjoys low hygiene" is a per-character preference that inverts hygiene need behavior.
-                // It appears when Needs Simulation is enabled.
-                // - In normal 1:1 character editors (showNeedsToggle=true): shown right under the Needs toggle.
-                // - In group per-character editors (showNeedsToggle=false): shown standalone under Optional Features
-                //   (because the master Needs toggle is suppressed at the group level).
-                if (needsSimEnabled) ...[
-                  if (showNeedsToggle) const SizedBox(height: 8),
-                  buildToggleRow(
-                    icon: Icons.water_drop_outlined,
-                    label: 'Enjoys low hygiene',
-                    subtitle:
-                        'Character prefers being sweaty, musky, or filthy (inverts hygiene behavior)',
-                    value: enjoysLowHygiene,
-                    onChanged: onEnjoysLowHygieneChanged,
-                    context: context,
-                  ),
-
-                  // Needs delta strength slider lives directly under Needs Simulation (not under
-                  // the Director authority toggle). It controls the magnitude requested from the
-                  // first needs-impact model call (and Director when authority is enabled).
-                  if (onNeedsSimStrengthChanged != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Needs delta strength: ${needsSimStrength}x — model (and Director if authority on) instructed to emit at this magnitude on first pass. 1x = normal baseline; 5x = ~5× larger swings (e.g. -3 → -15). No second multiply after Director.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary(context),
-                        fontSize: 11,
-                      ),
-                    ),
-                    Slider(
-                      value: needsSimStrength.toDouble(),
-                      min: 1,
-                      max: 5,
-                      divisions: 4,
-                      label: '${needsSimStrength}x',
-                      onChanged: (d) => onNeedsSimStrengthChanged?.call(d.round()),
-                    ),
-                  ],
                 ],
 
                 // Realism Verification toggle (last optional; independent of needs).
                 // Uses same _toggleRow + card styling. Sliders for passes/strictness are in Details dialog per spec.
                 if (showVerificationToggle) ...[
-                  if (needsSimEnabled ||
-                      showNeedsToggle ||
-                      showChaosToggle ||
-                      showNsfwCooldownToggle)
+                  if (showChaosToggle || showNsfwCooldownToggle)
                     Divider(
                       color: AppColors.borderOf(context).withValues(alpha: 0.4),
                       height: 24,
@@ -724,23 +647,6 @@ class RealismFormSection extends StatelessWidget {
                     label: '$realismVerificationStrictness',
                     onChanged: (d) =>
                         onRealismVerificationStrictnessChanged?.call(d.round()),
-                  ),
-                ],
-
-                // Director authority on needs deltas toggle (under same Optional Features card; uses shared buildToggleRow (AppColors.verifiedAccentOf exclusively; AppColors exclusive in new authority/Optional/verif surfaces per re-grep (withValues only on resolved; no raw color literals in authority/Optional/verif *executable* code; comments filtered from hygiene greps)).
-                if (needsSimEnabled) ...[
-                  Divider(
-                    color: AppColors.borderOf(context).withValues(alpha: 0.4),
-                    height: 24,
-                  ),
-                  buildToggleRow(
-                    icon: Icons.verified,
-                    label: 'Director authority on needs deltas',
-                    subtitle:
-                        'When Realism Verification is on, Director corrections have authority over model needs deltas (simple decay + model + director review loop; stronger critique changes applied deltas)',
-                    value: realismNeedsDirectorAuthority,
-                    onChanged: onRealismNeedsDirectorAuthorityChanged,
-                    context: context,
                   ),
                 ],
               ],

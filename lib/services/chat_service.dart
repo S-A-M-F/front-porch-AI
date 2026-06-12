@@ -404,6 +404,9 @@ class ChatService extends ChangeNotifier {
   bool _enjoysLowHygiene =
       false; // inversion for hygiene (enjoys being dirty/sweaty/musky)
 
+  Map<String, int> _groupDecayRates = {};
+  Map<String, int> get groupDecayRates => _groupDecayRates;
+
   // Forwarding for critical threshold (moved to NeedsSimulation after buffer removal; UI + cards still reference the old ChatService surface)
   static int get needCriticalThreshold => NeedsSimulation.needCriticalThreshold;
 
@@ -503,6 +506,20 @@ class ChatService extends ChangeNotifier {
     getEnjoysLowHygiene: () => enjoysLowHygiene,
     getNeedsSimEnabled: () => _needsSimEnabled,
     setArousalLevel: (v) => _nsfwService.setArousalLevel(v),
+    getCustomDecayRates: () {
+      if (_activeGroup != null) return _groupDecayRates;
+      final ext = _activeCharacter?.frontPorchExtensions;
+      if (ext == null) return const <String, int>{};
+      return {
+        'hunger': ext.needsDecayHunger,
+        'bladder': ext.needsDecayBladder,
+        'energy': ext.needsDecayEnergy,
+        'social': ext.needsDecaySocial,
+        'fun': ext.needsDecayFun,
+        'hygiene': ext.needsDecayHygiene,
+        'comfort': ext.needsDecayComfort,
+      };
+    },
   );
 
   late final _relationshipService = RelationshipService(
@@ -860,6 +877,17 @@ class ChatService extends ChangeNotifier {
         false),
     getNeedsSimStrength: () =>
         (_activeCharacter?.frontPorchExtensions?.needsSimStrength ?? 1),
+    onClimax: (turns) {
+      final preClimaxArousal = _nsfwService.arousalLevel;
+      if (_messages.isNotEmpty && !_messages.last.isUser) {
+        final msg = _messages.last;
+        final meta = Map<String, dynamic>.from(msg.activeMetadata ?? {});
+        meta['climax_triggered'] = true;
+        meta['pre_climax_arousal'] = preClimaxArousal;
+        msg.swipeMetadata[msg.swipeIndex] = meta;
+      }
+      _nsfwService.applyClimaxEffects(turns: turns);
+    },
   );
 
   late final _realismEvals = RealismEvals(
@@ -2229,6 +2257,7 @@ class ChatService extends ChangeNotifier {
     _isSummaryGenerating =
         false; // explicit secondary zero on setActiveGroup (incomplete zeroing ... now complete; keep-sync lists + summary_service + " ; authority for needs deltas thin path)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)"
     _groupRealism = {};
+    _groupDecayRates = {};
     _groupAuthorNotes = {};
     _groupAuthorNoteStrengths = {};
     _groupCharacterSystemPrompts = {};
@@ -2751,6 +2780,7 @@ class ChatService extends ChangeNotifier {
     }
 
     _groupRealism = {};
+    _groupDecayRates = {};
     _groupAuthorNotes = {};
     _groupAuthorNoteStrengths = {};
     _groupCharacterSystemPrompts = {};
@@ -2770,6 +2800,14 @@ class ChatService extends ChangeNotifier {
             _groupRealism = perChar.map(
               (k, v) =>
                   MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)),
+            );
+          }
+
+          // Global group decay rates
+          final globalDecay = map['globalDecayRates'];
+          if (globalDecay is Map) {
+            _groupDecayRates = globalDecay.map(
+              (k, v) => MapEntry(k.toString(), (v as num).toInt()),
             );
           }
 
@@ -2889,6 +2927,7 @@ class ChatService extends ChangeNotifier {
       });
 
       groupRealismJson = jsonEncode({
+        'globalDecayRates': _groupDecayRates,
         'perChar': _groupRealism,
         'authorNotes': _groupAuthorNotes,
         'authorNoteStrengths': _groupAuthorNoteStrengths,
@@ -8449,6 +8488,70 @@ class ChatService extends ChangeNotifier {
   // rules (void _ count must stay exactly 15 live grep after every edit + final).
   // Deletion of the now-redundant per-site try/catch guard in _loadActiveObjectives
   // (and its comment) is part of this task (see that site for the removed code).
+  /// Update a global group decay rate, propagating it to all group members' PNGs
+  Future<void> setGroupNeedsDecayRate(String key, int value) async {
+    if (_activeGroup == null) return;
+    _groupDecayRates[key] = value;
+
+    if (_characterRepository != null) {
+      final v2Service = V2CardService();
+      final db = await AppDatabase.instance();
+      
+      for (final char in _groupCharacters) {
+        final ext = char.frontPorchExtensions ?? FrontPorchExtensions();
+        final newExt = ext.copyWith(
+          needsDecayHunger: key == 'hunger' ? value : null,
+          needsDecayBladder: key == 'bladder' ? value : null,
+          needsDecayEnergy: key == 'energy' ? value : null,
+          needsDecaySocial: key == 'social' ? value : null,
+          needsDecayFun: key == 'fun' ? value : null,
+          needsDecayHygiene: key == 'hygiene' ? value : null,
+          needsDecayComfort: key == 'comfort' ? value : null,
+        );
+        char.frontPorchExtensions = newExt;
+
+        if (char.imagePath != null) {
+          final file = File(char.imagePath!);
+          if (await file.exists()) {
+            await v2Service.saveCardAsPng(char, char.imagePath!, char.imagePath!);
+          }
+        }
+
+        if (char.dbId != null) {
+          await db.updateGroupMember(
+            GroupMembersCompanion(
+              id: drift.Value(char.dbId!),
+              frontPorchExtensions: drift.Value(jsonEncode(newExt.toJson())),
+            ),
+          );
+        }
+      }
+    }
+
+    await _saveChat();
+    notifyListeners();
+  }
+
+  /// Update a decay rate for the active 1:1 character
+  Future<void> setNeedsDecayRate(String key, int value) async {
+    if (_activeCharacter == null || _characterRepository == null) return;
+
+    final ext = _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
+    final newExt = ext.copyWith(
+      needsDecayHunger: key == 'hunger' ? value : null,
+      needsDecayBladder: key == 'bladder' ? value : null,
+      needsDecayEnergy: key == 'energy' ? value : null,
+      needsDecaySocial: key == 'social' ? value : null,
+      needsDecayFun: key == 'fun' ? value : null,
+      needsDecayHygiene: key == 'hygiene' ? value : null,
+      needsDecayComfort: key == 'comfort' ? value : null,
+    );
+    _activeCharacter!.frontPorchExtensions = newExt;
+
+    await _characterRepository!.updateCharacter(_activeCharacter!);
+    notifyListeners();
+  }
+
   @override
   void notifyListeners() {
     if (_disposed) return;

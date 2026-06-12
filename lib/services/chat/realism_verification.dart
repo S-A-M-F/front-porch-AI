@@ -397,8 +397,10 @@ class RealismVerification {
         : (kind == 'needs_impact')
             ? ' Preserve the needs delta keys (hunger_delta/energy_delta/etc or plain names) + reason + activities. The model is trusted to interpret the full erotic narrative (physical descriptions, self-touch, leaking, charging/aching, dominance, power exchange) and assign reasonable deltas like the other realism evals (bond/emotion etc). Only correct if the numbers clearly contradict what is actually written in the scene or pre-state. Keep scene-faithful numbers.'
             : '';
+    final emotionConstraint = (bundle['injections'] as Map<String, dynamic>?)?['emotion_constraint'] as String? ?? '';
+    final constraintText = emotionConstraint.isNotEmpty ? '\n$emotionConstraint\n' : '';
     final s = scene.length > 600 ? scene.substring(0, 600) + '…' : scene;
-    return '$tone\n$note$structHint\n\nEval: $kind for $charName.\nPre: $pre\nScene: $s\n\nOrig: $originalRaw\nReason: $reason\nSuggested: $suggested\n\nRe-eval; ONLY corrected JSON. Deltas to clamps. Match scene if classic.';
+    return '$tone\n$note$structHint$constraintText\n\nEval: $kind for $charName.\nPre: $pre\nScene: $s\n\nOrig: $originalRaw\nReason: $reason\nSuggested: $suggested\n\nRe-eval; ONLY corrected JSON. Deltas to clamps. Match scene if classic.';
   }
 
   String _correctedJson(String o, String k, int v) {

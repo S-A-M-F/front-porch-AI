@@ -27,6 +27,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
+import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
 import 'package:front_porch_ai/utils/character_id.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/pages/chat_page.dart';
@@ -96,6 +97,9 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   bool _chaosModeEnabled = false;
   bool _chaosNsfwEnabled = false;
   bool _needsSimEnabled = true;
+
+  // Per-member needs baselines (0-100) — mirrors _memberRealismSeeds keys.
+  final Map<String, Map<String, int>> _memberNeedsBaselines = {};
 
   // Global time/day for the whole group (not per-character — prevents footgun)
   String _globalTimeOfDay = 'morning';
@@ -221,6 +225,25 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       if (!_memberRealismSeeds.containsKey(id)) {
         _memberRealismSeeds[id] = _defaultRealismSeedFor(card);
       }
+      if (!_memberNeedsBaselines.containsKey(id)) {
+        final s = _memberRealismSeeds[id]!;
+        _memberNeedsBaselines[id] = {
+          'hunger': s['needsBaselineHunger'] as int? ?? 80,
+          'bladder': s['needsBaselineBladder'] as int? ?? 80,
+          'energy': s['needsBaselineEnergy'] as int? ?? 80,
+          'social': s['needsBaselineSocial'] as int? ?? 80,
+          'fun': s['needsBaselineFun'] as int? ?? 80,
+          'hygiene': s['needsBaselineHygiene'] as int? ?? 80,
+          'comfort': s['needsBaselineComfort'] as int? ?? 80,
+          'decayHunger': s['needsDecayHunger'] as int? ?? 5,
+          'decayBladder': s['needsDecayBladder'] as int? ?? 5,
+          'decayEnergy': s['needsDecayEnergy'] as int? ?? 5,
+          'decaySocial': s['needsDecaySocial'] as int? ?? 5,
+          'decayFun': s['needsDecayFun'] as int? ?? 5,
+          'decayHygiene': s['needsDecayHygiene'] as int? ?? 5,
+          'decayComfort': s['needsDecayComfort'] as int? ?? 5,
+        };
+      }
 
       // Initialize empty relationships map for small groups
       if (_members.length <= 4) {
@@ -297,6 +320,20 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
       'verificationStrictness': 3,
       'needsDirectorAuthority': false,
       'needsSimStrength': 1,
+      'needsBaselineHunger': 80,
+      'needsBaselineBladder': 80,
+      'needsBaselineEnergy': 80,
+      'needsBaselineSocial': 80,
+      'needsBaselineFun': 80,
+      'needsBaselineHygiene': 80,
+      'needsBaselineComfort': 80,
+      'needsDecayHunger': 5,
+      'needsDecayBladder': 5,
+      'needsDecayEnergy': 5,
+      'needsDecaySocial': 5,
+      'needsDecayFun': 5,
+      'needsDecayHygiene': 5,
+      'needsDecayComfort': 5,
       'relationships':
           <String, int>{}, // seeded in Group Dynamics step for small groups
     };
@@ -975,6 +1012,20 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
               (seed['verificationStrictness'] as int?) ?? 3,
           realismNeedsDirectorAuthority:
               (seed['needsDirectorAuthority'] as bool?) ?? false,
+          needsBaselineHunger: (seed['needsBaselineHunger'] as int?) ?? 80,
+          needsBaselineBladder: (seed['needsBaselineBladder'] as int?) ?? 80,
+          needsBaselineEnergy: (seed['needsBaselineEnergy'] as int?) ?? 80,
+          needsBaselineSocial: (seed['needsBaselineSocial'] as int?) ?? 80,
+          needsBaselineFun: (seed['needsBaselineFun'] as int?) ?? 80,
+          needsBaselineHygiene: (seed['needsBaselineHygiene'] as int?) ?? 80,
+          needsBaselineComfort: (seed['needsBaselineComfort'] as int?) ?? 80,
+          needsDecayHunger: (seed['needsDecayHunger'] as int?) ?? 5,
+          needsDecayBladder: (seed['needsDecayBladder'] as int?) ?? 5,
+          needsDecayEnergy: (seed['needsDecayEnergy'] as int?) ?? 5,
+          needsDecaySocial: (seed['needsDecaySocial'] as int?) ?? 5,
+          needsDecayFun: (seed['needsDecayFun'] as int?) ?? 5,
+          needsDecayHygiene: (seed['needsDecayHygiene'] as int?) ?? 5,
+          needsDecayComfort: (seed['needsDecayComfort'] as int?) ?? 5,
           needsSimStrength: (seed['needsSimStrength'] as int?) ?? 1,
         );
       }
@@ -2365,22 +2416,11 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                           onNsfwCooldownChanged: (_) {},
                           chaosModeEnabled: false,
                           onChaosModeChanged: (_) {},
-                          needsSimEnabled: _needsSimEnabled,
-                          onNeedsSimChanged: (_) {},
-                          // When global Needs is on, this lets the widget show "Enjoys low hygiene"
-                          // under Optional Features even though we hide the Needs master row itself.
                           // Hide the global-only toggles entirely from per-character optional features.
                           showNsfwCooldownToggle: false,
                           showChaosToggle: false,
-                          showNeedsToggle: false,
                           showTimeAndDay: false,
                           showMasterEnabledToggle: false,
-                          // Enjoys low hygiene will now naturally appear under Optional Features
-                          // when the global Needs Simulation is enabled (because needsSimEnabled is passed above).
-                          enjoysLowHygiene:
-                              (seed['enjoysLowHygiene'] as bool?) ?? false,
-                          onEnjoysLowHygieneChanged: (v) =>
-                              _updateMemberRealism(id, {'enjoysLowHygiene': v}),
                           currentTask: (seed['currentTask'] as String?) ?? '',
                           onCurrentTaskChanged: (v) =>
                               _updateMemberRealism(id, {'currentTask': v}),
@@ -2402,18 +2442,98 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                               _updateMemberRealism(id, {
                                 'verificationStrictness': v,
                               }),
-                          realismNeedsDirectorAuthority:
-                              (seed['needsDirectorAuthority'] as bool?) ??
-                              false,
-                          onRealismNeedsDirectorAuthorityChanged: (v) =>
+                          needsFormSection: NeedsFormSection(
+                            enabled: _needsSimEnabled,
+                            onEnabledChanged: (v) =>
+                                setState(() => _needsSimEnabled = v),
+                            enjoysLowHygiene:
+                                _memberNeedsBaselines[id]?['enjoysLowHygiene'] ==
+                                    1,
+                            onEnjoysLowHygieneChanged: (v) {
+                              setState(() {
+                                _memberNeedsBaselines[id]![
+                                    'enjoysLowHygiene'] = v ? 1 : 0;
+                              });
                               _updateMemberRealism(id, {
-                                'needsDirectorAuthority': v,
-                              }),
-                          needsSimStrength: (seed['needsSimStrength'] as int?) ?? 1,
-                          onNeedsSimStrengthChanged: (v) =>
+                                'enjoysLowHygiene': v,
+                              });
+                            },
+                            needsSimStrength:
+                                (seed['needsSimStrength'] as int?) ?? 1,
+                            onNeedsSimStrengthChanged: (v) {
+                              _updateMemberRealism(id, {'needsSimStrength': v});
+                            },
+                            baselineHunger:
+                                _memberNeedsBaselines[id]?['hunger'] ?? 80,
+                            onBaselineHungerChanged: (v) {
+                              setState(() {
+                                _memberNeedsBaselines[id]!['hunger'] = v;
+                              });
                               _updateMemberRealism(id, {
-                                'needsSimStrength': v,
-                              }),
+                                'needsBaselineHunger': v,
+                              });
+                            },
+                            baselineBladder:
+                                _memberNeedsBaselines[id]?['bladder'] ?? 80,
+                            onBaselineBladderChanged: (v) {
+                              setState(() {
+                                _memberNeedsBaselines[id]!['bladder'] = v;
+                              });
+                              _updateMemberRealism(id, {
+                                'needsBaselineBladder': v,
+                              });
+                            },
+                            baselineEnergy:
+                                _memberNeedsBaselines[id]?['energy'] ?? 80,
+                            onBaselineEnergyChanged: (v) {
+                              setState(() {
+                                _memberNeedsBaselines[id]!['energy'] = v;
+                              });
+                              _updateMemberRealism(id, {
+                                'needsBaselineEnergy': v,
+                              });
+                            },
+                            baselineSocial:
+                                _memberNeedsBaselines[id]?['social'] ?? 80,
+                            onBaselineSocialChanged: (v) {
+                              setState(() {
+                                _memberNeedsBaselines[id]!['social'] = v;
+                              });
+                              _updateMemberRealism(id, {
+                                'needsBaselineSocial': v,
+                              });
+                            },
+                            baselineFun:
+                                _memberNeedsBaselines[id]?['fun'] ?? 80,
+                            onBaselineFunChanged: (v) {
+                              setState(() {
+                                _memberNeedsBaselines[id]!['fun'] = v;
+                              });
+                              _updateMemberRealism(id, {
+                                'needsBaselineFun': v,
+                              });
+                            },
+                            baselineHygiene:
+                                _memberNeedsBaselines[id]?['hygiene'] ?? 80,
+                            onBaselineHygieneChanged: (v) {
+                              setState(() {
+                                _memberNeedsBaselines[id]!['hygiene'] = v;
+                              });
+                              _updateMemberRealism(id, {
+                                'needsBaselineHygiene': v,
+                              });
+                            },
+                            baselineComfort:
+                                _memberNeedsBaselines[id]?['comfort'] ?? 80,
+                            onBaselineComfortChanged: (v) {
+                              setState(() {
+                                _memberNeedsBaselines[id]!['comfort'] = v;
+                              });
+                              _updateMemberRealism(id, {
+                                'needsBaselineComfort': v,
+                              });
+                            },
+                          ),
                           showVerificationToggle: true,
                         ),
                       ),

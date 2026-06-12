@@ -40,7 +40,7 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
 
   @override
@@ -98,7 +98,8 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
               tabs: const [
                 Tab(text: 'Prompt Engineering'),
                 Tab(text: 'Memory & RAG'),
-                Tab(text: 'Realism & Needs'),
+                Tab(text: 'Realism'),
+                Tab(text: 'Needs'),
                 Tab(text: 'General'),
                 Tab(text: 'Lorebook & Worlds'),
               ],
@@ -120,6 +121,10 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
                     groupRepo: widget.groupRepo,
                   ),
                   _RealismNeedsTab(
+                    chatService: widget.chatService,
+                    groupRepo: widget.groupRepo,
+                  ),
+                  _NeedsTab(
                     chatService: widget.chatService,
                     groupRepo: widget.groupRepo,
                   ),
@@ -1111,16 +1116,16 @@ class _RealismNeedsTab extends StatefulWidget {
 
 class _RealismNeedsTabState extends State<_RealismNeedsTab> {
   bool _realismEnabled = false;
-  bool _needsSimEnabled = false;
   bool _passageOfTimeEnabled = true;
   bool _chaosModeEnabled = false;
   bool _chaosNsfwEnabled = false;
 
-  List<CharacterCard> _chars = [];
+  // Group-wide Time & Day.
+  String _groupTimeOfDay = 'morning';
+  int _groupDayCount = 1;
+  late final TextEditingController _groupDayCountController;
 
-  // Per-character static preference overrides (e.g. enjoys low hygiene) for this group.
-  // These are persisted via the member's private card extensions or group default state.
-  final Map<String, bool> _enjoysLowHygiene = {};
+  List<CharacterCard> _chars = [];
 
   // Per-member Director/Verifier (Realism Verification) settings for groups.
   // Wired the same as 1:1 via per-member CharacterCard.frontPorchExtensions + impersonation.
@@ -1132,6 +1137,16 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
   // Baseline seeding state (only bond/trust/emotion/time/day)
   final Map<String, Map<String, dynamic>> _baselineSeeds = {};
+
+  // Per-character editable realism baselines (seeded from baselineSeeds + card ext).
+  final Map<String, int> _editShortTermBond = {};
+  final Map<String, int> _editLongTermBond = {};
+  final Map<String, int> _editTrustLevel = {};
+  final Map<String, String> _editEmotion = {};
+  final Map<String, String> _editEmotionIntensity = {};
+
+  // Text controllers for inline editing fields.
+  final Map<String, TextEditingController> _emotionControllers = {};
 
   @override
   void initState() {
@@ -1149,10 +1164,21 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     _chars = cs.groupCharacters;
 
     _realismEnabled = cs.realismEnabled;
-    _needsSimEnabled = cs.needsSimEnabled;
     _passageOfTimeEnabled = cs.timeService.passageOfTimeEnabled;
     _chaosModeEnabled = cs.chaosModeService.chaosModeEnabled;
     _chaosNsfwEnabled = cs.chaosModeService.chaosNsfwEnabled;
+
+    // Group-wide Time & Day.
+    final group = cs.activeGroup;
+    if (group != null) {
+      final gs = group.defaultMemberRealismState;
+      if (gs.isNotEmpty && gs != '{}') {
+        final map = (jsonDecode(gs) as Map<String, dynamic>?) ?? {};
+        _groupTimeOfDay = (map['timeOfDay'] as String?) ?? 'morning';
+        _groupDayCount = (map['dayCount'] as num?)?.toInt() ?? 1;
+      }
+    }
+    _groupDayCountController = TextEditingController(text: _groupDayCount.toString());
 
     // Load immutable creation baseline seeds (only the allowed fields)
     _baselineSeeds.clear();
@@ -1161,54 +1187,24 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
         cs.getBaselineSeedForGroupCharacter(c),
       );
       final id = _getCharId(c);
-      _enjoysLowHygiene[id] = c.frontPorchExtensions?.enjoysLowHygiene ?? false;
 
       // Load per-member Director/Verifier settings (if present on the member's card ext)
       _verificationEnabled[id] = c.frontPorchExtensions?.realismVerificationEnabled ?? false;
       _verificationMaxReprocesses[id] = c.frontPorchExtensions?.realismVerificationMaxReprocesses ?? 1;
       _verificationStrictness[id] = c.frontPorchExtensions?.realismVerificationStrictness ?? 3;
       _needsDirectorAuthority[id] = c.frontPorchExtensions?.realismNeedsDirectorAuthority ?? false;
+
+      // Load editable realism baselines from baseline seed + card extensions.
+      final seed = _baselineSeeds[id]!;
+      _editShortTermBond[id] = (seed['affection'] as num?)?.toInt() ?? 50;
+      _editLongTermBond[id] = (seed['trust'] as num?)?.toInt() ?? 50;
+      _editTrustLevel[id] = (seed['trust'] as num?)?.toInt() ?? 50;
+      _editEmotion[id] = (seed['emotion'] as String?) ?? 'neutral';
+      _editEmotionIntensity[id] = (seed['emotionIntensity'] as String?) ?? 'moderate';
     }
   }
 
-  void _updateMemberEnjoysLowHygiene(CharacterCard char, bool value) {
-    final id = _getCharId(char);
-    setState(() {
-      _enjoysLowHygiene[id] = value;
-      // Update the in-memory card extension so reads pick it up immediately
-      char.frontPorchExtensions =
-          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-            enjoysLowHygiene: value,
-          );
-    });
-
-    // Persist to the group's defaultMemberRealismState so new sessions / loads pick it up.
-    // This makes the per-member static pref editable in group settings.
-    try {
-      final group = widget.chatService.activeGroup;
-      if (group != null) {
-        final map =
-            group.defaultMemberRealismState.isNotEmpty &&
-                group.defaultMemberRealismState != '{}'
-            ? (jsonDecode(group.defaultMemberRealismState)
-                      as Map<String, dynamic>? ??
-                  {})
-            : <String, dynamic>{};
-        final perChar = (map['perChar'] as Map<String, dynamic>? ?? {})
-            .cast<String, dynamic>();
-        final current = (perChar[id] as Map<String, dynamic>? ?? {})
-            .cast<String, dynamic>();
-        current['enjoysLowHygiene'] = value;
-        perChar[id] = current;
-        map['perChar'] = perChar;
-        group.defaultMemberRealismState = jsonEncode(map);
-      }
-    } catch (_) {
-      // Non-fatal; the in-memory card update will help for current session.
-    }
-  }
-
-  // --- Per-member Director/Verifier updates (mirrors enjoys pattern for consistency) ---
+  // --- Per-member Director/Verifier updates ---
   void _updateMemberVerificationEnabled(CharacterCard char, bool value) {
     final id = _getCharId(char);
     setState(() {
@@ -1286,6 +1282,99 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     }
   }
 
+  // ── Editable realism baseline update methods ──
+
+  void _updateEditShortTermBond(CharacterCard char, int value) {
+    final id = _getCharId(char);
+    setState(() {
+      _editShortTermBond[id] = value;
+    });
+    _applyEditToBaselineSeedAndCard(char, id);
+  }
+
+  void _updateEditLongTermBond(CharacterCard char, int value) {
+    final id = _getCharId(char);
+    setState(() {
+      _editLongTermBond[id] = value;
+    });
+    _applyEditToBaselineSeedAndCard(char, id);
+  }
+
+  void _updateEditTrustLevel(CharacterCard char, int value) {
+    final id = _getCharId(char);
+    setState(() {
+      _editTrustLevel[id] = value;
+    });
+    _applyEditToBaselineSeedAndCard(char, id);
+  }
+
+  void _updateEditEmotion(CharacterCard char, String value) {
+    final id = _getCharId(char);
+    setState(() {
+      _editEmotion[id] = value;
+    });
+    _applyEditToBaselineSeedAndCard(char, id);
+  }
+
+  void _updateEditEmotionIntensity(CharacterCard char, String value) {
+    final id = _getCharId(char);
+    setState(() {
+      _editEmotionIntensity[id] = value;
+    });
+    _applyEditToBaselineSeedAndCard(char, id);
+  }
+
+  void _applyEditToBaselineSeedAndCard(CharacterCard char, String id) {
+    final ext = char.frontPorchExtensions ?? FrontPorchExtensions();
+    char.frontPorchExtensions = ext.copyWith(
+      shortTermBond: _editShortTermBond[id] ?? 50,
+      longTermBond: _editLongTermBond[id] ?? 50,
+      trustLevel: _editTrustLevel[id] ?? 50,
+      characterEmotion: _editEmotion[id] ?? 'neutral',
+      emotionIntensity: _editEmotionIntensity[id] ?? 'moderate',
+    );
+
+    // Update the baseline seed via ChatService.
+    try {
+      widget.chatService.setBaselineSeedForGroupCharacter(char, {
+        'affection': _editShortTermBond[id] ?? 50,
+        'trust': _editLongTermBond[id] ?? 50,
+        'emotion': _editEmotion[id] ?? 'neutral',
+        'emotionIntensity': _editEmotionIntensity[id] ?? 'moderate',
+      });
+    } catch (_) {
+      // Non-fatal
+    }
+
+    // Persist to group defaultMemberRealismState.
+    try {
+      final group = widget.chatService.activeGroup;
+      if (group != null) {
+        final map =
+            group.defaultMemberRealismState.isNotEmpty &&
+                group.defaultMemberRealismState != '{}'
+            ? (jsonDecode(group.defaultMemberRealismState)
+                      as Map<String, dynamic>? ??
+                  {})
+            : <String, dynamic>{};
+        final perChar = (map['perChar'] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        final current = (perChar[id] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        current['shortTermBond'] = _editShortTermBond[id] ?? 50;
+        current['longTermBond'] = _editLongTermBond[id] ?? 50;
+        current['trustLevel'] = _editTrustLevel[id] ?? 50;
+        current['characterEmotion'] = _editEmotion[id] ?? 'neutral';
+        current['emotionIntensity'] = _editEmotionIntensity[id] ?? 'moderate';
+        perChar[id] = current;
+        map['perChar'] = perChar;
+        group.defaultMemberRealismState = jsonEncode(map);
+      }
+    } catch (_) {
+      // Non-fatal
+    }
+  }
+
   String _getCharId(CharacterCard c) => c.imagePath != null
       ? c.imagePath!.split('/').last.split('.').first
       : c.name;
@@ -1293,7 +1382,48 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
   @override
   void dispose() {
     widget.chatService.removeListener(_onServiceChanged);
+    _groupDayCountController.dispose();
     super.dispose();
+  }
+
+  Widget _sliderRow(String label, int value, int min, int max, String tierName, Color color, ValueChanged<int> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(label, style: const TextStyle(fontSize: 10, color: Colors.white54)),
+          ),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 8),
+              ),
+              child: Slider(
+                value: value.toDouble(),
+                min: min.toDouble(),
+                max: max.toDouble(),
+                divisions: max - min > 0 ? (max - min) ~/ 10 : 0,
+                label: value.toString(),
+                onChanged: (d) => onChanged(d.round()),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: 40,
+            child: Text(
+              value.toString(),
+              style: TextStyle(fontSize: 10, color: color),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _updateRealism(bool value) {
@@ -1301,13 +1431,6 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       _realismEnabled = value;
     });
     widget.chatService.setRealismEnabled(value);
-  }
-
-  void _updateNeedsSim(bool value) {
-    setState(() {
-      _needsSimEnabled = value;
-    });
-    widget.chatService.setNeedsSimEnabled(value);
   }
 
   void _updatePassageOfTime(bool value) {
@@ -1329,6 +1452,36 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       _chaosNsfwEnabled = value;
     });
     widget.chatService.chaosModeService.setNsfwEnabled(value);
+  }
+
+  void _updateGroupTimeOfDay(String value) {
+    setState(() {
+      _groupTimeOfDay = value;
+    });
+    _persistGroupTimeDay();
+  }
+
+  void _updateGroupDayCount(int value) {
+    setState(() {
+      _groupDayCount = value;
+    });
+    _groupDayCountController.text = value.toString();
+    _persistGroupTimeDay();
+  }
+
+  void _persistGroupTimeDay() {
+    final group = widget.chatService.activeGroup;
+    if (group == null) return;
+    try {
+      final map = group.defaultMemberRealismState.isNotEmpty && group.defaultMemberRealismState != '{}'
+          ? (jsonDecode(group.defaultMemberRealismState) as Map<String, dynamic>?) ?? {}
+          : <String, dynamic>{};
+      map['timeOfDay'] = _groupTimeOfDay;
+      map['dayCount'] = _groupDayCount;
+      group.defaultMemberRealismState = jsonEncode(map);
+    } catch (_) {
+      // Non-fatal
+    }
   }
 
   void _resetAllRealismStates() {
@@ -1377,7 +1530,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Realism & Needs — ${group.name}',
+                    'Realism — ${group.name}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1402,7 +1555,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Master toggles and per-character baseline management for the Realism Engine, Needs simulation, Chaos Mode, and Passage of Time in this group.',
+              'Master toggles and per-character baseline management for the Realism Engine, Chaos Mode, and Passage of Time in this group.',
               style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
             const SizedBox(height: 12),
@@ -1429,7 +1582,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Director Mode is active. Realism Engine, Needs Simulation, and related tracking are suspended for this group (narrative control only). Exit Director Mode to re-enable.',
+                        'Director Mode is active. Realism Engine and related tracking are suspended for this group (narrative control only). Exit Director Mode to re-enable.',
                         style: const TextStyle(
                           fontSize: 12,
                           color: Colors.amber,
@@ -1499,52 +1652,6 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
 
             const SizedBox(height: 14),
 
-            // Needs Simulation
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF111827),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.battery_std,
-                        size: 18,
-                        color: Colors.tealAccent,
-                      ),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Needs Simulation',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                      Switch(
-                        value: _needsSimEnabled,
-                        activeThumbColor: Colors.tealAccent,
-                        onChanged: _updateNeedsSim,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Simulates hunger, bladder, energy, social, fun, hygiene, and comfort. Low needs influence AI behavior and prompt injections. Only relevant when Realism Engine is enabled.',
-                    style: TextStyle(fontSize: 11, color: Colors.white54),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
             // Passage of Time + Chaos (two-column-ish or stacked)
             Container(
               padding: const EdgeInsets.all(12),
@@ -1585,6 +1692,72 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                   const Text(
                     'Automatically advances narrative time between turns. Manual nudge controls remain available in the sidebar.',
                     style: TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+
+                  const SizedBox(height: 14),
+                  const Divider(color: Colors.white12, height: 1),
+                  const SizedBox(height: 12),
+
+                  // Time & Day (group-wide)
+                  Row(
+                    children: [
+                      Icon(Icons.schedule, size: 18, color: AppColors.resolve(context, Colors.lightBlueAccent, Colors.lightBlueAccent)),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Time & Day',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Sets the starting time and day for all characters in this group.',
+                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _groupTimeOfDay,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            filled: true,
+                            fillColor: AppColors.surfaceOf(context),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                          ),
+                          style: const TextStyle(fontSize: 12),
+                          items: ['morning', 'afternoon', 'evening', 'night'].map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 12)))).toList(),
+                          onChanged: (v) { if (v != null) _updateGroupTimeOfDay(v); },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _groupDayCountController,
+                          decoration: InputDecoration(
+                            hintText: 'Day',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            filled: true,
+                            fillColor: AppColors.surfaceOf(context),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                          ),
+                          style: const TextStyle(fontSize: 12),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) {
+                            final val = int.tryParse(v) ?? 1;
+                            _updateGroupDayCount(val);
+                          },
+                        ),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 14),
@@ -1711,7 +1884,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Clear tracked emotion, bond, trust, needs, and fixation for characters in the current group. Use to restart relationship arcs or after major story changes. States re-seed automatically on the next Realism evaluation.',
+              'Clear tracked emotion, bond, trust, and fixation for characters in the current group. Use to restart relationship arcs or after major story changes. States re-seed automatically on the next Realism evaluation.',
               style: TextStyle(fontSize: 11, color: Colors.white54),
             ),
             const SizedBox(height: 10),
@@ -1793,40 +1966,73 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 4),
-                            // Per-member static pref for enjoys low hygiene (group equivalent of 1:1 character setting).
-                            // Persisted to group defaultMemberRealismState per-char entry.
+                            // ── Editable Realism Baselines ─────────────────────
+                            const SizedBox(height: 8),
+                            // Relationship
                             Row(
-                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text(
-                                  'Enjoys low hygiene',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.white70,
-                                  ),
-                                ),
+                                Icon(Icons.favorite, size: 14, color: AppColors.resolve(context, Colors.pinkAccent, Colors.pinkAccent)),
                                 const SizedBox(width: 6),
-                                SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: Checkbox(
-                                    value:
-                                        _enjoysLowHygiene[_getCharId(char)] ??
-                                        false,
-                                    onChanged: (v) {
-                                      if (v != null) {
-                                        _updateMemberEnjoysLowHygiene(char, v);
-                                      }
-                                    },
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                ),
+                                Text('Relationship', style: TextStyle(fontSize: 11, color: AppColors.textPrimary(context))),
                               ],
                             ),
-
+                            Container(
+                              margin: const EdgeInsets.only(top: 4, bottom: 8),
+                              child: Column(
+                                children: [
+                                  _sliderRow('Short-Term Bond', _editShortTermBond[_getCharId(char)] ?? 50, -300, 300, char.name, _charAccentColor(index), (v) => _updateEditShortTermBond(char, v.round())),
+                                  _sliderRow('Long-Term Bond', _editLongTermBond[_getCharId(char)] ?? 50, -300, 300, char.name, _charAccentColor(index), (v) => _updateEditLongTermBond(char, v.round())),
+                                  _sliderRow('Trust Level', _editTrustLevel[_getCharId(char)] ?? 50, -100, 100, char.name, _charAccentColor(index), (v) => _updateEditTrustLevel(char, v.round())),
+                                ],
+                              ),
+                            ),
+                            // Starting Emotion
+                            Row(
+                              children: [
+                                Icon(Icons.mood, size: 14, color: AppColors.resolve(context, Colors.amber, Colors.amber)),
+                                const SizedBox(width: 6),
+                                Text('Starting Emotion', style: TextStyle(fontSize: 11, color: AppColors.textPrimary(context))),
+                              ],
+                            ),
+                            Container(
+                              margin: const EdgeInsets.only(top: 4, bottom: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _emotionControllers[_getCharId(char)] ??= TextEditingController(text: _editEmotion[_getCharId(char)] ?? 'neutral'),
+                                      decoration: InputDecoration(
+                                        hintText: 'emotion',
+                                        isDense: true,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        filled: true,
+                                        fillColor: AppColors.surfaceOf(context),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                      ),
+                                      style: const TextStyle(fontSize: 11),
+                                      onChanged: (v) => _updateEditEmotion(char, v),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      initialValue: _editEmotionIntensity[_getCharId(char)] ?? 'moderate',
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        filled: true,
+                                        fillColor: AppColors.surfaceOf(context),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                      ),
+                                      style: const TextStyle(fontSize: 11),
+                                      items: ['calm', 'moderate', 'intense'].map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 11)))).toList(),
+                                      onChanged: (v) { if (v != null) _updateEditEmotionIntensity(char, v); },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // ── End Editable Realism Baselines ──────────────────
                             // Per-member Director/Verifier settings (new in Realism & Needs tab for groups).
                             // These were previously only configurable at group creation time.
                             // Now editable here for existing groups. Uses same perChar persistence + card ext patch.
@@ -1860,84 +2066,86 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                               ],
                             ),
                             // Compact sliders + authority toggle for the Director settings.
-                            // Always shown in Realism & Needs for discoverability (config can be set even if currently disabled).
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Text(
-                                  'Max: ${_verificationMaxReprocesses[_getCharId(char)] ?? 1}',
-                                  style: const TextStyle(fontSize: 10, color: Colors.white54),
-                                ),
-                                const SizedBox(width: 4),
-                                SizedBox(
-                                  width: 80,
-                                  child: SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 2,
-                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
-                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 8),
+                            // Only shown when Director/Verifier is enabled for this member.
+                            if (_verificationEnabled[_getCharId(char)] ?? false) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Max: ${_verificationMaxReprocesses[_getCharId(char)] ?? 1}',
+                                    style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  SizedBox(
+                                    width: 80,
+                                    child: SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        trackHeight: 2,
+                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 8),
+                                      ),
+                                      child: Slider(
+                                        value: (_verificationMaxReprocesses[_getCharId(char)] ?? 1).toDouble(),
+                                        min: 1,
+                                        max: 5,
+                                        divisions: 4,
+                                        onChanged: (d) {
+                                          _updateMemberVerificationMaxReprocesses(char, d.round());
+                                        },
+                                      ),
                                     ),
-                                    child: Slider(
-                                      value: (_verificationMaxReprocesses[_getCharId(char)] ?? 1).toDouble(),
-                                      min: 1,
-                                      max: 5,
-                                      divisions: 4,
-                                      onChanged: (d) {
-                                        _updateMemberVerificationMaxReprocesses(char, d.round());
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Strict: ${_verificationStrictness[_getCharId(char)] ?? 3}',
+                                    style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  SizedBox(
+                                    width: 80,
+                                    child: SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        trackHeight: 2,
+                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                                      ),
+                                      child: Slider(
+                                        value: (_verificationStrictness[_getCharId(char)] ?? 3).toDouble(),
+                                        min: 1,
+                                        max: 5,
+                                        divisions: 4,
+                                        onChanged: (d) {
+                                          _updateMemberVerificationStrictness(char, d.round());
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    'Director authority (needs)',
+                                    style: TextStyle(fontSize: 10, color: Colors.white54),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  SizedBox(
+                                    height: 18,
+                                    width: 18,
+                                    child: Checkbox(
+                                      value: _needsDirectorAuthority[_getCharId(char)] ?? false,
+                                      onChanged: (v) {
+                                        if (v != null) {
+                                          _updateMemberNeedsDirectorAuthority(char, v);
+                                        }
                                       },
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Strict: ${_verificationStrictness[_getCharId(char)] ?? 3}',
-                                  style: const TextStyle(fontSize: 10, color: Colors.white54),
-                                ),
-                                const SizedBox(width: 4),
-                                SizedBox(
-                                  width: 80,
-                                  child: SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 2,
-                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
-                                    ),
-                                    child: Slider(
-                                      value: (_verificationStrictness[_getCharId(char)] ?? 3).toDouble(),
-                                      min: 1,
-                                      max: 5,
-                                      divisions: 4,
-                                      onChanged: (d) {
-                                        _updateMemberVerificationStrictness(char, d.round());
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text(
-                                  'Director authority (needs)',
-                                  style: TextStyle(fontSize: 10, color: Colors.white54),
-                                ),
-                                const SizedBox(width: 4),
-                                SizedBox(
-                                  height: 18,
-                                  width: 18,
-                                  child: Checkbox(
-                                    value: _needsDirectorAuthority[_getCharId(char)] ?? false,
-                                    onChanged: (v) {
-                                      if (v != null) {
-                                        _updateMemberNeedsDirectorAuthority(char, v);
-                                      }
-                                    },
-                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -1978,6 +2186,874 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
   }
 
   // Simple accent palette for per-char avatars (subset of Prompt tab palette)
+  static const List<Color> _charColors = [
+    Color(0xFF14B8A6), // Teal (realism accent)
+    Color(0xFF8B5CF6), // Purple
+    Color(0xFF10B981), // Emerald
+    Color(0xFFF59E0B), // Amber
+    Color(0xFF3B82F6), // Blue
+  ];
+
+  Color _charAccentColor(int index) => _charColors[index % _charColors.length];
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  NEEDS TAB
+// ═══════════════════════════════════════════════════════════════
+
+class _NeedsTab extends StatefulWidget {
+  final ChatService chatService;
+  final GroupChatRepository? groupRepo;
+  const _NeedsTab({required this.chatService, this.groupRepo});
+
+  @override
+  State<_NeedsTab> createState() => _NeedsTabState();
+}
+
+class _NeedsTabState extends State<_NeedsTab> {
+  bool _needsSimEnabled = false;
+
+  // Per-character needs baselines: char-id → field-name → value
+  final Map<String, Map<String, int>> _needsBaselines = {};
+
+  // Per-character static preference overrides (e.g. enjoys low hygiene) for this group.
+  final Map<String, bool> _enjoysLowHygiene = {};
+
+  // Per-member Director/Verifier settings for groups.
+  final Map<String, bool> _verificationEnabled = {};
+  final Map<String, int> _verificationMaxReprocesses = {};
+  final Map<String, int> _verificationStrictness = {};
+  final Map<String, bool> _needsDirectorAuthority = {};
+
+  List<CharacterCard> _chars = [];
+
+  // Field name constants for needs baselines map keys.
+  static const _kHunger = 'hunger';
+  static const _kBladder = 'bladder';
+  static const _kEnergy = 'energy';
+  static const _kSocial = 'social';
+  static const _kFun = 'fun';
+  static const _kHygiene = 'hygiene';
+  static const _kComfort = 'comfort';
+
+  @override
+  void initState() {
+    super.initState();
+    widget.chatService.addListener(_onServiceChanged);
+    _initializeFromService();
+  }
+
+  void _onServiceChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _initializeFromService() {
+    final cs = widget.chatService;
+    _chars = cs.groupCharacters;
+
+    _needsSimEnabled = cs.needsSimEnabled;
+
+    for (final c in _chars) {
+      final id = _getCharId(c);
+      final ext = c.frontPorchExtensions;
+
+      // Seed needs baselines from character card extensions.
+      _needsBaselines[id] = {
+        _kHunger: ext?.needsBaselineHunger ?? 80,
+        _kBladder: ext?.needsBaselineBladder ?? 80,
+        _kEnergy: ext?.needsBaselineEnergy ?? 80,
+        _kSocial: ext?.needsBaselineSocial ?? 80,
+        _kFun: ext?.needsBaselineFun ?? 80,
+        _kHygiene: ext?.needsBaselineHygiene ?? 80,
+        _kComfort: ext?.needsBaselineComfort ?? 80,
+      };
+
+      _enjoysLowHygiene[id] = ext?.enjoysLowHygiene ?? false;
+
+      // Load per-member Director/Verifier settings.
+      _verificationEnabled[id] = ext?.realismVerificationEnabled ?? false;
+      _verificationMaxReprocesses[id] = ext?.realismVerificationMaxReprocesses ?? 1;
+      _verificationStrictness[id] = ext?.realismVerificationStrictness ?? 3;
+      _needsDirectorAuthority[id] = ext?.realismNeedsDirectorAuthority ?? false;
+    }
+  }
+
+  String _getCharId(CharacterCard c) => c.imagePath != null
+      ? c.imagePath!.split('/').last.split('.').first
+      : c.name;
+
+  CharacterCard? _findCharById(String id) {
+    for (final c in _chars) {
+      if (_getCharId(c) == id) return c;
+    }
+    return null;
+  }
+
+  void _updateNeedsBaseline(String id, String field, int value) {
+    setState(() {
+      _needsBaselines[id] = {
+        ...?_needsBaselines[id],
+        field: value,
+      };
+      final char = _findCharById(id);
+      if (char != null) {
+        char.frontPorchExtensions =
+            (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+          needsBaselineHunger: _needsBaselines[id]?[_kHunger] ?? 80,
+          needsBaselineBladder: _needsBaselines[id]?[_kBladder] ?? 80,
+          needsBaselineEnergy: _needsBaselines[id]?[_kEnergy] ?? 80,
+          needsBaselineSocial: _needsBaselines[id]?[_kSocial] ?? 80,
+          needsBaselineFun: _needsBaselines[id]?[_kFun] ?? 80,
+          needsBaselineHygiene: _needsBaselines[id]?[_kHygiene] ?? 80,
+          needsBaselineComfort: _needsBaselines[id]?[_kComfort] ?? 80,
+        );
+      }
+    });
+    _persistMemberNeedsPref(id, field, value);
+  }
+
+  void _updateMemberEnjoysLowHygiene(CharacterCard char, bool value) {
+    final id = _getCharId(char);
+    setState(() {
+      _enjoysLowHygiene[id] = value;
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+        enjoysLowHygiene: value,
+      );
+    });
+    _persistMemberVerificationPref(id, 'enjoysLowHygiene', value);
+  }
+
+  void _updateMemberVerificationMaxReprocesses(CharacterCard char, int value) {
+    final id = _getCharId(char);
+    setState(() {
+      _verificationMaxReprocesses[id] = value;
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+        realismVerificationMaxReprocesses: value,
+      );
+    });
+    _persistMemberVerificationPref(id, 'maxReprocesses', value);
+  }
+
+  void _updateMemberVerificationStrictness(CharacterCard char, int value) {
+    final id = _getCharId(char);
+    setState(() {
+      _verificationStrictness[id] = value;
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+        realismVerificationStrictness: value,
+      );
+    });
+    _persistMemberVerificationPref(id, 'strictness', value);
+  }
+
+  void _updateMemberNeedsDirectorAuthority(CharacterCard char, bool value) {
+    final id = _getCharId(char);
+    setState(() {
+      _needsDirectorAuthority[id] = value;
+      char.frontPorchExtensions =
+          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+        realismNeedsDirectorAuthority: value,
+      );
+    });
+    _persistMemberVerificationPref(id, 'needsDirectorAuthority', value);
+  }
+
+  void _persistMemberVerificationPref(String id, String key, dynamic value) {
+    try {
+      final group = widget.chatService.activeGroup;
+      if (group != null) {
+        final map =
+            group.defaultMemberRealismState.isNotEmpty &&
+                group.defaultMemberRealismState != '{}'
+            ? (jsonDecode(group.defaultMemberRealismState)
+                      as Map<String, dynamic>? ??
+                  {})
+            : <String, dynamic>{};
+        final perChar = (map['perChar'] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        final current = (perChar[id] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        current[key] = value;
+        perChar[id] = current;
+        map['perChar'] = perChar;
+        group.defaultMemberRealismState = jsonEncode(map);
+      }
+    } catch (_) {
+      // Non-fatal
+    }
+  }
+
+  void _persistMemberNeedsPref(String id, String field, int value) {
+    try {
+      final group = widget.chatService.activeGroup;
+      if (group != null) {
+        final map =
+            group.defaultMemberRealismState.isNotEmpty &&
+                group.defaultMemberRealismState != '{}'
+            ? (jsonDecode(group.defaultMemberRealismState)
+                      as Map<String, dynamic>? ??
+                  {})
+            : <String, dynamic>{};
+        final perChar = (map['perChar'] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        final current = (perChar[id] as Map<String, dynamic>? ?? {})
+            .cast<String, dynamic>();
+        // Store needs baselines under a nested 'needsBaselines' key.
+        final needsBaselines =
+            (current['needsBaselines'] as Map<String, dynamic>? ?? {})
+                .cast<String, dynamic>();
+        needsBaselines[field] = value;
+        current['needsBaselines'] = needsBaselines;
+        perChar[id] = current;
+        map['perChar'] = perChar;
+        group.defaultMemberRealismState = jsonEncode(map);
+      }
+    } catch (_) {
+      // Non-fatal
+    }
+  }
+
+  void _resetAllNeedsStates() {
+    for (final c in _chars) {
+      final id = _getCharId(c);
+      setState(() {
+        _needsBaselines[id] = {
+          _kHunger: 80,
+          _kBladder: 80,
+          _kEnergy: 80,
+          _kSocial: 80,
+          _kFun: 80,
+          _kHygiene: 80,
+          _kComfort: 80,
+        };
+        _enjoysLowHygiene[id] = false;
+      });
+      widget.chatService.resetRealismForGroupCharacter(c);
+    }
+  }
+
+  void _resetCharacterNeeds(CharacterCard character) {
+    final id = _getCharId(character);
+    setState(() {
+      _needsBaselines[id] = {
+        _kHunger: 80,
+        _kBladder: 80,
+        _kEnergy: 80,
+        _kSocial: 80,
+        _kFun: 80,
+        _kHygiene: 80,
+        _kComfort: 80,
+      };
+      _enjoysLowHygiene[id] = false;
+    });
+    widget.chatService.resetRealismForGroupCharacter(character);
+  }
+
+  @override
+  void dispose() {
+    widget.chatService.removeListener(_onServiceChanged);
+    super.dispose();
+  }
+
+  void _updateNeedsSim(bool value) {
+    setState(() {
+      _needsSimEnabled = value;
+    });
+    widget.chatService.setNeedsSimEnabled(value);
+  }
+
+  Widget _groupDecaySlider(String label, String key, ChatService cs) {
+    final value = cs.groupDecayRates[key] ?? 5;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+            Text(
+              '$value/turn',
+              style: const TextStyle(fontSize: 11, color: Colors.white54),
+            ),
+          ],
+        ),
+        SizedBox(
+          height: 24,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              trackHeight: 2,
+            ),
+            child: Slider(
+              value: value.toDouble(),
+              min: 0,
+              max: 20,
+              divisions: 20,
+              activeColor: Colors.orangeAccent,
+              inactiveColor: Colors.white12,
+              onChanged: (v) {
+                cs.setGroupNeedsDecayRate(key, v.round());
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = widget.chatService;
+    final group = cs.activeGroup;
+    final isDirectorMode = cs.observerMode;
+
+    if (group == null) {
+      return const Center(
+        child: Text(
+          'No active group chat selected.',
+          style: TextStyle(color: Colors.white54),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                const Icon(
+                  Icons.battery_std,
+                  color: Colors.tealAccent,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Needs — ${group.name}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Configure needs baselines and per-character settings for Needs Simulation in this group.',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+
+            // Director Mode notice
+            if (isDirectorMode)
+              Container(
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F2937),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.amber.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: Colors.amber,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Director Mode is active. Needs Simulation is suspended for this group (narrative control only). Exit Director Mode to re-enable.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.amber,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Needs Simulation master toggle
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.battery_std,
+                        size: 18,
+                        color: Colors.tealAccent,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Needs Simulation',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      Switch(
+                        value: _needsSimEnabled,
+                        activeThumbColor: Colors.tealAccent,
+                        onChanged: _updateNeedsSim,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Simulates hunger, bladder, energy, social, fun, hygiene, and comfort. Low needs influence AI behavior and prompt injections.',
+                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+                ],
+              ),
+            ),
+
+            // Group Decay Rates section
+            Row(
+              children: [
+                const Icon(
+                  Icons.trending_down,
+                  size: 18,
+                  color: Colors.orangeAccent,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Global Group Decay Rates',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Sets the baseline decay per turn for all characters in this group. Values represent how fast needs drop per turn.',
+              style: TextStyle(fontSize: 11, color: Colors.white54),
+            ),
+            const SizedBox(height: 10),
+
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _groupDecaySlider('Hunger', _kHunger, cs),
+                  _groupDecaySlider('Bladder', _kBladder, cs),
+                  _groupDecaySlider('Energy', _kEnergy, cs),
+                  _groupDecaySlider('Social', _kSocial, cs),
+                  _groupDecaySlider('Fun', _kFun, cs),
+                  _groupDecaySlider('Hygiene', _kHygiene, cs),
+                  _groupDecaySlider('Comfort', _kComfort, cs),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Per-character needs baselines section
+            Row(
+              children: [
+                const Icon(
+                  Icons.people_alt,
+                  size: 18,
+                  color: Colors.tealAccent,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Per-Character Needs Baselines',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _resetAllNeedsStates,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Reset ALL',
+                    style: TextStyle(fontSize: 11, color: Colors.tealAccent),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Adjust starting baseline values for each character\'s needs. These values are used when initializing or resetting a character\'s needs state.',
+              style: TextStyle(fontSize: 11, color: Colors.white54),
+            ),
+            const SizedBox(height: 10),
+
+            if (_chars.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'No characters loaded for this group.',
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              )
+            else
+              ..._chars.asMap().entries.map((entry) {
+                final index = entry.key;
+                final char = entry.value;
+                final id = _getCharId(char);
+                final baselines = _needsBaselines[id] ?? {};
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111827),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Avatar + name + reset
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: _charAccentColor(index),
+                            backgroundImage: char.imagePath != null
+                                ? FileImage(File(char.imagePath!))
+                                : null,
+                            child: char.imagePath == null
+                                ? Text(
+                                    char.name.isNotEmpty
+                                        ? char.name[0].toUpperCase()
+                                        : '?',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              char.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => _resetCharacterNeeds(char),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              minimumSize: const Size(0, 32),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text(
+                              'Reset',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.tealAccent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // 7 baseline sliders
+                      _needsSlider(
+                        'Hunger',
+                        baselines[_kHunger] ?? 80,
+                        (v) => _updateNeedsBaseline(id, _kHunger, v),
+                      ),
+                      _needsSlider(
+                        'Bladder',
+                        baselines[_kBladder] ?? 80,
+                        (v) => _updateNeedsBaseline(id, _kBladder, v),
+                      ),
+                      _needsSlider(
+                        'Energy',
+                        baselines[_kEnergy] ?? 80,
+                        (v) => _updateNeedsBaseline(id, _kEnergy, v),
+                      ),
+                      _needsSlider(
+                        'Social',
+                        baselines[_kSocial] ?? 80,
+                        (v) => _updateNeedsBaseline(id, _kSocial, v),
+                      ),
+                      _needsSlider(
+                        'Fun',
+                        baselines[_kFun] ?? 80,
+                        (v) => _updateNeedsBaseline(id, _kFun, v),
+                      ),
+                      _needsSlider(
+                        'Hygiene',
+                        baselines[_kHygiene] ?? 80,
+                        (v) => _updateNeedsBaseline(id, _kHygiene, v),
+                      ),
+                      _needsSlider(
+                        'Comfort',
+                        baselines[_kComfort] ?? 80,
+                        (v) => _updateNeedsBaseline(id, _kComfort, v),
+                      ),
+
+                      const SizedBox(height: 8),
+                      Divider(color: Colors.white12, height: 1),
+                      const SizedBox(height: 8),
+
+                      // Enjoys low hygiene
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.water_drop_outlined,
+                            size: 14,
+                            color: Colors.tealAccent,
+                          ),
+                          const SizedBox(width: 6),
+                          const Expanded(
+                            child: Text(
+                              'Enjoys low hygiene',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: Checkbox(
+                              value: _enjoysLowHygiene[id] ?? false,
+                              onChanged: (v) {
+                                if (v != null) {
+                                  _updateMemberEnjoysLowHygiene(char, v);
+                                }
+                              },
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      // Director/Verifier section (gated)
+                      if (_verificationEnabled[id] ?? false) ...[
+                        const Text(
+                          'Director/Verifier settings',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white54,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Text(
+                              'Max: ${_verificationMaxReprocesses[id] ?? 1}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.white54,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            SizedBox(
+                              width: 80,
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 2,
+                                  thumbShape:
+                                      const RoundSliderThumbShape(
+                                          enabledThumbRadius: 4),
+                                  overlayShape:
+                                      const RoundSliderOverlayShape(
+                                          overlayRadius: 8),
+                                ),
+                                child: Slider(
+                                  value:
+                                      (_verificationMaxReprocesses[id] ?? 1)
+                                          .toDouble(),
+                                  min: 1,
+                                  max: 5,
+                                  divisions: 4,
+                                  onChanged: (d) {
+                                    _updateMemberVerificationMaxReprocesses(
+                                      char,
+                                      d.round(),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Strict: ${_verificationStrictness[id] ?? 3}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.white54,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            SizedBox(
+                              width: 80,
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 2,
+                                  thumbShape:
+                                      const RoundSliderThumbShape(
+                                          enabledThumbRadius: 4),
+                                ),
+                                child: Slider(
+                                  value:
+                                      (_verificationStrictness[id] ?? 3)
+                                          .toDouble(),
+                                  min: 1,
+                                  max: 5,
+                                  divisions: 4,
+                                  onChanged: (d) {
+                                    _updateMemberVerificationStrictness(
+                                      char,
+                                      d.round(),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            const Text(
+                              'Director authority (needs)',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white54,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: Checkbox(
+                                value: _needsDirectorAuthority[id] ?? false,
+                                onChanged: (v) {
+                                  if (v != null) {
+                                    _updateMemberNeedsDirectorAuthority(char, v);
+                                  }
+                                },
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _needsSlider(
+    String label,
+    int value,
+    ValueChanged<int> onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$value',
+              style: const TextStyle(fontSize: 10, color: Colors.white54),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: Colors.tealAccent,
+            inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+            thumbColor: Colors.tealAccent,
+            trackHeight: 2,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+          ),
+          child: Slider(
+            value: value.toDouble(),
+            min: 0,
+            max: 100,
+            divisions: 100,
+            onChanged: (d) => onChanged(d.round()),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Simple accent palette for per-char avatars (reused from _RealismNeedsTab).
   static const List<Color> _charColors = [
     Color(0xFF14B8A6), // Teal (realism accent)
     Color(0xFF8B5CF6), // Purple

@@ -2144,6 +2144,11 @@ class AppDatabase extends _$AppDatabase {
     return result;
   }
 
+  Future<void> updateGroupMember(GroupMembersCompanion member) async {
+    await (update(groupMembers)..where((m) => m.id.equals(member.id.value))).write(member);
+    await bumpSyncVersion();
+  }
+
   Future<int> deleteGroupMembersForGroup(String groupId) async {
     final count = await (delete(
       groupMembers,

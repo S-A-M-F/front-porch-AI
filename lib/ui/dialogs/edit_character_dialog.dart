@@ -66,6 +66,26 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
   int _realismVerificationStrictness = 3;
   bool _realismNeedsDirectorAuthority = false;
   int _needsSimStrength = 1; // 1-5. Injected to first model call (+ Director when authority on) so they emit at the requested magnitude. Numbers returned by (Director-corrected) call are applied directly; no second multiply on top of already-scaled deltas.
+
+  // Needs Simulation state
+  bool _needsSimEnabled = false;
+  bool _enjoysLowHygiene = false;
+  int _needsBaselineHunger = 80;
+  int _needsBaselineBladder = 80;
+  int _needsBaselineEnergy = 80;
+  int _needsBaselineSocial = 80;
+  int _needsBaselineFun = 80;
+  int _needsBaselineHygiene = 80;
+  int _needsBaselineComfort = 80;
+
+  int _needsDecayHunger = 5;
+  int _needsDecayBladder = 5;
+  int _needsDecayEnergy = 5;
+  int _needsDecaySocial = 5;
+  int _needsDecayFun = 5;
+  int _needsDecayHygiene = 5;
+  int _needsDecayComfort = 5;
+
   final TextEditingController _tagInputController = TextEditingController();
   String? _newAvatarPath; // full path of newly picked avatar (null = no change)
 
@@ -118,6 +138,25 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     _realismNeedsDirectorAuthority =
         ext?.realismNeedsDirectorAuthority ?? false;
     _needsSimStrength = ext?.needsSimStrength ?? 1;
+
+    // Seed Needs Simulation controls from card ext (defaults safe for old cards).
+    _needsSimEnabled = ext?.needsSimEnabled ?? false;
+    _enjoysLowHygiene = ext?.enjoysLowHygiene ?? false;
+    _needsBaselineHunger = ext?.needsBaselineHunger ?? 80;
+    _needsBaselineBladder = ext?.needsBaselineBladder ?? 80;
+    _needsBaselineEnergy = ext?.needsBaselineEnergy ?? 80;
+    _needsBaselineSocial = ext?.needsBaselineSocial ?? 80;
+    _needsBaselineFun = ext?.needsBaselineFun ?? 80;
+    _needsBaselineHygiene = ext?.needsBaselineHygiene ?? 80;
+    _needsBaselineComfort = ext?.needsBaselineComfort ?? 80;
+
+    _needsDecayHunger = ext?.needsDecayHunger ?? 5;
+    _needsDecayBladder = ext?.needsDecayBladder ?? 5;
+    _needsDecayEnergy = ext?.needsDecayEnergy ?? 5;
+    _needsDecaySocial = ext?.needsDecaySocial ?? 5;
+    _needsDecayFun = ext?.needsDecayFun ?? 5;
+    _needsDecayHygiene = ext?.needsDecayHygiene ?? 5;
+    _needsDecayComfort = ext?.needsDecayComfort ?? 5;
   }
 
   @override
@@ -1080,9 +1119,185 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             (color) => _updateColor('actionColor', color),
           ),
 
-          // Optional Features (Verification Director/Verifier + tuning) — per the right-click Details requirement.
-          // Matches card styling from form + dialog colors. Uses AppColors exclusively for our added UI.
-          // Other optionals (nsfw/chaos/needs) remain in full editors; here we surface the verifier controls (toggle + 2 sliders) as specified.
+          // ── Needs Simulation Section ───────────────────────────────────────
+          const SizedBox(height: 24),
+          Text(
+            'Needs Simulation',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: AppColors.textSecondary(context),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderOf(context)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Master toggle
+                RealismFormSection.buildToggleRow(
+                  icon: Icons.battery_std,
+                  label: 'Needs Simulation',
+                  subtitle:
+                      'Hunger, bladder, energy, social, fun, hygiene, comfort — influences prompts & behavior',
+                  value: _needsSimEnabled,
+                  onChanged: (v) {
+                    setState(() => _needsSimEnabled = v);
+                    _updateNeedsSettings();
+                  },
+                  context: context,
+                ),
+                // ── Gated content (only when Needs Simulation is ON) ──
+                if (_needsSimEnabled) ...[
+                  const SizedBox(height: 16),
+                  // Per-need baseline sliders
+                  _needsSlider(
+                    label: 'Hunger',
+                    value: _needsBaselineHunger,
+                    onChanged: (v) {
+                      setState(() => _needsBaselineHunger = v);
+                      _updateNeedsSettings();
+                    },
+                    decayValue: _needsDecayHunger,
+                    onDecayChanged: (v) {
+                      setState(() => _needsDecayHunger = v);
+                      _updateNeedsSettings();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _needsSlider(
+                    label: 'Bladder',
+                    value: _needsBaselineBladder,
+                    onChanged: (v) {
+                      setState(() => _needsBaselineBladder = v);
+                      _updateNeedsSettings();
+                    },
+                    decayValue: _needsDecayBladder,
+                    onDecayChanged: (v) {
+                      setState(() => _needsDecayBladder = v);
+                      _updateNeedsSettings();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _needsSlider(
+                    label: 'Energy',
+                    value: _needsBaselineEnergy,
+                    onChanged: (v) {
+                      setState(() => _needsBaselineEnergy = v);
+                      _updateNeedsSettings();
+                    },
+                    decayValue: _needsDecayEnergy,
+                    onDecayChanged: (v) {
+                      setState(() => _needsDecayEnergy = v);
+                      _updateNeedsSettings();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _needsSlider(
+                    label: 'Social',
+                    value: _needsBaselineSocial,
+                    onChanged: (v) {
+                      setState(() => _needsBaselineSocial = v);
+                      _updateNeedsSettings();
+                    },
+                    decayValue: _needsDecaySocial,
+                    onDecayChanged: (v) {
+                      setState(() => _needsDecaySocial = v);
+                      _updateNeedsSettings();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _needsSlider(
+                    label: 'Fun',
+                    value: _needsBaselineFun,
+                    onChanged: (v) {
+                      setState(() => _needsBaselineFun = v);
+                      _updateNeedsSettings();
+                    },
+                    decayValue: _needsDecayFun,
+                    onDecayChanged: (v) {
+                      setState(() => _needsDecayFun = v);
+                      _updateNeedsSettings();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _needsSlider(
+                    label: 'Hygiene',
+                    value: _needsBaselineHygiene,
+                    onChanged: (v) {
+                      setState(() => _needsBaselineHygiene = v);
+                      _updateNeedsSettings();
+                    },
+                    decayValue: _needsDecayHygiene,
+                    onDecayChanged: (v) {
+                      setState(() => _needsDecayHygiene = v);
+                      _updateNeedsSettings();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _needsSlider(
+                    label: 'Comfort',
+                    value: _needsBaselineComfort,
+                    onChanged: (v) {
+                      setState(() => _needsBaselineComfort = v);
+                      _updateNeedsSettings();
+                    },
+                    decayValue: _needsDecayComfort,
+                    onDecayChanged: (v) {
+                      setState(() => _needsDecayComfort = v);
+                      _updateNeedsSettings();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
+                  const SizedBox(height: 12),
+                  // Enjoys low hygiene
+                  RealismFormSection.buildToggleRow(
+                    icon: Icons.water_drop_outlined,
+                    label: 'Enjoys low hygiene',
+                    subtitle:
+                        'Character prefers being sweaty, musky, or filthy (inverts hygiene behavior)',
+                    value: _enjoysLowHygiene,
+                    onChanged: (v) {
+                      setState(() => _enjoysLowHygiene = v);
+                      _updateNeedsSettings();
+                    },
+                    context: context,
+                  ),
+                  const SizedBox(height: 16),
+                  Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
+                  const SizedBox(height: 12),
+                  // Needs delta strength
+                  Text(
+                    'Needs delta strength: $_needsSimStrength x (1x baseline; 5x = 5× larger swings)',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                  Slider(
+                    value: _needsSimStrength.toDouble(),
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    label: '$_needsSimStrength x',
+                    onChanged: (d) {
+                      setState(() => _needsSimStrength = d.round());
+                      _updateNeedsSettings();
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // ── Optional Features (Verification Director/Verifier + tuning) ──
           const SizedBox(height: 24),
           Text(
             'Optional Features',
@@ -1215,29 +1430,6 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     _updateVerificationSettings();
                   },
                   context: context,
-                ),
-
-                // Needs delta strength 1x-5x (exponent). Placed after authority in the same Optional Features container
-                // (right-click Details per user request). Model + Director receive the value on first pass so they
-                // can emit at the requested magnitude; we also apply final scale. AppColors exclusive + per-re-grep hygiene.
-                const SizedBox(height: 12),
-                Text(
-                  'Needs delta strength: $_needsSimStrength x (1x baseline; 5x = 5× larger swings)',
-                  style: TextStyle(
-                    color: AppColors.textSecondary(context),
-                    fontSize: 12,
-                  ),
-                ),
-                Slider(
-                  value: _needsSimStrength.toDouble(),
-                  min: 1,
-                  max: 5,
-                  divisions: 4,
-                  label: '$_needsSimStrength x',
-                  onChanged: (d) {
-                    setState(() => _needsSimStrength = d.round());
-                    _updateVerificationSettings();
-                  },
                 ),
               ],
             ),
@@ -1672,6 +1864,130 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     );
   }
 
+  Widget _needsSlider({
+    required String label,
+    required int value,
+    required ValueChanged<int> onChanged,
+    int? decayValue,
+    ValueChanged<int>? onDecayChanged,
+  }) {
+    final mainSlider = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$value / 100',
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        SliderTheme(
+          data: SliderThemeData(
+            activeTrackColor: AppColors.formMasterAccent,
+            inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.3),
+            thumbColor: AppColors.formMasterAccent,
+            trackHeight: 3,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+          ),
+          child: Slider(
+            value: value.toDouble(),
+            min: 0,
+            max: 100,
+            divisions: 100,
+            label: '$value',
+            onChanged: (d) => onChanged(d.round()),
+          ),
+        ),
+      ],
+    );
+
+    if (decayValue == null || onDecayChanged == null) {
+      return mainSlider;
+    }
+
+    String decayDescription;
+    if (decayValue == 0) {
+      decayDescription = 'Static (0)';
+    } else if (decayValue <= 2) {
+      decayDescription = 'Very Slow ($decayValue)';
+    } else if (decayValue <= 4) {
+      decayDescription = 'Slow ($decayValue)';
+    } else if (decayValue <= 7) {
+      decayDescription = 'Normal ($decayValue)';
+    } else if (decayValue <= 12) {
+      decayDescription = 'Fast ($decayValue)';
+    } else {
+      decayDescription = 'Very Fast ($decayValue)';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        mainSlider,
+        Padding(
+          padding: const EdgeInsets.only(left: 12.0, right: 8.0, top: 2.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Decay Rate / Turn',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context).withValues(alpha: 0.7),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    decayDescription,
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context).withValues(alpha: 0.7),
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+              SliderTheme(
+                data: SliderThemeData(
+                  activeTrackColor: AppColors.formMasterAccent.withValues(alpha: 0.5),
+                  inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.15),
+                  thumbColor: AppColors.formMasterAccent.withValues(alpha: 0.7),
+                  trackHeight: 2,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                ),
+                child: Slider(
+                  value: decayValue.toDouble(),
+                  min: 0,
+                  max: 20,
+                  divisions: 20,
+                  onChanged: (d) => onDecayChanged(d.round()),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _updateColor(String fieldName, Color color) async {
     FrontPorchExtensions extensions;
     if (widget.character.frontPorchExtensions == null) {
@@ -1723,7 +2039,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
   }
 
-  /// Persist the three verification settings (toggle + sliders) from local state into the card's FrontPorchExtensions.
+  /// Persist verification settings (toggle + sliders) from local state into the card's FrontPorchExtensions.
   /// Reuses the exact repo + V2CardService.readCard + chatService.setActiveCharacter pattern from _updateColor.
   /// Called from the toggle/switch/slider onChanged (after local setState for responsive UI).
   Future<void> _updateVerificationSettings() async {
@@ -1756,6 +2072,57 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
       await chatService.setActiveCharacter(reloaded ?? widget.character);
     } catch (e) {
       debugPrint('Failed to save verification settings: $e');
+    }
+
+    if (mounted) {
+      setState(() {}); // Refresh UI
+    }
+  }
+
+  /// Persist Needs Simulation settings (toggle, baselines, enjoys low hygiene, delta strength) from local state.
+  /// Uses the same save pattern as _updateVerificationSettings for consistency.
+  Future<void> _updateNeedsSettings() async {
+    FrontPorchExtensions extensions;
+    if (widget.character.frontPorchExtensions == null) {
+      extensions = FrontPorchExtensions();
+    } else {
+      extensions = widget.character.frontPorchExtensions!.copyWith();
+    }
+
+    extensions.needsSimEnabled = _needsSimEnabled;
+    extensions.enjoysLowHygiene = _enjoysLowHygiene;
+    extensions.needsSimStrength = _needsSimStrength;
+    extensions.needsBaselineHunger = _needsBaselineHunger;
+    extensions.needsBaselineBladder = _needsBaselineBladder;
+    extensions.needsBaselineEnergy = _needsBaselineEnergy;
+    extensions.needsBaselineSocial = _needsBaselineSocial;
+    extensions.needsBaselineFun = _needsBaselineFun;
+    extensions.needsBaselineHygiene = _needsBaselineHygiene;
+    extensions.needsBaselineComfort = _needsBaselineComfort;
+
+    extensions.needsDecayHunger = _needsDecayHunger;
+    extensions.needsDecayBladder = _needsDecayBladder;
+    extensions.needsDecayEnergy = _needsDecayEnergy;
+    extensions.needsDecaySocial = _needsDecaySocial;
+    extensions.needsDecayFun = _needsDecayFun;
+    extensions.needsDecayHygiene = _needsDecayHygiene;
+    extensions.needsDecayComfort = _needsDecayComfort;
+
+    widget.character.frontPorchExtensions = extensions;
+
+    // Save to PNG so changes persist (same as colors)
+    try {
+      final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+      await charRepo.updateCharacter(widget.character);
+      // Reload from PNG to ensure extensions are persisted
+      final reloaded = await V2CardService().readCard(
+        widget.character.imagePath!,
+      );
+      // Update ChatService with reloaded character
+      final chatService = Provider.of<ChatService>(context, listen: false);
+      await chatService.setActiveCharacter(reloaded ?? widget.character);
+    } catch (e) {
+      debugPrint('Failed to save needs settings: $e');
     }
 
     if (mounted) {

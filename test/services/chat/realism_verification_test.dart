@@ -554,5 +554,33 @@ void main() {
       );
       expect(r.passes, lessThanOrEqualTo(1));
     });
+    test(
+      'emotion_constraint from injections is passed to critique prompt during reprocess',
+      () async {
+        String? critique;
+        final v = createTestRealismVerification(
+          fireFn: (p, {onChunk}) async {
+            if (p.contains('Orig:') || p.contains('Reason:')) {
+              critique = p;
+            }
+            if (p.contains('re-evaluate')) {
+              return '{"emotion_intensity": 1}';
+            }
+            // Force reprocess.
+            return '{"character_emotion": "happy", "emotion_intensity": 5}';
+          },
+          strictFn: () => 5,
+        );
+        await v.verify(
+          evalKind: 'emotional_state',
+          rawOutput: '{"character_emotion": "happy", "emotion_intensity": 5}',
+          sceneResponse: 'crying sadly',
+          injections: const {'emotion_constraint': '⚠ EXACTLY ONE emotion'},
+          maxPassesOverride: 2,
+        );
+        expect(critique, isNotNull);
+        expect(critique, contains('⚠ EXACTLY ONE emotion'));
+      },
+    );
   });
 }

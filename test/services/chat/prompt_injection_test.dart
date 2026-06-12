@@ -316,6 +316,7 @@ NsfwInjection createTestNsfw({
         getCurrentSpeakerIdForRealism: () => '',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
+
         setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
@@ -412,6 +413,7 @@ NeedsInjection createTestNeeds({
         getCurrentSpeakerIdForRealism: () => '',
         getIsGroupNonObserverMode: () => isGroupNonObs,
         getGroupNeeds: (id) => groupNeeds?[id] ?? {},
+
         setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => enjoys,
         getNeedsSimEnabled: () => needsEnabled,
@@ -435,6 +437,7 @@ NeedsInjection createTestNeeds({
     getActiveCharacter: () => activeChar,
     getEnjoysLowHygiene: () => enjoys,
     getGroupNeeds: (id) => groupNeeds?[id] ?? {},
+
     getCharacterIdFromCard: (c) => c.dbId?.toString() ?? c.name,
   );
 }
@@ -536,6 +539,7 @@ void main() {
         getCurrentSpeakerIdForRealism: () => '',
         getIsGroupNonObserverMode: () => false,
         getGroupNeeds: (_) => {},
+
         setGroupNeeds: (_, _) {},
         getEnjoysLowHygiene: () => false,
         getNeedsSimEnabled: () => true,
@@ -591,6 +595,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => 'g1',
           getIsGroupNonObserverMode: () => true,
           getGroupNeeds: (id) => gneeds[id] ?? {},
+
           setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
@@ -624,6 +629,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => '',
           getIsGroupNonObserverMode: () => false,
           getGroupNeeds: (_) => {},
+
           setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
@@ -662,6 +668,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => '',
           getIsGroupNonObserverMode: () => false,
           getGroupNeeds: (_) => {},
+
           setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,
@@ -739,6 +746,7 @@ void main() {
           getCurrentSpeakerIdForRealism: () => 'c1',
           getIsGroupNonObserverMode: () => false,
           getGroupNeeds: (_) => {},
+
           setGroupNeeds: (_, _) {},
           getEnjoysLowHygiene: () => false,
           getNeedsSimEnabled: () => true,

@@ -51,6 +51,7 @@ NeedsSimulation createTestSim({
     getCurrentSpeakerIdForRealism: speakerIdFn ?? () => 'char-1',
     getIsGroupNonObserverMode: isGroupNonObserverFn ?? () => false,
     getGroupNeeds: (id) => gn[id] ?? {},
+
     setGroupNeeds: (id, nn) => gn[id] = Map.from(nn),
     getEnjoysLowHygiene: enjoysFn ?? () => false,
     getNeedsSimEnabled: simEnabledFn ?? () => true,

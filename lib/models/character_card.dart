@@ -60,6 +60,26 @@ class FrontPorchExtensions {
   // Stored per-card (and per-member via frontPorch in groups). Default 1 = no behavior change.
   int needsSimStrength;
 
+  // Per-need baseline values (0-100). Used to seed the needs vector when starting a new session
+  // with this character. Default 80 matches legacy initialization behavior.
+  int needsBaselineHunger;
+  int needsBaselineBladder;
+  int needsBaselineEnergy;
+  int needsBaselineSocial;
+  int needsBaselineFun;
+  int needsBaselineHygiene;
+  int needsBaselineComfort;
+
+  // Per-need decay rates (0-10). Applied as base decay per turn in tickDecay().
+  // Defaults match the legacy hardcoded NeedsSimulation.needDecay values.
+  int needsDecayHunger;
+  int needsDecayBladder;
+  int needsDecayEnergy;
+  int needsDecaySocial;
+  int needsDecayFun;
+  int needsDecayHygiene;
+  int needsDecayComfort;
+
   // Avatar behavior
   bool
   avatarLocked; // when true, avatar won't grow past default sidebar width on resize
@@ -106,6 +126,23 @@ class FrontPorchExtensions {
     // and then scale it again. What the (Director-corrected) call returns is applied directly.
     this.needsSimStrength = 1,
 
+    // Per-need baseline values (0-100). Default 80 matches legacy initialization.
+    this.needsBaselineHunger = 80,
+    this.needsBaselineBladder = 80,
+    this.needsBaselineEnergy = 80,
+    this.needsBaselineSocial = 80,
+    this.needsBaselineFun = 80,
+    this.needsBaselineHygiene = 80,
+    this.needsBaselineComfort = 80,
+
+    this.needsDecayHunger = 4,
+    this.needsDecayBladder = 6,
+    this.needsDecayEnergy = 3,
+    this.needsDecaySocial = 2,
+    this.needsDecayFun = 2,
+    this.needsDecayHygiene = 1,
+    this.needsDecayComfort = 2,
+
     // Avatar behavior
     this.avatarLocked = false,
 
@@ -146,6 +183,23 @@ class FrontPorchExtensions {
         'realism_verification_strictness': realismVerificationStrictness,
         'realism_needs_director_authority': realismNeedsDirectorAuthority,
         'needs_sim_strength': needsSimStrength,
+        // Per-need baseline values
+        'needs_baseline_hunger': needsBaselineHunger,
+        'needs_baseline_bladder': needsBaselineBladder,
+        'needs_baseline_energy': needsBaselineEnergy,
+        'needs_baseline_social': needsBaselineSocial,
+        'needs_baseline_fun': needsBaselineFun,
+        'needs_baseline_hygiene': needsBaselineHygiene,
+        'needs_baseline_comfort': needsBaselineComfort,
+
+        'needs_decay_hunger': needsDecayHunger,
+        'needs_decay_bladder': needsDecayBladder,
+        'needs_decay_energy': needsDecayEnergy,
+        'needs_decay_social': needsDecaySocial,
+        'needs_decay_fun': needsDecayFun,
+        'needs_decay_hygiene': needsDecayHygiene,
+        'needs_decay_comfort': needsDecayComfort,
+
         'avatar_locked': avatarLocked,
 
         // Chat appearance colors (null = use global default)
@@ -189,6 +243,20 @@ class FrontPorchExtensions {
       realismNeedsDirectorAuthority:
           realism['realism_needs_director_authority'] as bool? ?? false,
       needsSimStrength: realism['needs_sim_strength'] as int? ?? 1,
+      needsBaselineHunger: realism['needs_baseline_hunger'] as int? ?? 80,
+      needsBaselineBladder: realism['needs_baseline_bladder'] as int? ?? 80,
+      needsBaselineEnergy: realism['needs_baseline_energy'] as int? ?? 80,
+      needsBaselineSocial: realism['needs_baseline_social'] as int? ?? 80,
+      needsBaselineFun: realism['needs_baseline_fun'] as int? ?? 80,
+      needsBaselineHygiene: realism['needs_baseline_hygiene'] as int? ?? 80,
+      needsBaselineComfort: realism['needs_baseline_comfort'] as int? ?? 80,
+      needsDecayHunger: realism['needs_decay_hunger'] as int? ?? 4,
+      needsDecayBladder: realism['needs_decay_bladder'] as int? ?? 6,
+      needsDecayEnergy: realism['needs_decay_energy'] as int? ?? 3,
+      needsDecaySocial: realism['needs_decay_social'] as int? ?? 2,
+      needsDecayFun: realism['needs_decay_fun'] as int? ?? 2,
+      needsDecayHygiene: realism['needs_decay_hygiene'] as int? ?? 1,
+      needsDecayComfort: realism['needs_decay_comfort'] as int? ?? 2,
       avatarLocked: realism['avatar_locked'] as bool? ?? false,
 
       // Chat appearance colors (null = use global default)
@@ -238,6 +306,20 @@ class FrontPorchExtensions {
     int? realismVerificationStrictness,
     bool? realismNeedsDirectorAuthority,
     int? needsSimStrength,
+    int? needsBaselineHunger,
+    int? needsBaselineBladder,
+    int? needsBaselineEnergy,
+    int? needsBaselineSocial,
+    int? needsBaselineFun,
+    int? needsBaselineHygiene,
+    int? needsBaselineComfort,
+    int? needsDecayHunger,
+    int? needsDecayBladder,
+    int? needsDecayEnergy,
+    int? needsDecaySocial,
+    int? needsDecayFun,
+    int? needsDecayHygiene,
+    int? needsDecayComfort,
     bool? avatarLocked,
 
     // Chat appearance colors (null = use global default)
@@ -277,6 +359,20 @@ class FrontPorchExtensions {
       realismNeedsDirectorAuthority:
           realismNeedsDirectorAuthority ?? this.realismNeedsDirectorAuthority,
       needsSimStrength: needsSimStrength ?? this.needsSimStrength,
+      needsBaselineHunger: needsBaselineHunger ?? this.needsBaselineHunger,
+      needsBaselineBladder: needsBaselineBladder ?? this.needsBaselineBladder,
+      needsBaselineEnergy: needsBaselineEnergy ?? this.needsBaselineEnergy,
+      needsBaselineSocial: needsBaselineSocial ?? this.needsBaselineSocial,
+      needsBaselineFun: needsBaselineFun ?? this.needsBaselineFun,
+      needsBaselineHygiene: needsBaselineHygiene ?? this.needsBaselineHygiene,
+      needsBaselineComfort: needsBaselineComfort ?? this.needsBaselineComfort,
+      needsDecayHunger: needsDecayHunger ?? this.needsDecayHunger,
+      needsDecayBladder: needsDecayBladder ?? this.needsDecayBladder,
+      needsDecayEnergy: needsDecayEnergy ?? this.needsDecayEnergy,
+      needsDecaySocial: needsDecaySocial ?? this.needsDecaySocial,
+      needsDecayFun: needsDecayFun ?? this.needsDecayFun,
+      needsDecayHygiene: needsDecayHygiene ?? this.needsDecayHygiene,
+      needsDecayComfort: needsDecayComfort ?? this.needsDecayComfort,
       avatarLocked: avatarLocked ?? this.avatarLocked,
 
       // Chat appearance colors (null = use global default)

@@ -560,6 +560,7 @@ class RealismEvals {
           'personality': personalityInjection,
           'relationship': relationshipCtx,
           'arousal': arousalField,
+          if (getExpressionEnabled()) 'emotion_constraint': '⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.',
         },
       );
       text = effectiveText; // rebind (var allows)
@@ -885,6 +886,7 @@ class RealismEvals {
           'arousal': arousalInstr,
           'objective': (primary != null ? '$objNum. ...' : '$objNum. ...'),
           'fixation': '$fixNum. ...',
+          if (getExpressionEnabled()) 'emotion_constraint': '⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.',
         },
       );
       final textForOneShot = effectiveText; // rebind

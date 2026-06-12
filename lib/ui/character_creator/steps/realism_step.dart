@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
+import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
 
 /// Realism initial state step (lifted).
 class RealismStep extends StatelessWidget {
@@ -60,10 +61,6 @@ class RealismStep extends StatelessWidget {
                 onNsfwCooldownChanged: (_) {},
                 chaosModeEnabled: false,
                 onChaosModeChanged: (_) {},
-                needsSimEnabled: false,
-                onNeedsSimChanged: (_) {},
-                enjoysLowHygiene: false,
-                onEnjoysLowHygieneChanged: (_) {},
                 currentTask: '',
                 onCurrentTaskChanged: (_) {},
                 realismVerificationEnabled: state.realismVerificationEnabled,
@@ -83,16 +80,44 @@ class RealismStep extends StatelessWidget {
                   state.realismVerificationStrictness = v;
                   state.notify();
                 },
-                realismNeedsDirectorAuthority:
-                    state.realismNeedsDirectorAuthority,
-                onRealismNeedsDirectorAuthorityChanged: (v) {
-                  state.realismNeedsDirectorAuthority = v;
-                  state.notify();
-                },
+                needsFormSection: NeedsFormSection(
+                  enabled: false,
+                  onEnabledChanged: (_) {},
+                  enjoysLowHygiene: false,
+                  onEnjoysLowHygieneChanged: (_) {},
+                  needsSimStrength: 1,
+                  baselineHunger: 80,
+                  onBaselineHungerChanged: (_) {},
+                  baselineBladder: 80,
+                  onBaselineBladderChanged: (_) {},
+                  baselineEnergy: 80,
+                  onBaselineEnergyChanged: (_) {},
+                  baselineSocial: 80,
+                  onBaselineSocialChanged: (_) {},
+                  baselineFun: 80,
+                  onBaselineFunChanged: (_) {},
+                  baselineHygiene: 80,
+                  onBaselineHygieneChanged: (_) {},
+                  baselineComfort: 80,
+                  onBaselineComfortChanged: (_) {},
+                  decayHunger: 5,
+                  onDecayHungerChanged: (_) {},
+                  decayBladder: 5,
+                  onDecayBladderChanged: (_) {},
+                  decayEnergy: 5,
+                  onDecayEnergyChanged: (_) {},
+                  decaySocial: 5,
+                  onDecaySocialChanged: (_) {},
+                  decayFun: 5,
+                  onDecayFunChanged: (_) {},
+                  decayHygiene: 5,
+                  onDecayHygieneChanged: (_) {},
+                  decayComfort: 5,
+                  onDecayComfortChanged: (_) {},
+                ),
                 showVerificationToggle: true,
                 showNsfwCooldownToggle: false,
                 showChaosToggle: false,
-                showNeedsToggle: false,
                 showTimeAndDay: false,
                 showMasterEnabledToggle: false,
               ),
