@@ -122,3 +122,7 @@ tools/embed_server/target/
 .llm_context/
 bug_triage.md
 *.backup
+
+# Build/release scripts and docs
+create-dmg.sh
+docs/Newsletter-Since-March-28-2026.md

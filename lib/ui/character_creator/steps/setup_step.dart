@@ -1,13 +1,16 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/backend_chip.dart';
+import 'package:front_porch_ai/ui/settings/dialogs/model_search_dialog.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Step 0: Backend & Model setup (lifted pure from _buildSetupStep).
@@ -21,6 +24,7 @@ class SetupStep extends StatelessWidget {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
     final activeBackend = llmProvider.activeBackend;
     final isKobold = activeBackend == BackendType.kobold;
+    final isAppleSiliconMac = _isAppleSiliconMac();
 
     return Center(
       key: const ValueKey('setup'),
@@ -97,11 +101,37 @@ class SetupStep extends StatelessWidget {
                           await llmProvider.setActiveBackend(
                             BackendType.openRouter,
                           );
-                          // state.loadAvailableModels(llmProvider);
+                          state.loadAvailableModels(llmProvider);
                         }
                       },
                     ),
                   ),
+                  if (isAppleSiliconMac) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: BackendChip(
+                        label: 'oMLX',
+                        icon: Icons.apple,
+                        isSelected: activeBackend == BackendType.omlx,
+                        onTap: () async {
+                          if (activeBackend != BackendType.omlx) {
+                            await llmProvider.setActiveBackend(
+                              BackendType.omlx,
+                            );
+                            // Ensure oMLX URL is configured before loading models
+                            llmProvider.openRouterService.configure(
+                              apiUrl: 'http://localhost:8000/v1',
+                              apiKey: llmProvider.openRouterService.apiKey,
+                              modelName: llmProvider.openRouterService.modelName,
+                            );
+                            // Small delay to ensure configuration is applied
+                            await Future.delayed(const Duration(milliseconds: 100));
+                            state.loadAvailableModels(llmProvider);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 24),
@@ -154,26 +184,77 @@ class SetupStep extends StatelessWidget {
               ] else ...[
                 _inputLabel(context, 'Remote Model', required: false),
                 const SizedBox(height: 8),
-                if (state.availableModels.isNotEmpty)
-                  ...state.availableModels.map((m) {
-                    final isSel = state.selectedModelId == m;
-                    return ListTile(
-                      title: Text(
-                        m.toString(),
-                        style: TextStyle(color: AppColors.textPrimary(context)),
+                // Tappable chip that opens the model picker (same as backend settings)
+                InkWell(
+                  onTap: () async {
+                    final llm = Provider.of<LLMProvider>(context, listen: false);
+                    final storage = Provider.of<StorageService>(context, listen: false);
+
+                    // Fetch models first if none loaded
+                    if (state.availableModels.isEmpty) {
+                      await state.loadAvailableModels(llm);
+                    }
+
+                    // Show the model picker dialog
+                    if (context.mounted && state.availableModels.isNotEmpty) {
+                      showModelSearchDialog(
+                        context,
+                        storage,
+                        state.availableModels.cast<RemoteModelInfo>(),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerOf(context),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.borderOf(context),
                       ),
-                      selected: isSel,
-                      onTap: () {
-                        state.selectedModelId = m.toString();
-                        state.notify();
-                      },
-                    );
-                  })
-                else
-                  Text(
-                    'No remote models loaded. Select API backend and load.',
-                    style: TextStyle(color: AppColors.textTertiary(context)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Model',
+                                style: TextStyle(
+                                  color: AppColors.textTertiary(context),
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                state.selectedModelId.isEmpty
+                                    ? 'Tap to select a model...'
+                                    : state.selectedModelId,
+                                style: TextStyle(
+                                  color: state.selectedModelId.isEmpty
+                                      ? AppColors.textTertiary(context)
+                                      : AppColors.textPrimary(context),
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_drop_down,
+                          color: AppColors.iconSecondary(context),
+                        ),
+                      ],
+                    ),
                   ),
+                ),
               ],
 
               const SizedBox(height: 24),
@@ -220,4 +301,19 @@ class SetupStep extends StatelessWidget {
       ],
     );
   }
+
+  /// Check if running on Apple Silicon Mac (arm64 architecture).
+  bool _isAppleSiliconMac() {
+    if (!Platform.isMacOS) return false;
+    // Try to detect arm64 architecture
+    try {
+      final result = Process.runSync('uname', ['-m']);
+      if (result.exitCode == 0) {
+        return result.stdout.toString().trim() == 'arm64';
+      }
+    } catch (_) {}
+    // Fallback: if uname fails, assume it's not Apple Silicon
+    return false;
+  }
+
 }
