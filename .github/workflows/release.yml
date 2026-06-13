@@ -598,6 +598,32 @@ jobs:
           
           echo "✓ Build complete: PKG and inner .app are fully notarized and stapled!"
 
+
+      # Unsigned shim DMG for stable channel (Front_Porch_AI.dmg) — the last bridge.
+      # Old stable users' auto-updater looks for a .dmg asset by name. Without this
+      # shim they would silently skip the v0.9.9 update entirely. The inner .app is
+      # already fully signed and notarized; only the DMG wrapper itself is unsigned.
+      - name: Build unsigned shim DMG (legacy name for stable updater transition)
+        if: matrix.platform == 'macos'
+        run: |
+          cd build/macos/Build/Products/Release
+          APP_NAME=$(ls -d *.app | head -1)
+          SHIM_DMG="${GITHUB_WORKSPACE}/Front_Porch_AI.dmg"
+          echo "==> Building unsigned shim DMG for stable channel (no codesign/notarize)"
+          SHIM_ROOT="/tmp/shim-stable-$$"
+          rm -rf "$SHIM_ROOT"
+          mkdir -p "$SHIM_ROOT"
+          cp -R "$APP_NAME" "$SHIM_ROOT/"
+          if hdiutil create -volname "Front Porch AI" -srcfolder "$SHIM_ROOT" -ov -format UDZO "$SHIM_DMG" 2>&1 | tail -3; then
+            echo "✓ stable shim DMG created via hdiutil"
+          else
+            echo "hdiutil failed, trying create-dmg fallback"
+            brew install create-dmg || true
+            create-dmg --skip-jenkins "$SHIM_DMG" "$SHIM_ROOT" || true
+          fi
+          rm -rf "$SHIM_ROOT"
+          ls -lh "$SHIM_DMG" || echo "WARNING: shim DMG not found"
+
       - name: Get Version
         id: get_version
         run: echo "VERSION=$(echo ${GITHUB_REF_NAME} | sed 's/^[vV]//')" >> $GITHUB_OUTPUT
