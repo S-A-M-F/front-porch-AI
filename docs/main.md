@@ -2,6 +2,8 @@
 
 🎉 Biggest update yet — here's what's new:
 
+**macOS users:** The recommended download is now the signed and notarized `Front_Porch_AI.pkg` (Developer ID + Apple notarization). It installs cleanly to /Applications, handles the Python sidecars properly under hardened runtime, and plays nicely with Gatekeeper. The `Front_Porch_AI.dmg` is still provided as an unsigned legacy "shim" so the in-app auto-updater continues to work for everyone during the transition. Old clients that expect a DMG will keep working; new or fresh installs should prefer the .pkg.
+
 👥 **Fork-to-Group Wizard** — Fork any 1:1 chat into a group with a guided wizard. Drag to set arrival order, give each newcomer a custom entrance (your own words, an AI-written direction, or silent), and the round-robin picks up naturally after.
 
 🧠 **Needs Simulation** — Hunger, Bladder, Energy, Social, Fun, Hygiene, and Comfort are now a live simulation. Characters react when levels drop. Per-character decay rates are configurable, and a new Manual Reprocess button lets you tell the Director exactly what happened (e.g. *"she ate a granola bar"*) to correct Needs on the fly.

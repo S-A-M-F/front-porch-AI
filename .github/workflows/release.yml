@@ -17,7 +17,8 @@ permissions:
 # Required GitHub Secrets for macOS Notarization (same as nightly.yml)
 #
 #   MACOS_CERTIFICATE, MACOS_CERTIFICATE_PWD, MACOS_CERTIFICATE_NAME,
-#   APPLE_ID, APPLE_ID_PASSWORD, APPLE_TEAM_ID
+#   APPLE_ID, APPLE_ID_PASSWORD, APPLE_TEAM_ID,
+#   MACOS_INSTALLER_CERT_NAME
 #
 # Security notes:
 # - We use `::add-mask::` to proactively mask MACOS_CERTIFICATE_NAME and APPLE_TEAM_ID
@@ -31,6 +32,7 @@ jobs:
     if: ${{ !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'dev') }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -46,7 +48,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -132,6 +134,11 @@ jobs:
           grep '^version:' pubspec.yaml
           echo "Verifying Dart version constant:"
           cat lib/app_version.dart
+
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=$(echo ${GITHUB_REF_NAME} | sed 's/^[vV]//')" >> $GITHUB_OUTPUT
+        shell: bash
 
       - name: Install dependencies
         run: flutter pub get
@@ -503,6 +510,35 @@ jobs:
 
           echo "✓ App signed with Developer ID"
 
+      # Notarize the .app BEFORE packaging it into the PKG so Apple issues a ticket for its CDHash
+      - name: Notarize and Staple .app (pre-PKG)
+        if: matrix.platform == 'macos'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app | head -1)
+          APP_ZIP="${APP_NAME%.app}.zip"
+
+          echo "Creating ZIP of signed .app for notarization submission..."
+          ditto -c -k --keepParent "$APP_NAME" "$APP_ZIP"
+
+          echo "Submitting .app to Apple notary service (this may take 1–5 minutes)..."
+          xcrun notarytool submit "$APP_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait || { echo "ERROR: .app notarization failed"; exit 1; }
+
+          rm -f "$APP_ZIP"
+          echo "✓ .app is notarized. CDHash is now known to Apple."
+
+          echo "Stapling .app..."
+          xcrun stapler staple "$APP_NAME"
+          xcrun stapler validate "$APP_NAME" || { echo "ERROR: .app staple validation failed"; exit 1; }
+          echo "✓ .app is stapled."
+
       - name: Download VC++ Redistributable
         if: matrix.platform == 'windows'
         run: |
@@ -525,7 +561,6 @@ jobs:
           Copy-Item "installers\windows\Front_Porch_AI_Setup.exe" -Destination "."
         shell: pwsh
 
-
       - name: Build macOS PKG
         if: matrix.platform == 'macos'
         env:
@@ -535,13 +570,13 @@ jobs:
           APP_NAME=$(ls -d *.app | head -1)
           PKG_NAME="Front_Porch_AI.pkg"
           UNSIGNED_PKG="unsigned_${PKG_NAME}"
-          
+
           echo "Building unsigned .pkg..."
           pkgbuild \
             --component "$APP_NAME" \
             --install-location /Applications \
             "$UNSIGNED_PKG" || { echo "ERROR: pkgbuild failed"; exit 1; }
-            
+
           echo "Signing .pkg with Installer cert..."
           productsign --sign "$MACOS_INSTALLER_CERT_NAME" "$UNSIGNED_PKG" "$PKG_NAME" || { echo "ERROR: productsign failed"; exit 1; }
           rm -f "$UNSIGNED_PKG"
@@ -567,26 +602,34 @@ jobs:
         run: |
           cd build/macos/Build/Products/Release
           PKG_NAME="Front_Porch_AI.pkg"
-          
+
           echo "Submitting PKG for notarization..."
           xcrun notarytool submit "$PKG_NAME" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait || { echo "ERROR: PKG notarization failed"; exit 1; }
-          
+
           echo "Stapling notarization ticket to PKG..."
           xcrun stapler staple "$PKG_NAME"
           xcrun stapler validate "$PKG_NAME" \
             && echo "✓ PKG staple verified" \
             || { echo "⚠ PKG staple validation failed"; exit 1; }
-          
-          # Move PKG to workspace root for upload-artifact step
-          mv "$PKG_NAME" ../../../../../
-          
+
+          # Move PKG to workspace root for upload-artifact step.
+          # Use absolute ${GITHUB_WORKSPACE} (exactly like the shim DMG step)
+          # and make the move fatal. The old relative ../../../../../ was
+          # silently failing on the macOS runner, so the notarized .pkg
+          # stayed in build/macos/... and never appeared in the artifact
+          # or the GitHub Release (while Front_Porch_AI.dmg always worked
+          # because it wrote directly with an absolute path).
+          mv "$PKG_NAME" "${GITHUB_WORKSPACE}/" || { echo "ERROR: failed to move PKG to workspace root"; exit 1; }
+
           echo "✓ Build complete: PKG and inner .app are fully notarized and stapled!"
 
       # Unsigned shim DMG for stable channel (Front_Porch_AI.dmg) — the last bridge.
+      # The stable auto-updater bridge still expects this exact legacy filename
+      # containing the .app at the DMG root (find -maxdepth 1 style discovery).
       - name: Build unsigned shim DMG (legacy name for stable updater transition)
         if: matrix.platform == 'macos'
         run: |
@@ -611,10 +654,13 @@ jobs:
           rm -rf "$SHIM_ROOT"
           ls -l "$SHIM_DMG" || echo "(shim not present)"
 
-      - name: Get Version
-        id: get_version
-        run: echo "VERSION=$(echo ${GITHUB_REF_NAME} | sed 's/^[vV]//')" >> $GITHUB_OUTPUT
-        shell: bash
+      - name: Debug Workspace Assets
+        run: |
+          echo "=== Debugging GITHUB_WORKSPACE Assets ===" > ${GITHUB_WORKSPACE}/debug_assets.txt
+          echo "Current directory: $(pwd)" >> ${GITHUB_WORKSPACE}/debug_assets.txt
+          echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}" >> ${GITHUB_WORKSPACE}/debug_assets.txt
+          ls -lh ${GITHUB_WORKSPACE}/*.pkg ${GITHUB_WORKSPACE}/*.dmg ${GITHUB_WORKSPACE}/*Linux* >> ${GITHUB_WORKSPACE}/debug_assets.txt 2>&1 || true
+          find ${GITHUB_WORKSPACE} -maxdepth 2 -name "*.pkg" -o -name "*.dmg" -o -name "*Linux*" >> ${GITHUB_WORKSPACE}/debug_assets.txt 2>&1 || true
 
       - name: Package Linux
         if: matrix.platform == 'linux'
@@ -623,12 +669,12 @@ jobs:
         run: |
           VERSION="${{ steps.get_version.outputs.VERSION }}"
           echo "Building packages for version $VERSION"
-          
+
           # 1. Prepare AppImage
           # AppImage standard: AppRun at root, resources in distinct folders
           mkdir -p AppDir/usr/bin
           cp -r ${{ matrix.build_path }}/* AppDir/usr/bin/
-          
+
           # Create Desktop file
           cat <<EOF > AppDir/front_porch_ai.desktop
           [Desktop Entry]
@@ -639,7 +685,7 @@ jobs:
           Categories=Utility;
           Comment=A chilled out frontend for KoboldCPP
           EOF
-          
+
           # Icon management
           if [ -f "assets/images/front_porch_ai_icon.png" ]; then
             cp assets/images/front_porch_ai_icon.png AppDir/front_porch_ai.png
@@ -648,26 +694,26 @@ jobs:
             touch AppDir/front_porch_ai.png
             touch AppDir/.DirIcon
           fi
-          
+
           # AppRun - symlink to the binary in usr/bin
           ln -s usr/bin/front_porch_ai AppDir/AppRun
-          
+
           # Create AppImage
           curl -L https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o appimagetool
           chmod +x appimagetool
           ./appimagetool AppDir Front_Porch_AI-Linux.AppImage
-          
+
           # 2. Prepare .deb
           # Install to /opt to keep bundle together
           mkdir -p deb/opt/front-porch-ai
           mkdir -p deb/usr/bin
           mkdir -p deb/usr/share/applications
           mkdir -p deb/DEBIAN
-          
+
           cp -r ${{ matrix.build_path }}/* deb/opt/front-porch-ai/
           # Symlink to /usr/bin
           ln -s /opt/front-porch-ai/front_porch_ai deb/usr/bin/front-porch-ai
-          
+
           # Create a .desktop file for the deb that uses the correct symlink name
           cat <<EOF > deb/usr/share/applications/front-porch-ai.desktop
           [Desktop Entry]
@@ -680,7 +726,7 @@ jobs:
           EOF
           mkdir -p deb/usr/share/pixmaps
           cp AppDir/front_porch_ai.png deb/usr/share/pixmaps/front-porch-ai.png
-          
+
           cat <<EOF > deb/DEBIAN/control
           Package: front-porch-ai
           Version: $VERSION
@@ -690,7 +736,7 @@ jobs:
           Maintainer: Front Porch AI Team
           Description: A chilled out frontend for KoboldCPP.
           EOF
-          
+
           # Post-install script: refresh desktop database so shortcut appears
           cat <<'EOF' > deb/DEBIAN/postinst
           #!/bin/sh
@@ -703,11 +749,11 @@ jobs:
           EOF
           chmod 755 deb/DEBIAN/postinst
           dpkg-deb --build deb Front_Porch_AI-Linux.deb
-          
+
           # 3. Prepare .rpm
           sudo apt-get install -y rpm
           mkdir -p rpmroot/{BUILD,RPMS,SOURCES,SPECS,SRPMS,INSTALL}
-          
+
           cat <<EOF > rpmroot/SPECS/front-porch-ai.spec
           Name:           front-porch-ai
           Version:        $VERSION
@@ -719,37 +765,31 @@ jobs:
           Requires:       gtk3
           Requires:       glib2
           Requires:       libsecret
-          
+
           %description
           A chilled out frontend for KoboldCPP.
-          
+
           %install
           mkdir -p %{buildroot}/opt/front-porch-ai
           mkdir -p %{buildroot}/usr/bin
           cp -r ${GITHUB_WORKSPACE}/${{ matrix.build_path }}/* %{buildroot}/opt/front-porch-ai/
           ln -s /opt/front-porch-ai/front_porch_ai %{buildroot}/usr/bin/front-porch-ai
-          
+
           %files
           /opt/front-porch-ai
           /usr/bin/front-porch-ai
-          
+
           %changelog
           EOF
-          
+
           rpmbuild --define "_topdir $(pwd)/rpmroot" --define "_buildrootdir $(pwd)/rpmroot/INSTALL" -bb rpmroot/SPECS/front-porch-ai.spec
           cp rpmroot/RPMS/x86_64/*.rpm Front_Porch_AI-Linux.rpm
-          
-          # 4. Standard tar.gz
-          cd ${{ matrix.build_path }}
-           tar -czvf ../../../../../${{ matrix.asset_name }} .
 
-      - name: Debug Workspace Assets
-        run: |
-          echo "=== Debugging GITHUB_WORKSPACE Assets ===" > ${GITHUB_WORKSPACE}/debug_assets.txt
-          echo "Current directory: $(pwd)" >> ${GITHUB_WORKSPACE}/debug_assets.txt
-          echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}" >> ${GITHUB_WORKSPACE}/debug_assets.txt
-          ls -lh ${GITHUB_WORKSPACE}/*.pkg ${GITHUB_WORKSPACE}/*.dmg >> ${GITHUB_WORKSPACE}/debug_assets.txt 2>&1 || true
-          find ${GITHUB_WORKSPACE} -maxdepth 2 -name "*.pkg" -o -name "*.dmg" >> ${GITHUB_WORKSPACE}/debug_assets.txt 2>&1 || true
+          # 4. Standard tar.gz
+          # Write directly with absolute GITHUB_WORKSPACE (avoid fragile relative
+          # ../../../../../ after cd, per the same class of path bug that kept
+          # losing the .pkg while the shim .dmg succeeded).
+          tar -C ${{ matrix.build_path }} -czvf "${GITHUB_WORKSPACE}/${{ matrix.asset_name }}" .
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v5
@@ -759,6 +799,7 @@ jobs:
             Front_Porch_AI-Linux.AppImage
             Front_Porch_AI-Linux.deb
             Front_Porch_AI-Linux.rpm
+            Front_Porch_AI_Linux.tar.gz
             Front_Porch_AI_Setup.exe
             Front_Porch_AI.pkg
             Front_Porch_AI.dmg
@@ -784,11 +825,12 @@ jobs:
             Front_Porch_AI-Linux.AppImage
             Front_Porch_AI-Linux.deb
             Front_Porch_AI-Linux.rpm
+            Front_Porch_AI_Linux.tar.gz
             Front_Porch_AI_Setup.exe
             Front_Porch_AI.pkg
             Front_Porch_AI.dmg
             debug_assets.txt
-          prerelease: ${{ contains(github.ref_name, 'beta') }}
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
