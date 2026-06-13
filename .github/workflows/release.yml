@@ -167,6 +167,25 @@ jobs:
           echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
           flutter pub get
 
+      - name: Patch Windows CMake to silence experimental coroutine deprecation (GitHub runner toolchain)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          # The GitHub windows-latest runner's current Visual Studio image (VS 18 / MSVC 14.51)
+          # turns use of the deprecated <experimental/coroutine> header (still present in the
+          # native C++ of audioplayers_windows and flutter_inappwebview_windows) into a hard
+          # error (STL1011 / C2338). The Microsoft-recommended escape hatch is the define below.
+          #
+          # Appending the set() to windows/flutter/CMakeLists.txt ensures the flag is passed
+          # through to the CMake generation for *all* plugin vcxproj files (including the
+          # ephemeral symlinked ones). This is more reliable than GITHUB_ENV for Flutter's
+          # Windows build process than plain env var.
+          #
+          # This only affects the CI build on the runner; local dev machines (with older
+          # MSVC or the define already tolerated) continue to work, and the real plugins
+          # are used at runtime on Windows (as required).
+          Add-Content -Path windows/flutter/CMakeLists.txt -Value 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")' -Encoding utf8
+
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
